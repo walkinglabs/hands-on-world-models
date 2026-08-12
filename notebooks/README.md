@@ -19,5 +19,9 @@ F0–F3 共同基础
 - `02_first_model/F3-learn-a-table-world.ipynb`
 - `03_decision/A1-learn-a-latent-world.ipynb`
 - `03_decision/A2-act-in-imagination.ipynb`
+- `04_interactive_video/B1-compress-and-predict-video.ipynb`
+- `04_interactive_video/B2-make-video-controllable.ipynb`
+- `05_jepa/C1-learn-video-features.ipynb`
+- `05_jepa/C2-test-and-control-features.ipynb`
 
 PA0 任务书已经发布，学生提交文件不在仓库中预放答案。路线 Notebook 会在正文、数据、代码和 smoke 同时具备以后加入。目录中不会先放无法运行的空 Notebook。

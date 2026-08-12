@@ -167,10 +167,11 @@ T0 手写样本和 shape 检查
 
 当前真实状态：
 
-- 中文课程结构：已完成第一版；
-- 项目内生成数据：设计中；
-- 神经网络 Notebook：尚未发布；
-- 单张 24GB 完整训练记录：0 个；
+- 中文课程结构与第 0–5 章正文：已发布；
+- 项目内 LineWorld、PixelWorld 数据：可由 seed 重新生成；
+- 路线 A–C 的 6 份 PyTorch Notebook：CPU smoke 已通过；
+- PA1-A/B/C：任务书已发布，尚未收集完整训练结果；
+- 单张 24GB 神经模型完整训练记录：0 个；
 - 外部数据下载器与固定校验和：尚未发布。
 
 ## 建议基础
@@ -211,7 +212,8 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 - [x] 完成第 1–2 章正文和 F1–F3 CPU Notebook
 - [x] 发布 PA0 任务书与共同数据/代码接口
 - [x] 发布路线 A 正文、A1–A2 神经 smoke 与 PA1-A
-- [ ] 发布路线 B–E 的 Notebook 与 PA1
+- [x] 发布路线 B–C 正文、Notebook smoke 与 PA1 任务书
+- [ ] 发布路线 D–E 的 Notebook 与 PA1
 - [ ] 建立统一评价、运行证据和 24GB 实测记录
 - [ ] 完成 PA2、教师指南与课程发布
 

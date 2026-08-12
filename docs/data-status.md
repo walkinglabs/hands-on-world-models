@@ -23,9 +23,11 @@
 | PA0                    | 任务书发布 | 学生实现 | CPU 目标，未收作业 | `docs/assignments/pa0.md`                            |
 | 路线 A PyTorch smoke   | 可生成     | 可运行   | CPU 已测试         | `tests/test_neural.py`、A1/A2 Notebook smoke         |
 | PA1-A Dreamer-lite     | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-a.md`                          |
-| 路线 B 互动视频        | 设计中     | 设计中   | 24GB 目标，未测试  | 课程总纲                                             |
-| 路线 C Tiny Video-JEPA | 设计中     | 设计中   | 24GB 目标，未测试  | 课程总纲                                             |
+| 路线 B 互动视频 smoke  | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_bc.py`、B1/B2 Notebook smoke      |
+| PA1-B 互动视频         | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-b.md`                          |
+| 路线 C Tiny Video-JEPA | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_bc.py`、C1/C2 Notebook smoke      |
+| PA1-C Tiny Video-JEPA  | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-c.md`                          |
 | 路线 D Tiny VLA        | 设计中     | 设计中   | 24GB 目标，未测试  | 课程总纲                                             |
 | 路线 E 空间世界        | 设计中     | 设计中   | 24GB 目标，未测试  | 课程总纲                                             |
 
-F0–F3 已形成“正文—代码—项目内数据—Notebook—测试”共同基础路径。它们只证明规则与 NumPy 小世界可以运行，不证明后续神经网络路线已经完成。
+F0–F3 与路线 A–C 的 smoke 已形成“正文—代码—项目内数据—Notebook—测试”路径。Smoke 只证明最小接口和训练路径可以运行，不证明 PA 完成，也不证明 24GB 完整训练已经通过。
