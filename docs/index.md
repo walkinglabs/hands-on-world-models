@@ -11,7 +11,7 @@ hero:
   actions:
     - theme: brand
       text: 从第 0 章开始
-      link: /chapters/00-why-world-models
+      link: /chapters/00-why-world-models/
     - theme: alt
       text: 查看课程总纲
       link: /课程总纲
@@ -57,8 +57,8 @@ features:
 
 ## 当前建设状态
 
-八章中文正文、五条路线的教学 Notebook、三次 PA 任务书与统一评价已经发布。项目内 T1 数据可以按 seed 生成，所有 Notebook 的代码格都纳入 smoke 测试。
+八个大章下共有 38 篇中文小章，五条路线的教学 Notebook、三次 PA 任务书与统一评价已经发布。项目内 T1 数据可以按 seed 生成，所有 Notebook 的代码格都纳入 smoke 测试。
 
 课程仍有一条明确边界：目前只有 CPU/短训练证据，完整神经 PA 的 24GB 真机训练记录仍为 **0 个**。外部 T2 数据也会区分“来源已知”“loader 可用”和“artifact 可用”，不把数据集名字写成已经准备完成。
 
-[开始学习第 0 章 →](/chapters/00-why-world-models)
+[开始学习第 0 章 →](/chapters/00-why-world-models/)

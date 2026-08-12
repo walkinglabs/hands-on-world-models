@@ -44,6 +44,6 @@ Notebook 中会留出预测、填空和小实验。建议先写下自己的判�
 
 ## 接下来
 
-[进入第 0 章：为什么机器需要先想一想 →](/chapters/00-why-world-models)
+[进入第 0 章：为什么机器需要先想一想 →](/chapters/00-why-world-models/)
 
 教师开课与批改建议见[教师指南](/teacher-guide)，数据和 24GB 证据分别见[数据状态](/data-status)与[运行证据](/run-evidence)。
