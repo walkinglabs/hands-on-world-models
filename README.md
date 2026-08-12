@@ -149,7 +149,7 @@
 - 本地验证：`npm run verify`
 - 开源协议：[CC BY-NC-SA 4.0](LICENSE)
 
-所有 Notebook 已纳入自动 smoke 测试。当前尚未提交完整神经 PA 的 24GB 真机训练记录；外部 T2 数据也在逐项补充固定 loader、切分和校验值。Smoke 测试只表示代码路径可以运行，不表示已经完成完整训练。
+所有 Notebook 已纳入自动 smoke 测试。共同基础到路线 A 已增加一条可解释的 PixelWorld 闭环：从图片测量状态、学习动态、在模型中规划，再与真实环境的随机动作比较。它证明 toy learned dynamics 可以帮助行动，但不是完整 Dreamer-lite。当前尚未提交神经 PA 的 24GB 真机训练记录；外部 T2 数据也在逐项补充固定 loader、切分和校验值。
 
 ## 🔥 最新动态 (News)
 

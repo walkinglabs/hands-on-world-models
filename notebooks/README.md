@@ -11,7 +11,7 @@ F0–F3 共同基础
 → PA2
 ```
 
-当前已经进入实现的样板：
+当前已纳入 CPU smoke 的教学 Notebook：
 
 - `00_reinvent/F0-invent-a-world-model.ipynb`
 - `01_foundations/F1-see-remember-compress.ipynb`
@@ -33,4 +33,4 @@ F0–F3 共同基础
 - `assignments/PA1-route-template.ipynb`
 - `assignments/PA2-next-model-template.ipynb`
 
-PA0 任务书已经发布，学生提交文件不在仓库中预放答案。路线 Notebook 会在正文、数据、代码和 smoke 同时具备以后加入。目录中不会先放无法运行的空 Notebook。
+PA0–PA2 的模板保留 TODO，是学生提交用的作业骨架，不是未完成的教学 Notebook。路线 A–E 的教学 Notebook 已有正文、项目内数据、代码和 CPU smoke；它们仍不等于 PA 完整训练或 24GB 实测。

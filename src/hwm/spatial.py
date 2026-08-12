@@ -87,6 +87,27 @@ class TinyNeuralField(nn.Module):
         return density, color
 
 
+class TinyDynamicField(nn.Module):
+    """坐标 + 时间 + 动作 → density/color 的最小动作条件 4D 场。"""
+
+    def __init__(self, action_size=5, hidden_size=64):
+        super().__init__()
+        self.action = nn.Embedding(action_size, 8)
+        self.network = nn.Sequential(
+            nn.Linear(3 + 1 + 8, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, 4),
+        )
+
+    def forward(self, coordinates, times, actions):
+        times = times.float().reshape(-1, 1)
+        action = self.action(actions.long())
+        output = self.network(torch.cat((coordinates, times, action), dim=-1))
+        return torch.sigmoid(output[..., :1]), torch.sigmoid(output[..., 1:])
+
+
 def make_colored_sphere_samples(num_samples=512, seed=0):
     generator = torch.Generator().manual_seed(seed)
     coordinates = torch.rand(num_samples, 3, generator=generator) * 2 - 1
@@ -94,3 +115,24 @@ def make_colored_sphere_samples(num_samples=512, seed=0):
     density = (radius < 0.65).float()
     color = (coordinates + 1) / 2 * density
     return coordinates, density, color
+
+
+def make_moving_sphere_samples(num_samples=1024, seed=0):
+    """同一球体随时间和动作移动的项目内 4D 查询数据。"""
+    generator = torch.Generator().manual_seed(seed)
+    coordinates = torch.rand(num_samples, 3, generator=generator) * 2 - 1
+    times = torch.rand(num_samples, generator=generator)
+    actions = torch.randint(0, 5, (num_samples,), generator=generator)
+    moves = torch.tensor(
+        [[0.0, 0.0, 0.0], [0.0, -0.7, 0.0], [0.0, 0.7, 0.0],
+         [-0.7, 0.0, 0.0], [0.7, 0.0, 0.0]]
+    )
+    centers = moves[actions] * times[:, None]
+    local = coordinates - centers
+    radius = torch.linalg.vector_norm(local, dim=-1, keepdim=True)
+    density = (radius < 0.38).float()
+    color = torch.cat(
+        ((local[:, :2] + 0.5).clamp(0, 1), times[:, None]),
+        dim=-1,
+    ) * density
+    return coordinates, times, actions, density, color

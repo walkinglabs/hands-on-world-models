@@ -2,7 +2,13 @@ import unittest
 
 import numpy as np
 
-from hwm.data import MovingSquareWorld, ReplayBuffer, make_pixelworld_dataset
+from hwm.data import (
+    MovingSquareWorld,
+    ReplayBuffer,
+    locate_red_square,
+    make_pixelworld_dataset,
+    pixelworld_transition_arrays,
+)
 from hwm.foundations import (
     block_average_decode,
     block_average_encode,
@@ -21,6 +27,13 @@ from hwm.foundations import (
 
 
 class DataTest(unittest.TestCase):
+    def test_episode_stops_when_goal_is_reached(self):
+        world = MovingSquareWorld(goal=(2, 3))
+        episode, positions = world.generate([2, 2, 2], start=(2, 2))
+        self.assertEqual(len(episode.actions), 1)
+        self.assertTrue(episode.dones[-1])
+        self.assertEqual(positions[-1], (2, 3))
+
     def test_pixel_episode_has_aligned_time(self):
         world = MovingSquareWorld()
         episode, positions = world.generate([2, 2, 4], start=(2, 2))
@@ -37,6 +50,19 @@ class DataTest(unittest.TestCase):
         self.assertTrue(all(item["observations"].shape[0] == 5 for item in samples))
         self.assertTrue(all(item["actions"].shape[0] == 4 for item in samples))
         self.assertTrue(all("pixelworld" in item["episode_id"] for item in samples))
+
+    def test_pixel_positions_can_be_read_from_images(self):
+        world = MovingSquareWorld()
+        episode, positions = world.generate([2, 4, 1], start=(3, 5))
+        recovered = [
+            tuple(locate_red_square(image).astype(int))
+            for image in episode.observations
+        ]
+        self.assertEqual(recovered, positions)
+        current, actions, following = pixelworld_transition_arrays([episode])
+        self.assertEqual(current.shape, (3, 2))
+        self.assertEqual(actions.tolist(), [2, 4, 1])
+        self.assertEqual(tuple(following[-1].astype(int)), positions[-1])
 
 
 class FoundationComponentTest(unittest.TestCase):

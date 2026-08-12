@@ -30,7 +30,14 @@ class RouteDENeuralTest(unittest.TestCase):
     def test_vla_and_outcome_model(self):
         import torch
 
-        from hwm.robot import TinyVLA, TabletopOutcomeModel, make_tabletop_dataset, outcome_loss
+        from hwm.robot import (
+            TinyVLA,
+            TabletopOutcomeModel,
+            evaluate_reranker,
+            evaluate_vla,
+            make_tabletop_dataset,
+            outcome_loss,
+        )
 
         torch.manual_seed(0)
         data = make_tabletop_dataset(16, seed=0)
@@ -50,14 +57,25 @@ class RouteDENeuralTest(unittest.TestCase):
         )
         loss.backward()
         self.assertTrue(torch.isfinite(loss))
+        policy_metrics = evaluate_vla(
+            policy,
+            data["states"][:2],
+            data["instructions"][:2],
+            max_steps=2,
+        )
+        self.assertIn("success_rate", policy_metrics)
+        safety_metrics = evaluate_reranker(outcome, num_cases=4, seed=0)
+        self.assertIn("reranked_collision_rate", safety_metrics)
 
     def test_spatial_models(self):
         import torch
 
         from hwm.spatial import (
+            TinyDynamicField,
             TinyNeuralField,
             TinyOccupancyPredictor,
             make_colored_sphere_samples,
+            make_moving_sphere_samples,
             make_moving_occupancy_dataset,
         )
 
@@ -71,6 +89,12 @@ class RouteDENeuralTest(unittest.TestCase):
         predicted_density, predicted_color = field(coordinates)
         self.assertEqual(predicted_density.shape, density.shape)
         self.assertEqual(predicted_color.shape, color.shape)
+        coordinates, times, actions, density, color = make_moving_sphere_samples(32)
+        dynamic = TinyDynamicField()
+        predicted_density, predicted_color = dynamic(coordinates, times, actions)
+        self.assertEqual(predicted_density.shape, density.shape)
+        self.assertEqual(predicted_color.shape, color.shape)
+        (predicted_density.mean() + predicted_color.mean()).backward()
 
 
 if __name__ == "__main__":

@@ -11,7 +11,14 @@ class RouteBCNeuralTest(unittest.TestCase):
         import torch
 
         from hwm.data import make_pixelworld_dataset
-        from hwm.video import ActionTokenTransformer, TinyVQVAE, video_batch_from_episodes
+        from hwm.video import (
+            ActionTokenTransformer,
+            TinyVQVAE,
+            foreground_weighted_mse,
+            motion_direction_accuracy,
+            red_centers,
+            video_batch_from_episodes,
+        )
 
         torch.manual_seed(0)
         episodes = make_pixelworld_dataset(2, 4, seed=0)
@@ -33,6 +40,10 @@ class RouteBCNeuralTest(unittest.TestCase):
         logits = model(same, torch.tensor([1, 2]))
         difference = (logits[0] - logits[1]).abs().mean().detach()
         self.assertGreater(float(difference), 0.0)
+        self.assertTrue(torch.isfinite(red_centers(current)).all())
+        self.assertTrue(torch.isfinite(foreground_weighted_mse(current, following)))
+        perfect_direction = motion_direction_accuracy(current, following, following)
+        self.assertAlmostEqual(float(perfect_direction), 1.0)
 
     def test_jepa_shapes_ema_probe_and_action(self):
         import torch
@@ -40,8 +51,10 @@ class RouteBCNeuralTest(unittest.TestCase):
         from hwm.data import make_pixelworld_dataset
         from hwm.jepa import (
             TinyVideoJEPA,
+            apply_linear_probe,
             feature_spread,
             fit_linear_probe,
+            fit_linear_probe_weights,
             jepa_batch_from_episodes,
         )
 
@@ -62,6 +75,9 @@ class RouteBCNeuralTest(unittest.TestCase):
         pooled = target.mean(dim=1)
         estimate = fit_linear_probe(pooled, positions)
         self.assertEqual(estimate.shape, positions.shape)
+        weights = fit_linear_probe_weights(pooled[:-1], positions[:-1])
+        held_out = apply_linear_probe(pooled[-1:], weights)
+        self.assertEqual(held_out.shape, (1, 2))
         same_video = video[:1].expand(2, -1, -1, -1, -1)
         prediction, _, _ = model(same_video, torch.tensor([1, 2]))
         difference = (prediction[0] - prediction[1]).abs().mean().detach()

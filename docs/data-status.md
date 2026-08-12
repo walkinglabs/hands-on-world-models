@@ -14,24 +14,40 @@
 
 ## 当前清单
 
-| 内容                   | 数据       | 实现     | 硬件               | 证据                                                 |
-| ---------------------- | ---------- | -------- | ------------------ | ---------------------------------------------------- |
-| F0 九格世界            | 可生成     | 可运行   | CPU 已测试         | `tests/test_gridworld.py`、`tests/test_notebooks.py` |
-| F1 PixelWorld 组件     | 可生成     | 可运行   | CPU 已测试         | `src/hwm/data.py`、Notebook smoke                    |
-| F2 相机、空间与规划    | 内嵌小数据 | 可运行   | CPU 已测试         | `src/hwm/foundations.py`、Notebook smoke             |
-| F3 LineWorld 动态      | 可生成     | 可运行   | CPU 已测试         | `src/hwm/gridworld.py`、Notebook smoke               |
-| PA0                    | 任务书发布 | 学生实现 | CPU 目标，未收作业 | `docs/assignments/pa0.md`                            |
-| 路线 A PyTorch smoke   | 可生成     | 可运行   | CPU 已测试         | `tests/test_neural.py`、A1/A2 Notebook smoke         |
-| PA1-A Dreamer-lite     | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-a.md`                          |
-| 路线 B 互动视频 smoke  | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_bc.py`、B1/B2 Notebook smoke      |
-| PA1-B 互动视频         | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-b.md`                          |
-| 路线 C Tiny Video-JEPA | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_bc.py`、C1/C2 Notebook smoke      |
-| PA1-C Tiny Video-JEPA  | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-c.md`                          |
-| 路线 D Tiny VLA smoke  | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_de.py`、D1/D2 Notebook smoke      |
-| PA1-D Tiny VLA         | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-d.md`                          |
-| 路线 E 空间世界 smoke  | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_de.py`、E1/E2 Notebook smoke      |
-| PA1-E 空间世界         | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-e.md`                          |
-| Z0 统一评价            | 内嵌小数据 | 可运行   | CPU 已测试         | `tests/test_evaluation.py`、Z0 Notebook smoke        |
-| PA2 下一台模型         | 任务书发布 | 学生实现 | 随路线而定         | `docs/assignments/pa2.md`                            |
+| 内容                      | 数据       | 实现     | 硬件               | 证据                                                 |
+| ------------------------- | ---------- | -------- | ------------------ | ---------------------------------------------------- |
+| F0 九格世界               | 可生成     | 可运行   | CPU 已测试         | `tests/test_gridworld.py`、`tests/test_notebooks.py` |
+| F1 PixelWorld 组件        | 可生成     | 可运行   | CPU 已测试         | `src/hwm/data.py`、Notebook smoke                    |
+| F2 相机、空间与规划       | 内嵌小数据 | 可运行   | CPU 已测试         | `src/hwm/foundations.py`、Notebook smoke             |
+| F3 LineWorld 动态         | 可生成     | 可运行   | CPU 已测试         | `src/hwm/gridworld.py`、Notebook smoke               |
+| PA0                       | 任务书发布 | 学生实现 | CPU 目标，未收作业 | `docs/assignments/pa0.md`                            |
+| 路线 A PyTorch smoke      | 可生成     | 可运行   | CPU 已测试         | `tests/test_neural.py`、A1/A2 Notebook smoke         |
+| 路线 A 可解释闭环基线     | 可生成     | 可运行   | CPU 已测试         | `tests/test_control.py`、A2 learned MPC              |
+| PA1-A Dreamer-lite        | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-a.md`                          |
+| 路线 B 互动视频 smoke     | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_bc.py`、B1/B2 Notebook smoke      |
+| PA1-B 互动视频            | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-b.md`                          |
+| 路线 C Tiny Video-JEPA    | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_bc.py`、C1/C2 Notebook smoke      |
+| PA1-C Tiny Video-JEPA     | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-c.md`                          |
+| 路线 D Tiny VLA smoke     | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_de.py`、D1/D2 Notebook smoke      |
+| PA1-D Tiny VLA            | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-d.md`                          |
+| 路线 E 空间世界 smoke     | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_de.py`、E1/E2 Notebook smoke      |
+| E2a moving-sphere 4D 接口 | 可生成     | 可运行   | CPU 已测试         | `hwm-data generate moving-sphere`、E2a smoke         |
+| PA1-E 空间世界            | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-e.md`                          |
+| Z0 统一评价               | 内嵌小数据 | 可运行   | CPU 已测试         | `tests/test_evaluation.py`、Z0 Notebook smoke        |
+| PA2 下一台模型            | 任务书发布 | 学生实现 | 随路线而定         | `docs/assignments/pa2.md`                            |
 
 F0–F3 与路线 A–E 的 smoke 已形成“正文—代码—项目内数据—Notebook—测试”路径。Smoke 只证明最小接口和训练路径可以运行，不证明 PA 完成，也不证明 24GB 完整训练已经通过。
+
+路线 A 另有一条可解释的下游验收：状态从 PixelWorld 图片中测量，动态由数据学习，Planner 在模型中搜索，并回到真实 PixelWorld 比较随机基线。这证明小型 learned dynamics 可以改善当前 toy task 的行动，但它不等于 latent Dreamer-lite 已经完成。
+
+## 当前课程成熟度
+
+| 层级       | 当前结论                                         | 还缺什么                                |
+| ---------- | ------------------------------------------------ | --------------------------------------- |
+| 正文       | 8 个大章、38 篇小章已进入站点构建                | 继续人工审稿与补充图表                  |
+| 共同基础   | F0–F3 的项目内数据、代码与 CPU smoke 已通过      | 新学习者独立试学反馈                    |
+| 路线教学   | A–E 的最小 PyTorch Notebook 已在 CPU CI 完整执行 | 更强基线、保存曲线和真实小数据迁移      |
+| 金标准路径 | 基础 → 路线 A → 可解释 learned MPC → Z0 已连通   | 完整 Dreamer-lite 参考训练与 checkpoint |
+| PA 与 24GB | 任务书与目标配方已发布                           | 所有神经 PA 的 24GB 完整实测仍为 0      |
+
+按照课程质量标准，当前状态是“**一条 toy 金标准路径可教，完整课程仍在建设**”。只有新学习者能够独立跑通、PA 参考训练与资源证据补齐以后，才升级为“可学”或“可发布”。

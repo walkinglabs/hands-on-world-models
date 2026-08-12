@@ -26,6 +26,8 @@ UCF101-mini 没有动作标签，只能用于被动预训练。PixelWorld 或机
 
 若加入 Action-JEPA 后规划没有优于“保持原动作”基线，表示可能没有保留任务需要的可控信息。
 
+课程的 C2 会按 episode seed 分开 probe 的训练与测试。若线性头只在训练 feature 上拟合得很好，我们只能说表示能够记住样本，不能说它保留了可迁移的位置。短期动作选择也使用同一个 held-out probe，把候选 feature 映射成位置以后再比较目标距离。
+
 ## 与 Dreamer 的边界
 
 Action-JEPA 和 Dreamer 都可以在 latent 中预测未来。JEPA 的重点是非生成特征目标与表示质量；Dreamer 进一步训练 reward、continue、Actor 和 Critic，目标是提高真实回报。

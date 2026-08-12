@@ -7,6 +7,51 @@ from torch import nn
 import torch.nn.functional as F
 
 
+def foreground_weighted_mse(reconstruction, target, foreground_weight=12.0):
+    """避免小物体被大面积黑色背景淹没的重建损失。"""
+    foreground = target.amax(dim=1, keepdim=True) > 0.2
+    weights = 1.0 + foreground.float() * foreground_weight
+    weights = weights / weights.mean()
+    return ((reconstruction - target).square() * weights).mean()
+
+
+def red_centers(images):
+    """从 [B,3,H,W] 图像估计红色物体中心；没有红色时返回 NaN。"""
+    red_score = (images[:, 0] - torch.maximum(images[:, 1], images[:, 2])).clamp_min(0)
+    batch, height, width = red_score.shape
+    rows = torch.arange(height, device=images.device, dtype=images.dtype)
+    cols = torch.arange(width, device=images.device, dtype=images.dtype)
+    mass = red_score.sum(dim=(1, 2))
+    safe_mass = mass.clamp_min(1e-6)
+    row = (red_score * rows[None, :, None]).sum(dim=(1, 2)) / safe_mass
+    col = (red_score * cols[None, None, :]).sum(dim=(1, 2)) / safe_mass
+    centers = torch.stack((row, col), dim=-1)
+    missing = mass < 1e-4
+    centers[missing] = torch.nan
+    return centers
+
+
+def motion_direction_accuracy(current, predicted, target, minimum_motion=0.25):
+    """比较预测与真实的主位移方向，忽略真实 stay 样本。"""
+    current_center = red_centers(current)
+    predicted_delta = red_centers(predicted) - current_center
+    target_delta = red_centers(target) - current_center
+    moving = target_delta.abs().amax(dim=-1) >= minimum_motion
+    finite = torch.isfinite(predicted_delta).all(dim=-1)
+    keep = moving & finite
+    if not keep.any():
+        return torch.tensor(float("nan"), device=current.device)
+    predicted_axis = predicted_delta[keep].abs().argmax(dim=-1)
+    target_axis = target_delta[keep].abs().argmax(dim=-1)
+    predicted_sign = torch.sign(
+        predicted_delta[keep].gather(1, predicted_axis[:, None]).squeeze(1)
+    )
+    target_sign = torch.sign(
+        target_delta[keep].gather(1, target_axis[:, None]).squeeze(1)
+    )
+    return ((predicted_axis == target_axis) & (predicted_sign == target_sign)).float().mean()
+
+
 class VectorQuantizer(nn.Module):
     """把连续特征换成码本编号，并用 STE 传回梯度。"""
 
@@ -83,13 +128,13 @@ class TinyVQVAE(nn.Module):
     def continuous_loss(self, images):
         """VQ 前的普通 autoencoder 预热；只用于小数据教学。"""
         reconstruction = self.decoder(self.encoder(images))
-        return F.mse_loss(reconstruction, images), reconstruction
+        return foreground_weighted_mse(reconstruction, images), reconstruction
 
     def forward(self, images):
         features = self.encoder(images)
         quantized, indices, quantization_loss = self.quantizer(features)
         reconstruction = self.decoder(quantized)
-        reconstruction_loss = F.mse_loss(reconstruction, images)
+        reconstruction_loss = foreground_weighted_mse(reconstruction, images)
         return {
             "reconstruction": reconstruction,
             "tokens": indices,

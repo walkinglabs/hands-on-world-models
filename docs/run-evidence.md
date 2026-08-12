@@ -4,6 +4,8 @@
 
 仓库内 CPU/短训练 smoke 可运行；完整神经 PA 的 24GB 真机验证记录目前为 **0 个**。
 
+仓库另保存一项 CPU toy 参考运行：`runs/reference/a2-position-dynamics/`。它证明 learned dynamics 加 Planner 在 PixelWorld 上优于随机动作，但不属于 Dreamer-lite 或 24GB 神经 PA。
+
 ## 必填运行清单
 
 每次完整训练在 `runs/<experiment>/manifest.json` 保存：

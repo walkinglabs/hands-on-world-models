@@ -126,9 +126,19 @@ def jepa_batch_from_episodes(episodes, history_length=3):
 
 def fit_linear_probe(features, targets, ridge=1e-3):
     """闭式解线性探针，避免再引入一段训练循环。"""
+    weights = fit_linear_probe_weights(features, targets, ridge)
+    return apply_linear_probe(features, weights)
+
+
+def fit_linear_probe_weights(features, targets, ridge=1e-3):
+    """只在训练 split 拟合权重，便于在 held-out split 上评价。"""
     ones = torch.ones(features.shape[0], 1, device=features.device)
     design = torch.cat((features, ones), dim=1)
     identity = torch.eye(design.shape[1], device=features.device) * ridge
-    weights = torch.linalg.solve(design.T @ design + identity, design.T @ targets)
-    return design @ weights
+    return torch.linalg.solve(design.T @ design + identity, design.T @ targets)
 
+
+def apply_linear_probe(features, weights):
+    ones = torch.ones(features.shape[0], 1, device=features.device)
+    design = torch.cat((features, ones), dim=1)
+    return design @ weights

@@ -18,6 +18,8 @@
 
 CPU smoke 只证明数据流、梯度和动作敏感性能够运行。真正的 PA 要解码画面并检查物体位移方向。
 
+B1/B2 还会从解码画面估计红色物体中心。普通像素 MSE 容易把小方块平均成黑色背景，所以 tokenizer 使用前景加权重建损失；token accuracy、解码中心和运动方向需要一起检查。
+
 ## 路线 C：预测有用特征
 
 `C1-learn-video-features.ipynb`：
@@ -32,7 +34,9 @@ video patch → online/target encoder → mask → EMA → collapse 检查
 linear probe → action conditioning → 反事实 feature → 一步动作选择
 ```
 
-被动视频结果与动作条件结果必须分开报告。没有动作标签的数据不能证明 controllability。
+C2 的 linear probe 按 episode seed 分开训练与测试，不再用训练集误差宣布表示有用。动作选择也先把候选 feature 映射成位置，再比较到目标的距离。
+
+被动视频结果与动作条件结果必须分开报告。没有动作标签的数据不能证明 controllability；probe 在新 episode 上失败时，也不能用它支持规划结论。
 
 ## 运行
 

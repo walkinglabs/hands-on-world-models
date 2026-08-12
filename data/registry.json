@@ -32,7 +32,7 @@
       "tier": "T1",
       "status": "artifact-ready",
       "generator": "python -m hwm.data_cli generate tabletop",
-      "schema": "image, instruction, proprioception, action_chunk, next_state, collision",
+      "schema": "image, instruction_id, instruction_text, proprioception, action_chunk, next_state, collision, sample_id, time_index, control_frequency_hz",
       "license": "课程代码许可范围内生成",
       "notes": "同时提供安全示范与随机候选动作后果。"
     },
@@ -45,6 +45,16 @@
       "schema": "past_occupancy[Tp,H,W], ego_action, future_occupancy[Tf,H,W]",
       "license": "课程代码许可范围内生成",
       "notes": "用于动作条件未来占用，不代表真实驾驶数据。"
+    },
+    {
+      "id": "moving-sphere-v1",
+      "routes": ["E2a"],
+      "tier": "T1",
+      "status": "artifact-ready",
+      "generator": "python -m hwm.data_cli generate moving-sphere",
+      "schema": "coordinates[N,3], times[N], actions[N], density[N,1], color[N,3]",
+      "license": "课程代码许可范围内生成",
+      "notes": "用于动作条件 4D 查询接口；不是多视角相机数据，也不包含接触物理。"
     },
     {
       "id": "dmc-cartpole-small",

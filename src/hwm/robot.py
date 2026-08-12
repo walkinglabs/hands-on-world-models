@@ -183,3 +183,87 @@ def rerank_actions(model, state, instruction, candidates, collision_weight=2.0):
     distance = torch.linalg.vector_norm(next_states[:, :2] - target, dim=-1)
     score = -distance - collision_weight * torch.sigmoid(collision_logits)
     return int(score.argmax()), score
+
+
+@torch.no_grad()
+def rollout_vla(model, state, instruction, max_steps=20, success_radius=0.15):
+    """每一步重新渲染并执行 action chunk 的第一步。"""
+    state = np.asarray(state, dtype=np.float32).copy()
+    target = state[2:4] if int(instruction) == 0 else state[4:6]
+    initial_distance = float(np.linalg.norm(state[:2] - target))
+    collisions = 0
+    trajectory = [state[:2].copy()]
+    for _ in range(max_steps):
+        image = torch.from_numpy(render_tabletop(state)).permute(2, 0, 1)
+        image = image.float()[None] / 255.0
+        state_tensor = torch.from_numpy(state)[None]
+        instruction_tensor = torch.tensor([instruction], dtype=torch.long)
+        action = model(image, instruction_tensor, state_tensor)[0, 0].cpu().numpy()
+        state, collision = step_tabletop(state, action)
+        collisions += int(collision)
+        trajectory.append(state[:2].copy())
+        if np.linalg.norm(state[:2] - target) < success_radius:
+            break
+    final_distance = float(np.linalg.norm(state[:2] - target))
+    return {
+        "success": final_distance < success_radius,
+        "collisions": collisions,
+        "initial_distance": initial_distance,
+        "final_distance": final_distance,
+        "trajectory": np.stack(trajectory),
+    }
+
+
+def evaluate_vla(model, states, instructions, max_steps=20):
+    runs = [
+        rollout_vla(model, state, int(instruction), max_steps=max_steps)
+        for state, instruction in zip(states, instructions)
+    ]
+    return {
+        "success_rate": float(np.mean([run["success"] for run in runs])),
+        "mean_collisions": float(np.mean([run["collisions"] for run in runs])),
+        "initial_distance": float(
+            np.mean([run["initial_distance"] for run in runs])
+        ),
+        "final_distance": float(np.mean([run["final_distance"] for run in runs])),
+        "runs": runs,
+    }
+
+
+def evaluate_reranker(model, num_cases=128, seed=0, collision_weight=4.0):
+    """在直达动作必撞的场景中评价后果模型的安全—进展取舍。"""
+    rng = np.random.default_rng(seed)
+    direct_collisions = []
+    chosen_collisions = []
+    chosen_progress = []
+    for _ in range(num_cases):
+        state = rng.uniform(0.12, 0.88, size=8).astype(np.float32)
+        instruction = int(rng.integers(0, 2))
+        target = state[2:4] if instruction == 0 else state[4:6]
+        direction = target - state[:2]
+        direction /= np.linalg.norm(direction) + 1e-6
+        state[6:8] = np.clip(state[:2] + 0.1 * direction, 0.05, 0.95)
+        perpendicular = np.asarray([-direction[1], direction[0]], dtype=np.float32)
+        candidates = torch.tensor(
+            np.stack((direction, perpendicular, -perpendicular, -direction)),
+            dtype=torch.float32,
+        )
+        state_tensor = torch.from_numpy(state)
+        chosen, _ = rerank_actions(
+            model,
+            state_tensor,
+            instruction,
+            candidates,
+            collision_weight=collision_weight,
+        )
+        outcomes = [step_tabletop(state, action.numpy()) for action in candidates]
+        direct_collisions.append(outcomes[0][1])
+        chosen_collisions.append(outcomes[chosen][1])
+        before = np.linalg.norm(state[:2] - target)
+        after = np.linalg.norm(outcomes[chosen][0][:2] - target)
+        chosen_progress.append(before - after)
+    return {
+        "direct_collision_rate": float(np.mean(direct_collisions)),
+        "reranked_collision_rate": float(np.mean(chosen_collisions)),
+        "reranked_mean_progress": float(np.mean(chosen_progress)),
+    }

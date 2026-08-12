@@ -5,6 +5,7 @@ docs/.vitepress/dist/
 
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
 .venv/
 
@@ -12,6 +13,10 @@ data/downloads/
 data/processed/
 checkpoints/
 runs/
+!runs/
+!runs/README.md
+!runs/reference/
+!runs/reference/**
 outputs/
 artifacts/
 *.log

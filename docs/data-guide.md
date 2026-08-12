@@ -22,11 +22,14 @@ hwm-data generate lineworld --seed 0 --num-samples 30
 hwm-data generate pixelworld --seed 0 --num-samples 12
 hwm-data generate tabletop --seed 0 --num-samples 256
 hwm-data generate occupancy --seed 0 --num-samples 96
+hwm-data generate moving-sphere --seed 0 --num-samples 1024
 ```
 
 默认输出到 `artifacts/data/`，同时生成 `.npz` 与 `.json`。JSON 中包含 seed、样本数和 artifact SHA256。
 
-Tabletop 与 Occupancy 生成器依赖 PyTorch；PixelWorld 只依赖 NumPy。
+Tabletop artifact 除了模型使用的 instruction ID，还保存原始中文指令、sample ID、时间索引和控制频率。Tabletop、Occupancy 与 moving-sphere 生成器依赖 PyTorch；PixelWorld 只依赖 NumPy。
+
+每个 metadata JSON 同时记录数据 artifact 与生成器入口文件的 SHA256。代码提交仍应另外记录 Git commit；生成器哈希不能替代版本控制。
 
 ## 怎样切分
 

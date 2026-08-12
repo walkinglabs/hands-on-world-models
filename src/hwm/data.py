@@ -97,16 +97,21 @@ class MovingSquareWorld:
         dones = []
         position = start
 
+        used_actions = []
         for index, action in enumerate(actions):
             position = self.next_position(position, int(action))
             positions.append(position)
             observations.append(self.render(position))
+            used_actions.append(action)
             rewards.append(self.reward(position))
-            dones.append(position == self.goal or index == len(actions) - 1)
+            reached_goal = position == self.goal
+            dones.append(reached_goal or index == len(actions) - 1)
+            if reached_goal:
+                break
 
         episode = Episode(
             observations=np.stack(observations),
-            actions=np.asarray(actions, dtype=np.int64),
+            actions=np.asarray(used_actions, dtype=np.int64),
             rewards=np.asarray(rewards, dtype=np.float32),
             dones=np.asarray(dones, dtype=bool),
             episode_id=episode_id,
@@ -119,16 +124,50 @@ def make_pixelworld_dataset(num_episodes=12, length=18, seed=0):
     rng = random.Random(seed)
     world = MovingSquareWorld()
     episodes = []
-    for index in range(num_episodes):
+    attempts = 0
+    while len(episodes) < num_episodes:
+        attempts += 1
+        if attempts > num_episodes * 100:
+            raise RuntimeError("无法生成足够多的固定长度 PixelWorld episode")
         start = (rng.randint(0, 7), rng.randint(0, 7))
         actions = [rng.choice(tuple(MOVE)) for _ in range(length)]
         episode, _ = world.generate(
             actions,
             start=start,
-            episode_id=f"pixelworld-{index:03d}",
+            episode_id=f"pixelworld-{len(episodes):03d}",
         )
-        episodes.append(episode)
+        if len(episode.actions) == length:
+            episodes.append(episode)
     return episodes
+
+
+def locate_red_square(observation):
+    """从 PixelWorld 图片中读出红色方块左上角，作为可解释状态基线。"""
+    observation = np.asarray(observation)
+    if observation.ndim != 3 or observation.shape[-1] != 3:
+        raise ValueError("PixelWorld observation 应为 [H,W,3]")
+    rows, cols = np.where(observation[..., 0] > 200)
+    if len(rows) == 0:
+        raise ValueError("图片中没有找到红色方块")
+    return np.asarray([rows.min(), cols.min()], dtype=np.float32)
+
+
+def pixelworld_transition_arrays(episodes):
+    """把连续图片 episode 整理成 position、action、next_position。"""
+    positions = []
+    actions = []
+    next_positions = []
+    for episode in episodes:
+        episode.validate()
+        for transition in episode.transitions():
+            positions.append(locate_red_square(transition["observation"]))
+            actions.append(transition["action"])
+            next_positions.append(locate_red_square(transition["next_observation"]))
+    return (
+        np.stack(positions),
+        np.asarray(actions, dtype=np.int64),
+        np.stack(next_positions),
+    )
 
 
 def split_by_episode(episodes, train_ratio=0.7, val_ratio=0.15):

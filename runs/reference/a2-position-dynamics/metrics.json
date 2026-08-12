@@ -1,0 +1,15 @@
+{
+  "loss_first": 0.3152463734149933,
+  "loss_last": 0.00013724129530601203,
+  "planned_success_rate": 1.0,
+  "planned_final_distance": 0.0,
+  "random_success_rate": 0.0,
+  "random_final_distance": 15.5375,
+  "training_transitions": 180,
+  "test_starts": [
+    [1, 1],
+    [2, 8],
+    [8, 2],
+    [5, 5]
+  ]
+}

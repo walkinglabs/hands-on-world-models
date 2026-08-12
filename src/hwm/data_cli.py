@@ -67,10 +67,19 @@ def generate_lineworld(output, seed, num_samples):
 
 
 def generate_tabletop(output, seed, num_samples):
-    from .robot import make_tabletop_dataset
+    from .robot import INSTRUCTIONS, make_tabletop_dataset
 
     data = make_tabletop_dataset(num_samples=num_samples, seed=seed)
     arrays = {name: value.detach().cpu().numpy() for name, value in data.items()}
+    instruction_ids = arrays["instructions"]
+    arrays["instruction_texts"] = np.asarray(
+        [INSTRUCTIONS[int(index)] for index in instruction_ids]
+    )
+    arrays["sample_ids"] = np.asarray(
+        [f"tabletop-{seed:04d}-{index:06d}" for index in range(num_samples)]
+    )
+    arrays["time_index"] = np.zeros(num_samples, dtype=np.int64)
+    arrays["control_frequency_hz"] = np.full(num_samples, 10.0, dtype=np.float32)
     np.savez_compressed(output, **arrays)
 
 
@@ -89,21 +98,42 @@ def generate_occupancy(output, seed, num_samples):
     )
 
 
+def generate_moving_sphere(output, seed, num_samples):
+    from .spatial import make_moving_sphere_samples
+
+    coordinates, times, actions, density, color = make_moving_sphere_samples(
+        num_samples=num_samples,
+        seed=seed,
+    )
+    np.savez_compressed(
+        output,
+        coordinates=coordinates.numpy(),
+        times=times.numpy(),
+        actions=actions.numpy(),
+        density=density.numpy(),
+        color=color.numpy(),
+    )
+
+
 GENERATORS = {
     "lineworld": generate_lineworld,
     "pixelworld": generate_pixelworld,
     "tabletop": generate_tabletop,
     "occupancy": generate_occupancy,
+    "moving-sphere": generate_moving_sphere,
 }
 
 
 def artifact_metadata(path, dataset, seed, num_samples):
+    generator_path = Path(__file__)
     return {
         "dataset": dataset,
         "seed": seed,
         "num_samples": num_samples,
         "artifact": path.name,
         "sha256": sha256(path),
+        "generator": "hwm.data_cli",
+        "generator_sha256": sha256(generator_path),
     }
 
 
