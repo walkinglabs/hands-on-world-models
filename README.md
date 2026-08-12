@@ -38,48 +38,48 @@
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-reinvent.webp" alt="比较候选动作产生的多种预测未来" width="100%" />
       <br />
-      <strong>从九格世界开始</strong>
+      <strong>第 0 章只用一个九格世界</strong>
       <br />
-      <sub>我们先用整数和表格写出状态转移与 rollout。问题看清楚以后，再换成神经网络。</sub>
+      <sub>用整数、字典和几行 Python 写出状态、动作、转移与多步推演。第 1 章再把表格换成图像和神经网络。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-components.webp" alt="观察、编码、动态与预测组成的世界模型" width="100%" />
       <br />
-      <strong>数学与实现并列</strong>
+      <strong>公式旁边就是相应代码</strong>
       <br />
-      <sub>RSSM 怎样更新状态，损失函数怎样组成，都在相邻的公式和代码中说明。</sub>
+      <sub>正文先标出张量的形状，再实现状态更新、预测目标和损失函数。公式中的量都能在代码中找到。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-routes.webp" alt="决策、视频、JEPA、机器人与空间世界五条路线" width="100%" />
       <br />
-      <strong>共同基础与选修路线</strong>
+      <strong>基础学完以后选一章</strong>
       <br />
-      <sub>第 0–1 章是共同基础。此后从决策、互动视频、JEPA、机器人和空间世界中选择一条。</sub>
+      <sub>第 2–6 章分别讨论决策、互动视频、JEPA、机器人和空间世界。选定一章完成 PA1 即可。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-notebooks.webp" alt="从表格世界到多步预测与策略评价的实验递进" width="100%" />
       <br />
-      <strong>每章配有可运行实验</strong>
+      <strong>一章保留一至两份实验</strong>
       <br />
-      <sub>Notebook 从小样本和 shape 检查开始，再把几个部件接成一台可以训练的小模型。</sub>
+      <sub>每份 Notebook 围绕一个结果展开：检查小样本与 shape，训练小模型，再保存曲线和失败样例。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-evaluation.webp" alt="多步、反事实、分布外和下游规划评价" width="100%" />
       <br />
-      <strong>评价不只看一步损失</strong>
+      <strong>预测要经过几种检查</strong>
       <br />
-      <sub>我们还会替换动作、延长预测时间，并在陌生样本和下游任务中检查模型。</sub>
+      <sub>除了一步误差，我们还比较长时间推演、同一起点更换动作、陌生场景和最终任务表现。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-research.webp" alt="从遮挡失败提出记忆与对象状态假设并做对照" width="100%" />
       <br />
-      <strong>从失败样例提出问题</strong>
+      <strong>最后完成一次小研究</strong>
       <br />
-      <sub>最后一次作业从一个可以重复出现的失败出发，比较两种解释，再完成受控实验。</sub>
+      <sub>PA2 从 PA1 中反复出现的失败开始。写出两种解释，只改一个条件，再看实验支持哪一种。</sub>
     </td>
   </tr>
 </table>
