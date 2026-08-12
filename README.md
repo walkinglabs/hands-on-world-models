@@ -29,7 +29,7 @@
 
 > **📣 公告**
 >
-> 感谢大家关注这门课程。当前版本已经包含九章中文正文、五条路线的教学 Notebook、PA0–PA2 任务书和项目内数据生成器。部分实验仍在整理和验证中，欢迎提交建议与修正。
+> 感谢大家关注这门课程。当前版本已经包含八章中文正文、五条路线的教学 Notebook、PA0–PA2 任务书和项目内数据生成器。部分实验仍在整理和验证中，欢迎提交建议与修正。
 
 ## 本书特色
 
@@ -56,7 +56,7 @@
       <br />
       <strong>共同基础与选修路线</strong>
       <br />
-      <sub>第 0–2 章是共同基础。此后从决策、互动视频、JEPA、机器人和空间世界中选择一条。</sub>
+      <sub>第 0–1 章是共同基础。此后从决策、互动视频、JEPA、机器人和空间世界中选择一条。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-notebooks.webp" alt="从表格世界到多步预测与策略评价的实验递进" width="100%" />
@@ -155,13 +155,13 @@
 
 > **备注：** 本课程有 AI 协助整理，目前尚未完成全面人工审稿。内容可能存在事实错误、解释不清或代码边界未覆盖的情况，欢迎通过 Issue 和 Pull Request 指正。
 
-- **[2026-08-13]** 🎉 发布课程初版，包含九章中文正文、五条路线的教学 Notebook、PA0–PA2 任务书和项目内数据生成器。
+- **[2026-08-13]** 🎉 发布课程初版，包含八章中文正文、五条路线的教学 Notebook、PA0–PA2 任务书和项目内数据生成器。
 
 ## 🗺️ 演进路线图 (Roadmap)
 
 课程正在持续开发，当前计划如下：
 
-- [x] 建立九章课程结构与五条选修路线；
+- [x] 建立八章课程结构与五条选修路线；
 - [x] 发布 F0–F3、路线 Notebook、PA0–PA2 和统一评价；
 - [x] 将 Notebook 代码格纳入自动 smoke 测试；
 - [x] 建立数据状态和运行证据格式；
@@ -172,7 +172,7 @@
 
 ## 全书结构
 
-全书共四部分、九章。第一部分用小环境建立世界模型的基本问题；第二部分介绍各路线共用的表示、记忆、数据和训练方法；第三部分提供五条可以独立选择的路线；第四部分讨论评价和研究设计。附录提供数据、运行证据和教学参考。
+全书共四部分、八章。第一部分用小环境建立世界模型的基本问题；第二部分在一章中接起表示、记忆、数据和第一台可学习模型；第三部分提供五条可以独立选择的路线；第四部分讨论评价和研究设计。附录提供数据、运行证据和教学参考。
 
 ### 第一部分：世界模型的基本问题
 
@@ -182,26 +182,25 @@
 | :-: | :------------------------------------------------------------- | :------------------------------------------------------ |
 |  0  | [为什么机器需要先想一想](docs/chapters/00-why-world-models.md) | 从九格世界开始，比较一步动作、连续 rollout 与规划深度。 |
 
-### 第二部分：表示、数据与第一台模型
+### 第二部分：共同基础与第一台模型
 
 表格环境不能直接处理图像、历史和不确定性。这一部分介绍后续路线共用的组件，并从连续经历中学习一个小型 dynamics model。
 
-| 章  | 主题                                                                     | 本章主线                                                 |
-| :-: | :----------------------------------------------------------------------- | :------------------------------------------------------- |
-|  1  | [怎样表示、记住和推演世界](docs/chapters/01-components.md)               | 认识视觉、时序、压缩、空间、决策和训练组件的输入与输出。 |
-|  2  | [从连续经历中学出第一台小世界](docs/chapters/02-data-and-first-model.md) | 实现 transition、episode、replay、序列切分与训练循环。   |
+| 章  | 主题                                                                | 本章主线                                                                  |
+| :-: | :------------------------------------------------------------------ | :------------------------------------------------------------------------ |
+|  1  | [怎样表示世界，并从经历中学出模型](docs/chapters/01-foundations.md) | 认识视觉、时序、压缩、空间和决策组件，再接起轨迹、replay 与第一台小世界。 |
 
 ### 第三部分：五条世界模型路线
 
-第 0–2 章完成后，从下面五章中选择一章继续学习。第 3 章是推荐的第一条路线，但不是其余路线的先修课。
+第 0–1 章完成后，从下面五章中选择一章继续学习。第 2 章是推荐的第一条路线，但不是其余路线的先修课。
 
 | 章  | 路线                                                           | 主要内容                                                               |
 | :-: | :------------------------------------------------------------- | :--------------------------------------------------------------------- |
-|  3  | [决策与规划](docs/chapters/03-decision-and-planning.md)        | RSSM、想象 rollout、PlaNet、Dreamer-lite，以及作为对照的 Mini-MuZero。 |
-|  4  | [可交互视频世界](docs/chapters/04-interactive-video.md)        | VQ-VAE、动作条件 Transformer、多步视频预测和 tiny diffusion 对照。     |
-|  5  | [JEPA 抽象预测](docs/chapters/05-jepa.md)                      | 视频 masking、EMA target encoder、feature prediction 和 Action-JEPA。  |
-|  6  | [VLA 与机器人世界模型](docs/chapters/06-robot-vla.md)          | 行为克隆、动作预测、action chunk 和 world-model checker。              |
-|  7  | [3D/4D 空间世界与自动驾驶](docs/chapters/07-spatial-worlds.md) | 相机几何、NeRF、3DGS、occupancy 和 future BEV。                        |
+|  2  | [决策与规划](docs/chapters/02-decision-and-planning.md)        | RSSM、想象 rollout、PlaNet、Dreamer-lite，以及作为对照的 Mini-MuZero。 |
+|  3  | [可交互视频世界](docs/chapters/03-interactive-video.md)        | VQ-VAE、动作条件 Transformer、多步视频预测和 tiny diffusion 对照。     |
+|  4  | [JEPA 抽象预测](docs/chapters/04-jepa.md)                      | 视频 masking、EMA target encoder、feature prediction 和 Action-JEPA。  |
+|  5  | [VLA 与机器人世界模型](docs/chapters/05-robot-vla.md)          | 行为克隆、动作预测、action chunk 和 world-model checker。              |
+|  6  | [3D/4D 空间世界与自动驾驶](docs/chapters/06-spatial-worlds.md) | 相机几何、NeRF、3DGS、occupancy 和 future BEV。                        |
 
 ### 第四部分：评价与研究设计
 
@@ -209,7 +208,7 @@
 
 | 章  | 主题                                                                          | 本章主线                                          |
 | :-: | :---------------------------------------------------------------------------- | :------------------------------------------------ |
-|  8  | [证明模型有用，并设计下一台世界模型](docs/chapters/08-evaluate-and-invent.md) | 完成 Z0 统一评价，并根据 PA1 的失败样例设计 PA2。 |
+|  7  | [证明模型有用，并设计下一台世界模型](docs/chapters/07-evaluate-and-invent.md) | 完成 Z0 统一评价，并根据 PA1 的失败样例设计 PA2。 |
 
 ### 附录：随学随查的工具箱
 
@@ -224,25 +223,25 @@
 
 [`notebooks/`](notebooks/) 目录包含与章节对应的可运行实验。每条路线使用两到三份 Notebook，便于独立阅读、运行和修改。
 
-| 领域         | 代码路径                                                                                                           | 代表性实验                                            |
-| :----------- | :----------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------- |
-| 世界模型入门 | [`notebooks/00_reinvent/`](notebooks/00_reinvent/)                                                                 | 在九格世界中实现 transition、rollout 和 planner。     |
-| 共同基础     | [`notebooks/01_foundations/`](notebooks/01_foundations/), [`notebooks/02_first_model/`](notebooks/02_first_model/) | 检查 CNN、GRU、压缩与空间组件，并学习表格 dynamics。  |
-| 决策与规划   | [`notebooks/03_decision/`](notebooks/03_decision/)                                                                 | 学习 latent dynamics，并在想象轨迹中训练动作选择。    |
-| 可交互视频   | [`notebooks/04_interactive_video/`](notebooks/04_interactive_video/)                                               | 压缩 PixelWorld 画面，训练动作条件多步预测。          |
-| JEPA         | [`notebooks/05_jepa/`](notebooks/05_jepa/)                                                                         | 训练特征预测器，检查表示坍缩与动作敏感性。            |
-| VLA 与机器人 | [`notebooks/06_robot/`](notebooks/06_robot/)                                                                       | 从行为克隆开始，再用后果模型比较候选动作。            |
-| 空间与驾驶   | [`notebooks/07_spatial/`](notebooks/07_spatial/)                                                                   | 建立相机与空间表示，预测 4D 场景或 future occupancy。 |
-| 统一评价     | [`notebooks/08_evaluation/`](notebooks/08_evaluation/)                                                             | 比较多步误差、反事实动作、OOD 与规划增益。            |
-| 大作业       | [`notebooks/assignments/`](notebooks/assignments/)                                                                 | PA0、PA1 路线项目和 PA2 研究设计模板。                |
+| 领域         | 代码路径                                                             | 代表性实验                                            |
+| :----------- | :------------------------------------------------------------------- | :---------------------------------------------------- |
+| 世界模型入门 | [`notebooks/00_reinvent/`](notebooks/00_reinvent/)                   | 在九格世界中实现 transition、rollout 和 planner。     |
+| 共同基础     | [`notebooks/01_foundations/`](notebooks/01_foundations/)             | 检查 CNN、GRU、压缩与空间组件，并学习表格 dynamics。  |
+| 决策与规划   | [`notebooks/02_decision/`](notebooks/02_decision/)                   | 学习 latent dynamics，并在想象轨迹中训练动作选择。    |
+| 可交互视频   | [`notebooks/03_interactive_video/`](notebooks/03_interactive_video/) | 压缩 PixelWorld 画面，训练动作条件多步预测。          |
+| JEPA         | [`notebooks/04_jepa/`](notebooks/04_jepa/)                           | 训练特征预测器，检查表示坍缩与动作敏感性。            |
+| VLA 与机器人 | [`notebooks/05_robot/`](notebooks/05_robot/)                         | 从行为克隆开始，再用后果模型比较候选动作。            |
+| 空间与驾驶   | [`notebooks/06_spatial/`](notebooks/06_spatial/)                     | 建立相机与空间表示，预测 4D 场景或 future occupancy。 |
+| 统一评价     | [`notebooks/07_evaluation/`](notebooks/07_evaluation/)               | 比较多步误差、反事实动作、OOD 与规划增益。            |
+| 大作业       | [`notebooks/assignments/`](notebooks/assignments/)                   | PA0、PA1 路线项目和 PA2 研究设计模板。                |
 
 完整文件索引和依赖说明见 [`notebooks/README.md`](notebooks/README.md)。
 
 ## 推荐学习路径
 
-第一次系统学习时，先按顺序完成第 0–2 章和 PA0。第 0 章介绍世界模型要解决的问题，第 1 章说明常用组件的输入和输出，第 2 章把连续经历、数据集与训练循环连接起来。
+第一次系统学习时，先按顺序完成第 0–1 章和 PA0。第 0 章介绍世界模型要解决的问题；第 1 章分三节接起常用组件、空间与行动，以及连续经历和第一台可学习模型。
 
-完成共同基础后，从第 3–7 章选择一条路线。希望学习 model-based RL 时选择第 3 章；希望生成动作条件画面时选择第 4 章；希望研究特征预测时选择第 5 章；希望研究机器人动作时选择第 6 章；希望研究三维表示或驾驶预测时选择第 7 章。完成路线 Notebook 和 PA1 后，再学习第 8 章并完成 PA2。
+完成共同基础后，从第 2–6 章选择一条路线。希望学习 model-based RL 时选择第 2 章；希望生成动作条件画面时选择第 3 章；希望研究特征预测时选择第 4 章；希望研究机器人动作时选择第 5 章；希望研究三维表示或驾驶预测时选择第 6 章。完成路线 Notebook 和 PA1 后，再学习第 7 章并完成 PA2。
 
 每章建议完成四项工作：说明本章要解决的问题；画出模型的输入与输出；运行至少一个实验；改变一个条件并解释结果。数学或工程细节可以在需要时查阅附录，无需先顺序读完。
 

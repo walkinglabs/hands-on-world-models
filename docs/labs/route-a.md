@@ -11,7 +11,7 @@ python -m pip install -r requirements-neural.txt
 路径：
 
 ```text
-notebooks/03_decision/A1-learn-a-latent-world.ipynb
+notebooks/02_decision/A1-learn-a-latent-world.ipynb
 ```
 
 A1 使用 4 段项目内 PixelWorld episode 做 CPU smoke。它逐步检查：
@@ -31,7 +31,7 @@ CNN embedding
 路径：
 
 ```text
-notebooks/03_decision/A2-act-in-imagination.ipynb
+notebooks/02_decision/A2-act-in-imagination.ipynb
 ```
 
 A2 从真实 posterior state 出发，让 Actor 采样 5 步动作，RSSM prior 推演 latent，Critic 给出 value，再计算 TD-λ target。

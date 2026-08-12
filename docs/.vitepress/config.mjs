@@ -57,12 +57,8 @@ export default defineConfig({
         collapsed: false,
         items: [
           {
-            text: "第 1 章 · 表示、记忆与推演",
-            link: "/chapters/01-components",
-          },
-          {
-            text: "第 2 章 · 从经历学出小世界",
-            link: "/chapters/02-data-and-first-model",
+            text: "第 1 章 · 表示世界并学出模型",
+            link: "/chapters/01-foundations",
           },
           { text: "F1–F3 · 共同基础实验", link: "/labs/foundations" },
           { text: "PA0 · 第一台可学习世界", link: "/assignments/pa0" },
@@ -73,29 +69,29 @@ export default defineConfig({
         collapsed: true,
         items: [
           {
-            text: "第 3 章 · 决策与规划",
-            link: "/chapters/03-decision-and-planning",
+            text: "第 2 章 · 决策与规划",
+            link: "/chapters/02-decision-and-planning",
           },
           { text: "A1–A2 · 路线实验", link: "/labs/route-a" },
           { text: "PA1-A · Dreamer-lite", link: "/assignments/pa1-a" },
           {
-            text: "第 4 章 · 可交互视频",
-            link: "/chapters/04-interactive-video",
+            text: "第 3 章 · 可交互视频",
+            link: "/chapters/03-interactive-video",
           },
           {
-            text: "第 5 章 · JEPA 抽象预测",
-            link: "/chapters/05-jepa",
+            text: "第 4 章 · JEPA 抽象预测",
+            link: "/chapters/04-jepa",
           },
           { text: "B1–C2 · 路线实验", link: "/labs/route-bc" },
           { text: "PA1-B · 互动视频", link: "/assignments/pa1-b" },
           { text: "PA1-C · Tiny JEPA", link: "/assignments/pa1-c" },
           {
-            text: "第 6 章 · VLA 与机器人",
-            link: "/chapters/06-robot-vla",
+            text: "第 5 章 · VLA 与机器人",
+            link: "/chapters/05-robot-vla",
           },
           {
-            text: "第 7 章 · 空间世界",
-            link: "/chapters/07-spatial-worlds",
+            text: "第 6 章 · 空间世界",
+            link: "/chapters/06-spatial-worlds",
           },
           { text: "D1–E2 · 路线实验", link: "/labs/route-de" },
           { text: "PA1-D · Tiny VLA", link: "/assignments/pa1-d" },
@@ -107,8 +103,8 @@ export default defineConfig({
         collapsed: false,
         items: [
           {
-            text: "第 8 章 · 评价与研究",
-            link: "/chapters/08-evaluate-and-invent",
+            text: "第 7 章 · 评价与研究",
+            link: "/chapters/07-evaluate-and-invent",
           },
           { text: "Z0 · 审问世界模型", link: "/labs/z0" },
           { text: "PA2 · 下一台模型", link: "/assignments/pa2" },
