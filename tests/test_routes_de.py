@@ -3,8 +3,12 @@ import unittest
 
 import numpy as np
 
-from hwm.foundations import depth_to_points, points_to_occupancy
-from hwm.spatial import make_camera_transform, transform_points
+from hwm.foundations import (
+    depth_to_points,
+    make_camera_transform,
+    points_to_occupancy,
+    transform_points,
+)
 
 
 TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None

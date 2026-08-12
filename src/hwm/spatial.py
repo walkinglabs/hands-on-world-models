@@ -5,21 +5,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-
-def transform_points(points, transform):
-    points = np.asarray(points, dtype=np.float32)
-    transform = np.asarray(transform, dtype=np.float32)
-    homogeneous = np.concatenate((points, np.ones((len(points), 1), dtype=np.float32)), axis=1)
-    return (transform @ homogeneous.T).T[:, :3]
-
-
-def make_camera_transform(tx=0.0, ty=0.0, tz=0.0, yaw=0.0):
-    cosine, sine = np.cos(yaw), np.sin(yaw)
-    transform = np.array(
-        [[cosine, 0, sine, tx], [0, 1, 0, ty], [-sine, 0, cosine, tz], [0, 0, 0, 1]],
-        dtype=np.float32,
-    )
-    return transform
+from .foundations import make_camera_transform, transform_points
 
 
 def occupancy_iou(logits, targets, threshold=0.5):
@@ -108,4 +94,3 @@ def make_colored_sphere_samples(num_samples=512, seed=0):
     density = (radius < 0.65).float()
     color = (coordinates + 1) / 2 * density
     return coordinates, density, color
-

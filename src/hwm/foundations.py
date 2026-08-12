@@ -120,6 +120,31 @@ def depth_to_points(depth, fx, fy, cx, cy):
     return np.stack((x, y, z), axis=-1).reshape(-1, 3)
 
 
+def make_camera_transform(tx=0.0, ty=0.0, tz=0.0, yaw=0.0):
+    """构造相机坐标到世界坐标的齐次变换。"""
+    cosine, sine = np.cos(yaw), np.sin(yaw)
+    return np.array(
+        [
+            [cosine, 0, sine, tx],
+            [0, 1, 0, ty],
+            [-sine, 0, cosine, tz],
+            [0, 0, 0, 1],
+        ],
+        dtype=np.float32,
+    )
+
+
+def transform_points(points, transform):
+    """用 4×4 齐次矩阵变换一组三维点。"""
+    points = np.asarray(points, dtype=np.float32)
+    transform = np.asarray(transform, dtype=np.float32)
+    homogeneous = np.concatenate(
+        (points, np.ones((len(points), 1), dtype=np.float32)),
+        axis=1,
+    )
+    return (transform @ homogeneous.T).T[:, :3]
+
+
 def points_to_occupancy(points, x_range, z_range, resolution):
     """把三维点落到俯视 Occupancy 网格。"""
     points = np.asarray(points)
