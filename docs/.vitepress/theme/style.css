@@ -1,0 +1,73 @@
+:root {
+  --vp-c-brand-1: #25636a;
+  --vp-c-brand-2: #31777f;
+  --vp-c-brand-3: #194e54;
+  --vp-c-brand-soft: rgba(37, 99, 106, 0.12);
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #194e54, #d97745);
+  --vp-home-hero-image-background-image: radial-gradient(
+    circle,
+    rgba(217, 119, 69, 0.22),
+    rgba(37, 99, 106, 0.13) 44%,
+    transparent 70%
+  );
+  --vp-home-hero-image-filter: blur(42px);
+  --vp-font-family-base:
+    "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --vp-font-family-mono:
+    "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.VPDoc .content-container {
+  max-width: 820px;
+}
+
+.vp-doc {
+  font-size: 16.5px;
+  line-height: 1.85;
+}
+
+.vp-doc p {
+  margin: 16px 0;
+}
+
+.vp-doc h2 {
+  margin-top: 52px;
+  border-top: 0;
+}
+
+.vp-doc h3 {
+  margin-top: 34px;
+}
+
+.vp-doc table {
+  display: table;
+  width: 100%;
+}
+
+.vp-doc blockquote {
+  color: var(--vp-c-text-2);
+  border-left-color: var(--vp-c-brand-1);
+}
+
+.VPHomeHero .name,
+.VPHomeHero .text {
+  letter-spacing: -0.035em;
+}
+
+.route-note {
+  padding: 16px 18px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background: var(--vp-c-bg-soft);
+}
+
+@media (max-width: 640px) {
+  .vp-doc {
+    font-size: 15.5px;
+  }
+
+  .vp-doc table {
+    display: block;
+  }
+}

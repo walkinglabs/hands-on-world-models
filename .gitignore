@@ -1,0 +1,16 @@
+node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+.DS_Store
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+data/downloads/
+data/processed/
+checkpoints/
+runs/
+outputs/
+*.log

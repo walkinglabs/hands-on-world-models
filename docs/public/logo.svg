@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="动手学世界模型">
+  <defs>
+    <linearGradient id="g" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#25636a"/>
+      <stop offset="1" stop-color="#d97745"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="27" fill="none" stroke="url(#g)" stroke-width="5"/>
+  <path d="M8 32h48M32 8c8 7 12 15 12 24S40 49 32 56M32 8C24 15 20 23 20 32s4 17 12 24" fill="none" stroke="url(#g)" stroke-width="3" stroke-linecap="round"/>
+  <path d="m25 32 5 5 10-12" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

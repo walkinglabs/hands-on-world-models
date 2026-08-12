@@ -1,0 +1,30 @@
+name: 检查课程项目
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 运行 Python 测试
+        run: PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: 安装网站依赖
+        run: npm ci
+
+      - name: 构建网站
+        run: npm run build

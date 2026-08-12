@@ -1,0 +1,29 @@
+{
+  "name": "hands-on-world-models",
+  "version": "0.1.0",
+  "private": true,
+  "description": "动手学世界模型：从看见、记住和预测，到在想象中规划与行动",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev docs",
+    "build": "vitepress build docs",
+    "preview": "vitepress preview docs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "CC-BY-NC-SA-4.0",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:walkinglabs/hands-on-world-models.git"
+  },
+  "overrides": {
+    "vite": "6.4.3"
+  },
+  "devDependencies": {
+    "prettier": "^3.7.4",
+    "vitepress": "^1.6.4"
+  }
+}
