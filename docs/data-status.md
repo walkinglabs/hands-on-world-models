@@ -27,7 +27,9 @@
 | PA1-B 互动视频         | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-b.md`                          |
 | 路线 C Tiny Video-JEPA | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_bc.py`、C1/C2 Notebook smoke      |
 | PA1-C Tiny Video-JEPA  | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-c.md`                          |
-| 路线 D Tiny VLA        | 设计中     | 设计中   | 24GB 目标，未测试  | 课程总纲                                             |
-| 路线 E 空间世界        | 设计中     | 设计中   | 24GB 目标，未测试  | 课程总纲                                             |
+| 路线 D Tiny VLA smoke  | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_de.py`、D1/D2 Notebook smoke      |
+| PA1-D Tiny VLA         | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-d.md`                          |
+| 路线 E 空间世界 smoke  | 可生成     | 可运行   | CPU 已测试         | `tests/test_routes_de.py`、E1/E2 Notebook smoke      |
+| PA1-E 空间世界         | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-e.md`                          |
 
-F0–F3 与路线 A–C 的 smoke 已形成“正文—代码—项目内数据—Notebook—测试”路径。Smoke 只证明最小接口和训练路径可以运行，不证明 PA 完成，也不证明 24GB 完整训练已经通过。
+F0–F3 与路线 A–E 的 smoke 已形成“正文—代码—项目内数据—Notebook—测试”路径。Smoke 只证明最小接口和训练路径可以运行，不证明 PA 完成，也不证明 24GB 完整训练已经通过。

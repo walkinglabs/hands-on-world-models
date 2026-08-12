@@ -87,8 +87,17 @@ export default defineConfig({
           { text: "B1–C2 · 路线实验", link: "/labs/route-bc" },
           { text: "PA1-B · 互动视频", link: "/assignments/pa1-b" },
           { text: "PA1-C · Tiny JEPA", link: "/assignments/pa1-c" },
-          { text: "第 6 章 · VLA 与机器人（建设中）" },
-          { text: "第 7 章 · 空间世界（建设中）" },
+          {
+            text: "第 6 章 · VLA 与机器人",
+            link: "/chapters/06-robot-vla",
+          },
+          {
+            text: "第 7 章 · 空间世界",
+            link: "/chapters/07-spatial-worlds",
+          },
+          { text: "D1–E2 · 路线实验", link: "/labs/route-de" },
+          { text: "PA1-D · Tiny VLA", link: "/assignments/pa1-d" },
+          { text: "PA1-E · 空间二选一", link: "/assignments/pa1-e" },
         ],
       },
       {

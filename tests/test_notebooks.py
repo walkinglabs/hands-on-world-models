@@ -69,6 +69,22 @@ class NotebookSmokeTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.execute_notebook(path)
 
+    @unittest.skipIf(
+        importlib.util.find_spec("torch") is None,
+        "安装 requirements-neural.txt 后运行路线 D/E Notebook smoke",
+    )
+    def test_routes_de_notebooks_run(self):
+        paths = [
+            "notebooks/06_robot/D1-build-a-tiny-vla.ipynb",
+            "notebooks/06_robot/D2-check-actions-before-moving.ipynb",
+            "notebooks/07_spatial/E1-from-camera-to-space.ipynb",
+            "notebooks/07_spatial/E2a-build-a-small-4d-world.ipynb",
+            "notebooks/07_spatial/E2b-predict-driving-space.ipynb",
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                self.execute_notebook(path)
+
 
 if __name__ == "__main__":
     unittest.main()
