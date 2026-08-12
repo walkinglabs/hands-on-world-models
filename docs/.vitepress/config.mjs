@@ -70,7 +70,12 @@ export default defineConfig({
         text: "第三部分 · 五选一",
         collapsed: true,
         items: [
-          { text: "第 3 章 · 决策与规划（建设中）" },
+          {
+            text: "第 3 章 · 决策与规划",
+            link: "/chapters/03-decision-and-planning",
+          },
+          { text: "A1–A2 · 路线实验", link: "/labs/route-a" },
+          { text: "PA1-A · Dreamer-lite", link: "/assignments/pa1-a" },
           { text: "第 4 章 · 可交互视频（建设中）" },
           { text: "第 5 章 · JEPA（建设中）" },
           { text: "第 6 章 · VLA 与机器人（建设中）" },

@@ -1,6 +1,7 @@
 import json
 from contextlib import redirect_stdout
 from io import StringIO
+import importlib.util
 from pathlib import Path
 import unittest
 
@@ -35,6 +36,19 @@ class NotebookSmokeTest(unittest.TestCase):
             "notebooks/01_foundations/F1-see-remember-compress.ipynb",
             "notebooks/01_foundations/F2-space-plan-train.ipynb",
             "notebooks/02_first_model/F3-learn-a-table-world.ipynb",
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                self.execute_notebook(path)
+
+    @unittest.skipIf(
+        importlib.util.find_spec("torch") is None,
+        "安装 requirements-neural.txt 后运行神经 Notebook smoke",
+    )
+    def test_route_a_notebooks_run(self):
+        paths = [
+            "notebooks/03_decision/A1-learn-a-latent-world.ipynb",
+            "notebooks/03_decision/A2-act-in-imagination.ipynb",
         ]
         for path in paths:
             with self.subTest(path=path):

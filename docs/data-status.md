@@ -21,7 +21,8 @@
 | F2 相机、空间与规划    | 内嵌小数据 | 可运行   | CPU 已测试         | `src/hwm/foundations.py`、Notebook smoke             |
 | F3 LineWorld 动态      | 可生成     | 可运行   | CPU 已测试         | `src/hwm/gridworld.py`、Notebook smoke               |
 | PA0                    | 任务书发布 | 学生实现 | CPU 目标，未收作业 | `docs/assignments/pa0.md`                            |
-| 路线 A Dreamer-lite    | 设计中     | 设计中   | 24GB 目标，未测试  | 课程总纲                                             |
+| 路线 A PyTorch smoke   | 可生成     | 可运行   | CPU 已测试         | `tests/test_neural.py`、A1/A2 Notebook smoke         |
+| PA1-A Dreamer-lite     | 任务书发布 | 学生实现 | 24GB 目标，未测试  | `docs/assignments/pa1-a.md`                          |
 | 路线 B 互动视频        | 设计中     | 设计中   | 24GB 目标，未测试  | 课程总纲                                             |
 | 路线 C Tiny Video-JEPA | 设计中     | 设计中   | 24GB 目标，未测试  | 课程总纲                                             |
 | 路线 D Tiny VLA        | 设计中     | 设计中   | 24GB 目标，未测试  | 课程总纲                                             |

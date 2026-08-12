@@ -17,5 +17,7 @@ F0–F3 共同基础
 - `01_foundations/F1-see-remember-compress.ipynb`
 - `01_foundations/F2-space-plan-train.ipynb`
 - `02_first_model/F3-learn-a-table-world.ipynb`
+- `03_decision/A1-learn-a-latent-world.ipynb`
+- `03_decision/A2-act-in-imagination.ipynb`
 
 PA0 任务书已经发布，学生提交文件不在仓库中预放答案。路线 Notebook 会在正文、数据、代码和 smoke 同时具备以后加入。目录中不会先放无法运行的空 Notebook。
