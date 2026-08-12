@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-labelledby="title desc">
+  <title id="title">从失败设计下一代世界模型</title><desc id="desc">从失败图集提出假设，改变一个组件并做公平实验。</desc>
+  <rect width="720" height="360" rx="28" fill="#f6f2ff"/>
+  <text x="42" y="56" font-family="system-ui,sans-serif" font-size="24" font-weight="700" fill="#3f315c">研究从一个说得清、能复现的失败开始</text>
+  <g font-family="system-ui,sans-serif" text-anchor="middle">
+    <rect x="42" y="103" width="142" height="158" rx="20" fill="#fff" stroke="#ac99ca" stroke-width="2"/>
+    <path d="m79 142 68 68M147 142l-68 68" stroke="#d96943" stroke-width="9" stroke-linecap="round"/>
+    <text x="113" y="290" font-size="17" fill="#625673">失败样例</text>
+    <path d="M200 181h50" stroke="#75648c" stroke-width="4"/>
+    <rect x="267" y="103" width="172" height="158" rx="20" fill="#fff" stroke="#ac99ca" stroke-width="2"/>
+    <text x="353" y="153" font-size="18" font-weight="700" fill="#3f315c">它缺少什么？</text><text x="353" y="186" font-size="16" fill="#625673">记忆 · 结构</text><text x="353" y="214" font-size="16" fill="#625673">不确定性 · 目标</text>
+    <text x="353" y="290" font-size="17" fill="#625673">提出假设</text>
+    <path d="M455 181h50" stroke="#75648c" stroke-width="4"/>
+    <rect x="522" y="103" width="156" height="158" rx="20" fill="#755aa5"/>
+    <path d="M560 208h80M600 137v101" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="600" cy="173" r="25" fill="#e97542" stroke="#fff" stroke-width="5"/>
+    <text x="600" y="290" font-size="17" fill="#625673">改一个地方再检验</text>
+  </g>
+</svg>

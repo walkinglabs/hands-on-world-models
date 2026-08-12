@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-labelledby="title desc">
+  <title id="title">五条世界模型学习路线</title><desc id="desc">共同基础完成后，学习者可以选择决策、视频、JEPA、机器人或空间路线。</desc>
+  <rect width="720" height="360" rx="28" fill="#f7f4ff"/>
+  <text x="42" y="55" font-family="system-ui,sans-serif" font-size="24" font-weight="700" fill="#352650">完成共同基础，然后挑一条真正关心的路</text>
+  <rect x="42" y="92" width="176" height="212" rx="22" fill="#fff" stroke="#a892cc" stroke-width="2"/>
+  <circle cx="130" cy="158" r="38" fill="#745aa6"/><path d="M108 158h44M130 136v44" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+  <text x="130" y="225" text-anchor="middle" font-family="system-ui,sans-serif" font-size="20" font-weight="700" fill="#352650">第 0–2 章</text><text x="130" y="254" text-anchor="middle" font-family="system-ui,sans-serif" font-size="17" fill="#6d6480">共同基础</text>
+  <path d="M235 198H284" stroke="#8065ae" stroke-width="4"/>
+  <g font-family="system-ui,sans-serif" font-size="17" font-weight="700">
+    <rect x="300" y="80" width="176" height="48" rx="15" fill="#e8f3ff"/><text x="388" y="111" text-anchor="middle" fill="#2c5573">A 决策与规划</text>
+    <rect x="492" y="80" width="184" height="48" rx="15" fill="#fff0e8"/><text x="584" y="111" text-anchor="middle" fill="#844a2e">B 可交互视频</text>
+    <rect x="300" y="148" width="176" height="48" rx="15" fill="#ebf8ef"/><text x="388" y="179" text-anchor="middle" fill="#356849">C JEPA</text>
+    <rect x="492" y="148" width="184" height="48" rx="15" fill="#fff8dc"/><text x="584" y="179" text-anchor="middle" fill="#775f12">D VLA 与机器人</text>
+    <rect x="396" y="216" width="184" height="48" rx="15" fill="#f1ebff"/><text x="488" y="247" text-anchor="middle" fill="#5a4783">E 空间与驾驶</text>
+  </g>
+  <path d="M284 198V104H300M284 198V172H300M284 198V104H492M284 198V172H492M284 198V240H396" fill="none" stroke="#8065ae" stroke-width="3"/>
+  <text x="488" y="309" text-anchor="middle" font-family="system-ui,sans-serif" font-size="17" fill="#6d6480">不同输出，不同数据，不同验收指标</text>
+</svg>

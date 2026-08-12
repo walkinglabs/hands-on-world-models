@@ -9,7 +9,8 @@
     "build": "vitepress build docs",
     "preview": "vitepress preview docs",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "verify": "npm run format:check && npm run build"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-labelledby="title desc">
+  <title id="title">Notebook 和大作业</title><desc id="desc">从共同基础到路线小整机，再到评价和下一台模型提案。</desc>
+  <rect width="720" height="360" rx="28" fill="#fff8ef"/>
+  <text x="42" y="56" font-family="system-ui,sans-serif" font-size="24" font-weight="700" fill="#513823">一份 Notebook 只跨过一个台阶</text>
+  <g font-family="system-ui,sans-serif" text-anchor="middle">
+    <rect x="42" y="220" width="118" height="72" rx="16" fill="#fff" stroke="#dfb88d" stroke-width="2"/><text x="101" y="251" font-size="18" font-weight="700" fill="#513823">F0–F3</text><text x="101" y="276" font-size="15" fill="#7b6653">共同基础</text>
+    <rect x="180" y="179" width="118" height="113" rx="16" fill="#fff" stroke="#dfb88d" stroke-width="2"/><text x="239" y="221" font-size="18" font-weight="700" fill="#513823">PA0</text><text x="239" y="247" font-size="15" fill="#7b6653">第一台</text><text x="239" y="270" font-size="15" fill="#7b6653">小世界</text>
+    <rect x="318" y="138" width="118" height="154" rx="16" fill="#fff" stroke="#dfb88d" stroke-width="2"/><text x="377" y="190" font-size="18" font-weight="700" fill="#513823">路线实验</text><text x="377" y="218" font-size="15" fill="#7b6653">两份 Notebook</text><text x="377" y="244" font-size="15" fill="#7b6653">零件 → 整机</text>
+    <rect x="456" y="97" width="98" height="195" rx="16" fill="#fff" stroke="#dfb88d" stroke-width="2"/><text x="505" y="155" font-size="18" font-weight="700" fill="#513823">PA1</text><text x="505" y="183" font-size="15" fill="#7b6653">训练</text><text x="505" y="207" font-size="15" fill="#7b6653">小模型</text>
+    <rect x="574" y="56" width="104" height="236" rx="16" fill="#e97542"/><text x="626" y="127" font-size="18" font-weight="700" fill="#fff">Z0 + PA2</text><text x="626" y="158" font-size="15" fill="#fff">找失败</text><text x="626" y="183" font-size="15" fill="#fff">提问题</text><text x="626" y="208" font-size="15" fill="#fff">做验证</text>
+  </g>
+  <path d="M57 310H665" stroke="#9b7457" stroke-width="3" stroke-linecap="round"/>
+</svg>
