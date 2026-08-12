@@ -1,6 +1,6 @@
 <div align="center">
   <img src="docs/public/readme/readmelogo.svg" alt="动手学世界模型" width="500" />
-  <p><em>从一次“先想再做”的需要出发，亲手搭起能看、能记、能预测、能规划的小世界</em></p>
+  <p><em>从一个九格世界开始，亲手做出第一台能预测动作后果的世界模型</em></p>
 
   <p>
     <a href="https://github.com/walkinglabs/hands-on-world-models/actions/workflows/test.yml"><img src="https://github.com/walkinglabs/hands-on-world-models/actions/workflows/test.yml/badge.svg" alt="课程项目检查" /></a>
