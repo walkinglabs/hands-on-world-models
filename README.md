@@ -35,14 +35,14 @@
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-reinvent.svg" alt="从问题重新发明世界模型" width="100%" />
+      <img src="docs/public/readme/feature-reinvent.webp" alt="比较候选动作产生的多种预测未来" width="100%" />
       <br />
       <strong>先遇到问题，再发明模型</strong>
       <br />
       <sub>从机器人为什么要“先想一下”开始，让状态、记忆、预测和规划在需要时自然出现。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-components.svg" alt="世界模型常用组件" width="100%" />
+      <img src="docs/public/readme/feature-components.webp" alt="观察、编码、动态与预测组成的世界模型" width="100%" />
       <br />
       <strong>把缩写放回它该在的位置</strong>
       <br />
@@ -51,14 +51,14 @@
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-routes.svg" alt="五条世界模型学习路线" width="100%" />
+      <img src="docs/public/readme/feature-routes.webp" alt="决策、视频、JEPA、机器人与空间世界五条路线" width="100%" />
       <br />
       <strong>共同基础之后，选择一条路线</strong>
       <br />
       <sub>决策、互动视频、JEPA、机器人和空间世界并列展开，不要求一学期训完所有方向。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-notebooks.svg" alt="Notebook 和大作业" width="100%" />
+      <img src="docs/public/readme/feature-notebooks.webp" alt="从表格世界到多步预测与策略评价的实验递进" width="100%" />
       <br />
       <strong>每份 Notebook 做成一件事</strong>
       <br />
@@ -67,14 +67,14 @@
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-evaluation.svg" alt="用反事实与闭环实验评价模型" width="100%" />
+      <img src="docs/public/readme/feature-evaluation.webp" alt="多步、反事实、分布外和下游规划评价" width="100%" />
       <br />
       <strong>不用训练损失宣布成功</strong>
       <br />
       <sub>多步漂移、反事实动作、陌生场景和下游行动共同检查模型是否真的有用。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-research.svg" alt="从失败设计下一代世界模型" width="100%" />
+      <img src="docs/public/readme/feature-research.webp" alt="从遮挡失败提出记忆与对象状态假设并做对照" width="100%" />
       <br />
       <strong>目标是设计下一台模型</strong>
       <br />
@@ -82,6 +82,8 @@
     </td>
   </tr>
 </table>
+
+<p align="center"><sub>以上为课程原创概念图，用来说明实验与研究结构，不代表对特定论文结果的复现。</sub></p>
 
 ---
 
