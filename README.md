@@ -214,8 +214,9 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 - [x] 发布路线 A 正文、A1–A2 神经 smoke 与 PA1-A
 - [x] 发布路线 B–C 正文、Notebook smoke 与 PA1 任务书
 - [x] 发布路线 D–E 正文、Notebook smoke 与 PA1 任务书
-- [ ] 建立统一评价、运行证据和 24GB 实测记录
-- [ ] 完成 PA2、教师指南与课程发布
+- [x] 建立统一评价、运行证据格式与 Z0
+- [x] 发布 PA2“下一台模型”任务书
+- [ ] 完成外部数据下载器、教师指南与首批 24GB 实测
 
 ## 参与建设
 

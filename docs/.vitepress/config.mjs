@@ -102,8 +102,16 @@ export default defineConfig({
       },
       {
         text: "第四部分 · 设计下一台模型",
-        collapsed: true,
-        items: [{ text: "第 8 章 · 评价与研究（建设中）" }],
+        collapsed: false,
+        items: [
+          {
+            text: "第 8 章 · 评价与研究",
+            link: "/chapters/08-evaluate-and-invent",
+          },
+          { text: "Z0 · 审问世界模型", link: "/labs/z0" },
+          { text: "PA2 · 下一台模型", link: "/assignments/pa2" },
+          { text: "运行证据与 24GB", link: "/run-evidence" },
+        ],
       },
     ],
     socialLinks: [

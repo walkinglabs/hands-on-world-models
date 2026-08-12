@@ -41,6 +41,11 @@ class NotebookSmokeTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.execute_notebook(path)
 
+    def test_z0_notebook_runs(self):
+        self.execute_notebook(
+            "notebooks/08_evaluation/Z0-test-a-world-model.ipynb"
+        )
+
     @unittest.skipIf(
         importlib.util.find_spec("torch") is None,
         "安装 requirements-neural.txt 后运行神经 Notebook smoke",
