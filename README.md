@@ -9,7 +9,7 @@
 本书的目标不只是带你复现 Dreamer。我们希望你学会从一次具体失败中判断机器缺少什么能力，再自己选择表示、记忆、预测和规划方法。学到最后，你应该有机会提出“下一台世界模型应该是什么”，而不只是重复已有模型的名字。
 
 > [!IMPORTANT]
-> 仓库刚刚开始建设。当前版本完成了中文课程结构和写作标准，Notebook、代码、数据脚本和 24GB 显存实测会分批加入。没有完成的内容会明确标为“计划中”，不会用设计预算冒充运行结果。
+> 九章中文正文、五条路线的教学 Notebook、PA0–PA2 任务书和项目内数据生成器已经发布。完整神经 PA 的 24GB 真机训练记录目前仍为 0 个；外部 T2 数据 loader 也在逐项建设。没有完成的内容会明确标记，不用设计预算冒充实测。
 
 ## 为什么还需要世界模型
 
@@ -172,7 +172,8 @@ T0 手写样本和 shape 检查
 - 路线 A–E 的 11 份 PyTorch Notebook：CPU smoke 已通过；
 - PA1-A/B/C/D/E：任务书已发布，尚未收集完整训练结果；
 - 单张 24GB 神经模型完整训练记录：0 个；
-- 外部数据下载器与固定校验和：尚未发布。
+- 项目内 T1 数据生成器与 SHA256 metadata：已发布；
+- 外部 T2 数据：registry 已记录来源/许可状态，固定 loader 与 artifact 尚未发布。
 
 ## 建议基础
 
@@ -201,7 +202,15 @@ F0 只依赖 Python 3.9 或更高版本。运行配套测试：
 PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
-随后可以打开 `notebooks/00_reinvent/F0-invent-a-world-model.ipynb`。神经网络路线的依赖会跟随对应 Notebook 加入，不要求初学者一次安装完整研究环境。
+神经路线与统一数据命令：
+
+```bash
+python -m pip install -e '.[neural,notebook]'
+hwm-data list
+hwm-data generate pixelworld --seed 0 --num-samples 12
+```
+
+随后可以打开 `notebooks/00_reinvent/F0-invent-a-world-model.ipynb`。不选择神经路线时，无需安装 PyTorch。
 
 ## 项目进度
 
@@ -249,4 +258,4 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 
 ---
 
-如果你第一次来到这里，先读 [课程总纲](docs/课程总纲.md)。第一份可运行 Notebook 发布后，学习将从“九格世界里为什么需要先试想动作”正式开始。
+如果你第一次来到这里，先读 [课程总纲](docs/课程总纲.md)，再从第 0 章与 F0 的九格世界开始。

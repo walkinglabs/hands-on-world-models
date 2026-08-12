@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "status_definition": {
+    "artifact-ready": "仓库内生成器可按 seed 产生带校验和的数据 artifact",
+    "source-known": "来源与教学用途已确定，但固定子集、loader 或校验和尚未发布",
+    "registration-required": "使用前需要在数据官网注册或同意许可"
+  },
+  "datasets": [
+    {
+      "id": "lineworld-v1",
+      "routes": ["foundation", "A"],
+      "tier": "T1",
+      "status": "artifact-ready",
+      "generator": "python -m hwm.data_cli generate lineworld",
+      "schema": "state, action, reward, next_state, done, episode_id, time",
+      "license": "课程代码许可范围内生成",
+      "notes": "用于表格动态、Replay Buffer 与 MPC。"
+    },
+    {
+      "id": "pixelworld-v1",
+      "routes": ["foundation", "A", "B", "C"],
+      "tier": "T1",
+      "status": "artifact-ready",
+      "generator": "python -m hwm.data_cli generate pixelworld",
+      "schema": "observations[T+1,H,W,C], actions[T], rewards[T], dones[T], episode_id",
+      "license": "课程代码许可范围内生成",
+      "notes": "动作标签准确，适合 latent、互动视频与 Action-JEPA 公平对照。"
+    },
+    {
+      "id": "tabletop-v1",
+      "routes": ["D"],
+      "tier": "T1",
+      "status": "artifact-ready",
+      "generator": "python -m hwm.data_cli generate tabletop",
+      "schema": "image, instruction, proprioception, action_chunk, next_state, collision",
+      "license": "课程代码许可范围内生成",
+      "notes": "同时提供安全示范与随机候选动作后果。"
+    },
+    {
+      "id": "occupancy-toy-v1",
+      "routes": ["E"],
+      "tier": "T1",
+      "status": "artifact-ready",
+      "generator": "python -m hwm.data_cli generate occupancy",
+      "schema": "past_occupancy[Tp,H,W], ego_action, future_occupancy[Tf,H,W]",
+      "license": "课程代码许可范围内生成",
+      "notes": "用于动作条件未来占用，不代表真实驾驶数据。"
+    },
+    {
+      "id": "dmc-cartpole-small",
+      "routes": ["A"],
+      "tier": "T2",
+      "status": "source-known",
+      "source": "https://github.com/google-deepmind/dm_control",
+      "license": "使用前核对上游许可",
+      "notes": "collector、环境版本和固定 seed 尚未发布。"
+    },
+    {
+      "id": "carracing-small",
+      "routes": ["B"],
+      "tier": "T2",
+      "status": "source-known",
+      "source": "https://gymnasium.farama.org/environments/box2d/car_racing/",
+      "license": "使用前核对上游许可",
+      "notes": "collector、wrapper 与动作频率尚未发布。"
+    },
+    {
+      "id": "ucf101-mini",
+      "routes": ["C"],
+      "tier": "T2",
+      "status": "source-known",
+      "source": "https://www.crcv.ucf.edu/data/UCF101.php",
+      "license": "使用前核对数据集条款",
+      "notes": "只支持被动表示，不含可施加的控制动作；固定子集尚未发布。"
+    },
+    {
+      "id": "pusht-small",
+      "routes": ["D"],
+      "tier": "T2",
+      "status": "source-known",
+      "source": "https://github.com/real-stanford/diffusion_policy",
+      "license": "使用前核对上游代码与数据条款",
+      "notes": "loader、时间字段和固定 split 尚未发布。"
+    },
+    {
+      "id": "nerf-synthetic-lego",
+      "routes": ["E2a"],
+      "tier": "T2",
+      "status": "source-known",
+      "source": "https://www.matthewtancik.com/nerf",
+      "license": "使用前核对数据集条款",
+      "notes": "静态单场景，只能验证 3D 表示；固定子集尚未发布。"
+    },
+    {
+      "id": "nuscenes-mini",
+      "routes": ["E2b"],
+      "tier": "T2",
+      "status": "registration-required",
+      "source": "https://www.nuscenes.org/nuscenes",
+      "license": "需遵守 nuScenes 数据条款",
+      "notes": "离线数据不能单独证明闭环驾驶；tiny LSS loader 尚未发布。"
+    }
+  ]
+}

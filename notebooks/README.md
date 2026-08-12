@@ -28,5 +28,9 @@ F0–F3 共同基础
 - `07_spatial/E1-from-camera-to-space.ipynb`
 - `07_spatial/E2a-build-a-small-4d-world.ipynb`
 - `07_spatial/E2b-predict-driving-space.ipynb`
+- `08_evaluation/Z0-test-a-world-model.ipynb`
+- `assignments/PA0-template.ipynb`
+- `assignments/PA1-route-template.ipynb`
+- `assignments/PA2-next-model-template.ipynb`
 
 PA0 任务书已经发布，学生提交文件不在仓库中预放答案。路线 Notebook 会在正文、数据、代码和 smoke 同时具备以后加入。目录中不会先放无法运行的空 Notebook。

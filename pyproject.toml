@@ -17,5 +17,8 @@ notebook = ["jupyterlab>=4.0", "nbclient>=0.10"]
 test = []
 neural = ["torch>=2.2,<2.9"]
 
+[project.scripts]
+hwm-data = "hwm.data_cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]

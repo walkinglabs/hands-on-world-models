@@ -13,4 +13,5 @@ data/processed/
 checkpoints/
 runs/
 outputs/
+artifacts/
 *.log

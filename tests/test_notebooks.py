@@ -46,6 +46,16 @@ class NotebookSmokeTest(unittest.TestCase):
             "notebooks/08_evaluation/Z0-test-a-world-model.ipynb"
         )
 
+    def test_assignment_templates_are_valid(self):
+        paths = [
+            "notebooks/assignments/PA0-template.ipynb",
+            "notebooks/assignments/PA1-route-template.ipynb",
+            "notebooks/assignments/PA2-next-model-template.ipynb",
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                self.execute_notebook(path)
+
     @unittest.skipIf(
         importlib.util.find_spec("torch") is None,
         "安装 requirements-neural.txt 后运行神经 Notebook smoke",

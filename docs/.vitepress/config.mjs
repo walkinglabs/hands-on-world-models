@@ -37,6 +37,8 @@ export default defineConfig({
           { text: "怎样使用本书", link: "/guide/start" },
           { text: "完整课程总纲", link: "/课程总纲" },
           { text: "数据与实验状态", link: "/data-status" },
+          { text: "数据使用指南", link: "/data-guide" },
+          { text: "教师指南", link: "/teacher-guide" },
         ],
       },
       {
