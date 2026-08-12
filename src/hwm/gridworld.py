@@ -152,6 +152,80 @@ class GridWorld:
         return "\n".join(cells)
 
 
+class LineWorld:
+    """第 2 章使用的一维随机环境。"""
+
+    actions = ("left", "right")
+
+    def __init__(self, length=7, start=3, goal=6, trap=0, slip_probability=0.2):
+        self.length = length
+        self.start = start
+        self.goal = goal
+        self.trap = trap
+        self.slip_probability = slip_probability
+        self.terminal_states = {goal, trap}
+
+    def next_state(self, state, action):
+        if action not in self.actions:
+            raise ValueError(f"未知动作：{action}")
+        if state in self.terminal_states:
+            return state
+        delta = -1 if action == "left" else 1
+        return max(0, min(self.length - 1, state + delta))
+
+    def reward(self, next_state):
+        if next_state == self.goal:
+            return 10.0
+        if next_state == self.trap:
+            return -10.0
+        return -1.0
+
+    def transition(self, state, action):
+        next_state = self.next_state(state, action)
+        return Transition(
+            state,
+            action,
+            self.reward(next_state),
+            next_state,
+            next_state in self.terminal_states,
+        )
+
+    def step(self, state, action, rng=None):
+        rng = rng or random
+        slipped = rng.random() < self.slip_probability
+        next_state = state if slipped else self.next_state(state, action)
+        return Transition(
+            state,
+            action,
+            self.reward(next_state),
+            next_state,
+            next_state in self.terminal_states,
+        )
+
+    def collect(self, policy, episodes=20, max_steps=20, seed=0):
+        rng = random.Random(seed)
+        all_transitions = []
+        episode_ids = []
+        for episode_index in range(episodes):
+            state = self.start
+            for _ in range(max_steps):
+                action = policy(state, rng)
+                transition = self.step(state, action, rng)
+                all_transitions.append(transition)
+                episode_ids.append(episode_index)
+                state = transition.next_state
+                if transition.done:
+                    break
+        return all_transitions, episode_ids
+
+    def render(self, state):
+        cells = ["·"] * self.length
+        cells[self.trap] = "×"
+        cells[self.goal] = "G"
+        cells[state] = "A"
+        return " ".join(cells)
+
+
 def rollout(model, start, actions):
     """在模型中推演一串尚未执行的动作。"""
     transitions = []
@@ -192,7 +266,14 @@ def lookahead(model, state, depth, action_order=None):
     )
 
 
-def mpc_episode(environment, model, depth, max_steps=20, seed=0):
+def mpc_episode(
+    environment,
+    model,
+    depth,
+    max_steps=20,
+    seed=0,
+    action_order=None,
+):
     """在模型里规划多步，在环境里只执行一步。"""
     rng = random.Random(seed)
     state = environment.start
@@ -200,7 +281,7 @@ def mpc_episode(environment, model, depth, max_steps=20, seed=0):
     plans = []
 
     for _ in range(max_steps):
-        plan = lookahead(model, state, depth)
+        plan = lookahead(model, state, depth, action_order=action_order)
         transition = environment.step(state, plan.action, rng)
         plans.append(plan)
         transitions.append(transition)

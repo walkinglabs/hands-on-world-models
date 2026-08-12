@@ -1,4 +1,6 @@
 import json
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 import unittest
 
@@ -7,12 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class NotebookSmokeTest(unittest.TestCase):
-    def test_f0_is_valid_and_all_code_cells_run(self):
-        path = ROOT / "notebooks/00_reinvent/F0-invent-a-world-model.ipynb"
+    def execute_notebook(self, relative_path):
+        path = ROOT / relative_path
         notebook = json.loads(path.read_text(encoding="utf-8"))
 
         self.assertEqual(notebook["nbformat"], 4)
-        self.assertGreaterEqual(len(notebook["cells"]), 20)
+        self.assertGreaterEqual(len(notebook["cells"]), 10)
 
         namespace = {"__name__": "__notebook_smoke__"}
         for index, cell in enumerate(notebook["cells"]):
@@ -20,7 +22,23 @@ class NotebookSmokeTest(unittest.TestCase):
                 continue
             source = "".join(cell["source"])
             code = compile(source, f"{path.name}:cell-{index}", "exec")
-            exec(code, namespace)
+            with redirect_stdout(StringIO()):
+                exec(code, namespace)
+
+    def test_f0_is_valid_and_all_code_cells_run(self):
+        self.execute_notebook(
+            "notebooks/00_reinvent/F0-invent-a-world-model.ipynb"
+        )
+
+    def test_foundation_notebooks_run(self):
+        paths = [
+            "notebooks/01_foundations/F1-see-remember-compress.ipynb",
+            "notebooks/01_foundations/F2-space-plan-train.ipynb",
+            "notebooks/02_first_model/F3-learn-a-table-world.ipynb",
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                self.execute_notebook(path)
 
 
 if __name__ == "__main__":

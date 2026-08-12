@@ -4,6 +4,7 @@ import unittest
 from hwm.gridworld import (
     EmpiricalDynamics,
     GridWorld,
+    LineWorld,
     Transition,
     lookahead,
     mpc_episode,
@@ -64,6 +65,16 @@ class GridWorldTest(unittest.TestCase):
     def test_lookahead_rejects_zero_depth(self):
         with self.assertRaises(ValueError):
             lookahead(self.world, self.world.start, depth=0)
+
+    def test_lineworld_can_collect_and_learn(self):
+        world = LineWorld(slip_probability=0.2)
+        policy = lambda state, rng: rng.choice(world.actions)
+        transitions, episode_ids = world.collect(policy, episodes=50, seed=4)
+        model = EmpiricalDynamics().fit(transitions)
+        distribution = model.distribution(world.start, "right")
+        self.assertEqual(len(transitions), len(episode_ids))
+        self.assertIn(world.start, distribution)
+        self.assertIn(world.start + 1, distribution)
 
 
 if __name__ == "__main__":

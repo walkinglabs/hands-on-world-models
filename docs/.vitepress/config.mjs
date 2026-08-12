@@ -54,8 +54,16 @@ export default defineConfig({
         text: "第二部分 · 共同基础",
         collapsed: false,
         items: [
-          { text: "第 1 章 · 表示、记忆与推演（建设中）" },
-          { text: "第 2 章 · 从经历学出小世界（建设中）" },
+          {
+            text: "第 1 章 · 表示、记忆与推演",
+            link: "/chapters/01-components",
+          },
+          {
+            text: "第 2 章 · 从经历学出小世界",
+            link: "/chapters/02-data-and-first-model",
+          },
+          { text: "F1–F3 · 共同基础实验", link: "/labs/foundations" },
+          { text: "PA0 · 第一台可学习世界", link: "/assignments/pa0" },
         ],
       },
       {

@@ -208,8 +208,8 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 - [x] 完成中文 README 与课程总纲第一版
 - [x] 建立课程网站与本地文档构建
 - [x] 完成第 0 章正文和 F0 CPU Notebook
-- [ ] 完成第 1–2 章和 F1–F3
-- [ ] 完成 PA0 的数据、代码与测试
+- [x] 完成第 1–2 章正文和 F1–F3 CPU Notebook
+- [x] 发布 PA0 任务书与共同数据/代码接口
 - [ ] 逐条发布五条路线的 Notebook 与 PA1
 - [ ] 建立统一评价、运行证据和 24GB 实测记录
 - [ ] 完成 PA2、教师指南与课程发布
