@@ -38,48 +38,48 @@
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-reinvent.webp" alt="比较候选动作产生的多种预测未来" width="100%" />
       <br />
-      <strong>从一个小环境开始</strong>
+      <strong>从九格世界开始</strong>
       <br />
-      <sub>先在九格世界中观察动作怎样改变状态，再逐步进入图像、隐状态和连续控制。</sub>
+      <sub>我们先用整数和表格写出状态转移与 rollout。问题看清楚以后，再换成神经网络。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-components.webp" alt="观察、编码、动态与预测组成的世界模型" width="100%" />
       <br />
-      <strong>公式与代码相互印证</strong>
+      <strong>数学与实现并列</strong>
       <br />
-      <sub>Encoder、RSSM、reward、value 和 action 的公式紧邻实现，每个张量都有明确用途。</sub>
+      <sub>RSSM 怎样更新状态，损失函数怎样组成，都在相邻的公式和代码中说明。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-routes.webp" alt="决策、视频、JEPA、机器人与空间世界五条路线" width="100%" />
       <br />
-      <strong>五条可选路线</strong>
+      <strong>共同基础与选修路线</strong>
       <br />
-      <sub>共同基础之后，可以继续学习决策、互动视频、JEPA、机器人或空间世界。</sub>
+      <sub>第 0–2 章是共同基础。此后从决策、互动视频、JEPA、机器人和空间世界中选择一条。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-notebooks.webp" alt="从表格世界到多步预测与策略评价的实验递进" width="100%" />
       <br />
-      <strong>章节与实验对应</strong>
+      <strong>每章配有可运行实验</strong>
       <br />
-      <sub>共同基础、路线实验和三次 PA 使用同一组接口，逐步组成可以训练的小模型。</sub>
+      <sub>Notebook 从小样本和 shape 检查开始，再把几个部件接成一台可以训练的小模型。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-evaluation.webp" alt="多步、反事实、分布外和下游规划评价" width="100%" />
       <br />
-      <strong>用实验检查预测</strong>
+      <strong>评价不只看一步损失</strong>
       <br />
-      <sub>除了一步损失，还会检查多步误差、动作条件、分布外样本和下游任务。</sub>
+      <sub>我们还会替换动作、延长预测时间，并在陌生样本和下游任务中检查模型。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-research.webp" alt="从遮挡失败提出记忆与对象状态假设并做对照" width="100%" />
       <br />
-      <strong>从失败进入研究</strong>
+      <strong>从失败样例提出问题</strong>
       <br />
-      <sub>课程最后记录稳定失败、提出可能解释，并用对照实验检查新的设计。</sub>
+      <sub>最后一次作业从一个可以重复出现的失败出发，比较两种解释，再完成受控实验。</sub>
     </td>
   </tr>
 </table>
