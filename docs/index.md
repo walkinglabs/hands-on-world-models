@@ -6,7 +6,7 @@ hero:
   text: 让机器在行动以前，先想一想
   tagline: 从一个九格世界出发，亲手接起观察、记忆、动作、未来与现实反馈。
   image:
-    src: /logo.svg
+    src: /logo.png
     alt: 动手学世界模型
   actions:
     - theme: brand

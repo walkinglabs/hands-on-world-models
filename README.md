@@ -1,5 +1,6 @@
 <div align="center">
-  <img src="docs/public/readme/readmelogo.svg" alt="动手学世界模型" width="500" />
+  <img src="docs/public/readme/logo-mark.png" alt="动手学世界模型 Logo" width="150" />
+  <h1>动手学世界模型</h1>
   <p><em>从九格世界出发，学习表示、预测、规划与行动</em></p>
 
   <p>
