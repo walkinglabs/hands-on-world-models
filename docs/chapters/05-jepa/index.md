@@ -6,10 +6,10 @@
 
 ## 本章文章
 
-1. [4.1 预测特征而非像素](./04-01-feature-prediction.md)
-2. [4.2 掩码、EMA 与表示坍缩](./04-02-mask-ema-collapse.md)
-3. [4.3 视频 JEPA](./04-03-video-jepa.md)
-4. [4.4 动作条件 JEPA（Action-JEPA）](./04-04-action-jepa.md)
+1. [4.1 预测特征而非像素](./05-01-feature-prediction.md)
+2. [4.2 掩码、EMA 与表示坍缩](./05-02-mask-ema-collapse.md)
+3. [4.3 视频 JEPA](./05-03-video-jepa.md)
+4. [4.4 动作条件 JEPA（Action-JEPA）](./05-04-action-jepa.md)
 
 ## 本章动手 notebook
 

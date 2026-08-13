@@ -4,10 +4,10 @@
 
 ## 本章文章
 
-1. [机器人数据与行为克隆](./05-01-robot-data-and-bc.md)：一条 episode 里有什么，以及为什么动作 MSE 不等于成功。
-2. [视觉-语言-动作模型（VLA）](./05-02-vision-language-action.md)：图像、语言、proprio 三种 token 怎样融合成一个动作。
-3. [动作分块与多模态动作](./05-03-action-chunk.md)：一次输出一段动作，并允许同一上下文有多条可行路线。
-4. [世界模型检查器](./05-04-world-model-checker.md)：让 VLA 提出候选，再用想象 rollout 检查各自后果。
+1. [机器人数据与行为克隆](./06-01-robot-data-and-bc.md)：一条 episode 里有什么，以及为什么动作 MSE 不等于成功。
+2. [视觉-语言-动作模型（VLA）](./06-02-vision-language-action.md)：图像、语言、proprio 三种 token 怎样融合成一个动作。
+3. [动作分块与多模态动作](./06-03-action-chunk.md)：一次输出一段动作，并允许同一上下文有多条可行路线。
+4. [世界模型检查器](./06-04-world-model-checker.md)：让 VLA 提出候选，再用想象 rollout 检查各自后果。
 
 ## 本章实验与作业
 

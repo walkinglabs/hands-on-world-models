@@ -8,11 +8,11 @@
 
 ## 本章文章
 
-1. [2.1　潜在状态世界模型](./02-01-latent-world-model.md)
-2. [2.2　RSSM：记忆与不确定性](./02-02-rssm-training.md)
-3. [2.3　PlaNet 与交叉熵方法（CEM）](./02-03-planet-and-cem.md)
-4. [2.4　Dreamer：在想象中训练](./02-04-dreamer-imagination.md)
-5. [2.5　MuZero 与蒙特卡洛树搜索](./02-05-muzero.md)
+1. [2.1　潜在状态世界模型](./03-01-latent-world-model.md)
+2. [2.2　RSSM：记忆与不确定性](./03-02-rssm-training.md)
+3. [2.3　PlaNet 与交叉熵方法（CEM）](./03-03-planet-and-cem.md)
+4. [2.4　Dreamer：在想象中训练](./03-04-dreamer-imagination.md)
+5. [2.5　MuZero 与蒙特卡洛树搜索](./03-05-muzero.md)
 
 ## 本章动手实验
 

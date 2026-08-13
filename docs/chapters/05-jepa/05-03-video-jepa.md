@@ -62,4 +62,4 @@ probe 成绩仍有上限。它证明某种信息**可读**，不证明所有下�
 - 被动视频能验证表示质量，不能验证动作可控性。
 - linear probe 是一个最小但有用的"特征里有什么"探针。
 
-[上一篇 4.2 掩码、EMA 与表示坍缩](./04-02-mask-ema-collapse.md) · [下一篇 → 4.4 动作条件 JEPA（Action-JEPA）](./04-04-action-jepa.md) · [回到第 4 章](./index.md) · [动手：C1 视频特征预测](/labs/route-bc)
+[上一篇 4.2 掩码、EMA 与表示坍缩](./05-02-mask-ema-collapse.md) · [下一篇 → 4.4 动作条件 JEPA（Action-JEPA）](./05-04-action-jepa.md) · [回到第 4 章](./index.md) · [动手：C1 视频特征预测](/labs/route-bc)

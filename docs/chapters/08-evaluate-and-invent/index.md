@@ -6,10 +6,10 @@
 
 ## 本章文章
 
-1. [基线与多步评价](./07-01-baselines-and-horizons.md)
-2. [反事实、分布外与鲁棒性](./07-02-counterfactual-and-ood.md)
-3. [运行证据与复现](./07-03-hardware-evidence.md)
-4. [失败分析与下一台模型](./07-04-next-world-model.md)
+1. [基线与多步评价](./08-01-baselines-and-horizons.md)
+2. [反事实、分布外与鲁棒性](./08-02-counterfactual-and-ood.md)
+3. [运行证据与复现](./08-03-hardware-evidence.md)
+4. [失败分析与下一台模型](./08-04-next-world-model.md)
 
 ## 本章实验与作业
 

@@ -71,4 +71,4 @@ Action-JEPA 和 Dreamer（第 2 章）都能在特征空间预测未来，区别
 - 反事实检查与下游动作选择，才能说明特征真正支持控制。
 - JEPA 重表示，Dreamer 重回报；二者在 latent 预测上接壤、目标不同。
 
-[上一篇 4.3 视频 JEPA](./04-03-video-jepa.md) · [回到第 4 章](./index.md) · [动手：C2 动作条件特征预测](/labs/route-bc)
+[上一篇 4.3 视频 JEPA](./05-03-video-jepa.md) · [回到第 4 章](./index.md) · [动手：C2 动作条件特征预测](/labs/route-bc)
