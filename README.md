@@ -3,17 +3,9 @@
   <p>世界模型不只识别眼前的画面；它从连续观察中推测看不见的状态，并学习时间与行动会让世界怎样变化。</p>
 
   <p>
-    <a href="https://walkinglabs.github.io/hands-on-world-models/guide/start.html"><img src="https://img.shields.io/badge/课程-在线阅读-2563eb?style=flat-square" alt="在线阅读课程" /></a>
-    <a href="https://github.com/walkinglabs/hands-on-world-models/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/walkinglabs/hands-on-world-models/test.yml?branch=main&label=构建&style=flat-square" alt="课程项目检查" /></a>
-    <a href="https://github.com/walkinglabs/hands-on-world-models/tree/main/notebooks"><img src="https://img.shields.io/badge/实验-Jupyter-f37626?style=flat-square" alt="Jupyter Notebook" /></a>
-    <img src="https://img.shields.io/badge/Python-3.9+-3776ab?style=flat-square" alt="Python 3.9+" />
-    <a href="https://github.com/walkinglabs/hands-on-world-models/blob/main/LICENSE"><img src="https://img.shields.io/badge/许可-CC_BY--NC--SA_4.0-334155?style=flat-square" alt="CC BY-NC-SA 4.0 License" /></a>
-  </p>
-
-  <p>
-    <a href="https://walkinglabs.github.io/hands-on-world-models/guide/start.html">课程网站</a> ·
-    <a href="#全书结构">课程目录</a> ·
-    <a href="#实验代码">实验代码</a> ·
+    <a href="https://walkinglabs.github.io/hands-on-world-models/guide/start.html"><strong>开始阅读</strong></a> ·
+    <a href="#全书结构">查看目录</a> ·
+    <a href="#实验代码">运行实验</a> ·
     <a href="#快速开始">快速开始</a> ·
     <a href="#读者交流群微信">读者交流群</a>
   </p>
