@@ -32,30 +32,30 @@
       <br />
       <strong>从零到一的教学节奏</strong>
       <br />
-<sub>每一步只增加一个新问题，让模型逐步学会看懂图像、记住过去、预测未来与规划行动，最后训练出自己的世界模型。</sub>
+      <sub>每一步只增加一个新问题，让模型逐步学会看懂图像、记住过去、预测未来与规划行动，最后训练出自己的世界模型。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-components.webp" alt="公式与 PyTorch 代码逐项对应" width="100%" />
       <br />
-      <strong>每个公式都能运行</strong>
+      <strong>公式旁边就是代码</strong>
       <br />
-      <sub>讲到 VAE、RSSM 或规划时，旁边就是对应的 PyTorch 代码；改一个公式中的量，可以马上看到程序怎样变化。</sub>
+      <sub>每学一个公式，就在 Notebook 里找到对应的 PyTorch 代码，运行并修改它，看看模型怎样变化。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-routes.webp" alt="五种世界模型分别交出不同结果" width="100%" />
       <br />
-      <strong>五个方向，各做一个模型</strong>
+      <strong>五条路线，选择一条完成</strong>
       <br />
-      <sub>可以选择生成三维空间、预测游戏画面、在想象中选动作、学习视频特征，或让机器人按照指令行动。</sub>
+      <sub>共同基础学完后，从空间、视频、决策、JEPA 和机器人中选择一条路线，训练并检验一个小模型。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-notebooks.webp" alt="十九份可以直接运行的 Notebook" width="100%" />
       <br />
       <strong>十九份实验可以直接运行</strong>
       <br />
-      <sub>16 份教学 Notebook 带着我们完成小模型，3 份 PA 模板用来提交代码、曲线、失败样例和实验结论。</sub>
+      <sub>19 份 Notebook 从基础实验排到路线作业，每一份只解决一个问题，代码都可以直接运行。</sub>
     </td>
   </tr>
   <tr>
@@ -64,14 +64,14 @@
       <br />
       <strong>不只看训练损失</strong>
       <br />
-      <sub>我们还会让模型连续预测很多步、临时换一个动作、进入没见过的场景，检查它是否真的学会了变化规律。</sub>
+      <sub>每训练一个模型，都让它连续预测、临时换动作、进入陌生场景，检查它是否真的学会了世界怎样变化。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-research.webp" alt="根据模型失败设计新的实验" width="100%" />
       <br />
       <strong>最后，自己改一次模型</strong>
       <br />
-      <sub>找到一个每次都能重现的错误，猜测它为什么发生，只改一个地方重新实验，再写出自己的改进方案。</sub>
+      <sub>先找到一个可以反复出现的错误，再只改一个地方做对照，最后提出自己的模型设计。</sub>
     </td>
   </tr>
 </table>
