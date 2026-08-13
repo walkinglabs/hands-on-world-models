@@ -1,6 +1,6 @@
 <div align="center">
   <img src="docs/public/readme/logo.png" alt="动手学世界模型 · Hands-on World Models" width="760" />
-  <p>学习世界如何变化，预测尚未发生的未来</p>
+  <p>世界模型不只识别眼前的画面；它从连续观察中推测看不见的状态，并学习时间与行动会让世界怎样变化。</p>
 
   <p>
     <a href="https://walkinglabs.github.io/hands-on-world-models/guide/start.html"><img src="https://img.shields.io/badge/课程-在线阅读-2563eb?style=flat-square" alt="在线阅读课程" /></a>

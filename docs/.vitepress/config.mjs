@@ -3,7 +3,8 @@ import { defineConfig } from "vitepress";
 export default defineConfig({
   lang: "zh-CN",
   title: "动手学世界模型",
-  description: "从看见、记住和预测，到在想象中规划与行动",
+  description:
+    "世界模型不只识别眼前的画面；它从连续观察中推测看不见的状态，并学习时间与行动会让世界怎样变化。",
   base: process.env.BASE || "/hands-on-world-models/",
   cleanUrls: false,
   lastUpdated: true,
