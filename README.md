@@ -30,9 +30,9 @@
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-reinvent.webp" alt="在九格地图中预测动作的结果" width="100%" />
       <br />
-      <strong>从一个九格地图开始</strong>
+      <strong>从零到一的教学节奏</strong>
       <br />
-      <sub>我们先用一张表写出“向左走会怎样”，再把表格换成图片和神经网络，一步步做出能预测未来的小模型。</sub>
+      <sub>课程从九格世界和十几行 Python 起步，每一步只增加一个新问题，逐步学到图像、记忆、预测与规划，最后完成一台可以训练和检验的小模型。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-components.webp" alt="公式与 PyTorch 代码逐项对应" width="100%" />
