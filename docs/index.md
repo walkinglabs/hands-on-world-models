@@ -1,64 +1,22 @@
 ---
-layout: home
-
-hero:
-  name: 动手学世界模型
-  text: 让机器在行动以前，先想一想
-  tagline: 从一个九格世界出发，亲手接起观察、记忆、动作、未来与现实反馈。
-  image:
-    src: /logo.png
-    alt: 动手学世界模型
-  actions:
-    - theme: brand
-      text: 从第 0 章开始
-      link: /chapters/00-why-world-models/
-    - theme: alt
-      text: 查看课程总纲
-      link: /课程总纲
-
-features:
-  - title: 第 0 章：九格世界
-    details: 用整数和字典写出状态、动作、转移、多步推演与规划，不需要神经网络。
-  - title: 第 1 章：共同基础
-    details: 认识 CNN、ViT、RSSM、VAE、BEV 和 MPC 的接口，再从连续经历学出一台表格模型。
-  - title: 第 2–6 章：选修路线
-    details: 从决策、互动视频、JEPA、机器人和空间世界中选择一章，完成两份 Notebook 和 PA1。
-  - title: 第 7 章：评价与研究
-    details: 检查多步误差、动作条件、陌生场景和任务结果，再围绕一个稳定失败完成 PA2。
+layout: page
+head:
+  - - meta
+    - http-equiv: refresh
+      content: 0; url=./guide/start.html
+  - - link
+    - rel: canonical
+      href: https://walkinglabs.github.io/hands-on-world-models/guide/start.html
 ---
 
-## 这不是一本模型名录
+<script setup>
+import { onMounted } from "vue";
 
-一辆车来到弯道前。相机已经看见弯道，程序却还不知道应该轻踩刹车、急刹，还是继续转向。
+onMounted(() => {
+  window.location.replace("./guide/start.html");
+});
+</script>
 
-这些动作尚未发生，因此它们的结果不在当前画面里。若不能把每个动作都在现实中试一遍，机器就需要一套内部办法，先推测动作会带来什么，再选择真正执行的一步。
+# 正在进入课程
 
-本书从这里开始。
-
-```text
-收集经历 → 估计现在 → 放入动作 → 推测未来
-        → 比较未来 → 执行一步 → 用现实修正
-```
-
-我们不会直接给出 Dreamer 的结构图。第 0 章先用不到 30 行的九格世界代码，把这条链逐段发明出来。之后，常见组件才会在需要它们的位置出现。
-
-## 一条实际学习路径
-
-共同基础只有第 0–1 章。完成 PA0 以后，从第 2–6 章五条路线中选择一条，再回到第 7 章评价和研究。
-
-| 阶段               | 做什么                               | Notebook 数量 |
-| ------------------ | ------------------------------------ | ------------: |
-| 重新发明           | 在九格世界里得到转移、rollout 与规划 |             1 |
-| 共同基础           | 认识组件、整理轨迹、学出第一台小世界 |             3 |
-| 选择路线           | 完成一台路线小模型                   |             2 |
-| 三次 PA 与统一评价 | 从组合、诊断走向设计                 |             4 |
-
-一名学生完整走一条路线，大约完成 10 份 Notebook。其余路线可以阅读，不要求在同一学期全部训练。
-
-## 当前建设状态
-
-八个大章下共有 38 篇中文小章，五条路线的教学 Notebook、三次 PA 任务书与统一评价已经发布。项目内 T1 数据可以按 seed 生成，所有 Notebook 的代码格都纳入 smoke 测试。
-
-课程仍有一条明确边界：目前只有 CPU/短训练证据，完整神经 PA 的 24GB 真机训练记录仍为 **0 个**。外部 T2 数据也会区分“来源已知”“loader 可用”和“artifact 可用”，不把数据集名字写成已经准备完成。
-
-[开始学习第 0 章 →](/chapters/00-why-world-models/)
+如果页面没有自动跳转，请打开[怎样使用本书](./guide/start.html)。
