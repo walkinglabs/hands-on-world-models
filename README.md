@@ -62,9 +62,9 @@
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-evaluation.webp" alt="检查模型连续预测后是否出错" width="100%" />
       <br />
-      <strong>不只看训练损失</strong>
+      <strong>用新的情况检查模型</strong>
       <br />
-      <sub>每训练一个模型，都让它连续预测、临时换动作、进入陌生场景，检查它是否真的学会了世界怎样变化。</sub>
+      <sub>模型训练完成后，让它多预测几步、换一个动作，再进入没见过的场景，看看预测是不是真的有用。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-research.webp" alt="根据模型失败设计新的实验" width="100%" />
