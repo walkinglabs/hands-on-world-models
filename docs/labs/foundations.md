@@ -48,7 +48,7 @@ F2 不训练 NeRF、LSS 或 Actor-Critic。它先把相机、空间、搜索和�
 路径：
 
 ```text
-notebooks/01_foundations/F3-learn-a-table-world.ipynb
+notebooks/02_data/F3-learn-a-table-world.ipynb
 ```
 
 F3 在带打滑的 LineWorld 中完成：

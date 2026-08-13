@@ -11,7 +11,7 @@ python -m pip install -r requirements-neural.txt
 路径：
 
 ```text
-notebooks/02_decision/A1-learn-a-latent-world.ipynb
+notebooks/03_decision/A1-learn-a-latent-world.ipynb
 ```
 
 A1 使用 4 段项目内 PixelWorld episode 做 CPU smoke。它逐步检查：
@@ -31,7 +31,7 @@ CNN embedding
 路径：
 
 ```text
-notebooks/02_decision/A2-act-in-imagination.ipynb
+notebooks/03_decision/A2-act-in-imagination.ipynb
 ```
 
 A2 先完成一条容易检查的控制链。它从 PixelWorld 图片量出方块位置，学习 `position + action → next position`，在 learned dynamics 中用 beam search 试动作，再回到真实 PixelWorld 执行第一步。Notebook 会在同一组起点上比较 learned MPC 与随机动作的成功率和最终距离。

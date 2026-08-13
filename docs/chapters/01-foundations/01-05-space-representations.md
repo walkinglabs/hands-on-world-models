@@ -33,7 +33,7 @@ Lift-Splat-Shoot 先为图像特征估计深度，把特征 Lift 到三维，再
 
 ## NeRF、3DGS 与 Mesh 在哪里
 
-NeRF 与 3DGS 更强调从新视角渲染场景，Mesh 则便于编辑和碰撞。它们与 BEV、Occupancy 保留的信息不同，第 6 章会详细比较。
+NeRF 与 3DGS 更强调从新视角渲染场景，Mesh 则便于编辑和碰撞。它们与 BEV、Occupancy 保留的信息不同，第 7 章会详细比较。
 
 ## 小结
 

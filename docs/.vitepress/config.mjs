@@ -45,7 +45,7 @@ export default defineConfig({
         collapsed: false,
         items: [
           {
-            text: "第 0 章 · 为什么需要世界模型",
+            text: "第 0 章 · 观察为什么不等于世界",
             link: "/chapters/00-why-world-models/",
             items: [
               {
@@ -78,7 +78,7 @@ export default defineConfig({
         collapsed: false,
         items: [
           {
-            text: "第 1 章 · 表示世界并学出模型",
+            text: "第 1 章 · 世界模型的常用组件",
             link: "/chapters/01-foundations/",
             items: [
               {
@@ -105,9 +105,23 @@ export default defineConfig({
                 text: "1.6 · Value、Policy 与 Planner",
                 link: "/chapters/01-foundations/01-06-value-policy-planner",
               },
+            ],
+          },
+          {
+            text: "第 2 章 · 数据与第一台模型",
+            link: "/chapters/02-data-and-first-model/",
+            items: [
               {
-                text: "1.7 · 数据与第一台模型",
-                link: "/chapters/01-foundations/01-07-data-and-first-model",
+                text: "2.1 · Episode 与 Transition",
+                link: "/chapters/02-data-and-first-model/02-01-episodes-and-transitions",
+              },
+              {
+                text: "2.2 · Replay Buffer 与切分",
+                link: "/chapters/02-data-and-first-model/02-02-replay-buffer-and-splits",
+              },
+              {
+                text: "2.3 · 第一台可学习模型",
+                link: "/chapters/02-data-and-first-model/02-03-first-learned-world",
               },
             ],
           },
@@ -120,131 +134,133 @@ export default defineConfig({
         collapsed: true,
         items: [
           {
-            text: "第 2 章 · 决策与规划",
-            link: "/chapters/02-decision-and-planning/",
+            text: "第 7 章 · 空间世界",
+            link: "/chapters/07-spatial-worlds/",
             items: [
               {
-                text: "2.1 · Latent World Model",
-                link: "/chapters/02-decision-and-planning/02-01-latent-world-model",
+                text: "7.1 · 相机几何",
+                link: "/chapters/07-spatial-worlds/07-01-camera-geometry",
               },
               {
-                text: "2.2 · RSSM 训练",
-                link: "/chapters/02-decision-and-planning/02-02-rssm-training",
+                text: "7.2 · BEV 与 Occupancy",
+                link: "/chapters/07-spatial-worlds/07-02-bev-and-occupancy",
               },
               {
-                text: "2.3 · PlaNet 与 CEM",
-                link: "/chapters/02-decision-and-planning/02-03-planet-and-cem",
+                text: "7.3 · NeRF、3DGS 与 Mesh",
+                link: "/chapters/07-spatial-worlds/07-03-nerf-3dgs-mesh",
               },
               {
-                text: "2.4 · Dreamer 想象学习",
-                link: "/chapters/02-decision-and-planning/02-04-dreamer-imagination",
+                text: "7.4 · 4D 世界",
+                link: "/chapters/07-spatial-worlds/07-04-four-dimensional-worlds",
               },
               {
-                text: "2.5 · MuZero",
-                link: "/chapters/02-decision-and-planning/02-05-muzero",
+                text: "7.5 · 驾驶世界模型",
+                link: "/chapters/07-spatial-worlds/07-05-driving-world-models",
               },
             ],
           },
-          { text: "A1–A2 · 路线实验", link: "/labs/route-a" },
+          { text: "E1–E2 · 空间路线实验", link: "/labs/route-de" },
+          { text: "PA1-E · 空间二选一", link: "/assignments/pa1-e" },
+          {
+            text: "第 4 章 · 互动视频",
+            link: "/chapters/04-interactive-video/",
+            items: [
+              {
+                text: "4.1 · 视频与动作数据",
+                link: "/chapters/04-interactive-video/04-01-video-data",
+              },
+              {
+                text: "4.2 · VQ Tokenizer",
+                link: "/chapters/04-interactive-video/04-02-vq-tokenizer",
+              },
+              {
+                text: "4.3 · 动作条件 Transformer",
+                link: "/chapters/04-interactive-video/04-03-action-transformer",
+              },
+              {
+                text: "4.4 · Diffusion 与评价",
+                link: "/chapters/04-interactive-video/04-04-diffusion-and-evaluation",
+              },
+            ],
+          },
+          { text: "B1–B2 · 互动视频实验", link: "/labs/route-bc" },
+          { text: "PA1-B · 互动视频", link: "/assignments/pa1-b" },
+          {
+            text: "第 3 章 · 决策与规划",
+            link: "/chapters/03-decision-and-planning/",
+            items: [
+              {
+                text: "3.1 · Latent World Model",
+                link: "/chapters/03-decision-and-planning/03-01-latent-world-model",
+              },
+              {
+                text: "3.2 · RSSM 训练",
+                link: "/chapters/03-decision-and-planning/03-02-rssm-training",
+              },
+              {
+                text: "3.3 · PlaNet 与 CEM",
+                link: "/chapters/03-decision-and-planning/03-03-planet-and-cem",
+              },
+              {
+                text: "3.4 · Dreamer 想象学习",
+                link: "/chapters/03-decision-and-planning/03-04-dreamer-imagination",
+              },
+              {
+                text: "3.5 · MuZero",
+                link: "/chapters/03-decision-and-planning/03-05-muzero",
+              },
+            ],
+          },
+          { text: "A1–A2 · 决策路线实验", link: "/labs/route-a" },
           { text: "PA1-A · Dreamer-lite", link: "/assignments/pa1-a" },
           {
-            text: "第 3 章 · 可交互视频",
-            link: "/chapters/03-interactive-video/",
+            text: "第 5 章 · JEPA 抽象预测",
+            link: "/chapters/05-jepa/",
             items: [
               {
-                text: "3.1 · 视频与动作数据",
-                link: "/chapters/03-interactive-video/03-01-video-data",
+                text: "5.1 · 特征预测",
+                link: "/chapters/05-jepa/05-01-feature-prediction",
               },
               {
-                text: "3.2 · VQ Tokenizer",
-                link: "/chapters/03-interactive-video/03-02-vq-tokenizer",
+                text: "5.2 · Mask、EMA 与坍缩",
+                link: "/chapters/05-jepa/05-02-mask-ema-collapse",
               },
               {
-                text: "3.3 · 动作条件 Transformer",
-                link: "/chapters/03-interactive-video/03-03-action-transformer",
+                text: "5.3 · Video-JEPA",
+                link: "/chapters/05-jepa/05-03-video-jepa",
               },
               {
-                text: "3.4 · Diffusion 与评价",
-                link: "/chapters/03-interactive-video/03-04-diffusion-and-evaluation",
+                text: "5.4 · Action-JEPA",
+                link: "/chapters/05-jepa/05-04-action-jepa",
               },
             ],
           },
-          {
-            text: "第 4 章 · JEPA 抽象预测",
-            link: "/chapters/04-jepa/",
-            items: [
-              {
-                text: "4.1 · 特征预测",
-                link: "/chapters/04-jepa/04-01-feature-prediction",
-              },
-              {
-                text: "4.2 · Mask、EMA 与坍缩",
-                link: "/chapters/04-jepa/04-02-mask-ema-collapse",
-              },
-              {
-                text: "4.3 · Video-JEPA",
-                link: "/chapters/04-jepa/04-03-video-jepa",
-              },
-              {
-                text: "4.4 · Action-JEPA",
-                link: "/chapters/04-jepa/04-04-action-jepa",
-              },
-            ],
-          },
-          { text: "B1–C2 · 路线实验", link: "/labs/route-bc" },
-          { text: "PA1-B · 互动视频", link: "/assignments/pa1-b" },
+          { text: "C1–C2 · JEPA 路线实验", link: "/labs/route-bc" },
           { text: "PA1-C · Tiny JEPA", link: "/assignments/pa1-c" },
           {
-            text: "第 5 章 · VLA 与机器人",
-            link: "/chapters/05-robot-vla/",
+            text: "第 6 章 · VLA 与机器人",
+            link: "/chapters/06-robot-vla/",
             items: [
               {
-                text: "5.1 · 数据与行为克隆",
-                link: "/chapters/05-robot-vla/05-01-robot-data-and-bc",
+                text: "6.1 · 数据与行为克隆",
+                link: "/chapters/06-robot-vla/06-01-robot-data-and-bc",
               },
               {
-                text: "5.2 · Vision-Language-Action",
-                link: "/chapters/05-robot-vla/05-02-vision-language-action",
+                text: "6.2 · Vision-Language-Action",
+                link: "/chapters/06-robot-vla/06-02-vision-language-action",
               },
               {
-                text: "5.3 · Action Chunk",
-                link: "/chapters/05-robot-vla/05-03-action-chunk",
+                text: "6.3 · Action Chunk",
+                link: "/chapters/06-robot-vla/06-03-action-chunk",
               },
               {
-                text: "5.4 · World Model Checker",
-                link: "/chapters/05-robot-vla/05-04-world-model-checker",
+                text: "6.4 · World Model Checker",
+                link: "/chapters/06-robot-vla/06-04-world-model-checker",
               },
             ],
           },
-          {
-            text: "第 6 章 · 空间世界",
-            link: "/chapters/06-spatial-worlds/",
-            items: [
-              {
-                text: "6.1 · 相机几何",
-                link: "/chapters/06-spatial-worlds/06-01-camera-geometry",
-              },
-              {
-                text: "6.2 · BEV 与 Occupancy",
-                link: "/chapters/06-spatial-worlds/06-02-bev-and-occupancy",
-              },
-              {
-                text: "6.3 · NeRF、3DGS 与 Mesh",
-                link: "/chapters/06-spatial-worlds/06-03-nerf-3dgs-mesh",
-              },
-              {
-                text: "6.4 · 4D 世界",
-                link: "/chapters/06-spatial-worlds/06-04-four-dimensional-worlds",
-              },
-              {
-                text: "6.5 · 驾驶世界模型",
-                link: "/chapters/06-spatial-worlds/06-05-driving-world-models",
-              },
-            ],
-          },
-          { text: "D1–E2 · 路线实验", link: "/labs/route-de" },
+          { text: "D1–D2 · 机器人路线实验", link: "/labs/route-de" },
           { text: "PA1-D · Tiny VLA", link: "/assignments/pa1-d" },
-          { text: "PA1-E · 空间二选一", link: "/assignments/pa1-e" },
         ],
       },
       {
@@ -252,24 +268,24 @@ export default defineConfig({
         collapsed: false,
         items: [
           {
-            text: "第 7 章 · 评价与研究",
-            link: "/chapters/07-evaluate-and-invent/",
+            text: "第 8 章 · 评价与研究",
+            link: "/chapters/08-evaluate-and-invent/",
             items: [
               {
-                text: "7.1 · 基线与 Horizon",
-                link: "/chapters/07-evaluate-and-invent/07-01-baselines-and-horizons",
+                text: "8.1 · 基线与 Horizon",
+                link: "/chapters/08-evaluate-and-invent/08-01-baselines-and-horizons",
               },
               {
-                text: "7.2 · 反事实与 OOD",
-                link: "/chapters/07-evaluate-and-invent/07-02-counterfactual-and-ood",
+                text: "8.2 · 反事实与 OOD",
+                link: "/chapters/08-evaluate-and-invent/08-02-counterfactual-and-ood",
               },
               {
-                text: "7.3 · 24GB 运行证据",
-                link: "/chapters/07-evaluate-and-invent/07-03-hardware-evidence",
+                text: "8.3 · 24GB 运行证据",
+                link: "/chapters/08-evaluate-and-invent/08-03-hardware-evidence",
               },
               {
-                text: "7.4 · 设计下一台模型",
-                link: "/chapters/07-evaluate-and-invent/07-04-next-world-model",
+                text: "8.4 · 设计下一台模型",
+                link: "/chapters/08-evaluate-and-invent/08-04-next-world-model",
               },
             ],
           },
