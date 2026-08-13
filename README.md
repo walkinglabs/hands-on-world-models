@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/public/readme/logo.svg" alt="动手学世界模型 · Hands-on World Models" width="760" />
+  <img src="docs/public/readme/logo.png" alt="动手学世界模型 · Hands-on World Models" width="760" />
   <p>学习世界如何变化，预测尚未发生的未来</p>
 
   <p>

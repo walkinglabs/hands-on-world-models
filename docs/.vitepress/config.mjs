@@ -12,7 +12,7 @@ export default defineConfig({
     ["meta", { name: "author", content: "Walking Labs" }],
   ],
   themeConfig: {
-    logo: { light: "/logo.svg", dark: "/logo-dark.svg" },
+    logo: "/logo.png",
     siteTitle: "动手学世界模型",
     outline: { level: [2, 3], label: "本页内容" },
     lastUpdated: { text: "最后更新" },
