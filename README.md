@@ -30,9 +30,9 @@
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-reinvent.webp" alt="在九格地图中预测动作的结果" width="100%" />
       <br />
-      <strong>从零到一的教学节奏</strong>
+      <strong>训练自己的世界模型</strong>
       <br />
-      <sub>每一步只增加一个新问题，让模型逐步学会看懂图像、记住过去、预测未来与规划行动，最后训练出自己的世界模型。</sub>
+      <sub>从九格世界开始，每一步只增加一个新问题，逐步加入图像、记忆、预测与规划。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-components.webp" alt="公式与 PyTorch 代码逐项对应" width="100%" />
