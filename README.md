@@ -38,48 +38,48 @@
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-reinvent.webp" alt="比较候选动作产生的多种预测未来" width="100%" />
       <br />
-      <strong>第 0 章只用一个九格世界</strong>
+      <strong>从九格世界开始</strong>
       <br />
-      <sub>用整数、字典和几行 Python 写出状态、动作、转移与多步推演。第 1 章再把表格换成图像和神经网络。</sub>
+      <sub>状态、动作、转移、rollout 和 planner，以及从表格模型到 learned dynamics。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-components.webp" alt="观察、编码、动态与预测组成的世界模型" width="100%" />
       <br />
-      <strong>公式旁边就是相应代码</strong>
+      <strong>共同基础</strong>
       <br />
-      <sub>正文先标出张量的形状，再实现状态更新、预测目标和损失函数。公式中的量都能在代码中找到。</sub>
+      <sub>Tensor、CNN、ViT、GRU、VAE、RSSM、价值函数和规划器，以及相应的 PyTorch 实现。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-routes.webp" alt="决策、视频、JEPA、机器人与空间世界五条路线" width="100%" />
       <br />
-      <strong>基础学完以后选一章</strong>
+      <strong>五条选修路线</strong>
       <br />
-      <sub>第 2–6 章分别讨论决策、互动视频、JEPA、机器人和空间世界。选定一章完成 PA1 即可。</sub>
+      <sub>决策与规划、可交互视频、JEPA、VLA 与机器人、3D/4D 空间世界与自动驾驶。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-notebooks.webp" alt="从表格世界到多步预测与策略评价的实验递进" width="100%" />
       <br />
-      <strong>一章保留一至两份实验</strong>
+      <strong>Notebook 与大作业</strong>
       <br />
-      <sub>每份 Notebook 围绕一个结果展开：检查小样本与 shape，训练小模型，再保存曲线和失败样例。</sub>
+      <sub>F0–F3 共同实验、每条路线 2–3 份 Notebook，以及从 PA0 到 PA2 的递进作业。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-evaluation.webp" alt="多步、反事实、分布外和下游规划评价" width="100%" />
       <br />
-      <strong>预测要经过几种检查</strong>
+      <strong>模型评价</strong>
       <br />
-      <sub>除了一步误差，我们还比较长时间推演、同一起点更换动作、陌生场景和最终任务表现。</sub>
+      <sub>一步误差、多步漂移、反事实动作、分布外场景、下游任务表现和运行成本。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-research.webp" alt="从遮挡失败提出记忆与对象状态假设并做对照" width="100%" />
       <br />
-      <strong>最后完成一次小研究</strong>
+      <strong>研究设计</strong>
       <br />
-      <sub>PA2 从 PA1 中反复出现的失败开始。写出两种解释，只改一个条件，再看实验支持哪一种。</sub>
+      <sub>失败样例、竞争解释、单变量实验、消融分析，以及下一台世界模型的设计提案。</sub>
     </td>
   </tr>
 </table>
