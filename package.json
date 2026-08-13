@@ -26,5 +26,8 @@
   "devDependencies": {
     "prettier": "^3.7.4",
     "vitepress": "^1.6.4"
+  },
+  "dependencies": {
+    "markdown-it-mathjax3": "^4.3.2"
   }
 }
