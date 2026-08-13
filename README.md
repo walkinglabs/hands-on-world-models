@@ -29,50 +29,50 @@
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-reinvent.webp" alt="比较候选动作产生的多种预测未来" width="100%" />
+      <img src="docs/public/readme/feature-reinvent.webp" alt="九格世界中的观察、动作与未来预测" width="100%" />
       <br />
-      <strong>先分清观察与世界</strong>
+      <strong>一条连续的知识主线</strong>
       <br />
-      <sub>从单张画面、连续观察和内部状态出发，再逐步加入变化、动作与规划。</sub>
+      <sub>从九格世界的一次预测开始，逐步加入图像、记忆、不确定性和动作，最后得到一台可训练的小模型。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-components.webp" alt="观察、编码、动态与预测组成的世界模型" width="100%" />
+      <img src="docs/public/readme/feature-components.webp" alt="状态更新、预测目标与对应代码" width="100%" />
       <br />
-      <strong>共同基础</strong>
+      <strong>公式与代码互相印证</strong>
       <br />
-      <sub>Tensor、CNN、ViT、GRU、VAE、RSSM、价值函数和规划器，以及相应的 PyTorch 实现。</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <img src="docs/public/readme/feature-routes.webp" alt="决策、视频、JEPA、机器人与空间世界五条路线" width="100%" />
-      <br />
-      <strong>五条选修路线</strong>
-      <br />
-      <sub>空间世界、互动视频、决策与规划、JEPA、VLA 与机器人。</sub>
-    </td>
-    <td width="50%" align="center">
-      <img src="docs/public/readme/feature-notebooks.webp" alt="从表格世界到多步预测与策略评价的实验递进" width="100%" />
-      <br />
-      <strong>Notebook 与大作业</strong>
-      <br />
-      <sub>F0–F3 共同实验、每条路线 2–3 份 Notebook，以及从 PA0 到 PA2 的递进作业。</sub>
+      <sub>状态更新、VAE、RSSM 和规划的关键公式紧邻实现，每个张量都能在 Notebook 中找到来处和去处。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-evaluation.webp" alt="多步、反事实、分布外和下游规划评价" width="100%" />
+      <img src="docs/public/readme/feature-routes.webp" alt="空间、视频、决策、JEPA 与机器人五条学习路线" width="100%" />
       <br />
-      <strong>模型评价</strong>
+      <strong>共同基础之后，选一条路线</strong>
       <br />
-      <sub>一步误差、多步漂移、反事实动作、分布外场景、下游任务表现和运行成本。</sub>
+      <sub>完成第 0–2 章后，可进入空间、视频、决策、JEPA 或机器人路线；每条路线独立完成一个小模型。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-research.webp" alt="从遮挡失败提出记忆与对象状态假设并做对照" width="100%" />
+      <img src="docs/public/readme/feature-notebooks.webp" alt="从共同实验到路线作业的 Notebook 递进" width="100%" />
       <br />
-      <strong>研究设计</strong>
+      <strong>一份 Notebook 解决一个问题</strong>
       <br />
-      <sub>失败样例、竞争解释、单变量实验、消融分析，以及下一台世界模型的设计提案。</sub>
+      <sub>共同实验先建立接口，两份路线实验再接成小整机，PA0–PA2 逐步加入训练、比较和改进。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/public/readme/feature-evaluation.webp" alt="一步预测与长时间 rollout 的实验曲线" width="100%" />
+      <br />
+      <strong>用实验检验判断</strong>
+      <br />
+      <sub>除了一步损失，我们还比较长时 rollout、替换动作、陌生场景和下游任务，观察模型何时开始出错。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/public/readme/feature-research.webp" alt="从稳定失败提出假设并进行单变量实验" width="100%" />
+      <br />
+      <strong>从失败进入研究</strong>
+      <br />
+      <sub>固定一个可以重复出现的失败，提出几种可能原因，一次只改一个条件，再由实验结果决定下一步。</sub>
     </td>
   </tr>
 </table>
