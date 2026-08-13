@@ -1,29 +1,22 @@
 <div align="center">
-  <img src="docs/public/readme/logo-mark.png" alt="动手学世界模型 Logo" width="150" />
+  <img src="docs/public/readme/logo-mark.png" alt="动手学世界模型 Logo" width="128" />
   <h1>动手学世界模型</h1>
-  <p><em>从九格世界出发，学习表示、预测、规划与行动</em></p>
+  <p>从九格世界出发，学习表示、预测、规划与行动</p>
 
   <p>
-    <a href="https://github.com/walkinglabs/hands-on-world-models/actions/workflows/test.yml"><img src="https://github.com/walkinglabs/hands-on-world-models/actions/workflows/test.yml/badge.svg" alt="课程项目检查" /></a>
-    <a href="https://github.com/walkinglabs/hands-on-world-models/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-111827?style=flat-square" alt="CC BY-NC-SA 4.0 License" /></a>
-    <img src="https://img.shields.io/badge/Python-%3E%3D3.9-3776ab?style=flat-square" alt="Python >= 3.9" />
-    <img src="https://img.shields.io/badge/Node-%3E%3D18-16a34a?style=flat-square" alt="Node >= 18" />
-    <img src="https://img.shields.io/badge/Docs-VitePress-646cff?style=flat-square" alt="VitePress" />
-    <img src="https://img.shields.io/badge/Labs-Jupyter-f37626?style=flat-square" alt="Jupyter Notebook" />
+    <a href="https://walkinglabs.github.io/hands-on-world-models/"><img src="https://img.shields.io/badge/课程-在线阅读-2563eb?style=flat-square" alt="在线阅读课程" /></a>
+    <a href="https://github.com/walkinglabs/hands-on-world-models/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/walkinglabs/hands-on-world-models/test.yml?branch=main&label=构建&style=flat-square" alt="课程项目检查" /></a>
+    <a href="https://github.com/walkinglabs/hands-on-world-models/tree/main/notebooks"><img src="https://img.shields.io/badge/实验-Jupyter-f37626?style=flat-square" alt="Jupyter Notebook" /></a>
+    <img src="https://img.shields.io/badge/Python-3.9+-3776ab?style=flat-square" alt="Python 3.9+" />
+    <a href="https://github.com/walkinglabs/hands-on-world-models/blob/main/LICENSE"><img src="https://img.shields.io/badge/许可-CC_BY--NC--SA_4.0-334155?style=flat-square" alt="CC BY-NC-SA 4.0 License" /></a>
   </p>
 
   <p>
-    <a href="#读者交流群微信">读者交流群（微信）</a>
-  </p>
-
-  <p>
-    <a href="#本书特色">本书特色</a> ·
-    <a href="#本书介绍">本书介绍</a> ·
-    <a href="#-最新动态-news">最新动态</a> ·
-    <a href="#全书结构">全书结构</a> ·
+    <a href="https://walkinglabs.github.io/hands-on-world-models/">课程网站</a> ·
+    <a href="#全书结构">课程目录</a> ·
     <a href="#实验代码">实验代码</a> ·
     <a href="#快速开始">快速开始</a> ·
-    <a href="#参与贡献">参与贡献</a>
+    <a href="#读者交流群微信">读者交流群</a>
   </p>
 </div>
 
