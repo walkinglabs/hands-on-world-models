@@ -60,18 +60,18 @@
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-evaluation.webp" alt="检查模型连续预测后是否出错" width="100%" />
+      <img src="docs/public/readme/feature-evaluation.webp" alt="课程中的世界模型评价实验" width="100%" />
       <br />
-      <strong>检查模型是否真的学会了</strong>
+      <strong>系统学习模型评价</strong>
       <br />
-      <sub>课程安排多步预测、替换动作和陌生场景实验，观察模型在哪里预测正确，又会在哪里失败。</sub>
+      <sub>从单步误差走到多步预测、动作响应和陌生场景测试，说明每种检查能够回答什么问题。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-research.webp" alt="根据模型失败设计新的实验" width="100%" />
+      <img src="docs/public/readme/feature-research.webp" alt="从失败分析走向模型改进" width="100%" />
       <br />
-      <strong>最后，自己改一次模型</strong>
+      <strong>从经典模型走向研究</strong>
       <br />
-      <sub>先找到一个可以反复出现的错误，再只改一个地方做对照，最后提出自己的模型设计。</sub>
+      <sub>复现经典方法，分析一次稳定失败，完成对照实验，并提出自己的模型改进。</sub>
     </td>
   </tr>
 </table>
