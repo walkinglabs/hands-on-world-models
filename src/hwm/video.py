@@ -163,11 +163,16 @@ class ActionTokenTransformer(nn.Module):
         tokens_per_frame=16,
         model_size=48,
         num_layers=1,
+        action_injection="additive",
     ):
         super().__init__()
+        if action_injection not in {"none", "additive", "film"}:
+            raise ValueError("action_injection must be none, additive, or film")
         self.tokens_per_frame = tokens_per_frame
+        self.action_injection = action_injection
         self.token_embedding = nn.Embedding(codebook_size, model_size)
         self.action_embedding = nn.Embedding(action_size, model_size)
+        self.action_film = nn.Linear(model_size, 2 * model_size)
         self.position = nn.Parameter(torch.randn(tokens_per_frame, model_size) * 0.02)
         layer = nn.TransformerEncoderLayer(
             d_model=model_size,
@@ -184,7 +189,12 @@ class ActionTokenTransformer(nn.Module):
         # 一个 frame 内的 token 已经同时可见；时间因果性由训练对齐保证。
         embedded = self.token_embedding(current_tokens.long())
         embedded = embedded + self.position[None]
-        embedded = embedded + self.action_embedding(actions.long())[:, None]
+        action = self.action_embedding(actions.long())
+        if self.action_injection == "additive":
+            embedded = embedded + action[:, None]
+        elif self.action_injection == "film":
+            scale, shift = self.action_film(action).chunk(2, dim=-1)
+            embedded = embedded * (1 + scale[:, None]) + shift[:, None]
         hidden = self.transformer(embedded)
         return self.output(hidden)
 
@@ -214,6 +224,55 @@ class TinyConditionalDenoiser(nn.Module):
         level = noise_level.reshape(batch, 1, 1, 1).expand(batch, 1, height, width)
         inputs = torch.cat((noisy_next, current, action, level), dim=1)
         return self.network(inputs)
+
+
+def add_independent_frame_noise(video, noise_levels, noise=None):
+    """按帧加入不同强度的噪声，构造 Diffusion Forcing 教学样本。
+
+    video: [B,T,C,H,W]
+    noise_levels: [B,T]，0 表示干净，1 表示完全由噪声主导。
+    """
+    if video.ndim != 5 or noise_levels.shape != video.shape[:2]:
+        raise ValueError("expected video [B,T,C,H,W] and noise_levels [B,T]")
+    if noise is None:
+        noise = torch.randn_like(video)
+    level = noise_levels[..., None, None, None].to(video)
+    noisy = (1 - level) * video + level * noise
+    return noisy, noise
+
+
+def diffusion_prediction_target(clean, noise, noise_levels, target="epsilon"):
+    """返回 tiny diffusion 实验的 x / epsilon / v 三种监督目标。"""
+    level = noise_levels
+    while level.ndim < clean.ndim:
+        level = level.unsqueeze(-1)
+    level = level.to(clean)
+    if target == "x":
+        return clean
+    if target == "epsilon":
+        return noise
+    if target == "v":
+        return (1 - level) * noise - level * clean
+    raise ValueError("target must be x, epsilon, or v")
+
+
+@torch.no_grad()
+def rollout_token_model(model, tokenizer, start_tokens, actions, token_shape):
+    """让 token 模型连续读取自己的输出，并解码整段 rollout。"""
+    tokens = [start_tokens]
+    for action in actions:
+        if not torch.is_tensor(action):
+            action = torch.tensor([action], device=start_tokens.device)
+        action = action.reshape(-1).to(start_tokens.device)
+        tokens.append(model(tokens[-1], action).argmax(dim=-1))
+    packed = torch.cat(tokens, dim=0).reshape(-1, *token_shape)
+    return tokenizer.decode_tokens(packed)
+
+
+def psnr(prediction, target, data_range=1.0):
+    """只衡量像素接近程度；不能替代动作一致性或长时评价。"""
+    mse = F.mse_loss(prediction, target).clamp_min(1e-12)
+    return 10 * torch.log10(torch.as_tensor(data_range**2, device=mse.device) / mse)
 
 
 def video_batch_from_episodes(episodes):

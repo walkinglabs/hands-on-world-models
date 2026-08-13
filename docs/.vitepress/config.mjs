@@ -166,19 +166,19 @@ export default defineConfig({
             link: "/chapters/04-interactive-video/",
             items: [
               {
-                text: "4.1 · 视频与动作数据",
+                text: "4.1 · 从视频到世界模型",
                 link: "/chapters/04-interactive-video/04-01-video-data",
               },
               {
-                text: "4.2 · VQ Tokenizer",
+                text: "4.2 · 先决定预测什么",
                 link: "/chapters/04-interactive-video/04-02-vq-tokenizer",
               },
               {
-                text: "4.3 · 动作条件 Transformer",
+                text: "4.3 · AR 与 Diffusion",
                 link: "/chapters/04-interactive-video/04-03-action-transformer",
               },
               {
-                text: "4.4 · Diffusion 与评价",
+                text: "4.4 · 动作、记忆与评价",
                 link: "/chapters/04-interactive-video/04-04-diffusion-and-evaluation",
               },
             ],

@@ -1,26 +1,32 @@
 # B1–C2 · 互动视频与 JEPA 实验
 
-路线 B 与 C 使用同一份 PixelWorld 数据，方便直接比较预测目标。
+路线 B 与 C 使用同一份 PixelWorld 数据。路线 B 要还原可观看画面，路线 C 只预测特征；共用数据能让两种目标直接比较。
 
-## 路线 B：预测可见未来
+## 路线 B：两份 Notebook
 
-`B1-compress-and-predict-video.ipynb`：
+### B1　做出第一台视频模型
 
-```text
-动作—帧对齐 → AE 预热 → VQ-VAE / STE → token Transformer
-```
-
-`B2-make-video-controllable.ipynb`：
+`B1-compress-and-predict-video.ipynb` 依次完成：
 
 ```text
-反事实动作 → 自回归多步 → tiny denoiser 对照
+检查动作时间 → 复制帧基线 → VQ tokenizer → token AR → 一步画面评价
 ```
 
-CPU smoke 只证明数据流、梯度和动作敏感性能够运行。真正的 PA 要解码画面并检查物体位移方向。
+这一份先把最短闭环跑通。你会同时看到重建 loss、码本使用数、token accuracy 和解码后物体方向。某一个数字变好，不代表整台模型已经可控。
 
-B1/B2 还会从解码画面估计红色物体中心。普通像素 MSE 容易把小方块平均成黑色背景，所以 tokenizer 使用前景加权重建损失；token accuracy、解码中心和运动方向需要一起检查。
+### B2　让模型连续运行，再拆开比较
 
-## 路线 C：预测有用特征
+`B2-make-video-controllable.ipynb` 只增加三个困难：
+
+```text
+动作注入消融 → teacher-forced / free rollout → 逐帧不同噪声
+```
+
+动作消融使用 `no-action / additive / FiLM`；生成实验固定同一历史替换动作；Diffusion Forcing 小节为视频中每一帧分别指定噪声等级，并构造 `x / epsilon / v` 目标。它只验证接口，不冒充大型系统复现。
+
+CPU smoke 证明 shape、梯度和数据流可以运行。PA1-B 还要保存曲线、失败片段、端到端延迟和 checkpoint。
+
+## 路线 C：两份 Notebook
 
 `C1-learn-video-features.ipynb`：
 
@@ -34,9 +40,7 @@ video patch → online/target encoder → mask → EMA → collapse 检查
 linear probe → action conditioning → 反事实 feature → 一步动作选择
 ```
 
-C2 的 linear probe 按 episode seed 分开训练与测试，不再用训练集误差宣布表示有用。动作选择也先把候选 feature 映射成位置，再比较到目标的距离。
-
-被动视频结果与动作条件结果必须分开报告。没有动作标签的数据不能证明 controllability；probe 在新 episode 上失败时，也不能用它支持规划结论。
+C2 的 probe 按 episode seed 分开训练与测试。被动视频与动作条件结果也要分开报告：没有动作的数据不能证明 controllability。
 
 ## 运行
 

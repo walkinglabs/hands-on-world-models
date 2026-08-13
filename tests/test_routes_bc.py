@@ -14,9 +14,13 @@ class RouteBCNeuralTest(unittest.TestCase):
         from hwm.video import (
             ActionTokenTransformer,
             TinyVQVAE,
+            add_independent_frame_noise,
+            diffusion_prediction_target,
             foreground_weighted_mse,
             motion_direction_accuracy,
+            psnr,
             red_centers,
+            rollout_token_model,
             video_batch_from_episodes,
         )
 
@@ -40,10 +44,39 @@ class RouteBCNeuralTest(unittest.TestCase):
         logits = model(same, torch.tensor([1, 2]))
         difference = (logits[0] - logits[1]).abs().mean().detach()
         self.assertGreater(float(difference), 0.0)
+        no_action = ActionTokenTransformer(
+            codebook_size=16, model_size=32, action_injection="none"
+        )
+        same_logits = no_action(same, torch.tensor([1, 2]))
+        self.assertTrue(torch.equal(same_logits[0], same_logits[1]))
+        film = ActionTokenTransformer(
+            codebook_size=16, model_size=32, action_injection="film"
+        )
+        self.assertEqual(film(same, torch.tensor([1, 2])).shape, logits.shape)
         self.assertTrue(torch.isfinite(red_centers(current)).all())
         self.assertTrue(torch.isfinite(foreground_weighted_mse(current, following)))
         perfect_direction = motion_direction_accuracy(current, following, following)
         self.assertAlmostEqual(float(perfect_direction), 1.0)
+        self.assertGreater(float(psnr(following, following)), 100.0)
+
+        clip = following[:6].reshape(2, 3, *following.shape[1:])
+        levels = torch.tensor([[0.0, 0.5, 1.0], [0.2, 0.4, 0.8]])
+        noisy, noise = add_independent_frame_noise(clip, levels)
+        self.assertEqual(noisy.shape, clip.shape)
+        for target in ("x", "epsilon", "v"):
+            self.assertEqual(
+                diffusion_prediction_target(clip, noise, levels, target).shape,
+                clip.shape,
+            )
+
+        frames = rollout_token_model(
+            model,
+            tokenizer,
+            current_tokens[:1],
+            [torch.tensor([2]), torch.tensor([2])],
+            token_shape=(4, 4),
+        )
+        self.assertEqual(frames.shape[0], 3)
 
     def test_jepa_shapes_ema_probe_and_action(self):
         import torch
