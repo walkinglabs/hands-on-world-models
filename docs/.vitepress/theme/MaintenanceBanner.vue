@@ -23,6 +23,7 @@
   text-align: center;
   background: #fff1e8;
   border-bottom: 1px solid #efb28f;
+  pointer-events: none;
 }
 
 @media (max-width: 639px) {
