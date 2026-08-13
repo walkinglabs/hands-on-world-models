@@ -33,7 +33,6 @@ export default defineConfig({
       {
         text: "课程",
         items: [
-          { text: "首页", link: "/guide/start" },
           { text: "怎样使用本书", link: "/guide/start" },
           { text: "完整课程总纲", link: "/课程总纲" },
           { text: "数据与实验状态", link: "/data-status" },
