@@ -4,7 +4,7 @@
   <p>从九格世界出发，学习表示、预测、规划与行动</p>
 
   <p>
-    <a href="#全书结构"><img src="https://img.shields.io/badge/课程-8_章-2563eb?style=flat-square" alt="全书共 8 章" /></a>
+    <a href="https://walkinglabs.github.io/hands-on-world-models/"><img src="https://img.shields.io/badge/课程-在线阅读-2563eb?style=flat-square" alt="在线阅读课程" /></a>
     <a href="https://github.com/walkinglabs/hands-on-world-models/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/walkinglabs/hands-on-world-models/test.yml?branch=main&label=构建&style=flat-square" alt="课程项目检查" /></a>
     <a href="https://github.com/walkinglabs/hands-on-world-models/tree/main/notebooks"><img src="https://img.shields.io/badge/实验-Jupyter-f37626?style=flat-square" alt="Jupyter Notebook" /></a>
     <img src="https://img.shields.io/badge/Python-3.9+-3776ab?style=flat-square" alt="Python 3.9+" />
@@ -12,6 +12,7 @@
   </p>
 
   <p>
+    <a href="https://walkinglabs.github.io/hands-on-world-models/">课程网站</a> ·
     <a href="#全书结构">课程目录</a> ·
     <a href="#实验代码">实验代码</a> ·
     <a href="#快速开始">快速开始</a> ·
