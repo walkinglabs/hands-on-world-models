@@ -1,4 +1,5 @@
 :root {
+  --vp-layout-top-height: 64px;
   --vp-c-brand-1: #25636a;
   --vp-c-brand-2: #31777f;
   --vp-c-brand-3: #194e54;
@@ -16,6 +17,12 @@
     "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --vp-font-family-mono:
     "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --vp-layout-top-height: 44px;
+  }
 }
 
 .VPDoc .content-container {
