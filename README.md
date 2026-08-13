@@ -32,7 +32,7 @@
       <br />
       <strong>从零到一的教学节奏</strong>
       <br />
-      <sub>课程从九格世界和十几行 Python 起步，每一步只增加一个新问题，逐步学到图像、记忆、预测与规划，最后完成一台可以训练和检验的小模型。</sub>
+<sub>每一步只增加一个新问题，让模型逐步学会看懂图像、记住过去、预测未来与规划行动，最后训练出自己的世界模型。</sub>
     </td>
     <td width="50%" align="center">
       <img src="docs/public/readme/feature-components.webp" alt="公式与 PyTorch 代码逐项对应" width="100%" />
