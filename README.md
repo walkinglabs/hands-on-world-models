@@ -28,50 +28,50 @@
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-reinvent.webp" alt="从九格世界到世界模型研究" width="100%" />
+      <img src="docs/public/readme/feature-reinvent.webp" alt="在九格地图中预测动作的结果" width="100%" />
       <br />
-      <strong>从基础走到研究</strong>
+      <strong>从一个九格地图开始</strong>
       <br />
-      <sub>全书以九格世界为起点，沿着观察、表示、预测、行动与检验展开，9 个大章和 40 篇小章组成一条连续主线。</sub>
+      <sub>我们先用一张表写出“向左走会怎样”，再把表格换成图片和神经网络，一步步做出能预测未来的小模型。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-components.webp" alt="世界模型公式与 PyTorch 实现" width="100%" />
+      <img src="docs/public/readme/feature-components.webp" alt="公式与 PyTorch 代码逐项对应" width="100%" />
       <br />
-      <strong>公式旁边就是实现</strong>
+      <strong>每个公式都能运行</strong>
       <br />
-      <sub>VAE、RSSM、价值学习与规划的关键公式均配有 PyTorch 代码，公式中的每个量都能在实现中找到对应位置。</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <img src="docs/public/readme/feature-routes.webp" alt="世界模型的五条研究路线" width="100%" />
-      <br />
-      <strong>覆盖五条研究路线</strong>
-      <br />
-      <sub>空间世界、互动视频、决策与规划、JEPA、VLA 与机器人并列展开，分别对应五类不同的预测对象与应用场景。</sub>
-    </td>
-    <td width="50%" align="center">
-      <img src="docs/public/readme/feature-notebooks.webp" alt="十九份世界模型 Notebook" width="100%" />
-      <br />
-      <strong>十九份可运行 Notebook</strong>
-      <br />
-      <sub>仓库提供 16 份教学实验和 3 份 PA 模板，覆盖共同基础、五条路线、统一评价与开放研究作业。</sub>
+      <sub>讲到 VAE、RSSM 或规划时，旁边就是对应的 PyTorch 代码；改一个公式中的量，可以马上看到程序怎样变化。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-evaluation.webp" alt="世界模型的多维评价" width="100%" />
+      <img src="docs/public/readme/feature-routes.webp" alt="五种世界模型分别交出不同结果" width="100%" />
       <br />
-      <strong>不用训练损失宣布成功</strong>
+      <strong>五个方向，各做一个模型</strong>
       <br />
-      <sub>课程使用长时 rollout、反事实动作、陌生场景和下游任务共同评价模型，训练损失只是其中一项记录。</sub>
+      <sub>可以选择生成三维空间、预测游戏画面、在想象中选动作、学习视频特征，或让机器人按照指令行动。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="docs/public/readme/feature-research.webp" alt="从模型失败走向研究问题" width="100%" />
+      <img src="docs/public/readme/feature-notebooks.webp" alt="十九份可以直接运行的 Notebook" width="100%" />
       <br />
-      <strong>从一次失败提出新方法</strong>
+      <strong>十九份实验可以直接运行</strong>
       <br />
-      <sub>PA2 要求学生提交可复现失败、竞争解释和单变量实验，并据此完成下一台世界模型的设计提案。</sub>
+      <sub>16 份教学 Notebook 带着我们完成小模型，3 份 PA 模板用来提交代码、曲线、失败样例和实验结论。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/public/readme/feature-evaluation.webp" alt="检查模型连续预测后是否出错" width="100%" />
+      <br />
+      <strong>不只看训练损失</strong>
+      <br />
+      <sub>我们还会让模型连续预测很多步、临时换一个动作、进入没见过的场景，检查它是否真的学会了变化规律。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/public/readme/feature-research.webp" alt="根据模型失败设计新的实验" width="100%" />
+      <br />
+      <strong>最后，自己改一次模型</strong>
+      <br />
+      <sub>找到一个每次都能重现的错误，猜测它为什么发生，只改一个地方重新实验，再写出自己的改进方案。</sub>
     </td>
   </tr>
 </table>
