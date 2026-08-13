@@ -1,4 +1,4 @@
-name: 构建课程网站
+name: 部署课程网站
 
 on:
   push:
@@ -18,6 +18,8 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: site-${{ github.ref }}
@@ -39,13 +41,25 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
+      - name: 配置 GitHub Pages
+        uses: actions/configure-pages@v5
+
       - name: 构建课程网站
         run: npm run build
 
-      - name: 上传静态网站制品
-        uses: actions/upload-artifact@v7
+      - name: 上传 GitHub Pages 制品
+        uses: actions/upload-pages-artifact@v4
         with:
-          name: course-site-${{ github.sha }}
           path: docs/.vitepress/dist
-          if-no-files-found: error
-          retention-days: 14
+
+  deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 发布到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
