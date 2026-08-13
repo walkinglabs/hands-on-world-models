@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/public/readme/logo.png" alt="动手学世界模型 · Hands-on World Models" width="760" />
+  <img src="docs/public/readme/logo.svg" alt="动手学世界模型 · Hands-on World Models" width="760" />
   <p>从九格世界出发，学习表示、预测、规划与行动</p>
 
   <p>

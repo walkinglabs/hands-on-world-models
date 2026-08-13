@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1520 360" role="img" aria-labelledby="title desc">
+  <title id="title">动手学世界模型 · Hands-on World Models</title>
+  <desc id="desc">当前观察经过内部状态，展开为三种可能的未来画面</desc>
+
+  <g transform="translate(62 74)">
+    <g fill="none" stroke="#181817" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="0" y="72" width="48" height="68" rx="13" stroke-width="13" />
+      <path d="M48 106h27" stroke-width="13" />
+      <path d="M124 106c19 0 18-64 40-64" stroke-width="12" />
+      <path d="M124 106h40" stroke-width="12" />
+      <path d="M124 106c19 0 18 64 40 64" stroke-width="12" />
+      <rect x="161" y="18" width="42" height="50" rx="10" stroke-width="12" />
+      <rect x="161" y="81" width="42" height="50" rx="10" stroke-width="12" />
+      <rect x="161" y="144" width="42" height="50" rx="10" stroke-width="12" />
+    </g>
+    <rect x="74" y="70" width="52" height="72" rx="16" fill="#181817" />
+    <circle cx="100" cy="106" r="8" fill="#d97745" />
+  </g>
+
+  <g fill="#181817">
+    <text x="340" y="172" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="92" font-weight="700" letter-spacing="2">动手学世界模型</text>
+    <text x="346" y="246" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="30" font-weight="600" letter-spacing="9">HANDS-ON WORLD MODELS</text>
+  </g>
+  <rect x="340" y="276" width="86" height="8" rx="4" fill="#d97745" />
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">动手学世界模型</title>
+  <desc id="desc">观察进入内部状态，并展开为三种可能的未来</desc>
+  <g fill="none" stroke="#181817" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="10" y="57" width="34" height="46" rx="9" stroke-width="9" />
+    <path d="M44 80h19" stroke-width="9" />
+    <path d="M97 80c13 0 12-43 27-43" stroke-width="8" />
+    <path d="M97 80h27" stroke-width="8" />
+    <path d="M97 80c13 0 12 43 27 43" stroke-width="8" />
+    <rect x="122" y="20" width="28" height="34" rx="7" stroke-width="8" />
+    <rect x="122" y="63" width="28" height="34" rx="7" stroke-width="8" />
+    <rect x="122" y="106" width="28" height="34" rx="7" stroke-width="8" />
+  </g>
+  <rect x="61" y="56" width="38" height="48" rx="12" fill="#181817" />
+  <circle cx="80" cy="80" r="6" fill="#d97745" />
+</svg>
