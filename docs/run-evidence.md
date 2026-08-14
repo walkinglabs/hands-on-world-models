@@ -39,4 +39,4 @@
 - checkpoint 与数据 artifact 有 SHA256；
 - 中断、OOM 和重跑必须保留记录。
 
-只有满足以上条件，`docs/data-status.md` 才能把对应条目标成“24GB 已验证”。
+只有满足以上条件，对应实验才算通过 24GB 验收。

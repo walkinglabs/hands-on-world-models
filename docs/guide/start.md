@@ -46,4 +46,4 @@ Notebook 中会留出预测、填空和小实验。建议先写下自己的判�
 
 [进入第 0 章：机器看见的为什么不等于世界 →](/chapters/00-why-world-models/)
 
-教师开课与批改建议见[教师指南](/teacher-guide)，数据和 24GB 证据分别见[数据状态](/data-status)与[运行证据](/run-evidence)。
+24GB 运行证据见[运行证据](/run-evidence)。

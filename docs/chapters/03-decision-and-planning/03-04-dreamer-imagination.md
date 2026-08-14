@@ -1,4 +1,4 @@
-# 2.4　Dreamer：在想象中训练
+# 3.4　Dreamer：在想象中训练
 
 PlaNet 每做一个真实动作都要重跑一遍 CEM。CRAFTER、DMC Cartpole 这类任务要求高频控制，搜索开销可能压垮整个系统。
 

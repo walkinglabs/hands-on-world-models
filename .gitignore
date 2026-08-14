@@ -3,6 +3,8 @@ docs/.vitepress/cache/
 docs/.vitepress/dist/
 .DS_Store
 
+temp/
+
 __pycache__/
 *.py[cod]
 *.egg-info/
