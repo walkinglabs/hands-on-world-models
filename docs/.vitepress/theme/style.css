@@ -682,6 +682,7 @@
 }
 
 .hwm-sidebar-toolbar-end {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -739,30 +740,32 @@
   bottom: 56px;
   left: 16px;
   z-index: 80;
-  width: 258px;
-  padding: 16px;
+  width: min(280px, calc(100vw - 32px));
+  padding: 14px;
   border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   color: var(--vp-c-text-1);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: var(--shadow-heavy);
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
 }
 
 .dark .hwm-settings-panel {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(28, 28, 30, 0.98);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgb(30, 30, 40);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
 .hwm-settings-heading,
-.hwm-settings-panel label > span {
+.hwm-settings-label {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 
 .hwm-settings-heading {
-  margin-bottom: 14px;
-  font-size: 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
 }
 
 .hwm-settings-heading button {
@@ -773,22 +776,115 @@
   cursor: pointer;
 }
 
-.hwm-settings-panel label {
-  display: block;
-  margin-top: 14px;
-  color: var(--vp-c-text-2);
-  font-size: 12px;
+.hwm-settings-group {
+  display: grid;
+  gap: 10px;
 }
 
-.hwm-settings-panel label b {
+.hwm-settings-group + .hwm-settings-group {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.hwm-settings-label {
+  color: var(--vp-c-text-2);
+  font-size: 13px;
+}
+
+.hwm-settings-label span {
   color: var(--vp-c-text-1);
+  font-weight: 700;
+}
+
+.hwm-settings-label b {
+  font-size: 12px;
   font-weight: 600;
+}
+
+.hwm-settings-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.hwm-settings-actions button {
+  height: 34px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  color: var(--vp-c-text-1);
+  background: rgba(0, 0, 0, 0.02);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.hwm-settings-actions button:hover,
+.hwm-settings-actions button:focus-visible {
+  border-color: rgba(37, 99, 106, 0.34);
+  color: var(--vp-c-brand-1);
+}
+
+.hwm-settings-actions button.active {
+  border-color: rgba(37, 99, 106, 0.38);
+  color: var(--vp-c-brand-1);
+  background: rgba(37, 99, 106, 0.1);
+  font-weight: 700;
+}
+
+.hwm-appearance-actions {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.hwm-appearance-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hwm-appearance-actions svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .hwm-settings-panel input[type="range"] {
   width: 100%;
-  margin-top: 8px;
   accent-color: var(--vp-c-brand-1);
+}
+
+.dark .hwm-settings-group + .hwm-settings-group {
+  border-top-color: rgba(148, 163, 184, 0.18);
+}
+
+.dark .hwm-settings-actions button {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dark .hwm-settings-actions button.active {
+  border-color: rgba(94, 234, 212, 0.34);
+  background: rgba(94, 234, 212, 0.12);
+}
+
+.hwm-settings-fade-enter-active,
+.hwm-settings-fade-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.hwm-settings-fade-enter-from,
+.hwm-settings-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
 }
 
 .hwm-sidebar-toggle {
@@ -935,14 +1031,6 @@
 @media (max-width: 959px) {
   .hwm-sidebar-toolbar {
     margin-top: 4px;
-  }
-
-  .hwm-settings-panel {
-    top: calc(var(--vp-layout-top-height) + var(--vp-nav-height) + 12px);
-    right: 12px;
-    bottom: auto;
-    left: 12px;
-    width: auto;
   }
 }
 

@@ -19,10 +19,22 @@ const LINE_HEIGHT_KEY = "hwm-doc-line-height";
 const DOC_WIDTH_KEY = "hwm-doc-width";
 const SIDEBAR_KEY = "hwm-sidebar-collapsed";
 
-const fontSize = ref(17);
-const lineHeight = ref(1.7);
-const docWidth = ref(980);
+const MIN_FONT_SIZE = 15;
+const MAX_FONT_SIZE = 20;
+const DEFAULT_FONT_SIZE = 17;
+const MIN_LINE_HEIGHT = 1.55;
+const MAX_LINE_HEIGHT = 2;
+const DEFAULT_LINE_HEIGHT = 1.7;
+const MIN_DOC_WIDTH = 780;
+const MAX_DOC_WIDTH = 1280;
+const DEFAULT_DOC_WIDTH = 980;
+
+const fontSize = ref(DEFAULT_FONT_SIZE);
+const lineHeight = ref(DEFAULT_LINE_HEIGHT);
+const docWidth = ref(DEFAULT_DOC_WIDTH);
 const settingsOpen = ref(false);
+const settingsMenu = ref(null);
+const settingsPanel = ref(null);
 const sidebarCollapsed = ref(false);
 const allGroupsExpanded = ref(false);
 
@@ -39,15 +51,15 @@ function applyReadingSettings() {
   if (typeof document === "undefined") return;
   document.documentElement.style.setProperty(
     "--hwm-doc-font-size",
-    `${clamp(fontSize.value, 15, 20)}px`,
+    `${clamp(fontSize.value, MIN_FONT_SIZE, MAX_FONT_SIZE)}px`,
   );
   document.documentElement.style.setProperty(
     "--hwm-doc-line-height",
-    String(clamp(lineHeight.value, 1.55, 2)),
+    String(clamp(lineHeight.value, MIN_LINE_HEIGHT, MAX_LINE_HEIGHT)),
   );
   document.documentElement.style.setProperty(
     "--vp-doc-content-max-width",
-    `${clamp(docWidth.value, 760, 1180)}px`,
+    `${clamp(docWidth.value, MIN_DOC_WIDTH, MAX_DOC_WIDTH)}px`,
   );
 }
 
@@ -59,9 +71,27 @@ function saveReadingSettings() {
 }
 
 function resetReadingSettings() {
-  fontSize.value = 17;
-  lineHeight.value = 1.7;
-  docWidth.value = 980;
+  fontSize.value = DEFAULT_FONT_SIZE;
+  lineHeight.value = DEFAULT_LINE_HEIGHT;
+  docWidth.value = DEFAULT_DOC_WIDTH;
+}
+
+function adjustFontSize(amount) {
+  fontSize.value = clamp(fontSize.value + amount, MIN_FONT_SIZE, MAX_FONT_SIZE);
+}
+
+function adjustLineHeight(amount) {
+  lineHeight.value = Number(
+    clamp(
+      Number(lineHeight.value) + amount,
+      MIN_LINE_HEIGHT,
+      MAX_LINE_HEIGHT,
+    ).toFixed(2),
+  );
+}
+
+function adjustDocWidth(amount) {
+  docWidth.value = clamp(docWidth.value + amount, MIN_DOC_WIDTH, MAX_DOC_WIDTH);
 }
 
 function setAppearance(value) {
@@ -95,18 +125,38 @@ function syncGroupState() {
 
 function toggleAllSidebarGroups() {
   const shouldExpand = !allGroupsExpanded.value;
-  for (const group of sidebarGroups()) {
+  const groups = sidebarGroups();
+  const orderedGroups = shouldExpand ? groups : groups.slice().reverse();
+
+  for (const group of orderedGroups) {
     const collapsed = group.classList.contains("collapsed");
     if ((shouldExpand && collapsed) || (!shouldExpand && !collapsed)) {
-      group.querySelector(":scope > .item")?.click();
+      group.querySelector(":scope > .item > .caret")?.click();
     }
   }
+
+  if (!shouldExpand) {
+    requestAnimationFrame(() => {
+      document.querySelector(".VPSidebar > .nav")?.scrollTo({ top: 0 });
+    });
+  }
+
   nextTick(syncGroupState);
 }
 
-function closeSettings(event) {
+function closeSettingsOnEscape(event) {
   if (!settingsOpen.value) return;
   if (event.key === "Escape") settingsOpen.value = false;
+}
+
+function closeSettingsOnOutsideClick(event) {
+  if (
+    settingsOpen.value &&
+    !settingsMenu.value?.contains(event.target) &&
+    !settingsPanel.value?.contains(event.target)
+  ) {
+    settingsOpen.value = false;
+  }
 }
 
 watch([fontSize, lineHeight, docWidth], () => {
@@ -117,22 +167,32 @@ watch([fontSize, lineHeight, docWidth], () => {
 watch(sidebarCollapsed, applySidebarState);
 
 onMounted(() => {
-  fontSize.value = clamp(localStorage.getItem(FONT_SIZE_KEY) || 17, 15, 20);
-  lineHeight.value = clamp(
-    localStorage.getItem(LINE_HEIGHT_KEY) || 1.7,
-    1.55,
-    2,
+  fontSize.value = clamp(
+    localStorage.getItem(FONT_SIZE_KEY) || DEFAULT_FONT_SIZE,
+    MIN_FONT_SIZE,
+    MAX_FONT_SIZE,
   );
-  docWidth.value = clamp(localStorage.getItem(DOC_WIDTH_KEY) || 980, 760, 1180);
+  lineHeight.value = clamp(
+    localStorage.getItem(LINE_HEIGHT_KEY) || DEFAULT_LINE_HEIGHT,
+    MIN_LINE_HEIGHT,
+    MAX_LINE_HEIGHT,
+  );
+  docWidth.value = clamp(
+    localStorage.getItem(DOC_WIDTH_KEY) || DEFAULT_DOC_WIDTH,
+    MIN_DOC_WIDTH,
+    MAX_DOC_WIDTH,
+  );
   sidebarCollapsed.value = localStorage.getItem(SIDEBAR_KEY) === "true";
   applyReadingSettings();
   applySidebarState();
   nextTick(syncGroupState);
-  document.addEventListener("keydown", closeSettings);
+  document.addEventListener("keydown", closeSettingsOnEscape);
+  document.addEventListener("pointerdown", closeSettingsOnOutsideClick);
 });
 
 onBeforeUnmount(() => {
-  document.removeEventListener("keydown", closeSettings);
+  document.removeEventListener("keydown", closeSettingsOnEscape);
+  document.removeEventListener("pointerdown", closeSettingsOnOutsideClick);
 });
 </script>
 
@@ -159,27 +219,7 @@ onBeforeUnmount(() => {
             <span>{{ groupButtonLabel }}</span>
           </button>
 
-          <div class="hwm-sidebar-toolbar-end">
-            <button
-              class="hwm-sidebar-action hwm-icon-action"
-              type="button"
-              :title="isDark ? '切换到浅色' : '切换到深色'"
-              :aria-label="isDark ? '切换到浅色' : '切换到深色'"
-              @click="setAppearance(!isDark)"
-            >
-              <svg v-if="isDark" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="4" />
-                <path
-                  d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
-                />
-              </svg>
-              <svg v-else viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M20.5 14.5A8.4 8.4 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z"
-                />
-              </svg>
-            </button>
-
+          <div ref="settingsMenu" class="hwm-sidebar-toolbar-end">
             <button
               class="hwm-sidebar-action hwm-icon-action"
               type="button"
@@ -195,6 +235,147 @@ onBeforeUnmount(() => {
                 />
               </svg>
             </button>
+
+            <Teleport to="body">
+              <Transition name="hwm-settings-fade">
+                <section
+                  v-if="settingsOpen"
+                  ref="settingsPanel"
+                  class="hwm-settings-panel"
+                  aria-label="阅读与外观设置"
+                >
+                  <div class="hwm-settings-heading">
+                    <strong>阅读与外观</strong>
+                    <button type="button" @click="resetReadingSettings">
+                      恢复默认
+                    </button>
+                  </div>
+
+                  <div class="hwm-settings-group">
+                    <div class="hwm-settings-label">
+                      <span>外观</span>
+                      <b>{{ isDark ? "深色" : "浅色" }}</b>
+                    </div>
+                    <div class="hwm-settings-actions hwm-appearance-actions">
+                      <button
+                        type="button"
+                        :class="{ active: !isDark }"
+                        aria-label="切换到浅色模式"
+                        title="浅色模式"
+                        @click="setAppearance(false)"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <circle cx="12" cy="12" r="4" />
+                          <path
+                            d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        :class="{ active: isDark }"
+                        aria-label="切换到深色模式"
+                        title="深色模式"
+                        @click="setAppearance(true)"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path
+                            d="M20.5 14.5A8.4 8.4 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="hwm-settings-group">
+                    <div class="hwm-settings-label">
+                      <span>字号</span>
+                      <b>{{ fontSize }}px</b>
+                    </div>
+                    <div class="hwm-settings-actions">
+                      <button type="button" @click="adjustFontSize(-1)">
+                        A-
+                      </button>
+                      <button
+                        type="button"
+                        @click="fontSize = DEFAULT_FONT_SIZE"
+                      >
+                        默认
+                      </button>
+                      <button type="button" @click="adjustFontSize(1)">
+                        A+
+                      </button>
+                    </div>
+                    <input
+                      v-model.number="fontSize"
+                      type="range"
+                      :min="MIN_FONT_SIZE"
+                      :max="MAX_FONT_SIZE"
+                      step="1"
+                      aria-label="字号"
+                    />
+                  </div>
+
+                  <div class="hwm-settings-group">
+                    <div class="hwm-settings-label">
+                      <span>行距</span>
+                      <b>{{ Number(lineHeight).toFixed(2) }}</b>
+                    </div>
+                    <div class="hwm-settings-actions">
+                      <button type="button" @click="adjustLineHeight(-0.05)">
+                        更紧
+                      </button>
+                      <button
+                        type="button"
+                        @click="lineHeight = DEFAULT_LINE_HEIGHT"
+                      >
+                        默认
+                      </button>
+                      <button type="button" @click="adjustLineHeight(0.05)">
+                        更松
+                      </button>
+                    </div>
+                    <input
+                      v-model.number="lineHeight"
+                      type="range"
+                      :min="MIN_LINE_HEIGHT"
+                      :max="MAX_LINE_HEIGHT"
+                      step="0.05"
+                      aria-label="行距"
+                    />
+                  </div>
+
+                  <div class="hwm-settings-group">
+                    <div class="hwm-settings-label">
+                      <span>正文宽度</span>
+                      <b>{{ docWidth }}px</b>
+                    </div>
+                    <div class="hwm-settings-actions">
+                      <button type="button" @click="adjustDocWidth(-20)">
+                        更窄
+                      </button>
+                      <button
+                        type="button"
+                        @click="docWidth = DEFAULT_DOC_WIDTH"
+                      >
+                        默认
+                      </button>
+                      <button type="button" @click="adjustDocWidth(20)">
+                        更宽
+                      </button>
+                    </div>
+                    <input
+                      v-model.number="docWidth"
+                      type="range"
+                      :min="MIN_DOC_WIDTH"
+                      :max="MAX_DOC_WIDTH"
+                      step="20"
+                      aria-label="正文宽度"
+                    />
+                  </div>
+                </section>
+              </Transition>
+            </Teleport>
           </div>
         </div>
       </Teleport>
@@ -220,53 +401,5 @@ onBeforeUnmount(() => {
 
   <ClientOnly>
     <ReadingProgress v-if="showReaderTools" />
-  </ClientOnly>
-
-  <ClientOnly>
-    <Teleport to="body">
-      <div v-if="settingsOpen" class="hwm-settings-panel">
-        <div class="hwm-settings-heading">
-          <strong>阅读设置</strong>
-          <button type="button" @click="resetReadingSettings">恢复默认</button>
-        </div>
-
-        <label>
-          <span
-            >字号 <b>{{ fontSize }}px</b></span
-          >
-          <input
-            v-model.number="fontSize"
-            type="range"
-            min="15"
-            max="20"
-            step="1"
-          />
-        </label>
-        <label>
-          <span
-            >行距 <b>{{ Number(lineHeight).toFixed(2) }}</b></span
-          >
-          <input
-            v-model.number="lineHeight"
-            type="range"
-            min="1.55"
-            max="2"
-            step="0.05"
-          />
-        </label>
-        <label>
-          <span
-            >正文宽度 <b>{{ docWidth }}px</b></span
-          >
-          <input
-            v-model.number="docWidth"
-            type="range"
-            min="760"
-            max="1180"
-            step="20"
-          />
-        </label>
-      </div>
-    </Teleport>
   </ClientOnly>
 </template>
