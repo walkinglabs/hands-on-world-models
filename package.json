@@ -28,6 +28,8 @@
     "vitepress": "^1.6.4"
   },
   "dependencies": {
-    "markdown-it-mathjax3": "^4.3.2"
+    "lucide-vue-next": "^1.0.0",
+    "markdown-it-mathjax3": "^4.3.2",
+    "reka-ui": "^2.10.3"
   }
 }

@@ -667,6 +667,7 @@
 .hwm-sidebar-toolbar {
   position: relative;
   z-index: 2;
+  order: -1;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -735,11 +736,16 @@
   padding: 0;
 }
 
-.hwm-settings-panel {
-  position: fixed;
-  top: calc(var(--vp-layout-top-height) + var(--vp-nav-height) + 12px);
-  left: 16px;
+.hwm-settings-content {
   z-index: 80;
+  outline: none;
+}
+
+[data-reka-popper-content-wrapper]:has(> .hwm-settings-content) {
+  z-index: 80 !important;
+}
+
+.hwm-settings-panel {
   width: min(280px, calc(100vw - 32px));
   padding: 14px;
   border: 1px solid rgba(0, 0, 0, 0.08);

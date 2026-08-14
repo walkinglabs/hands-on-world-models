@@ -1,14 +1,14 @@
 <script setup>
 import DefaultTheme from "vitepress/theme";
 import { useData } from "vitepress";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-} from "vue";
+  PopoverContent,
+  PopoverPortal,
+  PopoverRoot,
+  PopoverTrigger,
+} from "reka-ui";
+import { ChevronsDown, ChevronsUp, Moon, Settings, Sun } from "lucide-vue-next";
 import MaintenanceBanner from "./MaintenanceBanner.vue";
 import ReadingProgress from "./ReadingProgress.vue";
 
@@ -33,8 +33,6 @@ const fontSize = ref(DEFAULT_FONT_SIZE);
 const lineHeight = ref(DEFAULT_LINE_HEIGHT);
 const docWidth = ref(DEFAULT_DOC_WIDTH);
 const settingsOpen = ref(false);
-const settingsMenu = ref(null);
-const settingsPanel = ref(null);
 const sidebarCollapsed = ref(false);
 const allGroupsExpanded = ref(false);
 
@@ -144,21 +142,6 @@ function toggleAllSidebarGroups() {
   nextTick(syncGroupState);
 }
 
-function closeSettingsOnEscape(event) {
-  if (!settingsOpen.value) return;
-  if (event.key === "Escape") settingsOpen.value = false;
-}
-
-function closeSettingsOnOutsideClick(event) {
-  if (
-    settingsOpen.value &&
-    !settingsMenu.value?.contains(event.target) &&
-    !settingsPanel.value?.contains(event.target)
-  ) {
-    settingsOpen.value = false;
-  }
-}
-
 watch([fontSize, lineHeight, docWidth], () => {
   applyReadingSettings();
   saveReadingSettings();
@@ -186,201 +169,175 @@ onMounted(() => {
   applyReadingSettings();
   applySidebarState();
   nextTick(syncGroupState);
-  document.addEventListener("keydown", closeSettingsOnEscape);
-  document.addEventListener("pointerdown", closeSettingsOnOutsideClick);
-});
-
-onBeforeUnmount(() => {
-  document.removeEventListener("keydown", closeSettingsOnEscape);
-  document.removeEventListener("pointerdown", closeSettingsOnOutsideClick);
 });
 </script>
 
 <template>
-  <DefaultTheme.Layout>
-    <template #layout-top>
-      <MaintenanceBanner />
-    </template>
+  <PopoverRoot v-model:open="settingsOpen">
+    <DefaultTheme.Layout>
+      <template #layout-top>
+        <MaintenanceBanner />
+      </template>
 
-    <template v-if="showReaderTools" #sidebar-nav-before>
-      <Teleport defer to=".VPSidebar">
-        <div class="hwm-sidebar-toolbar">
-          <button
-            class="hwm-sidebar-action hwm-expand-action"
-            type="button"
-            :aria-expanded="allGroupsExpanded"
-            :title="groupButtonLabel"
-            @click="toggleAllSidebarGroups"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path v-if="allGroupsExpanded" d="m4 10 4-4 4 4M4 14l4-4 4 4" />
-              <path v-else d="m4 2 4 4 4-4M4 6l4 4 4-4" />
-            </svg>
-            <span>{{ groupButtonLabel }}</span>
-          </button>
-
-          <div ref="settingsMenu" class="hwm-sidebar-toolbar-end">
+      <template v-if="showReaderTools" #sidebar-nav-before>
+        <Teleport defer to=".VPSidebar">
+          <div class="hwm-sidebar-toolbar">
             <button
-              class="hwm-sidebar-action hwm-icon-action"
+              class="hwm-sidebar-action hwm-expand-action"
               type="button"
-              title="阅读与外观设置"
-              aria-label="阅读与外观设置"
-              :aria-expanded="settingsOpen"
-              @click="settingsOpen = !settingsOpen"
+              :aria-expanded="allGroupsExpanded"
+              :title="groupButtonLabel"
+              @click="toggleAllSidebarGroups"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="3" />
-                <path
-                  d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"
-                />
-              </svg>
+              <ChevronsUp
+                v-if="allGroupsExpanded"
+                :size="12"
+                :stroke-width="1.8"
+                aria-hidden="true"
+              />
+              <ChevronsDown
+                v-else
+                :size="12"
+                :stroke-width="1.8"
+                aria-hidden="true"
+              />
+              <span>{{ groupButtonLabel }}</span>
             </button>
 
-            <Teleport to="body">
-              <Transition name="hwm-settings-fade">
-                <section
-                  v-if="settingsOpen"
-                  ref="settingsPanel"
-                  class="hwm-settings-panel"
+            <div class="hwm-sidebar-toolbar-end">
+              <PopoverTrigger as-child>
+                <button
+                  class="hwm-sidebar-action hwm-icon-action"
+                  type="button"
+                  title="阅读与外观设置"
                   aria-label="阅读与外观设置"
                 >
-                  <div class="hwm-settings-heading">
-                    <strong>阅读与外观</strong>
-                    <button type="button" @click="resetReadingSettings">
-                      恢复默认
-                    </button>
-                  </div>
-
-                  <div class="hwm-settings-group">
-                    <div class="hwm-settings-label">
-                      <span>外观</span>
-                      <b>{{ isDark ? "深色" : "浅色" }}</b>
-                    </div>
-                    <div class="hwm-settings-actions hwm-appearance-actions">
-                      <button
-                        type="button"
-                        :class="{ active: !isDark }"
-                        aria-label="切换到浅色模式"
-                        title="浅色模式"
-                        @click="setAppearance(false)"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <circle cx="12" cy="12" r="4" />
-                          <path
-                            d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
-                          />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        :class="{ active: isDark }"
-                        aria-label="切换到深色模式"
-                        title="深色模式"
-                        @click="setAppearance(true)"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path
-                            d="M20.5 14.5A8.4 8.4 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="hwm-settings-group">
-                    <div class="hwm-settings-label">
-                      <span>字号</span>
-                      <b>{{ fontSize }}px</b>
-                    </div>
-                    <div class="hwm-settings-actions">
-                      <button type="button" @click="adjustFontSize(-1)">
-                        A-
-                      </button>
-                      <button
-                        type="button"
-                        @click="fontSize = DEFAULT_FONT_SIZE"
-                      >
-                        默认
-                      </button>
-                      <button type="button" @click="adjustFontSize(1)">
-                        A+
-                      </button>
-                    </div>
-                    <input
-                      v-model.number="fontSize"
-                      type="range"
-                      :min="MIN_FONT_SIZE"
-                      :max="MAX_FONT_SIZE"
-                      step="1"
-                      aria-label="字号"
-                    />
-                  </div>
-
-                  <div class="hwm-settings-group">
-                    <div class="hwm-settings-label">
-                      <span>行距</span>
-                      <b>{{ Number(lineHeight).toFixed(2) }}</b>
-                    </div>
-                    <div class="hwm-settings-actions">
-                      <button type="button" @click="adjustLineHeight(-0.05)">
-                        更紧
-                      </button>
-                      <button
-                        type="button"
-                        @click="lineHeight = DEFAULT_LINE_HEIGHT"
-                      >
-                        默认
-                      </button>
-                      <button type="button" @click="adjustLineHeight(0.05)">
-                        更松
-                      </button>
-                    </div>
-                    <input
-                      v-model.number="lineHeight"
-                      type="range"
-                      :min="MIN_LINE_HEIGHT"
-                      :max="MAX_LINE_HEIGHT"
-                      step="0.05"
-                      aria-label="行距"
-                    />
-                  </div>
-
-                  <div class="hwm-settings-group">
-                    <div class="hwm-settings-label">
-                      <span>正文宽度</span>
-                      <b>{{ docWidth }}px</b>
-                    </div>
-                    <div class="hwm-settings-actions">
-                      <button type="button" @click="adjustDocWidth(-20)">
-                        更窄
-                      </button>
-                      <button
-                        type="button"
-                        @click="docWidth = DEFAULT_DOC_WIDTH"
-                      >
-                        默认
-                      </button>
-                      <button type="button" @click="adjustDocWidth(20)">
-                        更宽
-                      </button>
-                    </div>
-                    <input
-                      v-model.number="docWidth"
-                      type="range"
-                      :min="MIN_DOC_WIDTH"
-                      :max="MAX_DOC_WIDTH"
-                      step="20"
-                      aria-label="正文宽度"
-                    />
-                  </div>
-                </section>
-              </Transition>
-            </Teleport>
+                  <Settings :size="16" :stroke-width="2" aria-hidden="true" />
+                </button>
+              </PopoverTrigger>
+            </div>
           </div>
-        </div>
-      </Teleport>
-    </template>
-  </DefaultTheme.Layout>
+        </Teleport>
+      </template>
+    </DefaultTheme.Layout>
+
+    <PopoverPortal>
+      <Transition name="hwm-settings-fade">
+        <PopoverContent
+          class="hwm-settings-content"
+          :side-offset="10"
+          align="end"
+          side="bottom"
+        >
+          <section class="hwm-settings-panel" aria-label="阅读与外观设置">
+            <div class="hwm-settings-heading">
+              <strong>阅读与外观</strong>
+              <button type="button" @click="resetReadingSettings">
+                恢复默认
+              </button>
+            </div>
+
+            <div class="hwm-settings-group">
+              <div class="hwm-settings-label">
+                <span>外观</span>
+                <b>{{ isDark ? "深色" : "浅色" }}</b>
+              </div>
+              <div class="hwm-settings-actions hwm-appearance-actions">
+                <button
+                  type="button"
+                  :class="{ active: !isDark }"
+                  aria-label="切换到浅色模式"
+                  title="浅色模式"
+                  @click="setAppearance(false)"
+                >
+                  <Sun :size="18" :stroke-width="2" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  :class="{ active: isDark }"
+                  aria-label="切换到深色模式"
+                  title="深色模式"
+                  @click="setAppearance(true)"
+                >
+                  <Moon :size="18" :stroke-width="2" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+
+            <div class="hwm-settings-group">
+              <div class="hwm-settings-label">
+                <span>字号</span>
+                <b>{{ fontSize }}px</b>
+              </div>
+              <div class="hwm-settings-actions">
+                <button type="button" @click="adjustFontSize(-1)">A-</button>
+                <button type="button" @click="fontSize = DEFAULT_FONT_SIZE">
+                  默认
+                </button>
+                <button type="button" @click="adjustFontSize(1)">A+</button>
+              </div>
+              <input
+                v-model.number="fontSize"
+                type="range"
+                :min="MIN_FONT_SIZE"
+                :max="MAX_FONT_SIZE"
+                step="1"
+                aria-label="字号"
+              />
+            </div>
+
+            <div class="hwm-settings-group">
+              <div class="hwm-settings-label">
+                <span>行距</span>
+                <b>{{ Number(lineHeight).toFixed(2) }}</b>
+              </div>
+              <div class="hwm-settings-actions">
+                <button type="button" @click="adjustLineHeight(-0.05)">
+                  更紧
+                </button>
+                <button type="button" @click="lineHeight = DEFAULT_LINE_HEIGHT">
+                  默认
+                </button>
+                <button type="button" @click="adjustLineHeight(0.05)">
+                  更松
+                </button>
+              </div>
+              <input
+                v-model.number="lineHeight"
+                type="range"
+                :min="MIN_LINE_HEIGHT"
+                :max="MAX_LINE_HEIGHT"
+                step="0.05"
+                aria-label="行距"
+              />
+            </div>
+
+            <div class="hwm-settings-group">
+              <div class="hwm-settings-label">
+                <span>正文宽度</span>
+                <b>{{ docWidth }}px</b>
+              </div>
+              <div class="hwm-settings-actions">
+                <button type="button" @click="adjustDocWidth(-20)">更窄</button>
+                <button type="button" @click="docWidth = DEFAULT_DOC_WIDTH">
+                  默认
+                </button>
+                <button type="button" @click="adjustDocWidth(20)">更宽</button>
+              </div>
+              <input
+                v-model.number="docWidth"
+                type="range"
+                :min="MIN_DOC_WIDTH"
+                :max="MAX_DOC_WIDTH"
+                step="20"
+                aria-label="正文宽度"
+              />
+            </div>
+          </section>
+        </PopoverContent>
+      </Transition>
+    </PopoverPortal>
+  </PopoverRoot>
 
   <ClientOnly>
     <button
