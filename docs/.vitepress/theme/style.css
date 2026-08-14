@@ -737,7 +737,7 @@
 
 .hwm-settings-panel {
   position: fixed;
-  bottom: 56px;
+  top: calc(var(--vp-layout-top-height) + var(--vp-nav-height) + 12px);
   left: 16px;
   z-index: 80;
   width: min(280px, calc(100vw - 32px));
