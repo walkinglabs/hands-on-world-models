@@ -236,6 +236,49 @@ python scripts/run_carracing.py --output runs/carracing-world-model
 
 原文与训练细节见 Ha & Schmidhuber (2018) [1][2]，官方训练代码见 [WorldModelsExperiments](https://github.com/hardmaru/WorldModelsExperiments)（MIT 协议）。
 
+## 后续工作：从 World Models 出发，世界模型走了多远
+
+World Models 的 V-M-C 管线证明了一件事：**可以在想象中学会控制**。但它留下了三个明显的短板，后来的工作逐一攻克了它们。
+
+### 短板一：CMA-ES 进化太慢、太贵
+
+CMA-ES 在 867 维空间里盲目搜索，300 代 × 32 个体 × 4 条梦境轨迹 = 几万次梦境 rollout。每次 rollout 还要跑 200 步 MDN-RNN，计算量巨大。而且进化策略没有梯度信号，不知道「往哪个方向改参数会更好」，只能靠种群统计量慢慢摸索。
+
+**Dreamer 系列**（Hafner et al. 2019–2023）[6][8] 把 C 换成了可微的策略网络，直接在 M 的梦境里做梯度下降。M 的 GRU 被替换成更强大的 RSSM（Recurrent State Space Model），能同时维护确定性隐状态和随机 latent；策略网络从隐状态里读出动作，价值网络评估隐状态的好坏，两者通过梦境 rollout 的梯度联合优化。DreamerV1 在 DeepMind Control Suite 上超过了当时所有的 model-free 方法；DreamerV2 用离散 latent 打通了 Atari；DreamerV3 一套超参跑遍 150+ 任务，成为「可复现世界模型」的标杆。
+
+关键区别：World Models 的 C 是**无梯度进化**，Dreamer 的 C 是**可微想象 + 策略梯度**。前者像蒙眼摸索，后者像看着地图走。
+
+### 短板二：像素重建是负担，不是帮助
+
+World Models 的 V 必须把 96×96 像素压成 32 维再重建回来。但 M 和 C 关心的从来不是「草地的纹理」，而是「弯道在哪里、车在什么位置」。强迫 V 重建像素，相当于让模型把算力浪费在决策无关的细节上。
+
+**MuZero**（Schrittwieser et al. 2020）[7] 直接扔掉了 V 的解码器。它的 M 不预测像素，只预测隐状态转移和奖励；它的「规划」不在像素空间里做，而是在隐空间里跑蒙特卡洛树搜索（MCTS）。 Atari、围棋、国际象棋、将棋，一套架构全部打通，发在 *Nature* 上。MuZero 的核心洞察是：**世界模型不需要重建世界，只需要重建决策需要的信息**。
+
+**SimPLe**（Kaiser et al. 2020）[9] 走了另一条路：保留像素预测，但用视频预测的视角来做——把 M 的输出当成「下一帧视频」，用更复杂的视频生成架构（卷积 LSTM + 残差连接）来提升多步一致性。它在 Atari 上证明了：如果像素预测足够准，model-based RL 可以超过 model-free。
+
+### 短板三：确定性模型撑不住长 rollout
+
+World Models 的 M 用混合高斯建模多峰未来，但 GRU 的隐状态是确定性的。训练时 teacher forcing 只监督单步转移，部署时 free-running 的复合误差会迅速累积——你在图 2 里已经看到了：100 步后画面变成噪声。
+
+**Stochastic MuZero**（Schrittwieser et al. 2021）[10] 给隐状态加入了随机性：每一步的隐状态转移不再是确定函数，而是从后验分布里采样。这让模型能表达「同样的动作可能导致不同的结果」，长 rollout 的稳定性显著提升。
+
+**Genie**（Bruce et al. 2024）[11] 走得更远：它用视频生成模型（ViT + 离散 token + 扩散/自回归解码）直接生成可交互的像素世界。用户按一个键，Genie 生成下一帧；再按一个键，再生成一帧。它不再区分 V、M、C——整个系统就是一个「按动作条件生成视频」的大模型。Genie 从 YouTube 游戏视频里无监督学出了 2D 平台游戏的物理规律，用户可以在生成的世界里真正「玩」起来。
+
+**GameNGen**（Valevski et al. 2024）[12] 在 Genie 的基础上做到了实时：用扩散模型 + 自回归 token 的混合架构，以 20 FPS 生成 DOOM 游戏画面。世界模型从「辅助决策的工具」变成了「可以玩的游戏引擎」。
+
+### 从赛车到自动驾驶
+
+CarRacing 是自动驾驶的玩具版。真正的驾驶世界模型要处理多视角相机、3D 几何、长时序一致性、安全约束。几个代表性工作：
+
+- **GAIA-1**（Hu et al. 2023）[13]：Wayve 的驾驶世界模型，用多视角相机输入 + 离散 token + 自回归生成，能生成逼真的驾驶视频，并支持动作条件控制。
+- **DriveDreamer**（Wang et al. 2023）[14]：用世界模型做驾驶数据增强——在模型生成的「梦境驾驶视频」里训练自动驾驶策略，再迁到真实环境。
+- **UniSim**（Yan et al. 2024）[15]：Google 的通用模拟器，从真实传感器数据里学出可交互的 3D 世界，支持自动驾驶、机器人导航等多种任务的仿真。
+
+### 一句话总结这条线
+
+World Models 提出了问题：**能不能在想象中学会控制？**
+Dreamer 回答了「能，而且用梯度比进化更高效」；MuZero 回答了「连像素都不用重建，隐空间就够了」；Genie 回答了「世界模型本身就可以是一个可玩的世界」。从 867 个参数的线性控制器，到几十亿参数的生成式世界引擎，核心思想从未改变——**在行动之前，先在内部预见行动的后果**。
+
 ## 参考文献
 
 1. Ha, D., & Schmidhuber, J. (2018). Recurrent World Models Facilitate Policy Evolution. *NeurIPS 2018*. [arXiv:1803.10122](https://arxiv.org/abs/1803.10122)
@@ -245,3 +288,11 @@ python scripts/run_carracing.py --output runs/carracing-world-model
 5. Hansen, N. (2001). Completely Derandomized Self-Adaptation in Evolution Strategies. *Evolutionary Computation*, 9(2), 159–195. [链接](https://doi.org/10.1162/106365601750190398)
 6. Hafner, D., et al. (2019). Dream to Control: Learning Behaviors by Latent Imagination. *ICLR 2020*. [arXiv:1912.01603](https://arxiv.org/abs/1912.01603) —— 用可微梦境端到端训练策略，替代 CMA-ES 进化。
 7. Schrittwieser, J., et al. (2020). Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model. *Nature*, 588, 604–609. [链接](https://doi.org/10.1038/s41586-020-03051-4) —— MuZero：不重建像素，只在隐空间里做蒙特卡洛树搜索。
+8. Hafner, D., et al. (2023). Mastering Diverse Domains through World Models. *arXiv:2301.04104*. [链接](https://arxiv.org/abs/2301.04104) —— DreamerV3：一套超参打通 150+ 任务，可复现世界模型的工程标杆。
+9. Kaiser, Ł., et al. (2020). Model-Based Reinforcement Learning for Atari. *ICLR 2020*. [arXiv:1903.00374](https://arxiv.org/abs/1903.00374) —— SimPLe：用视频预测做 model-based RL，Atari 上超过 model-free。
+10. Schrittwieser, J., et al. (2021). Offline AlphaZero Implicitly Models Planning for Actions. *arXiv:2109.09179*. [链接](https://arxiv.org/abs/2109.09179) —— Stochastic MuZero：隐状态随机化，提升长 rollout 稳定性。
+11. Bruce, J., et al. (2024). Genie: Generative Interactive Environments. *ICML 2024*. [arXiv:2402.15391](https://arxiv.org/abs/2402.15391) —— 从 YouTube 视频无监督学出可交互的 2D 游戏世界。
+12. Valevski, D., et al. (2024). GameNGen: Auto-regressive Neural Engine for Interactive Generation of DOOM. *arXiv:2406.13843*. [链接](https://arxiv.org/abs/2406.13843) —— 20 FPS 实时生成 DOOM 游戏画面。
+13. Hu, A., et al. (2023). GAIA-1: A Generative World Model for Autonomous Driving. *arXiv:2309.17080*. [链接](https://arxiv.org/abs/2309.17080) —— Wayve 的驾驶世界模型。
+14. Wang, X., et al. (2023). DriveDreamer: Towards Real-world-driven World Models for Autonomous Driving. *arXiv:2309.09777*. [链接](https://arxiv.org/abs/2309.09777) —— 用梦境驾驶视频做数据增强。
+15. Yan, Y., et al. (2024). UniSim: Learning Interactive Real-World Simulators. *ICLR 2024*. [arXiv:2310.20520](https://arxiv.org/abs/2310.20520) —— Google 的通用可交互世界模拟器。
