@@ -82,7 +82,7 @@ export default defineConfig({
           },
           { text: "0.6. 从零实现世界模型", link: "/labs/f0" },
           {
-            text: "0.7. PA0 · 重新发明一台可学习世界模型",
+            text: "PA0 · 重新发明一台可学习世界模型",
             link: "/assignments/pa0",
           },
         ],
@@ -166,7 +166,7 @@ export default defineConfig({
           },
           { text: "3.6. 决策与规划实验", link: "/labs/route-a" },
           {
-            text: "3.7. PA1-A · 做出一台 Dreamer-lite",
+            text: "PA1-A · 做出一台 Dreamer-lite",
             link: "/assignments/pa1-a",
           },
         ],
@@ -193,7 +193,7 @@ export default defineConfig({
           },
           { text: "4.5. 交互视频实验", link: "/labs/route-bc" },
           {
-            text: "4.6. PA1-B · 做出一个听从按键的视频小世界",
+            text: "PA1-B · 做出一个听从按键的视频小世界",
             link: "/assignments/pa1-b",
           },
         ],
@@ -220,7 +220,7 @@ export default defineConfig({
           },
           { text: "5.5. JEPA 实验", link: "/labs/route-bc" },
           {
-            text: "5.6. PA1-C · 训练并审问一个 Tiny Video-JEPA",
+            text: "PA1-C · 训练并审问一个 Tiny Video-JEPA",
             link: "/assignments/pa1-c",
           },
         ],
@@ -250,7 +250,7 @@ export default defineConfig({
             link: "/labs/route-de",
           },
           {
-            text: "6.6. PA1-D · Tiny VLA 与 World-Model Checker",
+            text: "PA1-D · Tiny VLA 与 World-Model Checker",
             link: "/assignments/pa1-d",
           },
         ],
@@ -281,7 +281,7 @@ export default defineConfig({
           },
           { text: "7.6. 空间世界实验", link: "/labs/route-de" },
           {
-            text: "7.7. PA1-E · 空间世界二选一",
+            text: "PA1-E · 空间世界二选一",
             link: "/assignments/pa1-e",
           },
         ],
@@ -315,10 +315,10 @@ export default defineConfig({
             link: "/chapters/08-evaluate-and-invent/08-06-next-model-proposal",
           },
           {
-            text: "8.7. PA2 · 设计下一台世界模型",
+            text: "PA2 · 设计下一台世界模型",
             link: "/assignments/pa2",
           },
-          { text: "8.8. Z0 · 审问一台世界模型", link: "/labs/z0" },
+          { text: "Z0 · 审问一台世界模型", link: "/labs/z0" },
         ],
       },
     ],
