@@ -81,6 +81,10 @@ export default defineConfig({
             link: "/chapters/00-why-world-models/00-05-classic-world-models",
           },
           { text: "0.6. 从零实现世界模型", link: "/labs/f0" },
+          {
+            text: "0.7. PA0 · 重新发明一台可学习世界模型",
+            link: "/assignments/pa0",
+          },
         ],
       },
       {
@@ -161,6 +165,10 @@ export default defineConfig({
             link: "/chapters/03-decision-and-planning/03-05-muzero",
           },
           { text: "3.6. 决策与规划实验", link: "/labs/route-a" },
+          {
+            text: "3.7. PA1-A · 做出一台 Dreamer-lite",
+            link: "/assignments/pa1-a",
+          },
         ],
       },
       {
@@ -184,6 +192,10 @@ export default defineConfig({
             link: "/chapters/04-interactive-video/04-04-diffusion-and-evaluation",
           },
           { text: "4.5. 交互视频实验", link: "/labs/route-bc" },
+          {
+            text: "4.6. PA1-B · 做出一个听从按键的视频小世界",
+            link: "/assignments/pa1-b",
+          },
         ],
       },
       {
@@ -207,6 +219,10 @@ export default defineConfig({
             link: "/chapters/05-jepa/05-04-action-jepa",
           },
           { text: "5.5. JEPA 实验", link: "/labs/route-bc" },
+          {
+            text: "5.6. PA1-C · 训练并审问一个 Tiny Video-JEPA",
+            link: "/assignments/pa1-c",
+          },
         ],
       },
       {
@@ -232,6 +248,10 @@ export default defineConfig({
           {
             text: "6.5. 机器人与 VLA 实验",
             link: "/labs/route-de",
+          },
+          {
+            text: "6.6. PA1-D · Tiny VLA 与 World-Model Checker",
+            link: "/assignments/pa1-d",
           },
         ],
       },
@@ -260,38 +280,10 @@ export default defineConfig({
             link: "/chapters/07-spatial-worlds/07-05-driving-world-models",
           },
           { text: "7.6. 空间世界实验", link: "/labs/route-de" },
-        ],
-      },
-      {
-        text: "课程作业",
-        collapsed: false,
-        items: [
           {
-            text: "PA0 · 重新发明一台可学习世界模型",
-            link: "/assignments/pa0",
-          },
-          {
-            text: "PA1-A · Dreamer-lite（第 3 章）",
-            link: "/assignments/pa1-a",
-          },
-          {
-            text: "PA1-B · 按键控制的视频小世界（第 4 章）",
-            link: "/assignments/pa1-b",
-          },
-          {
-            text: "PA1-C · Tiny Video-JEPA（第 5 章）",
-            link: "/assignments/pa1-c",
-          },
-          {
-            text: "PA1-D · Tiny VLA 与检查器（第 6 章）",
-            link: "/assignments/pa1-d",
-          },
-          {
-            text: "PA1-E · 空间世界二选一（第 7 章）",
+            text: "7.7. PA1-E · 空间世界二选一",
             link: "/assignments/pa1-e",
           },
-          { text: "PA2 · 设计下一台世界模型", link: "/assignments/pa2" },
-          { text: "Z0 · 审问一台世界模型", link: "/labs/z0" },
         ],
       },
       {
@@ -322,6 +314,11 @@ export default defineConfig({
             text: "8.6. 实现自己的世界模型",
             link: "/chapters/08-evaluate-and-invent/08-06-next-model-proposal",
           },
+          {
+            text: "8.7. PA2 · 设计下一台世界模型",
+            link: "/assignments/pa2",
+          },
+          { text: "8.8. Z0 · 审问一台世界模型", link: "/labs/z0" },
         ],
       },
     ],
