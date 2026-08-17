@@ -23,3 +23,21 @@
 ---
 
 **本章目标**：学完本章后，你将掌握一套严谨的模型评测方法论，能够客观判断模型的能力边界，并具备从失败中迭代改进模型的研究能力。
+
+## 参考资料
+
+### 实践博客（5 篇）
+
+1. [WorldScore 排行榜与文档](https://worldscore.stanford.edu/) —— 统一评测基准的官方站点：指标定义、榜单与提交方式，配 8.1。
+2. [WorldModelBench 项目页](https://worldmodelbench-team.github.io/) —— 视频世界模型评测集的官方页面，列出物理、常识与幻觉三个维度。
+3. [Your AI Product Needs Evals (Hamel Husain)](https://hamel.dev/blog/posts/evals/) —— 工程界公认的评测实践博客：怎样从真实失败里长出评测集，配 8.5。
+4. [Open X-Embodiment 项目页](https://robotics-transformer-x.github.io/) —— 跨本体机器人数据协作的官方页面，展示多来源数据怎样汇总与评测。
+5. [LIBERO 基准文档](https://libero-project.github.io/) —— VLA 评测基准的官方页面，含任务套件与协议，是 LIBERO-Plus 分析的基础。
+
+### 原始论文（5 篇）
+
+1. [DeepMind Control Suite (Tassa et al., 2018)](https://arxiv.org/abs/1801.00690) —— 连续控制基准套件，本章基线对比与多步评价常用的实验场。
+2. [Mastering Continuous Control from Raw Pixels: DrQ-v2 (Yarats et al., 2022)](https://arxiv.org/abs/2107.09645) —— 像素输入连续控制的公平基线范例，示范了基线与消融该怎么写。
+3. [WorldScore: A Unified Evaluation Benchmark for World Generation (Duan et al., 2025)](https://arxiv.org/abs/2504.00983) —— 把视觉质量、动态一致性与指令跟随拆开的统一评测基准，配 8.1。
+4. [WorldModelBench: Judging Video Generation Models As World Models (Huang et al., 2025)](https://arxiv.org/abs/2502.20694) —— 物理规律、常识与幻觉三个维度的评测集，配 8.2 的反事实与 OOD 检查。
+5. [LIBERO-Plus: In-depth Robustness Analysis of Vision-Language Action Models (Liu et al., 2025)](https://arxiv.org/abs/2510.13626) —— 对 VLA 模型做系统性鲁棒性分析的范例，展示“审问模型”该问哪些问题。

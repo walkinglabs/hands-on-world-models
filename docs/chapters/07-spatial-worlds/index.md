@@ -1,4 +1,4 @@
-# 第 6 章　空间世界与自动驾驶
+# 第 7 章　空间世界与自动驾驶
 
 照片里的像素会随相机移动而变化，房间和道路却不动。要把跨视角、跨时间的观察拼成一个一致的空间，就需要相机几何与空间表示。
 
@@ -20,3 +20,21 @@
 - [PA1-E：3D/4D 或驾驶二选一](/assignments/pa1-e)
 
 静态场景重建不是动态世界模型；没有 ego action 和模拟器的未来预测也不是闭环驾驶。本章会分别标出这些边界。
+
+## 参考资料
+
+### 实践博客（5 篇）
+
+1. [GAIA-2: A Controllable Multi-View Generative World Model for Autonomous Driving (Wayve, 2025)](https://wayve.ai/thinking/gaia-2/) —— Wayve 官方博客，展示可控反事实场景怎样服务驾驶评测，配 7.5。
+2. [Introducing GAIA-1 (Wayve, 2023)](https://wayve.ai/thinking/introducing-gaia1/) —— GAIA-1 官方博客：视频 token 自回归世界模型在驾驶上的首个完整配方。
+3. [The Rise of 3D Gaussian Splatting (Magnopus)](https://www.magnopus.com/blog/the-rise-of-3d-gaussian-splatting/) —— 面向工程师的 3DGS 科普博客，讲清它相对 NeRF 的取舍，配 7.3。
+4. [Nerfstudio 官方文档](https://docs.nerf.studio/) —— 模块化 NeRF 框架的文档与教程，是动手做新视角合成的实用入口。
+5. [3D Gaussian Splatting 官方项目页 (Kerbl et al.)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) —— 官方可视化 demo 与代码，直观感受显式表示的实时渲染。
+
+### 原始论文（5 篇）
+
+1. [NeRF: Representing Scenes as Neural Radiance Fields (Mildenhall et al., 2020)](https://arxiv.org/abs/2003.08934) —— 神经辐射场原始论文，配 7.3 的体渲染方程。
+2. [3D Gaussian Splatting for Real-Time Radiance Field Rendering (Kerbl et al., 2023)](https://arxiv.org/abs/2308.04079) —— 高斯泼洒原始论文，显式表示与实时渲染的取舍。
+3. [Lift, Splat, Shoot: LSS (Philion & Fidler, 2020)](https://arxiv.org/abs/2008.05711) —— 从单目图像升到 BEV 的经典方法，配 7.2。
+4. [BEVFormer: Learning Bird's-Eye-View Representation from Multi-Camera Images (Li et al., 2022)](https://arxiv.org/abs/2203.17270) —— 多相机 BEV 感知的代表作，展示了时空注意力怎样接历史帧。
+5. [GAIA-2: A Controllable Multi-View Generative World Model for Autonomous Driving (Wayve, 2025)](https://arxiv.org/abs/2503.20523) —— 可控多视角驾驶世界模型，反事实生成服务评测，配 7.5。
