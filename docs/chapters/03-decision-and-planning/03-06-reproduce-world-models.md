@@ -251,6 +251,11 @@ CMA-ES 在 867 维空间里盲目搜索，300 代 × 32 个体 × 4 条梦境轨
 
 **Dreamer 系列**（Hafner et al. 2019–2023）[6][8] 把 C 换成了可微的策略网络，直接在 M 的梦境里做梯度下降。M 的 GRU 被替换成更强大的 RSSM（Recurrent State Space Model），能同时维护确定性隐状态和随机 latent；策略网络从隐状态里读出动作，价值网络评估隐状态的好坏，两者通过梦境 rollout 的梯度联合优化。DreamerV1 在 DeepMind Control Suite 上超过了当时所有的 model-free 方法；DreamerV2 用离散 latent 打通了 Atari；DreamerV3 一套超参跑遍 150+ 任务，成为「可复现世界模型」的标杆。
 
+<div style="text-align:center; margin:16px 0;">
+  <img src="/carracing/dreamer-architecture.png" alt="Dreamer 架构" style="max-width:700px; border:1px solid #ddd; border-radius:8px;">
+  <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">Dreamer 的可微想象：编码器把观测压缩为 latent z，RSSM 在隐空间里 rollout 想象轨迹，策略网络和价值网络从隐状态读出动作和评估，梯度沿虚线反向传播。</div>
+</div>
+
 关键区别：World Models 的 C 是**无梯度进化**，Dreamer 的 C 是**可微想象 + 策略梯度**。前者像蒙眼摸索，后者像看着地图走。
 
 ### 短板二：像素重建是负担，不是帮助
@@ -258,6 +263,11 @@ CMA-ES 在 867 维空间里盲目搜索，300 代 × 32 个体 × 4 条梦境轨
 World Models 的 V 必须把 96×96 像素压成 32 维再重建回来。但 M 和 C 关心的从来不是「草地的纹理」，而是「弯道在哪里、车在什么位置」。强迫 V 重建像素，相当于让模型把算力浪费在决策无关的细节上。
 
 **MuZero**（Schrittwieser et al. 2020）[7] 直接扔掉了 V 的解码器。它的 M 不预测像素，只预测隐状态转移和奖励；它的「规划」不在像素空间里做，而是在隐空间里跑蒙特卡洛树搜索（MCTS）。 Atari、围棋、国际象棋、将棋，一套架构全部打通，发在 *Nature* 上。MuZero 的核心洞察是：**世界模型不需要重建世界，只需要重建决策需要的信息**。
+
+<div style="text-align:center; margin:16px 0;">
+  <img src="/carracing/muzero-search.png" alt="MuZero 隐空间搜索" style="max-width:700px; border:1px solid #ddd; border-radius:8px;">
+  <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">MuZero 的隐空间规划：观测经编码器进入隐状态（中间），MCTS 搜索树直接在隐状态上展开（橙色分支），不经过像素重建。</div>
+</div>
 
 **SimPLe**（Kaiser et al. 2020）[9] 走了另一条路：保留像素预测，但用视频预测的视角来做——把 M 的输出当成「下一帧视频」，用更复杂的视频生成架构（卷积 LSTM + 残差连接）来提升多步一致性。它在 Atari 上证明了：如果像素预测足够准，model-based RL 可以超过 model-free。
 
@@ -269,6 +279,11 @@ World Models 的 M 用混合高斯建模多峰未来，但 GRU 的隐状态是�
 
 **Genie**（Bruce et al. 2024）[11] 走得更远：它用视频生成模型（ViT + 离散 token + 扩散/自回归解码）直接生成可交互的像素世界。用户按一个键，Genie 生成下一帧；再按一个键，再生成一帧。它不再区分 V、M、C——整个系统就是一个「按动作条件生成视频」的大模型。Genie 从 YouTube 游戏视频里无监督学出了 2D 平台游戏的物理规律，用户可以在生成的世界里真正「玩」起来。
 
+<div style="text-align:center; margin:16px 0;">
+  <img src="/carracing/genie-interactive.png" alt="Genie 可交互世界" style="max-width:700px; border:1px solid #ddd; border-radius:8px;">
+  <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">Genie 的交互循环：用户输入（键盘/手柄）→ 动作 token → 视频生成模型 → 生成游戏帧 → 循环。世界模型本身就是可玩的游戏引擎。</div>
+</div>
+
 **GameNGen**（Valevski et al. 2024）[12] 在 Genie 的基础上做到了实时：用扩散模型 + 自回归 token 的混合架构，以 20 FPS 生成 DOOM 游戏画面。世界模型从「辅助决策的工具」变成了「可以玩的游戏引擎」。
 
 ### 从赛车到自动驾驶
@@ -278,6 +293,11 @@ CarRacing 是自动驾驶的玩具版。真正的驾驶世界模型要处理多�
 - **GAIA-1**（Hu et al. 2023）[13]：Wayve 的驾驶世界模型，用多视角相机输入 + 离散 token + 自回归生成，能生成逼真的驾驶视频，并支持动作条件控制。
 - **DriveDreamer**（Wang et al. 2023）[14]：用世界模型做驾驶数据增强——在模型生成的「梦境驾驶视频」里训练自动驾驶策略，再迁到真实环境。
 - **UniSim**（Yan et al. 2024）[15]：Google 的通用模拟器，从真实传感器数据里学出可交互的 3D 世界，支持自动驾驶、机器人导航等多种任务的仿真。
+
+<div style="text-align:center; margin:16px 0;">
+  <img src="/carracing/driving-world-model.png" alt="驾驶世界模型" style="max-width:700px; border:1px solid #ddd; border-radius:8px;">
+  <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">驾驶世界模型（GAIA-1 / DriveDreamer）：多视角相机输入 → 编码器产生 latent token → Transformer 在动作条件下预测未来驾驶场景。</div>
+</div>
 
 ### 一句话总结这条线
 
