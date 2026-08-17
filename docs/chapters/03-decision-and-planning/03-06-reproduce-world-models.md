@@ -52,6 +52,11 @@ for episode in range(num_rollouts):
         # 存储 (observation, action, reward)
 ```
 
+<div style="text-align:center; margin:20px 0;">
+  <img src="/carracing/random-rollout.png" alt="随机策略数据" style="max-width:800px; border:1px solid #ddd; border-radius:8px;">
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 0：随机策略 rollout 的一小段。上排：5 帧画面——车在赛道上乱开，有时冲出赛道；中排：动作条（方向盘红=左/绿=右，油门绿色高度，刹车红色块）；下排：奖励条（绿=正奖励/红=负奖励）。这就是喂给 V 和 M 的全部数据：没有专家示范，只有乱开乱撞的轨迹。</div>
+</div>
+
 默认 400 局约收集 40 万帧。这些数据唯一的用途，是让 V 和 M 看清这个世界：路面长什么样、踩油门以后画面如何流动、冲出赛道之前发生了什么。
 
 **运行这一步，你会看到什么？** 脚本打印 `== 1/5 收集数据：随机策略 rollout`，然后逐局输出。400 局大约需要 5-10 分钟。收集完成后，`episodes` 列表里装着 400 条轨迹，每条轨迹是一串 (帧, 动作, 奖励) 的序列。

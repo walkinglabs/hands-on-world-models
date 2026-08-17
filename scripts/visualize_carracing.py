@@ -29,6 +29,74 @@ def load_models(output_dir):
     return vae, mdn, controller
 
 
+def visualize_random_rollout(env, seed=0, max_steps=200):
+    """可视化随机策略收集的数据：帧 + 动作 + 奖励，让读者看到『喂给模型的是什么』。"""
+    obs, _ = env.reset(seed=seed)
+    frames, actions, rewards = [], [], []
+    target_speed = np.random.uniform(0.1, 0.5)
+
+    for step in range(max_steps):
+        if step == 0 or np.random.rand() < 0.05:
+            target_speed = np.random.uniform(0.1, 0.5)
+        action = np.array([
+            np.random.uniform(-1, 1),
+            float(target_speed),
+            float(np.random.rand() < 0.1),
+        ])
+        obs, reward, terminated, truncated, _ = env.step(action)
+        frames.append(obs.copy())
+        actions.append(action.copy())
+        rewards.append(float(reward))
+        if terminated or truncated:
+            break
+
+    # 选取关键帧：均匀分布 5 帧
+    n = len(frames)
+    if n >= 5:
+        indices = np.linspace(0, n - 1, 5, dtype=int)
+    else:
+        indices = list(range(n))
+
+    display_size = 192
+    key_frames = [np.array(Image.fromarray(frames[i]).resize((display_size, display_size), Image.BILINEAR)) for i in indices]
+
+    # 画动作和奖励条
+    bar_height = 40
+    strip_width = display_size * len(key_frames)
+    bar_strip = np.ones((bar_height * 2, strip_width, 3), dtype=np.uint8) * 240
+
+    for col, idx in enumerate(indices):
+        x0 = col * display_size
+        steer = actions[idx][0]   # [-1, 1] → 左红右绿
+        throttle = actions[idx][1]  # [0, 1] → 绿色高度
+        brake = actions[idx][2]     # 0 or 1
+        rew = rewards[idx]
+
+        # 上排：方向盘（红=左，绿=右）+ 油门（蓝条高度）
+        steer_norm = (steer + 1) / 2  # [0, 1]
+        steer_color = (int(200 * (1 - steer_norm)), int(200 * steer_norm), 50)
+        bar_strip[5:18, x0 + 10:x0 + 50] = steer_color
+        # 油门
+        throttle_h = int(throttle * 13)
+        bar_strip[18 - throttle_h:18, x0 + 55:x0 + 80] = (50, 150, 50)
+        # 刹车
+        if brake > 0.5:
+            bar_strip[5:18, x0 + 85:x0 + 110] = (200, 50, 50)
+
+        # 下排：奖励（绿=正，红=负）
+        rew_color = (50, 180, 50) if rew > 0 else (200, 50, 50)
+        rew_h = min(int(abs(rew) * 3), 13)
+        if rew > 0:
+            bar_strip[25:25 + rew_h, x0 + 10:x0 + display_size - 10] = rew_color
+        else:
+            bar_strip[40 - rew_h:40, x0 + 10:x0 + display_size - 10] = rew_color
+
+    # 拼接：帧在上，条在下
+    frame_strip = np.concatenate(key_frames, axis=1)
+    comparison = np.concatenate([frame_strip, bar_strip], axis=0)
+    return comparison, n
+
+
 def capture_environment_frame(env, seed=0, warmup_steps=30):
     """捕获环境帧：先跑 warmup_steps 步，让车进入赛道弯道，画面更有代表性。"""
     obs, _ = env.reset(seed=seed)
@@ -207,9 +275,16 @@ def main():
 
     args.image_dir.mkdir(parents=True, exist_ok=True)
 
+    env = make_env()
+
+    # 0. 随机策略数据：让读者看到『喂给模型的是什么』
+    print("可视化随机策略 rollout 数据...")
+    random_data, total_frames = visualize_random_rollout(env, seed=42, max_steps=200)
+    random_data = add_caption(random_data, f"随机策略数据：{total_frames} 帧（方向盘 / 油门 / 刹车 / 奖励）")
+    Image.fromarray(random_data).save(args.image_dir / "random-rollout.png")
+
     print("加载模型...")
     vae, mdn, controller = load_models(args.output_dir)
-    env = make_env()
 
     # 1. 环境初始帧（upscale to 256x256 for display, bilinear for smooth rendering）
     print("捕获环境初始帧...")
