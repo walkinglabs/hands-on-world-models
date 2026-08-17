@@ -24,7 +24,6 @@ export default defineConfig({
     sidebarMenuLabel: "目录",
     darkModeSwitchLabel: "外观",
     nav: [
-      { text: "前言", link: "/guide/start" },
       {
         text: "绪论",
         link: "/guide/world-model-intro",
@@ -48,10 +47,9 @@ export default defineConfig({
     ],
     sidebar: [
       {
-        text: "前言",
+        text: "导览",
         collapsed: false,
         items: [
-          { text: "前言", link: "/guide/start" },
           { text: "绪论", link: "/guide/world-model-intro" },
           { text: "世界模型简史", link: "/guide/world-model-history" },
         ],

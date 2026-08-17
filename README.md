@@ -3,7 +3,7 @@
   <p>世界模型不只识别眼前的画面；它从连续观察中推测看不见的状态，并学习时间与行动会让世界怎样变化。</p>
 
   <p>
-    <a href="https://walkinglabs.github.io/hands-on-world-models/guide/start.html"><strong>开始阅读</strong></a> ·
+    <a href="https://walkinglabs.github.io/hands-on-world-models/guide/world-model-intro.html"><strong>开始阅读</strong></a> ·
     <a href="#全书结构">查看目录</a> ·
     <a href="#实验代码">运行实验</a> ·
     <a href="#快速开始">快速开始</a> ·
