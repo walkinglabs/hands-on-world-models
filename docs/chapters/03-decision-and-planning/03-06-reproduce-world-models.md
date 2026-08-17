@@ -14,6 +14,11 @@
 
 这一节，我们要亲手把这件事再做一遍。规模打折，原理不打折。跑完之后，你会对「在想象中训练」这句话有完全不同的理解。
 
+<div style="text-align:center; margin:20px 0;">
+  <img src="/carracing/carracing-initial.png" alt="CarRacing 目标世界" style="max-width:400px; border:1px solid #ddd; border-radius:8px;">
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">这就是我们要让模型学会的「世界」：红色小车在灰色赛道上行驶，周围是绿色草地。模型从未见过物理定律，它要从像素流里自己发现「踩油门车会加速、打方向盘车会转弯」。</div>
+</div>
+
 ## 为什么选 CarRacing
 
 World Models 原文有两个实验：CarRacing 赛车和 VizDoom 躲火球。我们选赛车，原因有两个：
@@ -23,11 +28,6 @@ World Models 原文有两个实验：CarRacing 赛车和 VizDoom 躲火球。我
 **第二，随机策略就能收集数据。** 世界模型学的是「世界如何响应动作」，不是「如何开好车」。乱开乱撞的轨迹同样是合法的物理样本。你不需要先有一个会开车的策略，只需要让世界告诉你「踩油门之后画面怎么流动」。
 
 动作空间是三维连续向量：方向盘 \([-1, 1]\)、油门 \([0, 1]\)、刹车 \([0, 1]\)。每局最多 1,000 步（约 20 秒），冲出赛道或长时间停滞会提前结束。
-
-<div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/carracing-initial.png" alt="CarRacing 赛道帧" style="max-width:400px; border:1px solid #ddd; border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 1：CarRacing 环境的一帧。96×96 像素，area 插值缩放到 64×64 后喂给 V。红色小车在灰色赛道上，周围是绿色草地。</div>
-</div>
 
 原文收集了 10,000 次随机 rollout、合计约 1,000 万帧。课程脚本默认 400 次，普通笔记本 CPU 上约 1–3 小时可完成全流程。
 
@@ -82,7 +82,7 @@ $$
 
 <div style="text-align:center; margin:20px 0;">
   <img src="/carracing/vae-reconstruction.png" alt="VAE 重建对比" style="max-width:600px; border:1px solid #ddd; border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 2：VAE 重建对比。左：原图（64×64）；右：编码再解码后的重建。赛道、车身、草地大致可辨，但细节丢失——这正是「只保留决策需要的信息」。</div>
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 1：VAE 重建对比。左：原图（96×96）；右：编码再解码后的重建。赛道、车身、草地大致可辨，但细节丢失——这正是「只保留决策需要的信息」。</div>
 </div>
 
 **一个值得做的实验**：把训练好的 VAE 接上随机 latent，看看解码出来的画面长什么样。你会发现，随机采样的 latent 解码出来的画面几乎是噪声——因为 VAE 学到的 latent 空间是连续的、平滑的，随机采样大概率落在训练分布之外。这正是 M 要在里面想象的空间。
@@ -115,7 +115,7 @@ $$
 
 <div style="text-align:center; margin:20px 0;">
   <img src="/carracing/mdn-free-running.png" alt="M 的 free-running rollout" style="max-width:800px; border:1px solid #ddd; border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 3：M 的 free-running rollout。从左到右：第 0、10、30、60、99 步。前几步还算合理，越往后越扭曲——这就是<strong>复合误差</strong>：每一步的微小偏差滚进下一步，越滚越大。</div>
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 2：M 的 free-running rollout。从左到右：第 0、10、30、60、99 步。前几步还算合理，越往后越扭曲——这就是<strong>复合误差</strong>：每一步的微小偏差滚进下一步，越滚越大。</div>
 </div>
 
 ## 第四步：进化 C，一个 867 参数的线性控制器
@@ -158,7 +158,7 @@ $$
 
 <div style="text-align:center; margin:20px 0;">
   <img src="/carracing/real-evaluation.png" alt="真实环境评估" style="max-width:800px; border:1px solid #ddd; border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 4：真实环境评估的关键帧。进化出的 C 在真实赛道上闭环：V 编码真实帧 → C 出动作 → 环境反馈 → M 更新记忆。</div>
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 3：真实环境评估的关键帧。进化出的 C 在真实赛道上闭环：V 编码真实帧 → C 出动作 → 环境反馈 → M 更新记忆。</div>
 </div>
 
 **运行这一步，你会看到什么？** 脚本打印 `== 5/5 真实环境评估`，然后输出三个分数和完整的 `metrics.json`。如果一切顺利，你应该看到 `real_score` 明显高于 `random_policy_score`——这意味着，在梦里进化出来的策略，确实能在真实环境里开得更好。
@@ -223,5 +223,10 @@ python scripts/run_carracing.py --output runs/carracing-world-model
 - **梦境分数高不等于真实分数高**——两者的差距就是复合误差与模型利用的合计账单。
 
 从 2018 年的交互式文章，到你亲手跑通的训练脚本，World Models 的核心思想从未改变：**在行动之前，先在内部预见行动的后果**。而这条思想的后来的发展——Dreamer 的可微想象、MuZero 的隐式搜索、Genie 的可玩世界——都将在接下来的章节里，由你亲手实现。
+
+<div style="text-align:center; margin:20px 0;">
+  <img src="/carracing/dream-generation.png" alt="梦境生成的世界" style="max-width:800px; border:1px solid #ddd; border-radius:8px;">
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">训练好的世界模型生成的「梦境世界」：C 在 M 的想象中开了 200 步，全程未接触真实环境。从左到右，画面从清晰逐渐模糊——复合误差在累积，但赛道、车身、草地的结构始终可辨。这就是 M 学到的「世界」：不完美，但足够让 C 在里面学会开车。</div>
+</div>
 
 原文与训练细节见 Ha & Schmidhuber (2018) [World Models](https://worldmodels.github.io/)，官方训练代码见 [WorldModelsExperiments](https://github.com/hardmaru/WorldModelsExperiments)（MIT 协议）。

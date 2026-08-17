@@ -63,6 +63,41 @@ def visualize_vae_reconstruction(vae, frame):
     return comparison
 
 
+def visualize_dream_generation(vae, mdn, controller, initial_frame, steps=200):
+    """可视化 M 在想象中生成的世界：C 出动作 → M 想象下一帧，全程不碰真实环境。"""
+    frame_64 = resize_frame(initial_frame)
+    with torch.no_grad():
+        frame_tensor = torch.from_numpy(frame_64).unsqueeze(0).float()
+        mean, logvar = vae.encode(frame_tensor)
+        z = vae.reparameterize(mean, logvar)
+        hidden = torch.zeros(1, mdn.hidden_size)
+
+        frames = [initial_frame]  # 第一帧用真实观测
+        for _ in range(steps):
+            # C 根据当前 latent + 记忆出动作
+            features = torch.cat((z, hidden), dim=-1).numpy()
+            action_np = controller.act(features, controller.parameters, noise=0.0)
+            action_tensor = torch.from_numpy(action_np).float()
+
+            # M 想象下一状态
+            z, _, hidden = mdn.sample(z, action_tensor, hidden, temperature=1.0)
+            reconstruction = vae.decode(z).squeeze(0).permute(1, 2, 0).numpy()
+            frames.append((reconstruction * 255).astype(np.uint8))
+
+    display_size = 256
+    upscaled = [np.array(Image.fromarray(f).resize((display_size, display_size), Image.BILINEAR)) for f in frames]
+
+    # 选取关键帧：均匀分布
+    if len(upscaled) >= 5:
+        indices = np.linspace(0, len(upscaled) - 1, 5, dtype=int)
+        key_frames = [upscaled[i] for i in indices]
+    else:
+        key_frames = upscaled
+
+    comparison = np.concatenate(key_frames, axis=1)
+    return comparison, len(frames)
+
+
 def visualize_mdn_free_running(vae, mdn, initial_frame, steps=100):
     """可视化 M 的 free-running rollout：看复合误差如何累积。initial_frame 为 uint8 [0,255] 96x96。"""
     frame_64 = resize_frame(initial_frame)  # → float [0,255], 64x64
@@ -199,6 +234,12 @@ def main():
     real_eval, total_steps = visualize_real_evaluation(vae, mdn, controller, env, seed=0, max_steps=200)
     real_eval = add_caption(real_eval, f"真实评估：共 {total_steps} 步")
     Image.fromarray(real_eval).save(args.image_dir / "real-evaluation.png")
+
+    # 5. 梦境生成：C 在 M 的想象中开车，全程不碰真实环境
+    print("可视化梦境生成（C 在 M 的想象中开车）...")
+    dream_gen, dream_steps = visualize_dream_generation(vae, mdn, controller, initial_frame, steps=200)
+    dream_gen = add_caption(dream_gen, f"梦境世界：C 在 M 想象中开了 {dream_steps} 步（全程未接触真实环境）")
+    Image.fromarray(dream_gen).save(args.image_dir / "dream-generation.png")
 
     print(f"完成！图片保存在 {args.image_dir}/")
 
