@@ -36,44 +36,52 @@ def capture_environment_frame(env, seed=0):
 
 
 def visualize_vae_reconstruction(vae, frame):
-    """可视化 VAE 重建：原图 vs 重建。"""
-    # Resize frame to 64x64 as expected by VAE
-    frame_64 = resize_frame(frame)
+    """可视化 VAE 重建：原图 vs 重建。frame 为 uint8 [0,255] 96x96。"""
+    frame_64 = resize_frame(frame)  # → float [0,255], 64x64
     with torch.no_grad():
+        # VAE.encode 内部 /255 归一化到 [0,1]
         frame_tensor = torch.from_numpy(frame_64).unsqueeze(0).float()
         mean, logvar = vae.encode(frame_tensor)
         z = vae.reparameterize(mean, logvar)
         reconstruction = vae.decode(z).squeeze(0).permute(1, 2, 0).numpy()
 
-    # Resize original frame to 64x64 for display
-    frame_display = frame_64
+    # Upscale to 256x256 for display (bilinear for smooth rendering)
+    display_size = 256
+    # 原图用原始 96x96 uint8 帧放大，保证清晰
+    frame_display = np.array(Image.fromarray(frame).resize((display_size, display_size), Image.BILINEAR))
+    # 重建图从 VAE 输出 (float [0,1]) 转 uint8 再放大
+    recon_display = np.array(Image.fromarray((reconstruction * 255).astype(np.uint8)).resize((display_size, display_size), Image.BILINEAR))
+
     # Concatenate original and reconstruction side by side
-    comparison = np.concatenate([frame_display, reconstruction], axis=1)
-    return (comparison * 255).astype(np.uint8)
+    comparison = np.concatenate([frame_display, recon_display], axis=1)
+    return comparison
 
 
 def visualize_mdn_free_running(vae, mdn, initial_frame, steps=100):
-    """可视化 M 的 free-running rollout：看复合误差如何累积。"""
-    # Resize initial frame to 64x64
-    frame_64 = resize_frame(initial_frame)
-    frames = [(frame_64 * 255).astype(np.uint8)]
-
+    """可视化 M 的 free-running rollout：看复合误差如何累积。initial_frame 为 uint8 [0,255] 96x96。"""
+    frame_64 = resize_frame(initial_frame)  # → float [0,255], 64x64
     with torch.no_grad():
+        # VAE.encode 内部 /255 归一化到 [0,1]
         frame_tensor = torch.from_numpy(frame_64).unsqueeze(0).float()
         mean, logvar = vae.encode(frame_tensor)
         z = vae.reparameterize(mean, logvar)
         hidden = torch.zeros(1, mdn.hidden_size)
 
+        # 第一帧用原始观测（96x96 uint8），后续用 VAE 解码的 64x64 重建
+        frames = [initial_frame]
         for _ in range(steps):
             action = torch.zeros(1, 3)  # 零动作，只看预测稳定性
             z, _, hidden = mdn.sample(z, action, hidden, temperature=1.0)
-            # 从 z 解码回像素空间
             reconstruction = vae.decode(z).squeeze(0).permute(1, 2, 0).numpy()
             frames.append((reconstruction * 255).astype(np.uint8))
 
+    # Upscale each frame to 256x256 for display (bilinear for smooth rendering)
+    display_size = 256
+    upscaled = [np.array(Image.fromarray(f).resize((display_size, display_size), Image.BILINEAR)) for f in frames]
+
     # 选取关键帧：第 0、10、30、60、99 步
     key_indices = [0, 10, 30, 60, 99]
-    key_frames = [frames[i] for i in key_indices]
+    key_frames = [upscaled[i] for i in key_indices]
 
     # 拼接成一行
     comparison = np.concatenate(key_frames, axis=1)
@@ -88,8 +96,10 @@ def visualize_real_evaluation(vae, mdn, controller, env, seed=0, max_steps=200):
 
     with torch.no_grad():
         for step in range(max_steps):
-            frame = torch.from_numpy(resize_frame(obs)).unsqueeze(0)
-            mean, logvar = vae.encode(frame)
+            # resize_frame → float [0,255] 64x64, VAE.encode 内部 /255 归一化
+            frame_64 = resize_frame(obs)
+            frame_tensor = torch.from_numpy(frame_64).unsqueeze(0).float()
+            mean, logvar = vae.encode(frame_tensor)
             z = vae.reparameterize(mean, logvar)
 
             features = torch.cat((z, hidden), dim=-1).numpy()
@@ -104,12 +114,16 @@ def visualize_real_evaluation(vae, mdn, controller, env, seed=0, max_steps=200):
             if terminated or truncated:
                 break
 
+    # Upscale frames to 256x256 for display (bilinear for smooth rendering)
+    display_size = 256
+    upscaled = [np.array(Image.fromarray(f).resize((display_size, display_size), Image.BILINEAR)) for f in frames]
+
     # 选取关键帧：均匀分布
-    if len(frames) >= 5:
-        indices = np.linspace(0, len(frames) - 1, 5, dtype=int)
-        key_frames = [frames[i] for i in indices]
+    if len(upscaled) >= 5:
+        indices = np.linspace(0, len(upscaled) - 1, 5, dtype=int)
+        key_frames = [upscaled[i] for i in indices]
     else:
-        key_frames = frames
+        key_frames = upscaled
 
     comparison = np.concatenate(key_frames, axis=1)
     return comparison, len(frames)
@@ -121,9 +135,19 @@ def add_caption(image, text, height=30):
     new_image.paste(Image.fromarray(image), (0, 0))
 
     draw = ImageDraw.Draw(new_image)
-    try:
-        font = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 16)
-    except:
+    font = None
+    for font_path in [
+        "/System/Library/Fonts/Supplemental/STHeiti Medium.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/System/Library/Fonts/Supplemental/Songti.ttc",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    ]:
+        try:
+            font = ImageFont.truetype(font_path, 16)
+            break
+        except Exception:
+            continue
+    if font is None:
         font = ImageFont.load_default()
 
     bbox = draw.textbbox((0, 0), text, font=font)
@@ -137,7 +161,7 @@ def add_caption(image, text, height=30):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, default=Path("runs/carracing-world-model"))
-    parser.add_argument("--image-dir", type=Path, default=Path("docs/chapters/03-decision-and-planning/images"))
+    parser.add_argument("--image-dir", type=Path, default=Path("docs/public/carracing"))
     args = parser.parse_args()
 
     args.image_dir.mkdir(parents=True, exist_ok=True)
@@ -146,10 +170,11 @@ def main():
     vae, mdn, controller = load_models(args.output_dir)
     env = make_env()
 
-    # 1. 环境初始帧
+    # 1. 环境初始帧（upscale to 256x256 for display, bilinear for smooth rendering）
     print("捕获环境初始帧...")
     initial_frame = capture_environment_frame(env, seed=0)
-    Image.fromarray(initial_frame).save(args.image_dir / "carracing-initial.png")
+    initial_display = np.array(Image.fromarray(initial_frame).resize((256, 256), Image.BILINEAR))
+    Image.fromarray(initial_display).save(args.image_dir / "carracing-initial.png")
 
     # 2. VAE 重建对比
     print("可视化 VAE 重建...")
