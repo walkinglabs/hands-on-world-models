@@ -15,6 +15,7 @@ data/downloads/
 data/processed/
 checkpoints/
 runs/
+uv.lock
 !runs/
 !runs/README.md
 !runs/reference/

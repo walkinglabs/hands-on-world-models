@@ -2,6 +2,8 @@
 
 路线 A 第一次使用 PyTorch。共同基础仍只需要 NumPy；选择本路线后再安装神经依赖。
 
+如果你先做过 [3.6 动手复现 World Models](/chapters/03-decision-and-planning/03-06-reproduce-world-models)，会发现本路线的 RSSM 与 Dreamer 就是那套 V-M-C 的现代版：压缩器从 VAE 换成更稳的 RSSM，控制器从进化换成可微的 actor-critic。
+
 ```bash
 python -m pip install -r requirements-neural.txt
 ```

@@ -15,7 +15,7 @@ dependencies = ["numpy>=1.24"]
 [project.optional-dependencies]
 notebook = ["jupyterlab>=4.0", "nbclient>=0.10"]
 test = []
-neural = ["torch>=2.2,<2.9"]
+neural = ["torch>=2.2,<2.9", "gymnasium[box2d]>=1.0"]
 
 [project.scripts]
 hwm-data = "hwm.data_cli:main"

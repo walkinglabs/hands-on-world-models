@@ -162,7 +162,11 @@ export default defineConfig({
             text: "3.5. MuZero 与蒙特卡洛树搜索",
             link: "/chapters/03-decision-and-planning/03-05-muzero",
           },
-          { text: "3.6. 决策与规划实验", link: "/labs/route-a" },
+          {
+            text: "3.6. 动手复现 World Models",
+            link: "/chapters/03-decision-and-planning/03-06-reproduce-world-models",
+          },
+          { text: "3.7. 决策与规划实验", link: "/labs/route-a" },
           {
             text: "PA1-A · 做出一台 Dreamer-lite",
             link: "/assignments/pa1-a",
