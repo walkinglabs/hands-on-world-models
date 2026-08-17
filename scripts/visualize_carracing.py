@@ -4,6 +4,8 @@ import argparse
 import sys
 from pathlib import Path
 
+import json
+
 import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
@@ -267,6 +269,125 @@ def add_caption(image, text, height=30):
     return np.array(new_image)
 
 
+def visualize_comparison(our_metrics, output_path):
+    """绘制官方结果 vs 我们的复现结果对比图。"""
+    # 官方数据（CarRacing-v0, gym 0.9）
+    official = {
+        "random": 210,
+        "wm_no_mem": 632,
+        "wm_with_mem": 906,
+    }
+    # 我们的数据（CarRacing-v3, gymnasium 1.x）
+    ours = {
+        "random": our_metrics.get("random_policy_score", 0),
+        "wm_no_mem": 0,  # 没有跑 --no-memory 对照
+        "wm_with_mem": our_metrics.get("real_score", 0),
+    }
+
+    # 画布
+    width, height = 800, 400
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    # 字体
+    font = None
+    for font_path in [
+        "/System/Library/Fonts/Supplemental/STHeiti Medium.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    ]:
+        try:
+            font = ImageFont.truetype(font_path, 14)
+            break
+        except Exception:
+            continue
+    if font is None:
+        font = ImageFont.load_default()
+    title_font = None
+    for font_path in [
+        "/System/Library/Fonts/Supplemental/STHeiti Medium.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+    ]:
+        try:
+            title_font = ImageFont.truetype(font_path, 18)
+            break
+        except Exception:
+            continue
+    if title_font is None:
+        title_font = font
+
+    # 标题
+    draw.text((20, 10), "CarRacing 累计奖励：官方 vs 我们的复现", fill=(0, 0, 0), font=title_font)
+    draw.text((20, 35), "（环境版本不同：官方 CarRacing-v0 / gym 0.9，我们 CarRacing-v3 / gymnasium 1.x，奖励尺度不可直接比较）", fill=(100, 100, 100), font=font)
+
+    # 柱状图参数
+    bar_groups = [
+        ("随机策略", official["random"], ours["random"]),
+        ("World Models\n(无记忆)", official["wm_no_mem"], ours["wm_no_mem"]),
+        ("World Models\n(有记忆)", official["wm_with_mem"], ours["wm_with_mem"]),
+    ]
+
+    chart_left = 120
+    chart_right = 750
+    chart_top = 80
+    chart_bottom = 300
+    chart_height = chart_bottom - chart_top
+
+    # 找最大值用于缩放（只看官方数据，因为我们的可能是负数）
+    max_val = max(official.values())
+    min_val = min(ours.values()) if min(ours.values()) < 0 else 0
+    val_range = max_val - min_val if max_val != min_val else 1
+
+    # 画坐标轴
+    draw.line([(chart_left, chart_top), (chart_left, chart_bottom)], fill=(0, 0, 0), width=2)
+    draw.line([(chart_left, chart_bottom), (chart_right, chart_bottom)], fill=(0, 0, 0), width=2)
+
+    # 零线（如果 min_val < 0）
+    if min_val < 0:
+        zero_y = chart_bottom - int((0 - min_val) / val_range * chart_height)
+        draw.line([(chart_left, zero_y), (chart_right, zero_y)], fill=(180, 180, 180), width=1)
+
+    # 画柱子
+    group_width = (chart_right - chart_left) / len(bar_groups)
+    bar_width = int(group_width * 0.3)
+
+    for i, (label, off_val, our_val) in enumerate(bar_groups):
+        x_center = int(chart_left + (i + 0.5) * group_width)
+
+        # 官方柱子（蓝色）
+        off_h = int((off_val - min_val) / val_range * chart_height)
+        off_x = x_center - bar_width - 5
+        off_y = chart_bottom - off_h
+        draw.rectangle([off_x, off_y, off_x + bar_width, chart_bottom], fill=(70, 130, 220))
+
+        # 我们的柱子（橙色）
+        our_h = int((our_val - min_val) / val_range * chart_height)
+        our_x = x_center + 5
+        our_y = chart_bottom - our_h
+        draw.rectangle([our_x, our_y, our_x + bar_width, chart_bottom], fill=(240, 140, 50))
+
+        # 标签
+        for j, line in enumerate(label.split("\n")):
+            bbox = draw.textbbox((0, 0), line, font=font)
+            lw = bbox[2] - bbox[0]
+            draw.text((x_center - lw // 2, chart_bottom + 8 + j * 16), line, fill=(0, 0, 0), font=font)
+
+        # 数值
+        draw.text((off_x + 5, off_y - 18), str(off_val), fill=(70, 130, 220), font=font)
+        draw.text((our_x + 5, our_y - 18), f"{our_val:.0f}", fill=(240, 140, 50), font=font)
+
+    # 图例
+    legend_x = chart_right - 180
+    legend_y = chart_top + 10
+    draw.rectangle([legend_x, legend_y, legend_x + 15, legend_y + 15], fill=(70, 130, 220))
+    draw.text((legend_x + 20, legend_y), "官方 (v0)", fill=(0, 0, 0), font=font)
+    draw.rectangle([legend_x, legend_y + 22, legend_x + 15, legend_y + 37], fill=(240, 140, 50))
+    draw.text((legend_x + 20, legend_y + 22), "我们的复现 (v3)", fill=(0, 0, 0), font=font)
+
+    img.save(output_path)
+    print(f"对比图已保存: {output_path}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, default=Path("runs/carracing-world-model"))
@@ -315,6 +436,16 @@ def main():
     dream_gen, dream_steps = visualize_dream_generation(vae, mdn, controller, initial_frame, steps=200)
     dream_gen = add_caption(dream_gen, f"梦境世界：C 在 M 想象中开了 {dream_steps} 步（全程未接触真实环境）")
     Image.fromarray(dream_gen).save(args.image_dir / "dream-generation.png")
+
+    # 6. 官方 vs 复现对比
+    print("绘制官方 vs 复现对比图...")
+    metrics_path = args.output_dir / "metrics.json"
+    if metrics_path.exists():
+        with open(metrics_path) as f:
+            our_metrics = json.load(f)
+        visualize_comparison(our_metrics, args.image_dir / "comparison.png")
+    else:
+        print(f"警告：未找到 {metrics_path}，跳过对比图")
 
     print(f"完成！图片保存在 {args.image_dir}/")
 

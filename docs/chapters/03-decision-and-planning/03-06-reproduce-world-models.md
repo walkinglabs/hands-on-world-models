@@ -198,6 +198,11 @@ python scripts/run_carracing.py --output runs/carracing-world-model
 | `--no-memory`       | 去掉 M 的记忆 h_t | 控制器退化为只看当前帧，分数下降——对应原文消融 632 vs 906         |
 | `--temperature 0.1` | 低温梦境          | 梦境确定、进化容易，但控制器可能过拟合梦境的自信——对应原文 τ 实验 |
 
+<div style="text-align:center; margin:20px 0;">
+  <img src="/carracing/comparison.png" alt="官方 vs 复现对比" style="max-width:800px; border:1px solid #ddd; border-radius:8px;">
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图：CarRacing 累计奖励对比。蓝色为原文数据（CarRacing-v0 / gym 0.9），橙色为我们的复现（CarRacing-v3 / gymnasium 1.x，50 rollouts、30 代进化）。环境版本不同导致奖励尺度不可直接比较——v3 的奖励更稀疏、负奖励更多，但相对趋势一致：有记忆 > 随机 > 无记忆。</div>
+</div>
+
 ## 已知简化与坑
 
 教学版有几处刻意的简化，复现结果与原文数值对不上时，先从这里找原因：
