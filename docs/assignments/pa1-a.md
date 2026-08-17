@@ -1,4 +1,4 @@
-# PA1-A · 做出一台 Dreamer-lite
+# PA1-A · 动手：做出一台 Dreamer-lite
 
 PA1-A 是路线 A 的小整机。目标不是复现 DreamerV3 的排行榜，而是完成一条有证据的真实循环：从环境收集数据，在 RSSM 中想象，用 Actor-Critic 学习，再回到环境检查。
 

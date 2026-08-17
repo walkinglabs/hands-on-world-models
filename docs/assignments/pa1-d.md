@@ -1,4 +1,4 @@
-# PA1-D · Tiny VLA 与 World-Model Checker
+# PA1-D · 动手：Tiny VLA 与 World-Model Checker
 
 ## 必做核心：直接 VLA
 

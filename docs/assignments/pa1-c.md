@@ -1,4 +1,4 @@
-# PA1-C · 训练并审问一个 Tiny Video-JEPA
+# PA1-C · 动手：训练并审问一个 Tiny Video-JEPA
 
 目标不是把 feature loss 降到最低，而是弄清表示保留了什么、是否受动作控制、能否帮助一个小任务。
 
