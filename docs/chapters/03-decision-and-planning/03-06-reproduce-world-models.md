@@ -8,7 +8,7 @@
 
 ---
 
-2018 年，David Ha 与 Jürgen Schmidhuber 发表了一篇交互式文章 [World Models](https://worldmodels.github.io/)。文章里有一个赛车 demo：一辆小车在赛道上飞驰，画面模糊但动作流畅。作者说，这不是录屏，是模型在「做梦」——一个 867 个参数的线性控制器，完全在想象中学会了开车。
+2018 年，David Ha 与 Jürgen Schmidhuber 在 NeurIPS 发表了论文 *Recurrent World Models Facilitate Policy Evolution* [1]，并配套了一篇交互式文章 [World Models](https://worldmodels.github.io/) [2]。文章里有一个赛车 demo：一辆小车在赛道上飞驰，画面模糊但动作流畅。作者说，这不是录屏，是模型在「做梦」——一个 867 个参数的线性控制器，完全在想象中学会了开车。
 
 你当时大概和我一样，第一反应是：「这怎么可能？867 个参数？线性控制器？在梦里学的？」
 
@@ -58,7 +58,7 @@ for episode in range(num_rollouts):
 
 ## 第二步：训练 V，一个 ConvVAE
 
-V 的任务是把每一帧观测压成 32 维 latent。脚本用四层卷积做编码器、四层转置卷积做解码器，中间是均值与对数方差两个线性头。
+V 的任务是把每一帧观测压成 32 维 latent。脚本用四层卷积做编码器、四层转置卷积做解码器，中间是均值与对数方差两个线性头——结构与 Kingma & Welling 的 Auto-Encoding Variational Bayes [3] 一致。
 
 训练目标是 ELBO（Evidence Lower Bound）：
 
@@ -89,7 +89,7 @@ $$
 
 ## 第三步：训练 M，一个 MDN-RNN
 
-M 建模转移分布 \(P(z_{t+1}, r_{t+1} \mid a_t, z_t, h_t)\)。结构是一个 GRU 单元加上混合高斯输出头：\(z_t\) 与 \(a_t\) 拼接后送入 GRU 得到新隐状态 \(h_{t+1}\)，再由三个线性头输出五个高斯分量的均值、方差和权重，另有一个单高斯头预测奖励。
+M 建模转移分布 \(P(z_{t+1}, r_{t+1} \mid a_t, z_t, h_t)\)。结构是一个 GRU 单元加上混合高斯输出头：\(z_t\) 与 \(a_t\) 拼接后送入 GRU 得到新隐状态 \(h_{t+1}\)，再由三个线性头输出五个高斯分量的均值、方差和权重，另有一个单高斯头预测奖励。混合密度网络（Mixture Density Network）的思想来自 Bishop (1994) [4]。
 
 对下一时刻的 latent，预测的不是一个值而是一个混合分布：
 
@@ -128,7 +128,7 @@ $$
 
 参数一共 \((32 + 256) \times 3 + 3 = 867\) 个。这是原文的核心设计：把所有复杂度押进 M，让 C 小到可以用无梯度方法优化。
 
-脚本用几十行实现了一个教学版 CMA-ES（Covariance Matrix Adaptation Evolution Strategy）。它在 867 维参数空间里维护一个高斯分布，逐代做三件事：
+脚本用几十行实现了一个教学版 CMA-ES（Covariance Matrix Adaptation Evolution Strategy）[5]。它在 867 维参数空间里维护一个高斯分布，逐代做三件事：
 
 1. **采样**：从 \(\mathcal{N}(m, \sigma^2 C)\) 采出一个种群（默认 32 个个体）。
 2. **评估**：每个个体去 M 的梦里开 4 次车、每次 200 步，fitness 是累计预测奖励的平均。
@@ -222,11 +222,21 @@ python scripts/run_carracing.py --output runs/carracing-world-model
 - **带记忆（[z, h] 输入）显著优于只看当前帧**，这是「记忆」价值的直接证据。
 - **梦境分数高不等于真实分数高**——两者的差距就是复合误差与模型利用的合计账单。
 
-从 2018 年的交互式文章，到你亲手跑通的训练脚本，World Models 的核心思想从未改变：**在行动之前，先在内部预见行动的后果**。而这条思想的后来的发展——Dreamer 的可微想象、MuZero 的隐式搜索、Genie 的可玩世界——都将在接下来的章节里，由你亲手实现。
+从 2018 年的交互式文章，到你亲手跑通的训练脚本，World Models 的核心思想从未改变：**在行动之前，先在内部预见行动的后果**。而这条思想的后来的发展——Dreamer 的可微想象 [6]、MuZero 的隐式搜索 [7]、Genie 的可玩世界——都将在接下来的章节里，由你亲手实现。
 
 <div style="text-align:center; margin:20px 0;">
   <img src="/carracing/dream-generation.png" alt="梦境生成的世界" style="max-width:800px; border:1px solid #ddd; border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">训练好的世界模型生成的「梦境世界」：C 在 M 的想象中开了 200 步，全程未接触真实环境。从左到右，画面从清晰逐渐模糊——复合误差在累积，但赛道、车身、草地的结构始终可辨。这就是 M 学到的「世界」：不完美，但足够让 C 在里面学会开车。</div>
 </div>
 
-原文与训练细节见 Ha & Schmidhuber (2018) [World Models](https://worldmodels.github.io/)，官方训练代码见 [WorldModelsExperiments](https://github.com/hardmaru/WorldModelsExperiments)（MIT 协议）。
+原文与训练细节见 Ha & Schmidhuber (2018) [1][2]，官方训练代码见 [WorldModelsExperiments](https://github.com/hardmaru/WorldModelsExperiments)（MIT 协议）。
+
+## 参考文献
+
+1. Ha, D., & Schmidhuber, J. (2018). Recurrent World Models Facilitate Policy Evolution. *NeurIPS 2018*. [arXiv:1803.10122](https://arxiv.org/abs/1803.10122)
+2. Ha, D., & Schmidhuber, J. (2018). World Models. 交互式文章：[worldmodels.github.io](https://worldmodels.github.io/) —— 本篇正文中的 V-M-C 框架、CarRacing 实验设置与图 1 均来自此文（图表为 CC-BY 4.0 授权）。配套代码：[WorldModelsExperiments](https://github.com/hardmaru/WorldModelsExperiments)。
+3. Kingma, D. P., & Welling, M. (2014). Auto-Encoding Variational Bayes. *ICLR 2014*. [arXiv:1312.6114](https://arxiv.org/abs/1312.6114)
+4. Bishop, C. M. (1994). Mixture Density Networks. *Aston University Technical Report NCRG/94/004*. [链接](https://publications.aston.ac.uk/id/eprint/373/)
+5. Hansen, N. (2001). Completely Derandomized Self-Adaptation in Evolution Strategies. *Evolutionary Computation*, 9(2), 159–195. [链接](https://doi.org/10.1162/106365601750190398)
+6. Hafner, D., et al. (2019). Dream to Control: Learning Behaviors by Latent Imagination. *ICLR 2020*. [arXiv:1912.01603](https://arxiv.org/abs/1912.01603) —— 用可微梦境端到端训练策略，替代 CMA-ES 进化。
+7. Schrittwieser, J., et al. (2020). Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model. *Nature*, 588, 604–609. [链接](https://doi.org/10.1038/s41586-020-03051-4) —— MuZero：不重建像素，只在隐空间里做蒙特卡洛树搜索。
