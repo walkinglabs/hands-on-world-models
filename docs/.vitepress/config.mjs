@@ -80,7 +80,7 @@ export default defineConfig({
             text: "0.5. 经典世界模型",
             link: "/chapters/00-why-world-models/00-05-classic-world-models",
           },
-          { text: "0.6. 从零实现世界模型（F0）", link: "/labs/f0" },
+          { text: "0.6. 从零实现世界模型", link: "/labs/f0" },
         ],
       },
       {
@@ -92,30 +92,30 @@ export default defineConfig({
             link: "/chapters/01-foundations/01-01-tensors-and-trajectories",
           },
           {
-            text: "1.2. 图像编码器：CNN 与 ViT",
+            text: "1.2. 图像编码器",
             link: "/chapters/01-foundations/01-02-cnn-and-vit",
           },
           {
-            text: "1.3. 记忆与动态：初见 RNN、Transformer 与 RSSM",
+            text: "1.3. 记忆与动态",
             link: "/chapters/01-foundations/01-03-memory-and-dynamics",
           },
           {
-            text: "1.4. 压缩与生成：初见 VAE、VQ-VAE 与扩散",
+            text: "1.4. 压缩与生成",
             link: "/chapters/01-foundations/01-04-compression-and-generation",
           },
           {
-            text: "1.5. 空间表示：初见 BEV 与占用网格",
+            text: "1.5. 空间表示",
             link: "/chapters/01-foundations/01-05-space-representations",
           },
           {
-            text: "1.6. 决策接口：初见价值、策略与规划器",
+            text: "1.6. 决策接口",
             link: "/chapters/01-foundations/01-06-value-policy-planner",
           },
           {
-            text: "1.7. 经验回放与第一台模型（预览）",
+            text: "1.7. 经验回放与第一个模型",
             link: "/chapters/01-foundations/01-07-data-and-first-model",
           },
-          { text: "1.8. 基础实验（F1–F3）", link: "/labs/foundations" },
+          { text: "1.8. 基础实验", link: "/labs/foundations" },
         ],
       },
       {
@@ -149,7 +149,7 @@ export default defineConfig({
             link: "/chapters/03-decision-and-planning/03-02-rssm-training",
           },
           {
-            text: "3.3. PlaNet 与交叉熵方法（CEM）",
+            text: "3.3. PlaNet 与 CEM",
             link: "/chapters/03-decision-and-planning/03-03-planet-and-cem",
           },
           {
@@ -160,7 +160,7 @@ export default defineConfig({
             text: "3.5. MuZero 与蒙特卡洛树搜索",
             link: "/chapters/03-decision-and-planning/03-05-muzero",
           },
-          { text: "3.6. 决策与规划实验（路线 A）", link: "/labs/route-a" },
+          { text: "3.6. 决策与规划实验", link: "/labs/route-a" },
         ],
       },
       {
@@ -183,7 +183,7 @@ export default defineConfig({
             text: "4.4. 扩散视频生成与多步漂移",
             link: "/chapters/04-interactive-video/04-04-diffusion-and-evaluation",
           },
-          { text: "4.5. 交互视频实验（路线 B）", link: "/labs/route-bc" },
+          { text: "4.5. 交互视频实验", link: "/labs/route-bc" },
         ],
       },
       {
@@ -203,10 +203,10 @@ export default defineConfig({
             link: "/chapters/05-jepa/05-03-video-jepa",
           },
           {
-            text: "5.4. 动作条件 JEPA（Action-JEPA）",
+            text: "5.4. 动作条件 JEPA",
             link: "/chapters/05-jepa/05-04-action-jepa",
           },
-          { text: "5.5. JEPA 实验（路线 C）", link: "/labs/route-bc" },
+          { text: "5.5. JEPA 实验", link: "/labs/route-bc" },
         ],
       },
       {
@@ -218,7 +218,7 @@ export default defineConfig({
             link: "/chapters/06-robot-vla/06-01-robot-data-and-bc",
           },
           {
-            text: "6.2. 视觉-语言-动作模型（VLA）",
+            text: "6.2. 视觉-语言-动作模型",
             link: "/chapters/06-robot-vla/06-02-vision-language-action",
           },
           {
@@ -230,7 +230,7 @@ export default defineConfig({
             link: "/chapters/06-robot-vla/06-04-world-model-checker",
           },
           {
-            text: "6.5. 机器人与 VLA 实验（路线 D）",
+            text: "6.5. 机器人与 VLA 实验",
             link: "/labs/route-de",
           },
         ],
@@ -259,7 +259,7 @@ export default defineConfig({
             text: "7.5. 驾驶世界模型与未来占用",
             link: "/chapters/07-spatial-worlds/07-05-driving-world-models",
           },
-          { text: "7.6. 空间世界实验（路线 E）", link: "/labs/route-de" },
+          { text: "7.6. 空间世界实验", link: "/labs/route-de" },
         ],
       },
       {
