@@ -29,9 +29,15 @@ def load_models(output_dir):
     return vae, mdn, controller
 
 
-def capture_environment_frame(env, seed=0):
-    """捕获环境初始帧。"""
+def capture_environment_frame(env, seed=0, warmup_steps=30):
+    """捕获环境帧：先跑 warmup_steps 步，让车进入赛道弯道，画面更有代表性。"""
     obs, _ = env.reset(seed=seed)
+    for _ in range(warmup_steps):
+        # 轻微左转 + 油门，让车离开起点直道进入弯道
+        action = np.array([0.3, 0.5, 0.0])
+        obs, reward, terminated, truncated, _ = env.step(action)
+        if terminated or truncated:
+            break
     return obs
 
 

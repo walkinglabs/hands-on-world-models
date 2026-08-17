@@ -25,8 +25,8 @@ World Models 原文有两个实验：CarRacing 赛车和 VizDoom 躲火球。我
 动作空间是三维连续向量：方向盘 \([-1, 1]\)、油门 \([0, 1]\)、刹车 \([0, 1]\)。每局最多 1,000 步（约 20 秒），冲出赛道或长时间停滞会提前结束。
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/carracing-initial.png" alt="CarRacing 初始帧" style="max-width:400px; border:1px solid #ddd; border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 1：CarRacing 环境的一帧。96×96 像素，area 插值缩放到 64×64 后喂给 V。</div>
+  <img src="/carracing/carracing-initial.png" alt="CarRacing 赛道帧" style="max-width:400px; border:1px solid #ddd; border-radius:8px;">
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 1：CarRacing 环境的一帧。96×96 像素，area 插值缩放到 64×64 后喂给 V。红色小车在灰色赛道上，周围是绿色草地。</div>
 </div>
 
 原文收集了 10,000 次随机 rollout、合计约 1,000 万帧。课程脚本默认 400 次，普通笔记本 CPU 上约 1–3 小时可完成全流程。
