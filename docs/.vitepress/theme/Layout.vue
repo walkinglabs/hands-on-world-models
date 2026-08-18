@@ -1,6 +1,6 @@
 <script setup>
 import DefaultTheme from "vitepress/theme";
-import { useData } from "vitepress";
+import { useData, useRoute } from "vitepress";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import {
   PopoverContent,
@@ -13,6 +13,7 @@ import MaintenanceBanner from "./MaintenanceBanner.vue";
 import ReadingProgress from "./ReadingProgress.vue";
 
 const { frontmatter, isDark } = useData();
+const route = useRoute();
 
 const FONT_SIZE_KEY = "hwm-doc-font-size";
 const LINE_HEIGHT_KEY = "hwm-doc-line-height";
@@ -121,6 +122,67 @@ function syncGroupState() {
     groups.every((group) => !group.classList.contains("collapsed"));
 }
 
+// 给包含当前页链接的侧边栏分组打上标记，让章节大标题高亮。
+// 直接按路由与链接 href 匹配，不依赖 is-active 类的出现时机。
+function normalizePath(path) {
+  return path.replace(/\.html$/, "").replace(/\/$/, "");
+}
+
+let markGroupToken = 0;
+
+// 把章节大标题开头的编号（如 "2."）包成独立 span，染上品牌色
+function decorateChapterNumbers() {
+  if (typeof document === "undefined") return;
+  const texts = document.querySelectorAll(
+    ".VPSidebarItem.level-0 > .item > .text",
+  );
+  texts.forEach((text) => {
+    if (text.querySelector(".hwm-chapter-num")) return;
+    const match = /^(\d+)\.\s*/.exec(text.textContent || "");
+    if (!match) return;
+    const num = document.createElement("span");
+    num.className = "hwm-chapter-num";
+    num.textContent = match[0];
+    text.textContent = (text.textContent || "").slice(match[0].length);
+    text.prepend(num);
+  });
+}
+
+function markActiveSidebarGroup(retries = 12) {
+  if (typeof document === "undefined") return;
+  const current = normalizePath(route.path);
+  const groups = document.querySelectorAll(".VPSidebar > .nav > .group");
+  let activeGroup = null;
+  if (current) {
+    for (const link of document.querySelectorAll(".VPSidebar .group a")) {
+      const href = normalizePath(
+        decodeURIComponent(link.getAttribute("href") || ""),
+      );
+      // base 前缀可能只存在于一侧，用后缀匹配兼容
+      if (
+        href === current ||
+        href.endsWith(current) ||
+        current.endsWith(href)
+      ) {
+        activeGroup = link.closest(".VPSidebar > .nav > .group");
+        break;
+      }
+    }
+  }
+  groups.forEach((group) => {
+    group.classList.toggle("ct-nav-group-active", group === activeGroup);
+  });
+  decorateChapterNumbers();
+  // 首次加载时侧边栏可能尚未渲染完成，或随后被 Vue 重新渲染抹掉类，
+  // 因此在一个短窗口内持续重打标记
+  if (retries > 0) {
+    const token = ++markGroupToken;
+    setTimeout(() => {
+      if (token === markGroupToken) markActiveSidebarGroup(retries - 1);
+    }, 250);
+  }
+}
+
 function toggleAllSidebarGroups() {
   const shouldExpand = !allGroupsExpanded.value;
   const groups = sidebarGroups();
@@ -149,6 +211,15 @@ watch([fontSize, lineHeight, docWidth], () => {
 
 watch(sidebarCollapsed, applySidebarState);
 
+watch(
+  () => route.path,
+  () => {
+    markGroupToken++;
+    // 用 setTimeout 而非 requestAnimationFrame，后台标签页下也能执行
+    nextTick(() => setTimeout(markActiveSidebarGroup, 0));
+  },
+);
+
 onMounted(() => {
   fontSize.value = clamp(
     localStorage.getItem(FONT_SIZE_KEY) || DEFAULT_FONT_SIZE,
@@ -168,7 +239,10 @@ onMounted(() => {
   sidebarCollapsed.value = localStorage.getItem(SIDEBAR_KEY) === "true";
   applyReadingSettings();
   applySidebarState();
-  nextTick(syncGroupState);
+  nextTick(() => {
+    syncGroupState();
+    markActiveSidebarGroup();
+  });
 });
 </script>
 
@@ -205,6 +279,22 @@ onMounted(() => {
             </button>
 
             <div class="hwm-sidebar-toolbar-end">
+              <button
+                class="hwm-sidebar-action hwm-icon-action"
+                type="button"
+                :aria-label="isDark ? '切换到浅色模式' : '切换到深色模式'"
+                :title="isDark ? '切换到浅色模式' : '切换到深色模式'"
+                @click="setAppearance(!isDark)"
+              >
+                <Sun
+                  v-if="isDark"
+                  :size="16"
+                  :stroke-width="2"
+                  aria-hidden="true"
+                />
+                <Moon v-else :size="16" :stroke-width="2" aria-hidden="true" />
+              </button>
+
               <PopoverTrigger as-child>
                 <button
                   class="hwm-sidebar-action hwm-icon-action"

@@ -285,9 +285,9 @@
   background-image: linear-gradient(
     90deg,
     #f5f5f7 0%,
-    #9aa8ff 30%,
-    #d8b4fe 55%,
-    #5eead4 78%,
+    #86c3c9 30%,
+    #5eead4 55%,
+    #a7f3d0 78%,
     #f5f5f7 100%
   );
 }
@@ -365,13 +365,13 @@
 
 .dark .VPNavBarMenu .nav-link.active a,
 .dark .VPNavBarMenu .nav-link a.active {
-  color: #aeb8ff;
-  background: rgba(217, 119, 69, 0.15);
+  color: #86c3c9;
+  background: rgba(134, 195, 201, 0.12);
 }
 
 .dark .VPNavBarTranslations .items .title {
-  color: #aeb8ff;
-  background: rgba(217, 119, 69, 0.18);
+  color: #86c3c9;
+  background: rgba(134, 195, 201, 0.14);
 }
 
 .dark .VPNavBarTranslations .items .link {
@@ -380,8 +380,8 @@
 
 .dark .VPNavBarTranslations .items .link:hover,
 .dark .VPNavBarTranslations .items .link:focus-visible {
-  color: #aeb8ff;
-  background: rgba(217, 119, 69, 0.15);
+  color: #86c3c9;
+  background: rgba(134, 195, 201, 0.1);
 }
 
 /* Social links */
@@ -462,6 +462,16 @@
   height: 34px;
   padding: 0 4px;
   border-radius: var(--radius-full);
+}
+
+/* VitePress 默认只在 ≥1280px 才显示导航栏外观开关，
+   这里放宽到中等宽度，让切换入口始终可见。
+   需要 !important 才能盖过默认主题的 scoped 规则 */
+@media (min-width: 768px) {
+  .VPNavBar .VPNavBarAppearance {
+    display: flex !important;
+    align-items: center;
+  }
 }
 
 .VPNavBarAppearance .VPSwitchAppearance {
@@ -1269,6 +1279,23 @@ aside.VPSidebar {
   color: var(--vp-c-brand-1) !important;
 }
 
+.dark
+  .VPSidebar
+  > .nav
+  > .group.ct-nav-group-active
+  > .VPSidebarItem.level-0
+  > .item
+  > .text,
+.dark
+  .VPSidebar
+  > .nav
+  > .group.ct-nav-group-active
+  > .VPSidebarItem.level-0
+  > .item
+  > .caret {
+  color: #86c3c9 !important;
+}
+
 :where(html) .VPSidebarItem.level-0 .text,
 :where(html) .VPSidebarItem.level-0[data-v-d81de50c] .text {
   line-height: 1.35 !important;
@@ -1284,11 +1311,24 @@ aside.VPSidebar {
   line-height: 1.48 !important;
 }
 
-:where(html) .VPSidebarItem.level-0 .text {
-  color: var(--sidebar-text-primary);
-  font-size: 0.84rem;
-  font-weight: 680;
+:where(html) .VPSidebarItem.level-0 > .item > .text,
+:where(html) .VPSidebarItem.level-0 > .item > .link > .text {
+  color: #17191d !important;
+  font-size: 0.86rem;
+  font-weight: 720 !important;
   letter-spacing: 0.005em;
+}
+
+/* 章节编号：品牌色小标，让大标题有记忆点 */
+:where(html) .VPSidebarItem.level-0 .hwm-chapter-num {
+  color: var(--vp-c-brand-1);
+  font-weight: 780;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.dark .VPSidebarItem.level-0 .hwm-chapter-num {
+  color: #86c3c9;
 }
 
 :where(html) .VPSidebarItem.level-1 .text,
@@ -1299,10 +1339,11 @@ aside.VPSidebar {
   font-weight: 450;
 }
 
+/* 小节标题：灰黑色，比章节大标题弱一档，形成清晰的层级 */
 :where(html) .VPSidebarItem.level-1 > .item > .text,
 :where(html) .VPSidebarItem.level-1 > .item > .link > .text {
-  color: var(--sidebar-text-primary);
-  font-weight: 590;
+  color: rgba(29, 29, 31, 0.68) !important;
+  font-weight: 520;
 }
 
 :where(html) .VPSidebarItem.level-2.collapsible > .item > .text {
@@ -1312,8 +1353,15 @@ aside.VPSidebar {
   letter-spacing: 0.01em;
 }
 
-.dark :where(html) .VPSidebarItem.level-0 .text {
-  color: var(--sidebar-text-primary);
+/* 注意：dark 类加在 html 元素自身上，这里不能再要求 html 作为后代 */
+.dark .VPSidebarItem.level-0 > .item > .text,
+.dark .VPSidebarItem.level-0 > .item > .link > .text {
+  color: #f0f2f6 !important;
+}
+
+.dark .VPSidebarItem.level-1 > .item > .text,
+.dark .VPSidebarItem.level-1 > .item > .link > .text {
+  color: rgba(240, 242, 246, 0.72) !important;
 }
 
 .dark :where(html) .VPSidebarItem.level-1 .text,
@@ -1350,6 +1398,16 @@ aside.VPSidebar {
   background: var(--sidebar-active-bg);
 }
 
+/* 激活的小节标题保持品牌色，不被灰黑色规则覆盖 */
+:where(html) .VPSidebarItem.level-1.is-active > .item > .link > .text {
+  color: var(--vp-c-brand-1) !important;
+}
+
+/* 暗色下提亮品牌色，保证激活项在深色背景上的对比度 */
+.dark .VPSidebarItem.level-1.is-active > .item > .link > .text {
+  color: #86c3c9 !important;
+}
+
 :where(html) .VPSidebarItem .link.is-active .text {
   color: currentcolor !important;
   font-weight: 600 !important;
@@ -1374,6 +1432,10 @@ aside.VPSidebar {
 
 :where(html) .VPSidebarItem .item:hover .caret {
   opacity: 0.8;
+}
+
+.dark .VPDocAsideOutline .VPDocOutlineItem .outline-link.active::before {
+  background: #86c3c9;
 }
 
 /* ---- Sidebar toolbar actions ---- */
@@ -1513,8 +1575,8 @@ aside.VPSidebar {
 }
 
 .dark .vp-doc h1 {
-  color: #aeb8ff;
-  background: linear-gradient(105deg, #aeb8ff 0%, #7da4ff 48%, #5eead4 100%);
+  color: #86c3c9;
+  background: linear-gradient(105deg, #eaf5f6 0%, #86c3c9 48%, #5eead4 100%);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -1672,11 +1734,11 @@ aside.VPSidebar {
 }
 
 .dark .vp-doc blockquote {
-  color: #d97745;
+  color: #86c3c9;
 }
 
 .dark .vp-doc blockquote::before {
-  color: rgba(217, 119, 69, 0.15);
+  color: rgba(134, 195, 201, 0.16);
 }
 
 /* ===================================================
@@ -2258,6 +2320,10 @@ mjx-container[display="true"] {
   opacity: 0.72;
 }
 
+.dark .VPDocAsideOutline .VPDocOutlineItem .outline-link {
+  color: rgba(245, 245, 247, 0.62);
+}
+
 .dark .VPDocAsideOutline .VPDocOutlineItem .outline-link:hover,
 .dark .VPDocAsideOutline .VPDocOutlineItem .outline-link:focus-visible {
   color: #f5f5f7;
@@ -2265,8 +2331,8 @@ mjx-container[display="true"] {
 }
 
 .dark .VPDocAsideOutline .VPDocOutlineItem .outline-link.active {
-  color: #60a5fa;
-  background: rgba(96, 165, 250, 0.1);
+  color: #86c3c9;
+  background: rgba(134, 195, 201, 0.1);
   box-shadow: none;
 }
 
