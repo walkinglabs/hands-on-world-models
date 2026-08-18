@@ -15,7 +15,7 @@
 这一节，我们要亲手把这件事再做一遍。规模打折，原理不打折。跑完之后，你会对「在想象中训练」这句话有完全不同的理解。
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/carracing-initial.png" alt="CarRacing 目标世界" style="max-width:400px; border:1px solid #ddd; border-radius:8px;">
+  <img src="/carracing/carracing-initial.png" alt="CarRacing 目标世界" style="max-width:min(400px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">这就是我们要让模型学会的「世界」：红色小车在灰色赛道上行驶，周围是绿色草地。模型从未见过物理定律，它要从像素流里自己发现「踩油门车会加速、打方向盘车会转弯」。</div>
 </div>
 
@@ -53,7 +53,7 @@ for episode in range(num_rollouts):
 ```
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/random-rollout.png" alt="随机策略数据" style="max-width:800px; border:1px solid #ddd; border-radius:8px;">
+  <img src="/carracing/random-rollout.png" alt="随机策略数据" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 0：随机策略 rollout 的一小段。上排：5 帧画面——车在赛道上乱开，有时冲出赛道；中排：动作条（方向盘红=左/绿=右，油门绿色高度，刹车红色块）；下排：奖励条（绿=正奖励/红=负奖励）。这就是喂给 V 和 M 的全部数据：没有专家示范，只有乱开乱撞的轨迹。</div>
 </div>
 
@@ -86,7 +86,7 @@ $$
 学成后，一帧 12,288 个像素被压成 32 个数。解码出来的画面是模糊的——赛道线、车身、弯道大致可辨，细节丢失殆尽。这正是绪论说的「只保留决策需要的信息」：M 和 C 关心的从来不是草地的纹理。
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/vae-reconstruction.png" alt="VAE 重建对比" style="max-width:600px; border:1px solid #ddd; border-radius:8px;">
+  <img src="/carracing/vae-reconstruction.png" alt="VAE 重建对比" style="max-width:min(600px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 1：VAE 重建对比。左：原图（96×96）；右：编码再解码后的重建。赛道、车身、草地大致可辨，但细节丢失——这正是「只保留决策需要的信息」。</div>
 </div>
 
@@ -119,7 +119,7 @@ $$
 **一个值得做的实验**：用训练好的 M 做 free-running rollout——从一帧真实画面开始，让 M 自己预测下一步，再把预测的下一步喂回去，循环 100 步。你会发现，前 20 步的预测还算合理，但越往后画面越扭曲，最终变成完全无法辨认的噪声。这就是**复合误差**：每一步的微小偏差滚进下一步，越滚越大。M 的单步预测很准，但多步一致性全靠 V 与 z 分布的稳定性硬撑。
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/mdn-free-running.png" alt="M 的 free-running rollout" style="max-width:800px; border:1px solid #ddd; border-radius:8px;">
+  <img src="/carracing/mdn-free-running.png" alt="M 的 free-running rollout" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 2：M 的 free-running rollout。从左到右：第 0、10、30、60、99 步。前几步还算合理，越往后越扭曲——这就是<strong>复合误差</strong>：每一步的微小偏差滚进下一步，越滚越大。</div>
 </div>
 
@@ -162,7 +162,7 @@ $$
 注意一个危险的直觉：**梦境分数高不等于真实分数高**。C 完全可能钻 M 的空子，找到一条只在想象中畅通的路线——这就是绪论说的**模型利用（model exploitation）**。判断复现是否成功，看的是 `real_score` 是否超过 `random_policy_score`；两者与 `dream_score` 的差距，正是复合误差与模型利用的合计账单。
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/real-evaluation.png" alt="真实环境评估" style="max-width:800px; border:1px solid #ddd; border-radius:8px;">
+  <img src="/carracing/real-evaluation.png" alt="真实环境评估" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 3：真实环境评估的关键帧。进化出的 C 在真实赛道上闭环：V 编码真实帧 → C 出动作 → 环境反馈 → M 更新记忆。</div>
 </div>
 
@@ -199,7 +199,7 @@ python scripts/run_carracing.py --output runs/carracing-world-model
 | `--temperature 0.1` | 低温梦境          | 梦境确定、进化容易，但控制器可能过拟合梦境的自信——对应原文 τ 实验 |
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/comparison.png" alt="官方 vs 复现对比" style="max-width:800px; border:1px solid #ddd; border-radius:8px;">
+  <img src="/carracing/comparison.png" alt="官方 vs 复现对比" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图：CarRacing 累计奖励对比。蓝色为原文数据（CarRacing-v0 / gym 0.9），橙色为我们的复现（CarRacing-v3 / gymnasium 1.x，50 rollouts、30 代进化）。环境版本不同导致奖励尺度不可直接比较——v3 的奖励更稀疏、负奖励更多，但相对趋势一致：有记忆 > 随机 > 无记忆。</div>
 </div>
 
@@ -235,7 +235,7 @@ python scripts/run_carracing.py --output runs/carracing-world-model
 从 2018 年的交互式文章，到你亲手跑通的训练脚本，World Models 的核心思想从未改变：**在行动之前，先在内部预见行动的后果**。而这条思想的后来的发展——Dreamer 的可微想象 [6]、MuZero 的隐式搜索 [7]、Genie 的可玩世界——都将在接下来的章节里，由你亲手实现。
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/dream-generation.png" alt="梦境生成的世界" style="max-width:800px; border:1px solid #ddd; border-radius:8px;">
+  <img src="/carracing/dream-generation.png" alt="梦境生成的世界" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">训练好的世界模型生成的「梦境世界」：C 在 M 的想象中开了 200 步，全程未接触真实环境。从左到右，画面从清晰逐渐模糊——复合误差在累积，但赛道、车身、草地的结构始终可辨。这就是 M 学到的「世界」：不完美，但足够让 C 在里面学会开车。</div>
 </div>
 
@@ -252,7 +252,7 @@ CMA-ES 在 867 维空间里盲目搜索，300 代 × 32 个体 × 4 条梦境轨
 **Dreamer 系列**（Hafner et al. 2019–2023）[6][8] 把 C 换成了可微的策略网络，直接在 M 的梦境里做梯度下降。M 的 GRU 被替换成更强大的 RSSM（Recurrent State Space Model），能同时维护确定性隐状态和随机 latent；策略网络从隐状态里读出动作，价值网络评估隐状态的好坏，两者通过梦境 rollout 的梯度联合优化。DreamerV1 在 DeepMind Control Suite 上超过了当时所有的 model-free 方法；DreamerV2 用离散 latent 打通了 Atari；DreamerV3 一套超参跑遍 150+ 任务，成为「可复现世界模型」的标杆。
 
 <div style="text-align:center; margin:16px 0;">
-  <img src="/carracing/dreamer-architecture.png" alt="Dreamer 架构" style="max-width:700px; border:1px solid #ddd; border-radius:8px;">
+  <img src="/carracing/dreamer-architecture.png" alt="Dreamer 架构" style="max-width:min(700px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">Dreamer 的可微想象：编码器把观测压缩为 latent z，RSSM 在隐空间里 rollout 想象轨迹，策略网络和价值网络从隐状态读出动作和评估，梯度沿虚线反向传播。</div>
 </div>
 
@@ -265,7 +265,7 @@ World Models 的 V 必须把 96×96 像素压成 32 维再重建回来。但 M �
 **MuZero**（Schrittwieser et al. 2020）[7] 直接扔掉了 V 的解码器。它的 M 不预测像素，只预测隐状态转移和奖励；它的「规划」不在像素空间里做，而是在隐空间里跑蒙特卡洛树搜索（MCTS）。 Atari、围棋、国际象棋、将棋，一套架构全部打通，发在 *Nature* 上。MuZero 的核心洞察是：**世界模型不需要重建世界，只需要重建决策需要的信息**。
 
 <div style="text-align:center; margin:16px 0;">
-  <img src="/carracing/muzero-search.png" alt="MuZero 隐空间搜索" style="max-width:700px; border:1px solid #ddd; border-radius:8px;">
+  <img src="/carracing/muzero-search.png" alt="MuZero 隐空间搜索" style="max-width:min(700px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">MuZero 的隐空间规划：观测经编码器进入隐状态（中间），MCTS 搜索树直接在隐状态上展开（橙色分支），不经过像素重建。</div>
 </div>
 
@@ -280,7 +280,7 @@ World Models 的 M 用混合高斯建模多峰未来，但 GRU 的隐状态是�
 **Genie**（Bruce et al. 2024）[11] 走得更远：它用视频生成模型（ViT + 离散 token + 扩散/自回归解码）直接生成可交互的像素世界。用户按一个键，Genie 生成下一帧；再按一个键，再生成一帧。它不再区分 V、M、C——整个系统就是一个「按动作条件生成视频」的大模型。Genie 从 YouTube 游戏视频里无监督学出了 2D 平台游戏的物理规律，用户可以在生成的世界里真正「玩」起来。
 
 <div style="text-align:center; margin:16px 0;">
-  <img src="/carracing/genie-interactive.png" alt="Genie 可交互世界" style="max-width:700px; border:1px solid #ddd; border-radius:8px;">
+  <img src="/carracing/genie-interactive.png" alt="Genie 可交互世界" style="max-width:min(700px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">Genie 的交互循环：用户输入（键盘/手柄）→ 动作 token → 视频生成模型 → 生成游戏帧 → 循环。世界模型本身就是可玩的游戏引擎。</div>
 </div>
 
@@ -295,7 +295,7 @@ CarRacing 是自动驾驶的玩具版。真正的驾驶世界模型要处理多�
 - **UniSim**（Yan et al. 2024）[15]：Google 的通用模拟器，从真实传感器数据里学出可交互的 3D 世界，支持自动驾驶、机器人导航等多种任务的仿真。
 
 <div style="text-align:center; margin:16px 0;">
-  <img src="/carracing/driving-world-model.png" alt="驾驶世界模型" style="max-width:700px; border:1px solid #ddd; border-radius:8px;">
+  <img src="/carracing/driving-world-model.png" alt="驾驶世界模型" style="max-width:min(700px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">驾驶世界模型（GAIA-1 / DriveDreamer）：多视角相机输入 → 编码器产生 latent token → Transformer 在动作条件下预测未来驾驶场景。</div>
 </div>
 
