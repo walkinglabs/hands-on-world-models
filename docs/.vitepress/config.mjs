@@ -78,7 +78,10 @@ export default defineConfig({
             text: "0.5. 经典世界模型",
             link: "/chapters/00-why-world-models/00-05-classic-world-models",
           },
-          { text: "0.6. 动手：从零实现世界模型", link: "/labs/f0" },
+          {
+            text: "0.6. 动手：从零实现世界模型",
+            link: "/chapters/00-why-world-models/00-06-invent-a-world-model",
+          },
           {
             text: "PA0 · 动手：重新发明一台可学习世界模型",
             link: "/assignments/pa0",
@@ -117,7 +120,10 @@ export default defineConfig({
             text: "1.7. 经验回放与第一个模型",
             link: "/chapters/01-foundations/01-07-data-and-first-model",
           },
-          { text: "1.8. 动手：基础实验", link: "/labs/foundations" },
+          {
+            text: "1.8. 动手：基础实验",
+            link: "/chapters/01-foundations/01-08-basic-experiments",
+          },
         ],
       },
       {
@@ -135,6 +141,14 @@ export default defineConfig({
           {
             text: "2.3. 从经验学习第一个模型",
             link: "/chapters/02-data-and-first-model/02-03-first-learned-world",
+          },
+          {
+            text: "2.4. 动手：第一台可学习世界模型",
+            link: "/chapters/02-data-and-first-model/02-04-learn-a-table-world",
+          },
+          {
+            text: "PA0 · 动手：重新发明一台可学习世界模型",
+            link: "/assignments/pa0",
           },
         ],
       },
@@ -166,7 +180,10 @@ export default defineConfig({
             text: "3.6. 动手复现 World Models",
             link: "/chapters/03-decision-and-planning/03-06-reproduce-world-models",
           },
-          { text: "3.7. 动手：决策与规划实验", link: "/labs/route-a" },
+          {
+            text: "3.7. 动手：决策与规划实验",
+            link: "/chapters/03-decision-and-planning/03-07-decision-and-planning",
+          },
           {
             text: "PA1-A · 动手：做出一台 Dreamer-lite",
             link: "/assignments/pa1-a",
@@ -193,7 +210,10 @@ export default defineConfig({
             text: "4.4. 扩散视频生成与多步漂移",
             link: "/chapters/04-interactive-video/04-04-diffusion-and-evaluation",
           },
-          { text: "4.5. 动手：交互视频实验", link: "/labs/route-bc" },
+          {
+            text: "4.5. 动手：交互视频实验",
+            link: "/chapters/04-interactive-video/04-05-interactive-video",
+          },
           {
             text: "PA1-B · 动手：做出一个听从按键的视频小世界",
             link: "/assignments/pa1-b",
@@ -220,7 +240,10 @@ export default defineConfig({
             text: "5.4. 动作条件 JEPA",
             link: "/chapters/05-jepa/05-04-action-jepa",
           },
-          { text: "5.5. 动手：JEPA 实验", link: "/labs/route-bc" },
+          {
+            text: "5.5. 动手：JEPA 实验",
+            link: "/chapters/05-jepa/05-05-jepa",
+          },
           {
             text: "PA1-C · 动手：训练并审问一个 Tiny Video-JEPA",
             link: "/assignments/pa1-c",
@@ -249,7 +272,7 @@ export default defineConfig({
           },
           {
             text: "6.5. 动手：机器人与 VLA 实验",
-            link: "/labs/route-de",
+            link: "/chapters/06-robot-vla/06-05-robot-vla",
           },
           {
             text: "PA1-D · 动手：Tiny VLA 与 World-Model Checker",
@@ -281,7 +304,10 @@ export default defineConfig({
             text: "7.5. 驾驶世界模型与未来占用",
             link: "/chapters/07-spatial-worlds/07-05-driving-world-models",
           },
-          { text: "7.6. 动手：空间世界实验", link: "/labs/route-de" },
+          {
+            text: "7.6. 动手：空间世界实验",
+            link: "/chapters/07-spatial-worlds/07-06-spatial-world",
+          },
           {
             text: "PA1-E · 动手：空间世界二选一",
             link: "/assignments/pa1-e",
@@ -317,10 +343,13 @@ export default defineConfig({
             link: "/chapters/08-evaluate-and-invent/08-06-next-model-proposal",
           },
           {
+            text: "8.7. 动手：审问一台世界模型",
+            link: "/chapters/08-evaluate-and-invent/08-07-test-a-world-model",
+          },
+          {
             text: "PA2 · 动手：设计下一台世界模型",
             link: "/assignments/pa2",
           },
-          { text: "Z0 · 动手：审问一台世界模型", link: "/labs/z0" },
         ],
       },
     ],

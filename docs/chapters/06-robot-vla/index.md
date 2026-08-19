@@ -8,13 +8,7 @@
 2. [视觉-语言-动作模型（VLA）](./06-02-vision-language-action.md)：图像、语言、proprio 三种 token 怎样融合成一个动作。
 3. [动作分块与多模态动作](./06-03-action-chunk.md)：一次输出一段动作，并允许同一上下文有多条可行路线。
 4. [世界模型检查器](./06-04-world-model-checker.md)：让 VLA 提出候选，再用想象 rollout 检查各自后果。
-
-## 本章实验与作业
-
-- [D1–E2：机器人与空间实验](/labs/route-de)
-- [D1：视觉-语言-动作模型（VLA）](/labs/route-de)
-- [D2：动作后果检查（世界模型检查器）](/labs/route-de)
-- [PA1-D：Tiny VLA](/assignments/pa1-d)
+5. [6.5 动手：机器人与 VLA 实验](./06-05-robot-vla.md)
 
 直接 VLA 的输出是动作；世界模型的输出是动作后果。两者可以连接，但不能用同一个名字代替。动作 MSE 下降也不保证闭环成功，本章会一直保留这种诚实差距。
 

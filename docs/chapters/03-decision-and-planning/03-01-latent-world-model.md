@@ -8,7 +8,7 @@
 >
 > 主指标是真实环境回报、样本效率和多步漂移。重建图像只是训练手段，不是本路线的最终成绩。
 >
-> 👉 本章实验：[动手：潜在状态世界模型（RSSM）](/labs/route-a)（A1）、[在想象中规划与行动（PlaNet、Dreamer、MuZero）](/labs/route-a)（A2）
+> 👉 本章实验：[动手：潜在状态世界模型（RSSM）](/chapters/03-decision-and-planning/03-07-decision-and-planning)（A1）、[在想象中规划与行动（PlaNet、Dreamer、MuZero）](/chapters/03-decision-and-planning/03-07-decision-and-planning)（A2）
 
 CRAFTER 里agent要砍树、挖矿、喝水。一帧画面有上万个像素，但真正决定下一步结果的，只有「手里有没有斧头」「脚下还有几格木头」「面前有没有怪物」这类少量信息。
 
@@ -74,4 +74,4 @@ $\hat r_t$ 预测这一步的 reward，$\hat c_t$ 预测 episode 是否继续（
 - [ ] decoder、reward head、continue head 从不同角度约束同一个状态。
 - [ ] latent 是否有用，由 reward、continue、多步预测和真实控制共同检查。
 
-下一篇我们拆开 $s_t$，看 RSSM 怎样把「长期记忆」和「当前不确定性」分开存放。动手实现见 [A1：潜在状态世界模型（RSSM）](/labs/route-a)。
+下一篇我们拆开 $s_t$，看 RSSM 怎样把「长期记忆」和「当前不确定性」分开存放。动手实现见 [A1：潜在状态世界模型（RSSM）](/chapters/03-decision-and-planning/03-07-decision-and-planning)。

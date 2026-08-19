@@ -14,11 +14,7 @@
 2. [先决定预测什么](./04-02-vq-tokenizer.md)：比较像素、连续 latent、离散 token 与语义特征。
 3. [AR、Diffusion 与 Diffusion Forcing](./04-03-action-transformer.md)：看懂三种生成方式解决了什么，又留下什么问题。
 4. [动作、记忆、长时生成与评价](./04-04-diffusion-and-evaluation.md)：把模型放进自由 rollout，检查它是否真的可用。
-
-## 两份实验
-
-- [B1–B2：互动视频实验](/labs/route-bc)
-- [PA1-B：可以按键控制的小世界](/assignments/pa1-b)
+5. [4.5 动手：交互视频实验](./04-05-interactive-video.md)：VQ-VAE 加动作条件 Transformer。
 
 B1 做出第一台离散视频模型；B2 用相同数据比较动作注入、自由 rollout 和逐帧不同噪声。PA1-B 再把这些检查接成一次完整实验。全章只使用两份 Notebook。
 

@@ -1,289 +1,262 @@
 # PA1-E · 动手：空间世界二选一
 
 > **本节目标**：先完成 E1 的共同基础（深度反投影、坐标变换、BEV Occupancy），再选择 E2a（3D/4D 动态场）或 E2b（驾驶 Occupancy 预测）中的一个方向，完成一次完整的空间世界模型实验。不是重建最漂亮的场景，而是用证据回答「模型真的理解了三维空间吗？」
-
-> **本节代码**：[E1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_spatial/E1-from-camera-to-space.ipynb) · [E2a Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_spatial/E2a-build-a-small-4d-world.ipynb) · [E2b Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_spatial/E2b-predict-driving-space.ipynb)
-
-> **前置知识**：你已经跑过路线 E 的 E1（相机几何 + BEV Occupancy）、E2a（NeRF/3DGS smoke）或 E2b（驾驶 Occupancy smoke），知道深度反投影、内外参矩阵、Occupancy 预测。PA1-E 把它们扩展成完整训练。
+>
+> **本节代码**：[E1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_spatial/E1-from-camera-to-space.ipynb) · [E2a Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_spatial/E2a-build-a-small-4d-world.ipynb) · [E2b Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_spatial/E2b-predict-driving-space.ipynb) · [spatial.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/spatial.py) · [foundations.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/foundations.py)
+>
+> **前置知识**：你已经跑过路线 E 的 E1（相机几何 + BEV Occupancy）、E2a（神经场 smoke）或 E2b（占用预测 smoke）。PA1-E 把它们扩成可评价的训练，并写清静态 / 动态 / 可控、开环 / 闭环的结论边界。
 
 ---
 
-E1 用合成深度图片确认了相机几何的接口连通：深度像素能反投影成三维点、外参矩阵能把不同相机放进同一世界、BEV Occupancy 能记录空间占用。E2a/E2b 用 smoke 确认了动态场和 Occupancy 预测的接口连通。
+E1 不训练大模型。它只做一件事：把针孔几何算对。6×6 深度图反投影得到 36 个点，相机右移 1 米后面均值平移正好是 \([1, 0, 0]\)，落到 0.5 m 网格上占用 8 格。把平移写成 1.3 m，点云平均误差 0.3 m，占用 IoU 从 1.0 掉到 0.5。
 
-但 smoke 不是实验。几十个点云、50 步更新——这些数字离「模型真的理解了三维空间」还差很远。
+E2a / E2b 的 smoke 只证明接口连通：静态场 loss 能降，动态场换时间后密度会变，占用预测的 IoU 能超过复制上一帧。这些数字离「理解三维空间」还差很远。
 
-PA1-E 的任务是：**用完整训练回答「模型真的理解了三维空间吗？」** 你会亲眼看到 novel-view 合成在训练视角内表现好但外推崩溃、Occupancy 预测在短期准确但长期漂移、标定误差导致整个点云偏移。这些失败不是 bug，是空间世界模型的核心挑战。
+PA1-E 的任务是：**用完整训练回答「模型真的理解了三维空间吗？」** 你会看见 novel-view 在训练视角内还行、外推崩溃；占用预测短期有 IoU、长期漂移；标定写错一截，后面的网络救不回来。
 
 ## 为什么 PA1-E 是二选一
 
-路线 E 有两个截然不同的方向：
+路线 E 有两条分叉，一次只走一条：
 
 | 项目 | E2a（3D/4D 动态场） | E2b（驾驶 Occupancy） |
 | ---- | ------------------- | --------------------- |
-| 观测 | 多视角 RGB 图片 | 深度图片 + 相机位姿 |
-| 表示 | NeRF/3DGS 神经场 | BEV Occupancy 网格 |
-| 预测 | 未来时刻的场景 | 未来时刻的 Occupancy |
-| 评价 | PSNR + 几何误差 | IoU + 碰撞检测 |
-| 应用 | 机器人场景理解 | 自动驾驶规划 |
+| 观测 | 坐标查询；PA 可升级到多视角 RGB | 历史 BEV；PA 可升级到多相机 |
+| 表示 | 神经场 \((x,y,z)\) 或 \((x,y,z,t,a)\) | \(16\times 16\) 占用网格 |
+| 预测 | 密度 / 颜色 | 未来占用 |
+| 评价 | 场拟合误差 + 反事实密度差 | IoU + 复制/匀速基线 + 动作敏感性 |
+| 应用 | 场景表示、新视角 | 开环驾驶预测 |
 
-**不要把两个项目各做一半。** 选择一种，完整提交数据—模型—预测—评价。
+**不要把两个项目各做一半。** 选一种，完整提交数据—模型—预测—评价。E1 对两条路都是必做。
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/de-spatial-world.png" alt="空间世界模型" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">PA1-E 真实结果（复用路线 E 可视化）：历史 Occupancy 网格、未来 Occupancy 预测、动作条件 Occupancy 差异、空间世界模型管线。实际运行 hwm.spatial 模块。</div>
+  <img src="/carracing/pa1e-unproject.png" alt="标定误差导致占用错位" style="max-width:min(900px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">同一张 6×6 深度图。左：平移 1.0 m，占用 8 格；右：写成 1.3 m，占用 7 格，IoU 掉到 0.5。几何错了，后面的网络适应不了错误的相机。</div>
 </div>
 
-## 第一步：环境依赖
+## 本次会得到什么
 
-E1 和 E2b 只需要 NumPy（共同基础）。E2a 需要 PyTorch：
+这是作业。E1 人人都交；E2a / E2b 只交你选的那一支。
+
+**E1 必交**
+
+- 反投影点云 shape、近/远 \(z\)
+- 外参平移的均值差，必须能复现 \([1, 0, 0]\)
+- BEV 网格 shape 与占用格数
+- 把平移写成 1.3 m 后的点云误差和占用 IoU
+
+**E2a 必交（若选这条）**
+
+- 静态场：样本数、占用比例、loss 曲线、密度/颜色 MSE、参数量
+- 动态场：\((x,y,z,t,a)\) 查询、loss 曲线、固定坐标只换时间/动作的密度差
+- 结论边界表：静态 / 动态 / 可控，哪一条你有资格声称
+- 若声称新视角或几何精度，另交 PSNR / 深度误差；没有体渲染就不要报 PSNR
+
+**E2b 必交（若选这条）**
+
+- 历史 / 动作 / 未来的 shape，以及占用比例
+- 学习预测 IoU，以及复制上一帧、匀速外推两个基线
+- 同一历史换动作后的占用差
+- horizon 曲线（至少 1 / 2 / 3 步）
+- 结论边界：只能称开环预测，除非你另有模拟器
+
+## 怎样运行
 
 ```bash
-python -m pip install -r requirements-neural.txt  # 仅 E2a 需要
+python -m pip install -r requirements-neural.txt   # E2a / E2b 需要
+jupyter lab
+# notebooks/07_spatial/E1-from-camera-to-space.ipynb
+# 然后只打开 E2a 或 E2b 其中一个
 ```
 
-## 第二步：E1 共同基础（必做）
+```bash
+PYTHONPATH=src python -m unittest tests.test_routes_de tests.test_foundations -v
+```
 
-先完成 E1，确认相机几何正确。
+E1 只用 NumPy。E2a / E2b 用 PyTorch，CPU 就能跑 smoke。
 
-### 2.1 深度像素怎样变成三维点
+## 第一步：E1 共同基础
 
-内参 `fx, fy, cx, cy` 描述相机怎样成像。已知每个像素深度，就能把它反投影到相机坐标：
+### 1.1 深度像素怎样变成三维点
+
+针孔反投影是从 2D 走到 3D 的第一公式：
 
 $$
-X = \frac{(u - c_x) \cdot Z}{f_x}, \quad Y = \frac{(v - c_y) \cdot Z}{f_y}, \quad Z = \text{depth}(u, v)
+X = \frac{(u-c_x)\,Z}{f_x},\quad
+Y = \frac{(v-c_y)\,Z}{f_y},\quad
+Z = \mathrm{depth}(u,v)
 $$
 
-其中 \((u, v)\) 是像素坐标，\(Z\) 是深度，\((f_x, f_y)\) 是焦距，\((c_x, c_y)\) 是光心。这是从 2D 图像到 3D 点云的核心公式。
+```python
+from hwm.foundations import depth_to_points
 
-```text
-Depth unprojection:
-  input: depth image (H, W)
-  output: point cloud (N, 3)
-  near/far z: 2.0 / 4.0
-  points: (36, 3)
+depth = np.full((6, 6), 4.0, dtype=np.float32)
+depth[2:4, 2:4] = 2.0
+points = depth_to_points(depth, fx=6, fy=6, cx=2.5, cy=2.5)
 ```
 
-**运行这一步，你会看到什么？** 点云可视化。如果点的分布看起来不合理（比如所有点都在一个平面上），说明内参写错了。
+**真实判据**：`points.shape == (36, 3)`，近/远 \(z\) 是 **2.0 / 4.0**。\(X,Y\) 范围大约 \([-1.67, 1.67]\)。如果所有点落在一个平面上，多半是 \(Z\) 写成了常数，或 \((u,v)\) 和 \((x,y)\) 对调了。
 
-### 2.2 外参把不同相机放进同一世界
+### 1.2 外参把不同相机放进同一世界
 
-相机向右移动一米，同一个相机坐标点在世界坐标中也整体平移。坐标系方向或矩阵乘法写反，会让多视角无法对齐：
+```python
+from hwm.foundations import make_camera_transform, transform_points
 
-```text
-Extrinsic transformation:
-  camera 1 → world: identity
-  camera 2 → world: translation [1.0, 0.0, 0.0]
-  mean shift: [1.0, 0.0, 0.0]
+world = transform_points(points, make_camera_transform(tx=1.0, yaw=0.0))
+print(world.mean(0) - points.mean(0))
+# [1.  0. -0.]
 ```
 
-**运行这一步，你会看到什么？** 多视角点云对齐后的可视化。如果两个相机的点云没有对齐，说明外参矩阵写反了。
+齐次矩阵左乘点。平移写在最后一列，偏航绕 \(y\)。**真实判据**：均值平移必须是 \([1, 0, 0]\)，容差 \(10^{-5}\)。对不上，先查矩阵是 `T @ p` 还是 `p @ T`，再查相机系和世界系的轴。
 
-### 2.3 点落到俯视 Occupancy
+### 1.3 点落到俯视 Occupancy
 
-Occupancy 不关心表面颜色，只记录空间哪里已有物体。它很适合碰撞检查与驾驶未来预测：
+Occupancy 不看颜色，只记哪里有东西。E1 用 \(x\in[-2,4]\)、\(z\in[0,6]\)、分辨率 0.5 m，得到 **\((12, 12)\) 网格、8 个占用格**。近处 \(z=2\) 的 4 个像素挤进两格，远处 \(z=4\) 的像素摊得更开——这就是透视。
 
-```text
-BEV Occupancy:
-  grid: (12, 12)
-  occupied cells: 8
-  resolution: 0.5m per cell
+### 1.4 标定误差会怎样
+
+```python
+wrong = transform_points(points, make_camera_transform(tx=1.3))
+err = np.linalg.norm(wrong - world, axis=1).mean()
+# 0.3 m
 ```
 
-**运行这一步，你会看到什么？** BEV Occupancy 可视化。如果占用格数与预期不符，说明投影或网格化有错。
+**真实判据**：点云平均误差 **0.3 m**；错误占用 7 格；与正确占用的 IoU **0.5**。旧讲义里的 `occupancy_misalignment: 0.25` 对不上当前网格，不要再抄。神经网络可以在训练集上适应固定偏差，却不能把错误几何变正确。
 
-### 2.4 标定误差会怎样
+## 第二步：选择方向
 
-把平移错写成 1.3 米，整个点云都会偏移。神经网络可能在训练集上适应固定偏差，却不能让错误几何变正确：
-
-```text
-Calibration error:
-  correct shift: [1.0, 0.0, 0.0]
-  wrong shift: [1.3, 0.0, 0.0]
-  occupancy_misalignment: 0.25
-```
-
-**运行这一步，你会看到什么？** 标定误差导致的 misalignment。如果 misalignment 很大，说明几何计算对标定非常敏感。
-
-## 第三步：选择方向
-
-完成 E1 后，选择 E2a 或 E2b。
+E1 通过后再选。选 E2a 就不要再交半成品 E2b，反过来也一样。
 
 ---
 
 ## E2a：构建一个小型 4D 世界
 
-### 3a.1 在 Lego 小场景训练 tiny NeRF 或 3DGS
+教学实现不是完整 NeRF。`TinyNeuralField` 是坐标 \(\rightarrow\)（密度, 颜色）的 3 层 MLP，约 **2,740** 个参数，没有射线、没有体渲染。`TinyDynamicField` 把时间和 5 类动作嵌进去，约 **5,292** 个参数。
 
-用静态坐标神经场学习 `(x, y, z) → (color, density)`：
+体积渲染的积分才是 NeRF 原文的核心 [2]：
 
-```text
-Static NeRF training:
-  scene: Lego (small)
-  views: 8 training, 4 validation
-  PSNR: 25.6
-  depth error: 0.12m
+$$
+C(r) = \int_{t_n}^{t_f} T(t)\,\sigma(r(t))\,c(r(t), d)\,dt,\quad
+T(t)=\exp\Bigl(-\int_{t_n}^{t}\sigma(r(s))\,ds\Bigr)
+$$
+
+PA 如果只拟合坐标查询，就报场拟合误差，不要报 PSNR。只有你自己加了射线采样和体渲染，才有资格写 PSNR / SSIM。
+
+### 2a.1 静态场
+
+```python
+from hwm.spatial import TinyNeuralField, make_colored_sphere_samples
+
+coords, density, color = make_colored_sphere_samples(640, seed=0)
+# occupied fraction = 0.134
 ```
 
-**运行这一步，你会看到什么？** novel-view 合成结果。如果 PSNR 高，说明场景重建好；如果 depth error 小，说明几何准确。
+样本是半径 0.65 的彩色球。**真实判据（80 步、Adam \(5\times 10^{-3}\)）**：场 loss 从 **0.609 降到 0.089**；拆开是密度 MSE 0.071、颜色 MSE 0.016。
 
-### 3a.2 报告 novel-view 质量、深度/几何误差与渲染速度
+### 2a.2 加入时间与动作
 
-```text
-Novel-view evaluation:
-  PSNR: 25.6
-  SSIM: 0.89
-  depth error: 0.12m
-  render speed: 5 FPS
-```
+`make_moving_sphere_samples(1024, seed=1)` 让球心随 \((t, a)\) 移动。占用比例只有 **0.029**，比静态球稀疏得多。动态 loss（BCE + 颜色 MSE）从 **1.005 降到 0.087**。
 
-**运行这一步，你会看到什么？** 三项指标。如果 PSNR 低，说明场景重建不好；如果 depth error 大，说明几何不准确；如果 render speed 慢，说明模型太大。
-
-### 3a.3 在项目内多视角 moving-shapes 加入时间
-
-扩展为 `(x, y, z, t) → (color, density)`，观察 PSNR 变化：
+固定坐标 \((0.35, 0, 0)\)，五个动作在 \(t=0\) 和 \(t=1\) 的密度是：
 
 ```text
-Dynamic field training:
-  static PSNR: 25.6
-  dynamic PSNR: 23.4
-  time steps: 10
+t=0 : 0.052, 0.057, 0.079, 0.002, 0.102
+t=1 : 0.118, 0.131, 0.098, 0.006, 0.165
+mean |Δ| = 0.045
 ```
 
-**运行这一步，你会看到什么？** 动态 PSNR 低于静态——这是预期的，因为时间维度增加了难度。如果动态 PSNR 远低于静态，说明时间建模不够好。
+差大于 0，只说明时间和动作进了查询。它**不**证明运动方向对，更不证明可控。
 
-### 3a.4 若声称动作条件，固定历史替换动作并报告未来差异
+### 2a.3 结论边界
 
-```text
-Action-conditioned test:
-  history: [t_0, t_1, ..., t_5]
-  action: move left → future: object moves left
-  action: move right → future: object moves right
-  
-  counterfactual consistency: 0.67
-```
+| 声称 | 你必须交出的证据 |
+| ---- | ---------------- |
+| 静态重建 | 场拟合误差；若有体渲染，再加 PSNR / 深度误差 |
+| 动态重建 | 时间变化后误差仍可控；固定坐标换 \(t\) 密度会变 |
+| 可控 | 固定历史，只换动作，未来必须按动作方向分开 |
 
-如果换动作后未来不变，模型没有学到动作条件动态。
-
-### 3a.5 明确静态、动态与可控三种结论边界
-
-```text
-Conclusion boundaries:
-  static: scene reconstruction ✓
-  dynamic: time-varying scene ✓
-  controllable: action-conditioned ? (only if counterfactual test passes)
-```
-
-**不能把「动态场景重建」等同于「可控」。** 如果反事实测试失败，只能声称动态重建，不能声称可控。
+换动作后未来不变，就只能称动态重建，不能称可控。3D Gaussian Splatting [3] 是另一种显式表示，渲染快，但同样不会自动带上动作动态。
 
 ---
 
 ## E2b：预测驾驶空间
 
-### 3b.1 在标定 toy 与 nuScenes-mini 实现 tiny LSS/BEV
+驾驶路线不以「下一帧好看」为目标。`TinyOccupancyPredictor` 把过去 3 帧 \(16\times 16\) 占用和 5 类 ego action 变成未来 3 帧占用，约 **12,587** 个参数。动作 embedding 铺到整个 BEV，再和历史帧一起进卷积——这是 LSS [1]「先抬到 3D，再落到 BEV」在教学尺度上的亲戚，不是完整 LSS。
 
-把 E1 的 BEV Occupancy 扩展为时间序列：
+```python
+from hwm.spatial import (
+    TinyOccupancyPredictor, make_moving_occupancy_dataset, occupancy_iou,
+)
 
-```text
-LSS/BEV training:
-  data: calibration toy + nuScenes-mini
-  input: multi-view images + depth
-  output: BEV Occupancy sequence (10, 12, 12)
+history, actions, future = make_moving_occupancy_dataset(96, seed=1)
+# (96, 3, 16, 16), (96,), (96, 3, 16, 16)
+# occupancy fraction = 0.035
 ```
 
-**运行这一步，你会看到什么？** BEV Occupancy 序列可视化。如果 Occupancy 看起来不合理，说明 LSS 训练有问题。
+正样本极少，所以训练用 `pos_weight=18` 的 BCE。IoU 定义为
 
-### 3b.2 预测当前与未来 Occupancy
+$$
+\mathrm{IoU} = \frac{|\{p>0.5\}\cap\{y=1\}|}{|\{p>0.5\}\cup\{y=1\}|}
+$$
 
-学习 `(历史 Occupancy, 动作) → 未来 Occupancy`：
+<div style="text-align:center; margin:20px 0;">
+  <img src="/carracing/pa1e-occupancy.png" alt="占用预测相对复制基线" style="max-width:min(860px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">96 个样本上，学到的未来占用 IoU 0.436，复制上一帧只有 0.277。有增益，但离「能规划」还远。</div>
+</div>
 
-```text
-Occupancy prediction:
-  input: history (5 frames) + action (steering, throttle)
-  output: future Occupancy (5 frames)
-  prediction IoU: 0.67
-```
+**真实判据（80 步、seed=1）**：
 
-**运行这一步，你会看到什么？** 预测 Occupancy 与真实 Occupancy 的对比。如果 IoU 低，说明预测不准。
+| 指标 | 数值 |
+| ---- | ---: |
+| loss | 1.127 → 0.253 |
+| 学习预测 IoU | 0.436 |
+| 复制上一帧 IoU | 0.277 |
+| 换动作后的占用差 | 0.085–0.110 |
 
-### 3b.3 与复制最后一帧、匀速外推比较
+同一历史换 5 个动作，相对动作 0 的平均绝对差都大于 0。没有 ego action 的数据只能训练开环未来预测，不能称动作条件世界模型。
 
-```text
-Comparison:
-  copy last frame IoU: 0.45
-  constant velocity IoU: 0.52
-  learned prediction IoU: 0.67
-```
+PA1-E 还要画 horizon 曲线：把未来 1 / 2 / 3 步的 IoU 拆开，不要只报一个 3 步平均。再加一个匀速外推基线——把历史最后一帧的速度沿用下去。学习模型若赢不了这两个傻子，就不要写「学到了动态」。
 
-如果 learned prediction 没有显著超过基线，说明模型没有学到有用的动态。
-
-### 3b.4 报告 IoU horizon 曲线、动态物体召回和动作敏感性
-
-```text
-IoU horizon curve:
-  1 step: 0.78
-  3 steps: 0.65
-  5 steps: 0.52
-  10 steps: 0.35
-  
-Dynamic object recall: 0.72
-Action sensitivity: 0.68
-```
-
-**运行这一步，你会看到什么？** IoU 随 horizon 增加而下降——这是复合误差。如果 dynamic object recall 低，说明模型没有检测到运动物体。如果 action sensitivity 低，说明预测不读动作。
-
-### 3b.5 明确结论边界
-
-```text
-Conclusion boundaries:
-  open-loop prediction ✓ (no ego planner)
-  closed-loop collision rate ? (only with simulator)
-```
-
-**没有 ego plan 只能称 open-loop。** 没有模拟器不能报告闭环碰撞率。
-
----
+**没有模拟器，不能报闭环碰撞率。** 开环 IoU 再高，也不等于车不会撞。
 
 ## 共同 24GB 目标
 
-降低场景、相机数、分辨率、射线/高斯或 BEV 网格规模，单卡 reserved 目标不超过 22GB。每个分支都需要独立实测，当前记录为 0。
+降低场景、相机数、分辨率、射线/高斯或 BEV 网格，单卡 reserved 设计目标不超过 22GB。每个分支都要独立实测。当前记录为 0，不得标成已验证。
 
-## 运行与产物
+## 评分
 
-```bash
-python -m pip install -r requirements-neural.txt  # 仅 E2a 需要
-python -m unittest tests.test_routes_de -v
-```
+| 项目 | 分数 | 检查重点 |
+| ---- | ---: | -------- |
+| E1 几何 | 25 | 36 点、平移 \([1,0,0]\)、占用 8 格、0.3 m / IoU 0.5 的标定实验 |
+| 所选分支的训练 | 25 | 曲线、参数量、shape 与代码一致 |
+| 基线与反事实 | 20 | E2a 换时间/动作；E2b 复制帧 + 匀速 + 换动作 |
+| 结论边界 | 20 | 静态/动态/可控，或开环/闭环，不越界声称 |
+| 表达与复现 | 10 | Notebook 可运行；seed 与输出完整 |
 
-跑完后，你应该有：
-
-- **E1 共同基础**：点云可视化、外参验证、BEV Occupancy、标定误差分析
-- **E2a**：novel-view 合成、深度误差、动态场 PSNR、反事实测试
-- **E2b**：BEV Occupancy 序列、预测 IoU、horizon 曲线、对照表格
+选错分支、两个各做一半，按未完成计。把 E2a 的坐标查询叫做「新视角合成」，或把 E2b 的离线 IoU 叫做「闭环驾驶」，该项零分。
 
 ## 已知简化与坑
 
-- **E1 的深度是合成的**。真实深度传感器有噪声、有缺失值，教学版假设深度完美。
-- **E2a 的 moving-shapes 不是真实场景**。它是 4D 接口 smoke，不能称为多视角场景重建。
-- **E2b 的 Occupancy 是离线的**。真正的驾驶世界模型需要在线预测，教学版只做批量评估。
-- **标定误差是常见问题**。神经网络可能在训练集上适应固定偏差，却不能让错误几何变正确。
-- **24GB 目标是设计目标**：每个分支都需要独立实测，当前记录为 0。
+- **E1 的深度是合成的**，没有噪声、没有缺失。真实深度相机两者都有。
+- **占用格数对标定极其敏感**。0.3 m 平移就能让 IoU 腰斩。
+- **E2a 的 moving-sphere 是 4D 查询 toy**，不是多视角场景重建，也不是 3DGS。
+- **E2b 的占用比例只有 3.5%**。不用 `pos_weight`，模型会预测全空，IoU 接近 0。
+- **复制上一帧是很强的基线**。慢速场景里，学得不好的网络经常输给它。
+- **24GB 是设计目标**，当前未完整实测。
 
 ## 本节小结
 
-- **PA1-E 是路线 E 的小整机**：从 smoke 扩展到完整训练，用证据回答「模型真的理解了三维空间吗？」
-- **E1 共同基础不可跳过**：深度反投影、外参验证、BEV Occupancy——这些几何计算必须算对。
-- **E2a 和 E2b 走不同的路**：E2a 用神经场重建场景，E2b 用 Occupancy 预测驾驶空间。
-- **静态、动态与可控是三种不同的结论**：不能把「动态场景重建」等同于「可控」。
-- **开环预测与闭环规划是不同的评价**：没有模拟器不能报告闭环碰撞率。
-- **标定误差是空间世界模型的核心挑战**：几何计算必须精确。
-- **24GB 目标是设计目标**：每个分支都需要独立实测。
+- **PA1-E 先把几何算对，再谈网络。** 36 个点、1 m 平移、8 个占用格、0.3 m 标定误差，是后面一切的尺子。
+- **E2a 和 E2b 走不同的路**：坐标场重建场景，占用网格预测驾驶空间。一次只走一条。
+- **静态、动态、可控是三种结论。** smoke 里时间密度差 0.045，只跨过「动态」的门槛。
+- **开环预测不是闭环规划。** E2b 的 IoU 0.436 超过复制帧 0.277，仍然不能报碰撞率。
+- **标定错误救不回来。** 写错 0.3 m，占用 IoU 直接掉到 0.5。
 
-从 E1 的合成深度到 PA1-E 的完整训练，从 E2a/E2b 的 smoke 到空间世界模型——规模的变化让你亲眼看到空间理解的核心挑战：标定误差、复合误差、开环与闭环的边界。与 PA1-A/B/C/D 的像素、视频、特征、机器人路线相比，空间世界走了一条独特的路：从二维图像到三维空间，从静态场景到动态世界。
+从 E1 的合成深度到 PA1-E 的完整训练，空间世界走的是一条和其他路线不同的路：先把二维图像变成三维可规划的东西，再决定你要重建外观，还是预测占用。
 
 ## 参考文献
 
-1. Philion, J., & Fidler, S. (2020). Lift, Splat, Shoot: Encoding Images from Arbitrary Camera Rigs by Implicitly Unprojecting to 3D. *ECCV 2020*. [arXiv:2008.05711](https://arxiv.org/abs/2008.05711) —— LSS：从多视角相机到 BEV 的原始论文。
-2. Mildenhall, B., et al. (2020). NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis. *ECCV 2020*. [arXiv:2003.08934](https://arxiv.org/abs/2003.08934) —— NeRF：神经辐射场的原始论文。
-3. Kerbl, B., et al. (2023). 3D Gaussian Splatting for Real-Time Radiance Field Rendering. *SIGGRAPH 2023*. [链接](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) —— 3DGS：实时辐射场渲染。
-4. Wei, Y., et al. (2023). OccNet: Occupancy Network for 3D Semantic Scene Completion. *CVPR 2023*. [arXiv:2301.00000](https://arxiv.org/abs/2301.00000) —— OccNet：Occupancy 预测的基线方法。
-5. Wang, X., et al. (2023). DriveDreamer: Towards Real-world-driven World Models for Autonomous Driving. *arXiv:2309.09777*. [链接](https://arxiv.org/abs/2309.09777) —— DriveDreamer：用世界模型做驾驶数据增强。
+1. Philion, J., & Fidler, S. (2020). Lift, Splat, Shoot: Encoding Images from Arbitrary Camera Rigs by Implicitly Unprojecting to 3D. *ECCV 2020*. [arXiv:2008.05711](https://arxiv.org/abs/2008.05711) —— 多相机「抬起—泼溅—射击」到 BEV 的原始方法。
+2. Mildenhall, B., et al. (2020). NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis. *ECCV 2020*. [arXiv:2003.08934](https://arxiv.org/abs/2003.08934) —— 神经辐射场与体渲染积分。
+3. Kerbl, B., Kopanas, G., Leimkühler, T., & Drettakis, G. (2023). 3D Gaussian Splatting for Real-Time Radiance Field Rendering. *SIGGRAPH 2023*. [项目页](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) —— 显式高斯的实时辐射场。
+4. Huang, Y., et al. (2023). Tri-Perspective View for Vision-Based 3D Semantic Occupancy Prediction. *CVPR 2023*. [arXiv:2302.07817](https://arxiv.org/abs/2302.07817) —— TPVFormer：用三平面做语义占用预测。
+5. Wang, X., et al. (2023). DriveDreamer: Towards Real-world-driven World Models for Autonomous Driving. *arXiv:2309.09777*. [链接](https://arxiv.org/abs/2309.09777) —— 用世界模型做驾驶视频生成与数据增强。

@@ -92,4 +92,4 @@ $$
 
 下一篇把时间加进来，看看三维世界怎样变成四维。
 
-> 👉 动手实验：[动手：从图像到空间（相机几何、BEV、NeRF）](/labs/route-de)
+> 👉 动手实验：[动手：从图像到空间（相机几何、BEV、NeRF）](/chapters/07-spatial-worlds/07-06-spatial-world)

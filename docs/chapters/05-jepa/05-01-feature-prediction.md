@@ -8,7 +8,7 @@
 >
 > 被动视频可以检查表示质量，不能单独证明模型理解控制。只有加入时间对齐的动作以后，才检查反事实与规划。
 >
-> 👉 本章实验：[视频特征预测（JEPA）](/labs/route-bc)（C1）、[动作条件特征预测（Action-JEPA）](/labs/route-bc)（C2）
+> 👉 本章实验：[视频特征预测（JEPA）](/chapters/05-jepa/05-05-jepa)（C1）、[动作条件特征预测（Action-JEPA）](/chapters/05-jepa/05-05-jepa)（C2）
 
 先看一个具体场景。PixelWorld 的每一帧里，背景在不停换色、树叶在抖、水面在反光，但方块的位置和运动方向才是机器人绕桌要用的信息。
 
@@ -73,4 +73,4 @@ JEPA 让 $f_{\bar\theta}$ 自己从数据里产生训练目标，再通过 mask 
 - 特征目标让模型不必为不稳定的视觉细节买单。
 - feature loss 低不等于表示有用，仍要靠下游 probe 与控制任务来检验。
 
-[下一篇 → 4.2 掩码、EMA 与表示坍缩](./05-02-mask-ema-collapse.md) · [回到第 4 章](./index.md) · [动手：C1 视频特征预测](/labs/route-bc)
+[下一篇 → 4.2 掩码、EMA 与表示坍缩](./05-02-mask-ema-collapse.md) · [回到第 4 章](./index.md) · [动手：C1 视频特征预测](/chapters/05-jepa/05-05-jepa)

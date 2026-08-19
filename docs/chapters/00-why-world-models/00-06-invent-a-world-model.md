@@ -2,7 +2,7 @@
 
 > **本节目标**：不依赖任何深度学习框架，只用 Python 标准库、整数和字典，把世界模型的最小闭环写出来。你会亲手实现一个九格网格世界、一个表格动态模型、一个规划器，亲眼看到「预测→规划→执行→修正」的完整循环。
 
-> **本节代码**：[F0 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/00_reinvent/F0-invent-a-world-model.ipynb) · [gridworld.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/gridworld.py)
+> **本节代码**：[本节 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/00_reinvent/F0-invent-a-world-model.ipynb) · [gridworld.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/gridworld.py)
 
 > **前置知识**：无。这是课程第一份实验，不需要神经网络、不需要 PyTorch、不需要 GPU。只需要 Python 基础。
 
@@ -58,7 +58,7 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 
 ## 第一步：九格世界
 
-F0 的世界是一个 3×3 的网格。智能体在某个格子，可以上下左右移动。目标是右下角，陷阱在中间。
+0.6 的世界是一个 3×3 的网格。智能体在某个格子，可以上下左右移动。目标是右下角，陷阱在中间。
 
 ```python
 # 3x3 网格，0=空地，1=陷阱，2=目标
@@ -375,9 +375,9 @@ Reached goal!
 
 ## 后续工作
 
-F0 用最简单的方式展示了世界模型的核心思想。但真实世界的世界模型要复杂得多：
+0.6 用最简单的方式展示了世界模型的核心思想。但真实世界的世界模型要复杂得多：
 
-**Dyna-Q** [1] 是最经典的模型强化学习算法之一。它在每一步真实交互后，用学到的模型生成多步「想象」经验，加速学习。我们的 F0 已经实现了这个思想的核心。
+**Dyna-Q** [1] 是最经典的模型强化学习算法之一。它在每一步真实交互后，用学到的模型生成多步「想象」经验，加速学习。我们的 0.6 已经实现了这个思想的核心。
 
 **World Models** [2] 把这个世界模型扩展到了像素级。用 VAE 压缩观测，用 MDN-RNN 预测未来，用进化算法在梦境中训练控制器。867 个参数的控制器完全在想象中学习，却在 CarRacing 赛道上表现优异。
 
@@ -385,7 +385,7 @@ F0 用最简单的方式展示了世界模型的核心思想。但真实世界�
 
 **MuZero** [4] 走得更远：它甚至不要求模型重建观测，只预测奖励和策略。这让 MuZero 在 Atari、Go、国际象棋、将棋上都达到超人水平。
 
-这些方法的核心思想都来自 F0：**先预测，再规划，再执行，再修正**。只是它们用神经网络替代了表格，用梯度下降替代了枚举，用像素替代了网格。
+这些方法的核心思想都来自 0.6：**先预测，再规划，再执行，再修正**。只是它们用神经网络替代了表格，用梯度下降替代了枚举，用像素替代了网格。
 
 ## 参考文献
 

@@ -8,7 +8,7 @@
 >
 > 静态场景重建不是动态世界模型；没有 ego action 和模拟器的未来预测也不是闭环驾驶。本章会分别标出这些边界。
 >
-> 👉 本章实验：[从图像到空间（相机几何、BEV、NeRF）](/labs/route-de)（E1）、[四维世界（4D）](/labs/route-de)（E2a，与 E2b 二选一）、[驾驶世界模型（未来占用预测）](/labs/route-de)（E2b，与 E2a 二选一）；课程作业 [PA1-E：3D/4D 或驾驶二选一](/assignments/pa1-e)
+> 👉 本章实验：[从图像到空间（相机几何、BEV、NeRF）](/chapters/07-spatial-worlds/07-06-spatial-world)（E1）、[四维世界（4D）](/chapters/07-spatial-worlds/07-06-spatial-world)（E2a，与 E2b 二选一）、[驾驶世界模型（未来占用预测）](/chapters/07-spatial-worlds/07-06-spatial-world)（E2b，与 E2a 二选一）；课程作业 [PA1-E：3D/4D 或驾驶二选一](/assignments/pa1-e)
 
 桌上放着一个杯子。我们从左边拍一张，杯子出现在照片右侧；再从右边拍一张，同一个杯子又跑到照片左侧。
 
@@ -95,4 +95,4 @@ E1 用一个合成立方体和已知参数做数值检查：投影到像素、�
 
 下一篇把这条射线变成一种模型爱用的空间结构：BEV 与占用网格。
 
-> 👉 动手实验：[动手：从图像到空间（相机几何、BEV、NeRF）](/labs/route-de)
+> 👉 动手实验：[动手：从图像到空间（相机几何、BEV、NeRF）](/chapters/07-spatial-worlds/07-06-spatial-world)

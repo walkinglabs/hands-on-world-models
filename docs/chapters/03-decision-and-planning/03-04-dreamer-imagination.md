@@ -84,4 +84,4 @@ $$
 - [ ] λ 回报在一步 TD 和蒙特卡洛之间折中，critic 拟合它，actor 朝它提高动作概率。
 - [ ] 世界模型、actor、critic 各自优化，最终结果由真实 return 和样本效率检查。
 
-Dreamer 用想象训练可微的 actor，适合连续控制。下一篇看 MuZero 怎样换一条路：不重建观察，而是用树搜索改进 policy。动手实验见 [A2：在想象中规划与行动](/labs/route-a)。
+Dreamer 用想象训练可微的 actor，适合连续控制。下一篇看 MuZero 怎样换一条路：不重建观察，而是用树搜索改进 policy。动手实验见 [A2：在想象中规划与行动](/chapters/03-decision-and-planning/03-07-decision-and-planning)。

@@ -10,7 +10,7 @@
 >
 > B1 做出第一个离散视频模型；B2 用相同数据比较动作注入、自由 rollout 和逐帧不同噪声。PA1-B 再把这些检查接成一次完整实验。全章只使用两份 Notebook。
 >
-> 👉 本章实验：[互动视频实验](/labs/route-bc)（B1–B2）；课程作业 [PA1-B：可以按键控制的小世界](/assignments/pa1-b)
+> 👉 本章实验：[互动视频实验](/chapters/04-interactive-video/04-05-interactive-video)（B1–B2）；课程作业 [PA1-B：可以按键控制的小世界](/assignments/pa1-b)
 
 先看两项任务。
 

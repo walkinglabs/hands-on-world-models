@@ -70,7 +70,7 @@ $$
 
 是否需要 Planner，取决于目标变化频率、实时预算和模型可靠性。简单稳定的任务，只用 Policy 往往就够。
 
-> 👉 动手实验：[动手：空间表示、决策与训练](/labs/foundations)
+> 👉 动手实验：[动手：空间表示、决策与训练](/chapters/01-foundations/01-08-basic-experiments)
 
 ## 小结
 

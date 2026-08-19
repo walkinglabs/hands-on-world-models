@@ -91,4 +91,4 @@ A1 因此同时画两条曲线：teacher-forced 的一步 loss，以及从某一
 - [ ] 四项损失分别约束观察、reward、continue 和 KL，要分开记录。
 - [ ] open-loop 多步 rollout 比 teacher-forced 一步结果更接近部署条件。
 
-状态能预测了，下一步是让它替我们选动作。下一篇看 PlaNet 怎样在这个 latent 世界里用 CEM 现场搜索。动手训练见 [A1：潜在状态世界模型（RSSM）](/labs/route-a)。
+状态能预测了，下一步是让它替我们选动作。下一篇看 PlaNet 怎样在这个 latent 世界里用 CEM 现场搜索。动手训练见 [A1：潜在状态世界模型（RSSM）](/chapters/03-decision-and-planning/03-07-decision-and-planning)。

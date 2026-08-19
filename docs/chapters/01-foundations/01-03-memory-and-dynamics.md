@@ -72,7 +72,7 @@ RNN/GRU 强调逐步更新记忆；因果 Transformer 强调 token 序列与 KV 
 
 它们本身都不是一台完整的世界模型。完整系统还需要动作条件转移、预测目标、数据，以及一套使用预测做决策的程序——这些是后面几节和后续章节的主题。
 
-> 👉 动手实验：[动手：观察编码、记忆与压缩](/labs/foundations)
+> 👉 动手实验：[动手：观察编码、记忆与压缩](/chapters/01-foundations/01-08-basic-experiments)
 
 ## 小结
 

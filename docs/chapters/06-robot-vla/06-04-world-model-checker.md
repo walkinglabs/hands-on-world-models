@@ -92,4 +92,4 @@ $$
 - [ ] learned checker 要与直接执行和真实模拟器上限比较。
 - [ ] 世界模型检查不能代替独立的安全约束。
 
-本章动手实验见 [D1：视觉-语言-动作模型（VLA）](/labs/route-de) 与 [D2：动作后果检查（世界模型检查器）](/labs/route-de)，更多内容见 [D1–E2 机器人与空间实验](/labs/route-de)。
+本章动手实验见 [D1：视觉-语言-动作模型（VLA）](/chapters/06-robot-vla/06-05-robot-vla) 与 [D2：动作后果检查（世界模型检查器）](/chapters/06-robot-vla/06-05-robot-vla)，更多内容见 [D1–E2 机器人与空间实验](/chapters/06-robot-vla/06-05-robot-vla)。
