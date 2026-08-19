@@ -68,4 +68,4 @@ a_t = a^{(3)} \Rightarrow \hat s^{(3)}_{t+1}.$$
 
 下一篇把预测连续使用几次。我们会看到，一步看起来正确，仍然可能在三步以后进入陷阱。
 
-> 👉 动手实验：[动手：从零实现世界模型](/chapters/00-why-world-models/00-06-invent-a-world-model)
+> 👉 动手实验：[动手：从零重新发明世界模型](/chapters/00-why-world-models/00-06-invent-a-world-model)

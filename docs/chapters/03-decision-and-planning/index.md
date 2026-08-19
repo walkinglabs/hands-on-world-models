@@ -13,7 +13,7 @@
 3. [3.3　PlaNet 与交叉熵方法（CEM）](./03-03-planet-and-cem.md)
 4. [3.4　Dreamer：在想象中训练](./03-04-dreamer-imagination.md)
 5. [3.5　MuZero 与蒙特卡洛树搜索](./03-05-muzero.md)
-6. [3.6　动手复现 World Models](./03-06-reproduce-world-models.md)
+6. [3.6　对照：动手复现 World Models](./03-06-reproduce-world-models.md)
 7. [3.7　动手：决策与规划实验](./03-07-decision-and-planning.md)
 
 主指标是真实环境回报、样本效率和多步漂移。重建图像只是训练手段，不是本路线的最终成绩。

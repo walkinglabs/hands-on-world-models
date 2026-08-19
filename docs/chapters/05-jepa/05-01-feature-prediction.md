@@ -73,4 +73,4 @@ JEPA 让 $f_{\bar\theta}$ 自己从数据里产生训练目标，再通过 mask 
 - 特征目标让模型不必为不稳定的视觉细节买单。
 - feature loss 低不等于表示有用，仍要靠下游 probe 与控制任务来检验。
 
-[下一篇 → 4.2 掩码、EMA 与表示坍缩](./05-02-mask-ema-collapse.md) · [回到第 4 章](./index.md) · [动手：C1 视频特征预测](/chapters/05-jepa/05-05-jepa)
+[下一篇 → 5.2 掩码、EMA 与表示坍缩](./05-02-mask-ema-collapse.md) · [回到第 5 章](./index.md) · [动手：C1 视频特征预测](/chapters/05-jepa/05-05-jepa)

@@ -1,10 +1,10 @@
-# 8.7 动手：审问一台世界模型
+# 8.6 动手：审问一台世界模型
 
 > **本节目标**：不增加新网络，只练六项跨路线能力：多步 horizon 曲线、固定起点的反事实动作、单变量 OOD、不确定性校准、Planner 漏洞、run manifest 与硬件证据。完成后把同一套检查迁移到自己的 PA1 模型。
 
 > **本节代码**：[本节 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/08_evaluation/Z0-test-a-world-model.ipynb) · [evaluation.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/evaluation.py)
 
-> **前置知识**：你已经跑过至少一条路线（A/B/C/D/E），有一台训练好的世界模型。8.7 不训练新模型，只审问你已经有的模型。最好刚读完 [3.6 动手复现 World Models](/chapters/03-decision-and-planning/03-06-reproduce-world-models)——那里已经出现过「梦境分数高不等于真实分数高」。
+> **前置知识**：你已经跑过至少一条路线（A/B/C/D/E），有一台训练好的世界模型。8.6 不训练新模型，只审问你已经有的模型。最好刚读完 [3.6 动手复现 World Models](/chapters/03-decision-and-planning/03-06-reproduce-world-models)——那里已经出现过「梦境分数高不等于真实分数高」。
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## 这就是要审问的东西
 
-8.7 不用赛车、不用 PixelWorld。它用一个故意有偏差、可以完全算清楚的一维世界：
+8.6 不用赛车、不用 PixelWorld。它用一个故意有偏差、可以完全算清楚的一维世界：
 
 $$
 x_{t+1} = x_t + a_t
@@ -77,7 +77,7 @@ jupyter lab
 PYTHONPATH=src python -m unittest tests.test_evaluation -v
 ```
 
-8.7 使用解析 toy，CPU 即可。完成后把同一套检查迁移到自己的 PA1 模型。
+8.6 使用解析 toy，CPU 即可。完成后把同一套检查迁移到自己的 PA1 模型。
 
 ## 测试一：多步 horizon 曲线
 
@@ -453,7 +453,7 @@ peak_reserved_mb: None
 
 教学版有几处刻意的简化，跑不通或数字对不上时，先从这里找原因：
 
-- **8.7 的 toy 过于简单**。一维位移、线性偏差，失败模式干净，但不等于你的 PA1 模型会以同样方式失败。
+- **8.6 的 toy 过于简单**。一维位移、线性偏差，失败模式干净，但不等于你的 PA1 模型会以同样方式失败。
 - **OOD 测试只改变一个变量**。真实世界的 OOD 是多变量叠在一起的，单变量测试只是起点。
 - **校准曲线需要大量样本**。六个点、三个箱子，只能示范分箱，不能给校准下结论。
 - **Planner 漏洞测试依赖 Planner 质量**。如果 Planner 本身很弱，可能根本走不到模型的漏洞上。
@@ -462,7 +462,7 @@ peak_reserved_mb: None
 
 ## 扩展练习
 
-完成 8.7 后，按从便宜到昂贵的顺序推荐：
+完成 8.6 后，按从便宜到昂贵的顺序推荐：
 
 1. **迁移到自己的 PA1 模型**：把六项测试的接口换成你的 `predict(start, actions)`，观察失败模式落在哪一项。
 2. **加上复制上一帧 / 匀速外推基线**：确认模型在哪个 horizon 窗口里真正赢过傻基线。
@@ -482,7 +482,7 @@ peak_reserved_mb: None
 
 ## 后续工作
 
-8.7 用解析 toy 把六项检查跑通。真正的世界模型评价，要回答的是同一组问题，只是对象换成了像素、latent 和真实回报。
+8.6 用解析 toy 把六项检查跑通。真正的世界模型评价，要回答的是同一组问题，只是对象换成了像素、latent 和真实回报。
 
 **Dreamer** 的评价设定不再报单步重建，而是报真实环境的回合回报，并与 model-free 基线画在同一张样本效率曲线上。想象中的回报只是训练信号，验收看的是关上梦境之后还能不能得分。
 

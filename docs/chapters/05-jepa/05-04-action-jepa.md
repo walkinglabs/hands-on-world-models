@@ -13,7 +13,7 @@ $$
 = \frac{1}{N}\sum_{i=1}^{N}\Big\|g_\phi\big(h_i,\,a_i\big) - \tilde{y}_i\Big\|_2^{2}.
 $$
 
-对比 4.1 的 JEPA 损失，唯一的差别是 Predictor 多吃了 $a$ 这一项。但这一项的含义不小：它要求模型把动作当成变化的原因，而不是画面里的另一个像素。
+对比 5.1 的 JEPA 损失，唯一的差别是 Predictor 多吃了 $a$ 这一项。但这一项的含义不小：它要求模型把动作当成变化的原因，而不是画面里的另一个像素。
 
 动作通常先过一个 embedding 层 $e$，得到 $e(a)\in\mathbb{R}^{d_a}$，再和 $h$ 拼起来或相加，交给 Predictor：
 
@@ -57,7 +57,7 @@ $g_{\text{goal}}$ 是目标位置。这就是一步 lookahead 的动作选择，
 
 ## 与 Dreamer 的边界
 
-Action-JEPA 和 Dreamer（第 2 章）都能在特征空间预测未来，区别在侧重点：
+Action-JEPA 和 Dreamer（第 3 章）都能在特征空间预测未来，区别在侧重点：
 
 - **Action-JEPA**：核心是非生成的特征预测目标，关注表示质量。它一般不训练 reward、continue 和 Actor-Critic。
 - **Dreamer**：在 latent 里预测未来的同时，进一步训练 reward head、continue function、Actor 和 Critic，目标是提高真实回报。
@@ -71,4 +71,4 @@ Action-JEPA 和 Dreamer（第 2 章）都能在特征空间预测未来，区别
 - 反事实检查与下游动作选择，才能说明特征真正支持控制。
 - JEPA 重表示，Dreamer 重回报；二者在 latent 预测上接壤、目标不同。
 
-[上一篇 4.3 视频 JEPA](./05-03-video-jepa.md) · [回到第 4 章](./index.md) · [动手：C2 动作条件特征预测](/chapters/05-jepa/05-05-jepa)
+[上一篇 5.3 视频 JEPA](./05-03-video-jepa.md) · [回到第 5 章](./index.md) · [动手：C2 动作条件特征预测](/chapters/05-jepa/05-05-jepa)

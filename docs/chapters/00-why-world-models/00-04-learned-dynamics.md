@@ -66,4 +66,4 @@ $$0.95^{20} \approx 0.36.$$
 
 下一篇回到 2018 年《World Models》，看看经典论文怎样组合视觉、记忆和控制。
 
-> 👉 动手实验：[动手：从零实现世界模型](/chapters/00-why-world-models/00-06-invent-a-world-model)
+> 👉 动手实验：[动手：从零重新发明世界模型](/chapters/00-why-world-models/00-06-invent-a-world-model)

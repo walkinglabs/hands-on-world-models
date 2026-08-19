@@ -4,9 +4,9 @@
 
 ## 本章文章
 
-1. [一段经历怎样保存](./02-01-episodes-and-transitions.md)：把观察、动作、奖励和下一次观察按时间接好。
-2. [Replay Buffer 怎样取出可学习的数据](./02-02-replay-buffer-and-splits.md)：连续采样，并避免把未来信息泄漏到测试集。
-3. [从经历学出第一台模型](./02-03-first-learned-world.md)：用计数学习概率转移，再把预测放回行动循环。
+1. [2.1 一段经历怎样保存](./02-01-episodes-and-transitions.md)：把观察、动作、奖励和下一次观察按时间接好。
+2. [2.2 Replay Buffer 怎样取出可学习的数据](./02-02-replay-buffer-and-splits.md)：连续采样，并避免把未来信息泄漏到测试集。
+3. [2.3 从经历学出第一台模型](./02-03-first-learned-world.md)：用计数学习概率转移，再把预测放回行动循环。
 4. [2.4 动手：第一台可学习世界模型](./02-04-learn-a-table-world.md)：从轨迹里数出转移表，再用 MPC 走到终点。
 
 本章只有一份 Notebook。前三篇短文围绕同一份数据和同一个小环境展开，读完以后再在 2.4 中一次接起来。

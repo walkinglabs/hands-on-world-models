@@ -77,4 +77,4 @@ $$\boxed{\;\text{预测 } H \text{ 步} \;\to\; \text{只执行第一步 } a_t \
 
 目前网格世界的转移由人编写。下一篇拿走这张表，只保留机器人过去走过的记录。
 
-> 👉 动手实验：[动手：从零实现世界模型](/chapters/00-why-world-models/00-06-invent-a-world-model)
+> 👉 动手实验：[动手：从零重新发明世界模型](/chapters/00-why-world-models/00-06-invent-a-world-model)

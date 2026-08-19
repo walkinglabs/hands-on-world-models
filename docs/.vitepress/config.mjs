@@ -71,7 +71,7 @@ export default defineConfig({
             link: "/chapters/00-why-world-models/00-03-rollout-planning-policy",
           },
           {
-            text: "0.4. 从经验学习动态",
+            text: "0.4. 从经历学习动态",
             link: "/chapters/00-why-world-models/00-04-learned-dynamics",
           },
           {
@@ -79,12 +79,8 @@ export default defineConfig({
             link: "/chapters/00-why-world-models/00-05-classic-world-models",
           },
           {
-            text: "0.6. 动手：从零实现世界模型",
+            text: "0.6. 动手：从零重新发明世界模型",
             link: "/chapters/00-why-world-models/00-06-invent-a-world-model",
-          },
-          {
-            text: "PA0 · 动手：重新发明一台可学习世界模型",
-            link: "/assignments/pa0",
           },
         ],
       },
@@ -177,7 +173,7 @@ export default defineConfig({
             link: "/chapters/03-decision-and-planning/03-05-muzero",
           },
           {
-            text: "3.6. 动手复现 World Models",
+            text: "3.6. 对照：动手复现 World Models",
             link: "/chapters/03-decision-and-planning/03-06-reproduce-world-models",
           },
           {
@@ -195,19 +191,19 @@ export default defineConfig({
         collapsed: false,
         items: [
           {
-            text: "4.1. 动作条件视频数据",
+            text: "4.1. 从视频生成到视频世界模型",
             link: "/chapters/04-interactive-video/04-01-video-data",
           },
           {
-            text: "4.2. VQ-VAE：离散图像 token",
+            text: "4.2. 先决定预测什么",
             link: "/chapters/04-interactive-video/04-02-vq-tokenizer",
           },
           {
-            text: "4.3. 动作条件 Transformer：自回归视频生成",
+            text: "4.3. AR、Diffusion 与 Diffusion Forcing",
             link: "/chapters/04-interactive-video/04-03-action-transformer",
           },
           {
-            text: "4.4. 扩散视频生成与多步漂移",
+            text: "4.4. 动作、记忆、长时生成与评价",
             link: "/chapters/04-interactive-video/04-04-diffusion-and-evaluation",
           },
           {
@@ -339,12 +335,12 @@ export default defineConfig({
             link: "/chapters/08-evaluate-and-invent/08-05-interrogate-world-model",
           },
           {
-            text: "8.6. 实现自己的世界模型",
-            link: "/chapters/08-evaluate-and-invent/08-06-next-model-proposal",
+            text: "8.6. 动手：审问一台世界模型",
+            link: "/chapters/08-evaluate-and-invent/08-06-test-a-world-model",
           },
           {
-            text: "8.7. 动手：审问一台世界模型",
-            link: "/chapters/08-evaluate-and-invent/08-07-test-a-world-model",
+            text: "8.7. 动手：实现自己的世界模型",
+            link: "/chapters/08-evaluate-and-invent/08-07-next-model-proposal",
           },
           {
             text: "PA2 · 动手：设计下一台世界模型",

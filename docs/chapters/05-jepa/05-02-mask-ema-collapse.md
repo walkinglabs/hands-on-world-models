@@ -2,7 +2,7 @@
 
 JEPA 没有像素重建，也没有对比学习的负样本。这听起来很自由，但自由得危险。
 
-设想一种偷懒的解法：Context Encoder 和 Target Encoder 都输出全零向量，Predictor 也输出零。代入 4.1 的损失：
+设想一种偷懒的解法：Context Encoder 和 Target Encoder 都输出全零向量，Predictor 也输出零。代入 5.1 的损失：
 
 $$
 \mathcal{L}_{\text{JEPA}}
@@ -18,7 +18,7 @@ $$
 
 图像被切成一块块 patch。我们遮住一部分区域，只把可见 patch 交给 Context Encoder $f_\theta$，让 Predictor $g_\phi$ 去猜被遮区域的 target feature。
 
-设可见 patch 集合为 $c$，被遮 patch 集合为 $y$，那么 4.1 的损失改写得更精确一点：
+设可见 patch 集合为 $c$，被遮 patch 集合为 $y$，那么 5.1 的损失改写得更精确一点：
 
 $$
 \mathcal{L}
@@ -89,4 +89,4 @@ $m$ 叫动量系数。$m$ 越接近 $1$，靶子动得越慢。
 - EMA 让 Target Encoder 缓慢跟随在线参数，提供稳定但非静止的靶子。
 - 防坍缩不能靠直觉，要查特征统计与下游 probe。
 
-[上一篇 4.1 预测特征而非像素](./05-01-feature-prediction.md) · [下一篇 → 4.3 视频 JEPA](./05-03-video-jepa.md) · [回到第 4 章](./index.md) · [动手：C1 视频特征预测](/chapters/05-jepa/05-05-jepa)
+[上一篇 5.1 预测特征而非像素](./05-01-feature-prediction.md) · [下一篇 → 5.3 视频 JEPA](./05-03-video-jepa.md) · [回到第 5 章](./index.md) · [动手：C1 视频特征预测](/chapters/05-jepa/05-05-jepa)

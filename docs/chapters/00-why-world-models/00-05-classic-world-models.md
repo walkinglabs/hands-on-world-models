@@ -76,7 +76,7 @@ $$\bigl(\hat r_t,\, \hat \pi_t,\, \hat v_t\bigr) = F(s_t,\, a_t).$$
 
 第 1 章开始逐项建立这些设计所需的共同工具。
 
-> 👉 动手实验：[动手：从零实现世界模型](/chapters/00-why-world-models/00-06-invent-a-world-model)
+> 👉 动手实验：[动手：从零重新发明世界模型](/chapters/00-why-world-models/00-06-invent-a-world-model)
 
 ## 参考资料
 

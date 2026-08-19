@@ -10,10 +10,10 @@
 
 ## 本章文章
 
-1. [从视频生成到视频世界模型](./04-01-video-data.md)：先分清“像视频”和“能模拟动作后果”，再把数据时间接对。
-2. [先决定预测什么](./04-02-vq-tokenizer.md)：比较像素、连续 latent、离散 token 与语义特征。
-3. [AR、Diffusion 与 Diffusion Forcing](./04-03-action-transformer.md)：看懂三种生成方式解决了什么，又留下什么问题。
-4. [动作、记忆、长时生成与评价](./04-04-diffusion-and-evaluation.md)：把模型放进自由 rollout，检查它是否真的可用。
+1. [4.1 从视频生成到视频世界模型](./04-01-video-data.md)：先分清“像视频”和“能模拟动作后果”，再把数据时间接对。
+2. [4.2 先决定预测什么](./04-02-vq-tokenizer.md)：比较像素、连续 latent、离散 token 与语义特征。
+3. [4.3 AR、Diffusion 与 Diffusion Forcing](./04-03-action-transformer.md)：看懂三种生成方式解决了什么，又留下什么问题。
+4. [4.4 动作、记忆、长时生成与评价](./04-04-diffusion-and-evaluation.md)：把模型放进自由 rollout，检查它是否真的可用。
 5. [4.5 动手：交互视频实验](./04-05-interactive-video.md)：VQ-VAE 加动作条件 Transformer。
 
 B1 做出第一台离散视频模型；B2 用相同数据比较动作注入、自由 rollout 和逐帧不同噪声。PA1-B 再把这些检查接成一次完整实验。全章只使用两份 Notebook。

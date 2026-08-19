@@ -1,10 +1,10 @@
-# 8.5　动手：审问世界模型
+# 8.5　审问世界模型
 
 > **本节目标**：不训练新网络。用一个能完全算清的一维玩具，把六项审问——多步 horizon、反事实动作、单变量 OOD、不确定性校准、Planner 漏洞、Run Manifest——写成带公式和真实数字的判据。做完后把同一套问题搬到你的 PA1 模型上。
 >
-> **本节代码**：[8.7 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/08_evaluation/Z0-test-a-world-model.ipynb) · [evaluation.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/evaluation.py)
+> **本节代码**：[8.6 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/08_evaluation/Z0-test-a-world-model.ipynb) · [evaluation.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/evaluation.py)
 >
-> **前置知识**：8.1–8.4 已经讲过基线、反事实、硬件证据和失败分析。这一节把它们接到可运行的函数上。具体单元格在 [8.7 实验页](/chapters/08-evaluate-and-invent/08-07-test-a-world-model)；本页写清「为什么这样问、怎样才算过」。
+> **前置知识**：8.1–8.4 已经讲过基线、反事实、硬件证据和失败分析。这一节把它们接到可运行的函数上。具体单元格在 [8.6 实验页](/chapters/08-evaluate-and-invent/08-06-test-a-world-model)；本页写清「为什么这样问、怎样才算过」。
 
 ---
 
@@ -12,13 +12,13 @@
 
 但模型真的理解了世界，还是只记住了训练数据的统计？
 
-**审问（interrogate）** 不是证明它有多好，而是设计一组测试，让失败模式自己站出来。8.7 不训练新架构。它先用一个解析玩具把六项检查跑通，再要求你把同一套检查原封不动搬到 PA1。
+**审问（interrogate）** 不是证明它有多好，而是设计一组测试，让失败模式自己站出来。8.6 不训练新架构。它先用一个解析玩具把六项检查跑通，再要求你把同一套检查原封不动搬到 PA1。
 
 玩具故意有偏差：真实世界每次动作完整移动，模型只预测 0.9 倍位移。一步几乎看不见，多步以后会慢慢落后。这不是实现 bug，是后面所有公式的活标本。
 
 ## 本次会得到什么
 
-跑完 8.7，你应能亲手算出并解释这些数字：
+跑完 8.6，你应能亲手算出并解释这些数字：
 
 - horizon 1 / 5 / 12 的 MSE：**0.01 / 0.17 / 0.96**
 - 固定起点、三组动作相对「停留」的差异：**0.0 / 1.8 / 1.8**
@@ -42,7 +42,7 @@ jupyter lab
 PYTHONPATH=src python -m unittest tests.test_evaluation -v
 ```
 
-核心函数在 `hwm.evaluation`：`horizon_errors`、`counterfactual_sensitivity`、`calibration_bins`、`RunManifest`。8.7 的接口是「你提供 `predict(start, actions)`」，不是「再写一套评测」。
+核心函数在 `hwm.evaluation`：`horizon_errors`、`counterfactual_sensitivity`、`calibration_bins`、`RunManifest`。8.6 的接口是「你提供 `predict(start, actions)`」，不是「再写一套评测」。
 
 ## 第一步：先立基线，再画 horizon
 
@@ -61,7 +61,7 @@ $$
 \mathrm{err}(H)=\mathbb{E}\bigl[\|\hat s_H-s_H\|^2\bigr]
 $$
 
-8.7 的模型是 \(s_{t+1}=s_t+0.9\,a_t\)，世界是 \(s_{t+1}=s_t+a_t\)。三个起点 \(0,1,-1\)，三段 12 步动作。`horizon_errors` 先对每个起点算逐步平方误差，再对起点取平均，**不把多步藏进一个平均数**。
+8.6 的模型是 \(s_{t+1}=s_t+0.9\,a_t\)，世界是 \(s_{t+1}=s_t+a_t\)。三个起点 \(0,1,-1\)，三段 12 步动作。`horizon_errors` 先对每个起点算逐步平方误差，再对起点取平均，**不把多步藏进一个平均数**。
 
 ```python
 from hwm.evaluation import horizon_errors
@@ -88,7 +88,7 @@ print([round(float(errors[i]), 4) for i in (0, 4, 11)])
 
 <div style="text-align:center; margin:20px 0;">
   <img src="/carracing/z85-horizon.png" alt="0.9 倍位移的 horizon 曲线" style="max-width:min(760px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">8.7 玩具：一步 MSE 0.01，五步 0.17，十二步 0.96。复合误差不是比喻，是可以手算的 \(0.01 H^2\)。</div>
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">8.6 玩具：一步 MSE 0.01，五步 0.17，十二步 0.96。复合误差不是比喻，是可以手算的 \(0.01 H^2\)。</div>
 </div>
 
 接到 PA1 时，至少报 1 / 5 / 10 / 30 步，并写明「从第几步开始不如复制」。挑 3 条 rollout 可视化：一条还行、一条开始漂、一条崩了。别只挑成功的。
@@ -127,7 +127,7 @@ print(np.round(sensitivity, 3))
 
 神经网络有个坏毛病：没见过的输入也会吐一个看起来合理的数。OOD 测试必须在跑之前写好维度，一次只改一个变量。
 
-8.7 的训练支持是 \(|a|\le 1\)。动作 1、尺度 0.9 时绝对误差 0.1；动作 3、尺度再改成 0.7 时绝对误差 0.9。后者不是「同一个模型的外推」，而是故意把偏差加大，模拟「分布外动力学更不准」。
+8.6 的训练支持是 \(|a|\le 1\)。动作 1、尺度 0.9 时绝对误差 0.1；动作 3、尺度再改成 0.7 时绝对误差 0.9。后者不是「同一个模型的外推」，而是故意把偏差加大，模拟「分布外动力学更不准」。
 
 ```python
 in_distribution = abs(rollout(0, [1], 0.9)[0] - rollout(0, [1], 1.0)[0])
@@ -155,7 +155,7 @@ $$
 \mathrm{ECE}=\sum_{b=1}^{B}\frac{n_b}{N}\,\bigl|\bar p_b-\bar f_b\bigr|
 $$
 
-8.7 用 6 个点、3 个箱，只为看清接口，不是为了得到可靠的 ECE。
+8.6 用 6 个点、3 个箱，只为看清接口，不是为了得到可靠的 ECE。
 
 ```python
 from hwm.evaluation import calibration_bins
@@ -180,7 +180,7 @@ for item in calibration_bins(probabilities, outcomes, num_bins=3):
 
 随机测试采样训练分布里的动作。Planner 解的是另一件事：在模型里找高回报动作。若模型错误地认为超大动作没有代价，最优解会落在训练支持外面。
 
-8.7 的模型分数是 \(-(0.9a-3)^2\)。连续区间 \([-4,4]\) 上的最大值在 \(a=3/0.9=3.\overline{3}\)，33 个网格点里最近的是 **3.25**。训练支持是 \([-1,1]\)。
+8.6 的模型分数是 \(-(0.9a-3)^2\)。连续区间 \([-4,4]\) 上的最大值在 \(a=3/0.9=3.\overline{3}\)，33 个网格点里最近的是 **3.25**。训练支持是 \([-1,1]\)。
 
 ```python
 candidates = np.linspace(-4, 4, 33)
@@ -200,7 +200,7 @@ chosen = float(candidates[model_scores.argmax()])
 
 ## 第六步：留下运行证据
 
-`RunManifest` 要能让别人复现：实验名、路线、seed、数据、split、命令、开始时间、墙钟、设备、峰值显存、checkpoint SHA256。8.7 的 CPU smoke 里 `peak_reserved_mb is None`——这不是漏填，是诚实：没有 GPU 就不要写「24GB 能跑」。
+`RunManifest` 要能让别人复现：实验名、路线、seed、数据、split、命令、开始时间、墙钟、设备、峰值显存、checkpoint SHA256。8.6 的 CPU smoke 里 `peak_reserved_mb is None`——这不是漏填，是诚实：没有 GPU 就不要写「24GB 能跑」。
 
 ```python
 from hwm.evaluation import RunManifest, RunTimer, runtime_summary
@@ -232,11 +232,11 @@ manifest = RunManifest(
 - 没做到：horizon 12 误差 0.96；动作 3 的误差是动作 1 的 9 倍；Planner 选 \(a=3.25\)。
 - 边界：只在 \(|a|\le 1\)、一步预测、确定性一维位移时可靠。
 
-PA1 版把数字换成你的模型。下一节 8.6 / PA2 从这里列出的稳定失败里只挑一个。
+PA1 版把数字换成你的模型。下一节 8.7 / PA2 从这里列出的稳定失败里只挑一个。
 
-## 和 8.7 实验页怎么分工
+## 和 8.6 实验页怎么分工
 
-| 内容 | 本页 8.5 | [8.7](/chapters/08-evaluate-and-invent/08-07-test-a-world-model) |
+| 内容 | 本页 8.5 | [8.6](/chapters/08-evaluate-and-invent/08-06-test-a-world-model) |
 | ---- | -------- | -------------- |
 | 为什么要问这六件事 | 公式、判据、真实数字 | 简写动机 |
 | 怎么点单元格 | 指向 Notebook | 逐步跟做 |
