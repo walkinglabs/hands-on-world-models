@@ -41,7 +41,7 @@
 
 深度学习的加入，让"高维观测 + 学到的动态"第一次变得可行。这五年是概念密集涌现的五年：
 
-- **2018 年**，David Ha 与 Schmidhuber 发表 **World Models**：VAE 压缩画面、MDN-RNN 预测未来、一个 867 个参数的小控制器完全在"梦境"中训练，再迁回真实环境。V-M-C 框架与交互式的展示方式让它成为公认的现代起点——本课程第 0 章的原型正是这篇论文，[3.6 动手复现 World Models](/chapters/03-decision-and-planning/03-06-reproduce-world-models) 用 CarRacing 把它完整跑通。
+- **2018 年**，David Ha 与 Schmidhuber 发表 **World Models**：VAE 压缩画面、MDN-RNN 预测未来、一个 867 个参数的小控制器完全在"梦境"中训练，再迁回真实环境。V-M-C 框架与交互式的展示方式让它成为公认的现代起点——本课程第 0 章的原型正是这篇论文，[3.6 动手复现 World Models](/chapters/03-decision-and-planning/06-reproduce-world-models) 用 CarRacing 把它完整跑通。
 - **2019 年**，Hafner 等的 **PlaNet** 提出 RSSM（递归状态空间模型），把确定性记忆与随机不确定性分开建模，配合 CEM 在隐空间规划。同年 DeepMind 的 **SimPLe** 证明：只用 10 万帧真实数据，加上视频世界模型生成的经验，就能训练出像样的 Atari 策略。
 - **2020 年**，两条分岔同时出现：**Dreamer** 不再做昂贵的在线规划，而是直接在学习到的世界模型里反向传播训练 Actor-Critic；**MuZero** 则走向另一个极端——只学"对决策有用的隐式模型"，不重建任何观测，配合 MCTS 打通围棋与 Atari。
 - **2021–2023 年**，**DreamerV2/V3** 引入离散 latent 与大规模工程打磨，一套超参数打通 150 多个任务；**TD-MPC2** 展示了模型预测控制路线的可扩展性。为决策服务的世界模型，至此成熟。

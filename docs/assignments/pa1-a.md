@@ -4,7 +4,7 @@
 
 > **本节代码**：[PA1 模板](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/assignments/PA1-route-template.ipynb) · [A1](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/03_decision/A1-learn-a-latent-world.ipynb) · [A2](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/03_decision/A2-act-in-imagination.ipynb) · [`neural.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/neural.py) · [`control.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/control.py)
 
-> **前置知识**：你已经跑过 [3.7 动手：决策与规划](/chapters/03-decision-and-planning/03-07-decision-and-planning)。A1 确认 RSSM 接口连通，A2 用位置模型证明 learned dynamics 能改善真实行动，再用一次 Actor 更新接通想象训练。PA1-A **不再重复那两份 smoke**，而是把它们扩展成一次完整训练。
+> **前置知识**：你已经跑过 [3.7 动手：决策与规划](/chapters/03-decision-and-planning/07-decision-and-planning)。A1 确认 RSSM 接口连通，A2 用位置模型证明 learned dynamics 能改善真实行动，再用一次 Actor 更新接通想象训练。PA1-A **不再重复那两份 smoke**，而是把它们扩展成一次完整训练。
 
 ---
 

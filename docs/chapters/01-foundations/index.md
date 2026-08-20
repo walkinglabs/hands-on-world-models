@@ -6,14 +6,14 @@
 
 ## 本章文章
 
-1. [1.1 张量、时间与轨迹](./01-01-tensors-and-trajectories.md)：读懂 $[B,T,C,H,W]$，把动作放在正确的两帧之间。
-2. [1.2 图像编码器：CNN 与 ViT](./01-02-cnn-and-vit.md)：比较局部卷积核与 patch token。
-3. [1.3 记忆与动态：初见 RNN、Transformer 与 RSSM](./01-03-memory-and-dynamics.md)：从速度线索走到随机隐状态。
-4. [1.4 压缩与生成：初见 VAE、VQ-VAE 与扩散](./01-04-compression-and-generation.md)：比较连续 latent、离散 token 和多种未来。
-5. [1.5 空间表示：初见 BEV 与占用网格](./01-05-space-representations.md)：认识内参与外参、点云、俯视图和空间占用。
-6. [1.6 决策接口：初见价值、策略与规划器](./01-06-value-policy-planner.md)：说明预测怎样被用于选择动作。
-7. [1.7 经验回放与第一台模型（预览）](./01-07-data-and-first-model.md)：先看到整条管线，每一步的展开留给第 2 章。
-8. [1.8 动手：基础实验](./01-08-basic-experiments.md)：接起看见、记忆、压缩、空间与规划。
+1. [1.1 张量、时间与轨迹](./01-tensors-and-trajectories.md)：读懂 $[B,T,C,H,W]$，把动作放在正确的两帧之间。
+2. [1.2 图像编码器：CNN 与 ViT](./02-cnn-and-vit.md)：比较局部卷积核与 patch token。
+3. [1.3 记忆与动态：初见 RNN、Transformer 与 RSSM](./03-memory-and-dynamics.md)：从速度线索走到随机隐状态。
+4. [1.4 压缩与生成：初见 VAE、VQ-VAE 与扩散](./04-compression-and-generation.md)：比较连续 latent、离散 token 和多种未来。
+5. [1.5 空间表示：初见 BEV 与占用网格](./05-space-representations.md)：认识内参与外参、点云、俯视图和空间占用。
+6. [1.6 决策接口：初见价值、策略与规划器](./06-value-policy-planner.md)：说明预测怎样被用于选择动作。
+7. [1.7 经验回放与第一台模型（预览）](./07-data-and-first-model.md)：先看到整条管线，每一步的展开留给第 2 章。
+8. [1.8 动手：基础实验](./08-basic-experiments.md)：接起看见、记忆、压缩、空间与规划。
 
 ## 学完以后怎样选路
 

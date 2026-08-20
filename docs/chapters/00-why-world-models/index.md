@@ -6,12 +6,12 @@
 
 ## 本章文章
 
-1. [0.1 观察、状态与历史](./00-01-current-observation.md)：区分观察与状态，说明历史为何出现。
-2. [0.2 动作条件预测](./00-02-action-conditioned-future.md)：从普通续写走到动作条件预测。
-3. [0.3 多步预测与规划](./00-03-rollout-planning-policy.md)：在网格世界中区分世界模型、规划器和策略。
-4. [0.4 从经历学习动态](./00-04-learned-dynamics.md)：从连续经历学习概率转移，并检查模型错误。
-5. [0.5 经典世界模型（World Models、PlaNet、Dreamer）](./00-05-classic-world-models.md)：把我们得到的部件与 V–M–C、PlaNet 和 Dreamer 对照。
-6. [0.6 动手：从零重新发明世界模型](./00-06-invent-a-world-model.md)：把五篇文章放进同一份 Notebook。
+1. [0.1 观察、状态与历史](./01-current-observation.md)：区分观察与状态，说明历史为何出现。
+2. [0.2 动作条件预测](./02-action-conditioned-future.md)：从普通续写走到动作条件预测。
+3. [0.3 多步预测与规划](./03-rollout-planning-policy.md)：在网格世界中区分世界模型、规划器和策略。
+4. [0.4 从经历学习动态](./04-learned-dynamics.md)：从连续经历学习概率转移，并检查模型错误。
+5. [0.5 经典世界模型（World Models、PlaNet、Dreamer）](./05-classic-world-models.md)：把我们得到的部件与 V–M–C、PlaNet 和 Dreamer 对照。
+6. [0.6 动手：从零重新发明世界模型](./06-invent-a-world-model.md)：把五篇文章放进同一份 Notebook。
 
 ## 学完以后
 
@@ -25,7 +25,7 @@
 
 下一章会把网格世界换成图片、视频和连续经历。
 
-> 👉 动手实验：[动手：从零重新发明世界模型](/chapters/00-why-world-models/00-06-invent-a-world-model)
+> 👉 动手实验：[动手：从零重新发明世界模型](/chapters/00-why-world-models/06-invent-a-world-model)
 
 ## 参考资料
 

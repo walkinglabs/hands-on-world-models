@@ -545,7 +545,7 @@ PA0 只要求你看清一个缺口。后面的路线把它放大：
 
 Dyna 把「用模型生成想象经验」写成完整算法，每一步真实交互后都在表格里再做几步规划更新。World Models 把同一件事做到像素上：V 压缩、M 想象、C 在梦里进化。Dreamer 再把无梯度进化换成可微的 Actor-Critic。你在 PA0 里亲手碰到的覆盖空洞、复合误差、模型被 Planner 钻空子，都会在那些更大的模型里再次出现。
 
-若你已经决定走路线 A，下一份实验是 [3.7 动手：决策与规划](/chapters/03-decision-and-planning/03-07-decision-and-planning)，作业是 [PA1-A · 做出一台 Dreamer-lite](/assignments/pa1-a)。
+若你已经决定走路线 A，下一份实验是 [3.7 动手：决策与规划](/chapters/03-decision-and-planning/07-decision-and-planning)，作业是 [PA1-A · 做出一台 Dreamer-lite](/assignments/pa1-a)。
 
 ## 参考文献
 

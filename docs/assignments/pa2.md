@@ -4,7 +4,7 @@
 >
 > **本节代码**：[PA2 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/assignments/PA2-next-model-template.ipynb)
 >
-> **前置知识**：你已经跑过 PA0、至少一条 PA1，以及 [8.5 / 8.6](/chapters/08-evaluate-and-invent/08-06-test-a-world-model)。PA2 从那里找到的稳定失败出发，只改一件事。第 8.7 节讲「为什么要这样设计实验」；本页是要交的作业。
+> **前置知识**：你已经跑过 PA0、至少一条 PA1，以及 [8.5 / 8.6](/chapters/08-evaluate-and-invent/06-test-a-world-model)。PA2 从那里找到的稳定失败出发，只改一件事。第 8.7 节讲「为什么要这样设计实验」；本页是要交的作业。
 
 ---
 
