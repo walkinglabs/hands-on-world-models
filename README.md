@@ -398,18 +398,9 @@ WalkingLabs 还制作了以下开源课程：
 
 本课程资料采用 [CC BY-NC-SA 4.0](LICENSE)（署名-非商业性使用-相同方式共享 4.0 国际）协议发布：你可以出于非商业目的共享与修改本材料，前提是给出适当署名，并让衍生作品继续使用相同协议。
 
-## ⭐ Star History
-
-如果这门课程对你有帮助，欢迎点一颗 Star ⭐️——这是对我们最大的鼓励。
-
-<div align="center">
-  <a href="https://star-history.com/#walkinglabs/hands-on-world-models&Date">
-    <img src="https://api.star-history.com/svg?repos=walkinglabs/hands-on-world-models&type=Date" alt="Star History Chart" width="600" />
-  </a>
-</div>
-
 ---
 
 <div align="center">
+  <p>如果这门课程对你有帮助，欢迎点一颗 Star ⭐️——这是对我们最大的鼓励。</p>
   <sub>Maintained with ❤️ by WalkingLabs & Contributors.</sub>
 </div>
