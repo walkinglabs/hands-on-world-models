@@ -54,7 +54,7 @@ python -m pip install -r requirements-neural.txt
 PYTHONPATH=src python -m unittest tests.test_routes_bc -v
 ```
 
-做完这一节再进入 [PA1-B](/assignments/pa1-b)。特征空间预测留给 [6.5](/chapters/06-jepa/06-jepa)。
+做完这一节再进入 [PA1-B](/assignments/pa1-b)。特征空间预测留给 [6.5](/chapters/06-jepa/05-jepa)。
 
 ## 第一步：先把时间接对
 
@@ -421,7 +421,7 @@ PYTHONPATH=src python -m unittest tests.test_routes_bc -v
 1. **码本大小扫描**：把 B1 的 `codebook_size` 从 8 扫到 64，画使用率和 token accuracy。有没有一个「再加大就开始空转」的点？
 2. **Free rollout 长度**：把 B2 的连续按键从 8 步提到 20 步，观察中心坐标和 `NaN` 出现的步数。
 
-完成后进入 [PA1-B · 动手：做出一个听从按键的视频小世界](/assignments/pa1-b)。下一章换一种预测目标：不画回像素，只预测未来特征，见 [6.5 动手：JEPA 实验](/chapters/06-jepa/06-jepa)。
+完成后进入 [PA1-B · 动手：做出一个听从按键的视频小世界](/assignments/pa1-b)。下一章换一种预测目标：不画回像素，只预测未来特征，见 [6.5 动手：JEPA 实验](/chapters/06-jepa/05-jepa)。
 
 ## 本节小结
 

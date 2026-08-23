@@ -10,7 +10,7 @@
 2. [6.2 掩码、EMA 与表示坍缩](./02-mask-ema-collapse.md)
 3. [6.3 视频 JEPA](./03-video-jepa.md)
 4. [6.4 动作条件 JEPA（Action-JEPA）](./04-action-jepa.md)
-5. [6.5 动手：JEPA 实验](./06-jepa.md)
+5. [6.5 动手：JEPA 实验](./05-jepa.md)
 
 被动视频可以检查表示质量，不能单独证明模型理解控制。只有加入时间对齐的动作以后，才检查反事实与规划。
 
