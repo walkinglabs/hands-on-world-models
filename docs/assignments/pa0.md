@@ -4,13 +4,13 @@
 
 > **本节代码**：[PA0 模板](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/assignments/PA0-template.ipynb) · [`gridworld.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/gridworld.py)
 
-> **前置知识**：你已经跑过 0.6（九格世界 + 表格动态）和 2.4（LineWorld 计数动态），知道世界模型的最小闭环——预测→规划→执行→修正。PA0 不再给你完整转移表，你需要自己设计缺口，并让一种失败稳定出现。
+> **前置知识**：你已经跑过 1.6（九格世界 + 表格动态）和 3.4（LineWorld 计数动态），知道世界模型的最小闭环——预测→规划→执行→修正。PA0 不再给你完整转移表，你需要自己设计缺口，并让一种失败稳定出现。
 
 ---
 
-0.6 给了你一个 3×3 的网格世界，转移表是人工写的。你只需要查表、规划、执行。一切都很干净。
+1.6 给了你一个 3×3 的网格世界，转移表是人工写的。你只需要查表、规划、执行。一切都很干净。
 
-2.4 给了你一条线形世界，动态是带打滑的计数。你从轨迹里数出转移概率，发现「学到的」和「真实的」可以非常接近。
+3.4 给了你一条线形世界，动态是带打滑的计数。你从轨迹里数出转移概率，发现「学到的」和「真实的」可以非常接近。
 
 但真实世界不会给你一张完美的表格。你会遇到这些情况：
 
@@ -46,9 +46,9 @@ PA0 的任务是：**选择其中一种变化，让一种失败稳定出现，�
 
 ## 为什么 PA0 是整门课的分水岭
 
-0.6 和 2.4 的世界模型是「玩具」——状态完全可观测，动态完全确定或几乎被数据盖住，规划深度刚好够用。PA0 第一次打破这三个假设中的至少一个。
+1.6 和 3.4 的世界模型是「玩具」——状态完全可观测，动态完全确定或几乎被数据盖住，规划深度刚好够用。PA0 第一次打破这三个假设中的至少一个。
 
-打破之后，0.6 的那套方法会不够用：
+打破之后，1.6 的那套方法会不够用：
 
 - 转移表不能处理**部分可观测**——你需要某种记忆或历史拼接；
 - 单点预测不能处理**随机动态**——你需要输出分布而不是单一结果；
@@ -68,7 +68,7 @@ PA0 不要求你用神经网络。表格、线性模型、小 MLP 都可以。�
 5. 规划深度不够：one-step 很准，但短 horizon 看不到终点奖励。
 ```
 
-修改 2.4 的 `LineWorld`，或在 `GridWorld` 上构造一个类似的小世界。环境必须足够小，能在 CPU 上 5 分钟内完成全部实验。
+修改 3.4 的 `LineWorld`，或在 `GridWorld` 上构造一个类似的小世界。环境必须足够小，能在 CPU 上 5 分钟内完成全部实验。
 
 本节后面的数字，全部来自这个 5×5：
 
@@ -96,7 +96,7 @@ A · · · ·
 · · · · G
 ```
 
-起点在左上，目标在右下，中间一块墙，`(1, 3)` 是陷阱。动作是 `down / right / up / left`。走进目标得 `+10`，走进陷阱得 `-10`，其余每步 `-1`。这就是 0.6 九格世界放大一圈之后的样子。
+起点在左上，目标在右下，中间一块墙，`(1, 3)` 是陷阱。动作是 `down / right / up / left`。走进目标得 `+10`，走进陷阱得 `-10`，其余每步 `-1`。这就是 1.6 九格世界放大一圈之后的样子。
 
 **这就是「先把世界钉死」**：后面所有覆盖率、准确率、成功率，都必须对着同一张地图说话。换了陷阱位置却沿用旧数字，证据作废。
 
@@ -316,7 +316,7 @@ P(s' | 3, left)  ≈ {2: 0.79, 3: 0.21}
 
 ### 2. 多步 rollout
 
-从同一起点出发，让模型连续吃自己的预测。这就是 0.6 教过的复合误差。
+从同一起点出发，让模型连续吃自己的预测。这就是 1.6 教过的复合误差。
 
 ```python
 def rollout_compare(model, world, start, actions):
@@ -465,14 +465,14 @@ PYTHONPATH=src python -m unittest tests.test_gridworld -v
 
 ## 评分
 
-| 项目 | 分数 | 检查重点 |
-| ---- | ---: | -------- |
-| 问题与接口 | 15 | 不靠模型名也能说清缺口 |
-| 数据与切分 | 20 | 时间对齐、episode 边界、覆盖率、无轨迹泄漏 |
-| 基线与模型 | 20 | 基线合理，模型确实读取动作 |
-| 评价证据 | 20 | 一步、多步、反事实、下游齐全 |
-| 失败诊断 | 15 | 失败稳定，解释至少有两种可能 |
-| 表达与复现 | 10 | Notebook 可运行，seed 与输出完整 |
+| 项目       | 分数 | 检查重点                                   |
+| ---------- | ---: | ------------------------------------------ |
+| 问题与接口 |   15 | 不靠模型名也能说清缺口                     |
+| 数据与切分 |   20 | 时间对齐、episode 边界、覆盖率、无轨迹泄漏 |
+| 基线与模型 |   20 | 基线合理，模型确实读取动作                 |
+| 评价证据   |   20 | 一步、多步、反事实、下游齐全               |
+| 失败诊断   |   15 | 失败稳定，解释至少有两种可能               |
+| 表达与复现 |   10 | Notebook 可运行，seed 与输出完整           |
 
 ## 不接受的结论
 
@@ -517,7 +517,7 @@ PYTHONPATH=src python -m unittest tests.test_gridworld -v
 哪些信息可以暂时不预测？
 ```
 
-根据答案进入第 3–7 章中的一条路线：
+根据答案进入第 4–8 章中的一条路线：
 
 - 如果答案是「latent 空间中的规划」→ 路线 A（Dreamer）
 - 如果答案是「可观看的视频」→ 路线 B（VQ-VAE + Transformer）
@@ -537,7 +537,7 @@ PYTHONPATH=src python -m unittest tests.test_gridworld -v
 - **失败诊断比修好失败更重要**：说清楚失败在哪里、为什么会出现，比盲目尝试修复更有价值。
 - **下一步只改一件事**：不要画出组合拳架构图。
 
-从 0.6 的九格世界到 PA0 的自设计世界，核心问题从未改变：**在行动之前，先在内部预见行动的后果**。PA0 让你第一次面对「预见不准」或「预见准了也用不好」——观察不够、数据不足、horizon 不够、Planner 在平局里走偏。这些缺口不是 bug，是研究的起点。
+从 1.6 的九格世界到 PA0 的自设计世界，核心问题从未改变：**在行动之前，先在内部预见行动的后果**。PA0 让你第一次面对「预见不准」或「预见准了也用不好」——观察不够、数据不足、horizon 不够、Planner 在平局里走偏。这些缺口不是 bug，是研究的起点。
 
 ## 后续工作
 
@@ -545,12 +545,12 @@ PA0 只要求你看清一个缺口。后面的路线把它放大：
 
 Dyna 把「用模型生成想象经验」写成完整算法，每一步真实交互后都在表格里再做几步规划更新。World Models 把同一件事做到像素上：V 压缩、M 想象、C 在梦里进化。Dreamer 再把无梯度进化换成可微的 Actor-Critic。你在 PA0 里亲手碰到的覆盖空洞、复合误差、模型被 Planner 钻空子，都会在那些更大的模型里再次出现。
 
-若你已经决定走路线 A，下一份实验是 [3.7 动手：决策与规划](/chapters/03-decision-and-planning/07-decision-and-planning)，作业是 [PA1-A · 做出一台 Dreamer-lite](/assignments/pa1-a)。
+若你已经决定走路线 A，下一份实验是 [4.7 动手：决策与规划](/chapters/04-decision-and-planning/07-decision-and-planning)，作业是 [PA1-A · 做出一台 Dreamer-lite](/assignments/pa1-a)。
 
 ## 参考文献
 
-1. Sutton, R. S., & Barto, A. G. (2018). *Reinforcement Learning: An Introduction* (2nd ed.). MIT Press. [链接](http://incompleteideas.net/book/the-book.html) —— 第 8 章讲 Dyna 与规划；本节的计数动态和 MPC 闭环是它的最小课堂版。
-2. Sutton, R. S. (1991). Dyna, an Integrated Architecture for Learning, Planning, and Reacting. *ACM SIGART Bulletin*, 2(4), 160–163. [链接](https://doi.org/10.1145/122344.122377) —— 用学到的模型做想象更新的原始架构。
-3. Ha, D., & Schmidhuber, J. (2018). Recurrent World Models Facilitate Policy Evolution. *NeurIPS 2018*. [arXiv:1803.10122](https://arxiv.org/abs/1803.10122) —— 在想象中训练策略；PA0 之后各条路线都从这里分叉。
-4. Kaelbling, L. P., Littman, M. L., & Cassandra, A. R. (1998). Planning and Acting in Partially Observable Stochastic Domains. *Artificial Intelligence*, 101(1–2), 99–134. [链接](https://doi.org/10.1016/S0004-3702(98)00023-X) —— 若你选了部分可观测，信念状态比「再加一层网络」更先要讲清。
-5. Talvitie, E. (2014). Model Regularization for Stable Sample Rollouts. *UAI 2014*. [arXiv:1406.2315](https://arxiv.org/abs/1406.2315) —— 多步 rollout 的复合误差，以及为什么 one-step 准不等于长程能用。
+1. Sutton, R. S., & Barto, A. G. (2018). _Reinforcement Learning: An Introduction_ (2nd ed.). MIT Press. [链接](http://incompleteideas.net/book/the-book.html) —— 第 9 章讲 Dyna 与规划；本节的计数动态和 MPC 闭环是它的最小课堂版。
+2. Sutton, R. S. (1991). Dyna, an Integrated Architecture for Learning, Planning, and Reacting. _ACM SIGART Bulletin_, 2(4), 160–163. [链接](https://doi.org/10.1145/122344.122377) —— 用学到的模型做想象更新的原始架构。
+3. Ha, D., & Schmidhuber, J. (2018). Recurrent World Models Facilitate Policy Evolution. _NeurIPS 2018_. [arXiv:1803.10122](https://arxiv.org/abs/1803.10122) —— 在想象中训练策略；PA0 之后各条路线都从这里分叉。
+4. Kaelbling, L. P., Littman, M. L., & Cassandra, A. R. (1998). Planning and Acting in Partially Observable Stochastic Domains. _Artificial Intelligence_, 101(1–2), 99–134. [链接](<https://doi.org/10.1016/S0004-3702(98)00023-X>) —— 若你选了部分可观测，信念状态比「再加一层网络」更先要讲清。
+5. Talvitie, E. (2014). Model Regularization for Stable Sample Rollouts. _UAI 2014_. [arXiv:1406.2315](https://arxiv.org/abs/1406.2315) —— 多步 rollout 的复合误差，以及为什么 one-step 准不等于长程能用。

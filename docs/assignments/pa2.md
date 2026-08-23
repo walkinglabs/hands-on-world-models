@@ -4,7 +4,7 @@
 >
 > **本节代码**：[PA2 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/assignments/PA2-next-model-template.ipynb)
 >
-> **前置知识**：你已经跑过 PA0、至少一条 PA1，以及 [8.5 / 8.6](/chapters/08-evaluate-and-invent/06-test-a-world-model)。PA2 从那里找到的稳定失败出发，只改一件事。第 8.7 节讲「为什么要这样设计实验」；本页是要交的作业。
+> **前置知识**：你已经跑过 PA0、至少一条路线项目，以及 [9.2 动手：世界模型的系统评测](/chapters/09-evaluate-and-invent/02-systematic-evaluation)。PA2 从那里找到的稳定失效出发，只改一件事。第 9.3 节讲「为什么要这样设计实验」；本页是要交的作业。
 
 ---
 
@@ -93,7 +93,7 @@ $$
 \Delta y = f(x_1', x_2, \ldots) - f(x_1, x_2, \ldots)
 $$
 
-如果两种解释预测同一个 \(\Delta y\)，你无法区分它们。第 8.7 节把「四种结果怎么判」写成了图；本页要求你在跑实验之前把那张表填进报告。
+如果两种解释预测同一个 \(\Delta y\)，你无法区分它们。第 9.3 节把「四种结果怎么判」写成了图；本页要求你在跑实验之前把那张表填进报告。
 
 ## 第三步：做一个最小改动
 
@@ -166,14 +166,14 @@ def ablation_study(model_factory, data, seeds=(0, 1, 2)):
 
 ## 评分
 
-| 项目 | 分数 | 检查重点 |
-| ---- | ---: | -------- |
-| 稳定失败 | 15 | 可复现；三次以上；有量化条件 |
-| 竞争解释 | 15 | 至少两种；预测的实验结果不同 |
-| 最小改动 | 20 | 只改一个因素；代码真改了；能跑 |
-| 证伪标准 | 15 | 实验前写好；含「怎样算自己错了」 |
-| 公平对照 | 20 | 同 split / seed / 预算；均值和标准差；失败样例 |
-| 报告与复现 | 15 | 六个问题答全；manifest；不越界声称 |
+| 项目       | 分数 | 检查重点                                       |
+| ---------- | ---: | ---------------------------------------------- |
+| 稳定失败   |   15 | 可复现；三次以上；有量化条件                   |
+| 竞争解释   |   15 | 至少两种；预测的实验结果不同                   |
+| 最小改动   |   20 | 只改一个因素；代码真改了；能跑                 |
+| 证伪标准   |   15 | 实验前写好；含「怎样算自己错了」               |
+| 公平对照   |   20 | 同 split / seed / 预算；均值和标准差；失败样例 |
+| 报告与复现 |   15 | 六个问题答全；manifest；不越界声称             |
 
 只报提升、藏下降、对照不公平、说不清为什么有效——哪怕主指标涨了，总分不超过 60。负结果且对照干净，可以拿满分。
 
@@ -205,12 +205,12 @@ def ablation_study(model_factory, data, seeds=(0, 1, 2)):
 - **公平对照不可妥协**：固定数据、seed、计算预算。
 - **负结果也是好结果**：问题、对照与边界写清楚，同样有价值。
 
-从 0.6 的九格世界到 PA2 的自设计研究，从人工写的转移表到「设计能证明自己错的实验」——你走完了世界模型的最小完整循环：理解→实现→审问→改进。这不是终点，是研究的起点。
+从 1.6 的九格世界到 PA2 的自设计研究，从人工写的转移表到「设计能证明自己错的实验」——你走完了世界模型的最小完整循环：理解→实现→审问→改进。这不是终点，是研究的起点。
 
 ## 参考文献
 
-1. Sutton, R. S., & Barto, A. G. (2018). *Reinforcement Learning: An Introduction* (2nd ed.). MIT Press. [链接](http://incompleteideas.net/book/the-book.html) —— 第 8 章讲 Dyna 与规划，是「先有模型再改模型」的老家。
-2. Talvitie, E. (2014). Model Regularization for Stable Sample Rollouts. *UAI 2014*. [arXiv:1406.2315](https://arxiv.org/abs/1406.2315) —— 多步 rollout 的复合误差，为什么「看起来一步很准」不够。
-3. Janner, M., Fu, J., Zhang, M., & Levine, S. (2019). When to Trust Your Model: Model-Based Policy Optimization. *NeurIPS 2019*. [arXiv:1906.08253](https://arxiv.org/abs/1906.08253) —— 模型只在可信区间里用，是很多「最小改动」的原型。
-4. Hafner, D., et al. (2023). Mastering Diverse Domains through World Models. *arXiv:2301.04104*. [链接](https://arxiv.org/abs/2301.04104) —— DreamerV3：一套超参打通 150+ 任务，对照实验该有多干净。
-5. LeCun, Y. (2022). A Path Towards Autonomous Machine Intelligence. *OpenReview*. [链接](https://openreview.net/pdf?id=BZ5a1r-kVsf) —— JEPA 提案：预测特征而不是像素，常被选作「改预测目标」的那一项最小改动。
+1. Sutton, R. S., & Barto, A. G. (2018). _Reinforcement Learning: An Introduction_ (2nd ed.). MIT Press. [链接](http://incompleteideas.net/book/the-book.html) —— 第 9 章讲 Dyna 与规划，是「先有模型再改模型」的老家。
+2. Talvitie, E. (2014). Model Regularization for Stable Sample Rollouts. _UAI 2014_. [arXiv:1406.2315](https://arxiv.org/abs/1406.2315) —— 多步 rollout 的复合误差，为什么「看起来一步很准」不够。
+3. Janner, M., Fu, J., Zhang, M., & Levine, S. (2019). When to Trust Your Model: Model-Based Policy Optimization. _NeurIPS 2019_. [arXiv:1906.08253](https://arxiv.org/abs/1906.08253) —— 模型只在可信区间里用，是很多「最小改动」的原型。
+4. Hafner, D., et al. (2023). Mastering Diverse Domains through World Models. _arXiv:2301.04104_. [链接](https://arxiv.org/abs/2301.04104) —— DreamerV3：一套超参打通 150+ 任务，对照实验该有多干净。
+5. LeCun, Y. (2022). A Path Towards Autonomous Machine Intelligence. _OpenReview_. [链接](https://openreview.net/pdf?id=BZ5a1r-kVsf) —— JEPA 提案：预测特征而不是像素，常被选作「改预测目标」的那一项最小改动。

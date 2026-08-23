@@ -2,7 +2,7 @@
 
 > **本节目标**：完成一次具身智能的完整实验——先用行为克隆训练 Tiny VLA，再训练一个 World-Model Checker 在动作执行前预测后果。不是证明 VLA 有多好，而是用证据回答「在动作执行前检查后果，真的能减少碰撞吗？」
 >
-> **本节代码**：[D1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/06_robot/D1-build-a-tiny-vla.ipynb) · [D2 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/06_robot/D2-check-actions-before-moving.ipynb) · [robot.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/robot.py)
+> **本节代码**：[D1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_robot/D1-build-a-tiny-vla.ipynb) · [D2 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_robot/D2-check-actions-before-moving.ipynb) · [robot.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/robot.py)
 >
 > **前置知识**：你已经跑过路线 D 的 D1（Tiny VLA smoke）和 D2（outcome model + reranking smoke），知道行为克隆、action chunk、outcome model。PA1-D 把它们扩展成完整训练，并补上闭环评价与失败分析。
 
@@ -50,8 +50,8 @@ outcome model 训练 → 碰撞场景构造 → reranking → 真实闭环检查
 ```bash
 python -m pip install -r requirements-neural.txt
 jupyter lab
-# notebooks/06_robot/D1-build-a-tiny-vla.ipynb
-# notebooks/06_robot/D2-check-actions-before-moving.ipynb
+# notebooks/07_robot/D1-build-a-tiny-vla.ipynb
+# notebooks/07_robot/D2-check-actions-before-moving.ipynb
 ```
 
 可复用实现在 `src/hwm/robot.py`。即使暂时不跑 Notebook，也可以先跑测试：
@@ -163,13 +163,13 @@ metrics = evaluate_vla(model, test["states"], test["instructions"], max_steps=12
 
 **真实判据（D1 默认权重、测试 seed=17、12 步）**：
 
-| 指标 | 数值 |
-| ---- | ---: |
+| 指标                 |  数值 |
+| -------------------- | ----: |
 | 换指令后的平均动作差 | 0.208 |
-| `success_rate` | 0.156 |
-| `mean_collisions` | 3.562 |
-| `initial_distance` | 0.375 |
-| `final_distance` | 0.302 |
+| `success_rate`       | 0.156 |
+| `mean_collisions`    | 3.562 |
+| `initial_distance`   | 0.375 |
+| `final_distance`     | 0.302 |
 
 动作差大于 0，说明语言头不是摆设。成功率只有 0.156、最终距离 0.302 仍大于成功半径，说明 **loss 下降不等于会做任务**。这正是 PA1-D 要你放大样本量之后继续盯住的缺口。
 
@@ -219,11 +219,11 @@ safety = evaluate_reranker(model, num_cases=64, seed=23, collision_weight=4.0)
 
 **真实判据（64 场景、seed=23、\(\lambda=4\)）**：
 
-| 指标 | 数值 |
-| ---- | ---: |
-| `direct_collision_rate` | 1.000 |
-| `reranked_collision_rate` | 0.328 |
-| `reranked_mean_progress` | -0.036 |
+| 指标                      |   数值 |
+| ------------------------- | -----: |
+| `direct_collision_rate`   |  1.000 |
+| `reranked_collision_rate` |  0.328 |
+| `reranked_mean_progress`  | -0.036 |
 
 碰撞确实少了，平均每步反而离目标更远。这就是「安全地停住」和「安全地完成任务」的差别。PA1-D 必须把这两本账分开写，不能只报碰撞下降。
 
@@ -235,14 +235,14 @@ safety = evaluate_reranker(model, num_cases=64, seed=23, collision_weight=4.0)
 
 ## 评分
 
-| 项目 | 分数 | 检查重点 |
-| ---- | ---: | -------- |
-| 数据与切分 | 15 | 字段 shape 与代码一致；按场景 seed 切分；无泄漏 |
-| 基线与 VLA | 20 | state-only 先报；chunk loss 与第一步 MSE 分开；参数量写明 |
-| 反事实与闭环 | 20 | 换指令动作差；成功率/碰撞/距离齐全；测试 seed 独立 |
-| Checker 对照 | 25 | 直达 vs 重排；碰撞与进展分开；至少 64 个场景 |
-| 失败诊断 | 10 | 能指出选错来自候选、预测还是权重 |
-| 表达与复现 | 10 | Notebook 可运行；seed、曲线、checkpoint 哈希完整 |
+| 项目         | 分数 | 检查重点                                                  |
+| ------------ | ---: | --------------------------------------------------------- |
+| 数据与切分   |   15 | 字段 shape 与代码一致；按场景 seed 切分；无泄漏           |
+| 基线与 VLA   |   20 | state-only 先报；chunk loss 与第一步 MSE 分开；参数量写明 |
+| 反事实与闭环 |   20 | 换指令动作差；成功率/碰撞/距离齐全；测试 seed 独立        |
+| Checker 对照 |   25 | 直达 vs 重排；碰撞与进展分开；至少 64 个场景              |
+| 失败诊断     |   10 | 能指出选错来自候选、预测还是权重                          |
+| 表达与复现   |   10 | Notebook 可运行；seed、曲线、checkpoint 哈希完整          |
 
 负结果可以拿满分：只要对照公平，并写清 Checker 为什么没有帮上忙。
 
@@ -268,8 +268,8 @@ safety = evaluate_reranker(model, num_cases=64, seed=23, collision_weight=4.0)
 
 ## 参考文献
 
-1. Brohan, A., et al. (2023). RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control. *CoRL 2023*. [arXiv:2307.15818](https://arxiv.org/abs/2307.15818) —— 把视觉—语言骨干接到机器人动作上的代表性工作。
-2. Kim, M. J., et al. (2024). OpenVLA: An Open-Source Vision-Language-Action Model. *CoRL 2024*. [arXiv:2406.09246](https://arxiv.org/abs/2406.09246) —— 开源 VLA 基线，讨论数据混合与动作解码。
-3. Chi, C., et al. (2023). Diffusion Policy: Visuomotor Policy Learning via Action Diffusion. *RSS 2023*. [arXiv:2303.04137](https://arxiv.org/abs/2303.04137) —— 用扩散生成动作序列，和 action chunk 是同一类接口。
-4. Janner, M., Fu, J., Zhang, M., & Levine, S. (2019). When to Trust Your Model: Model-Based Policy Optimization. *NeurIPS 2019*. [arXiv:1906.08253](https://arxiv.org/abs/1906.08253) —— 模型只在可信区间里用：Checker 的直接祖先。
-5. Shridhar, M., Manuelli, L., & Fox, D. (2022). CLIPort: What and Where Pathways for Robotic Manipulation. *CoRL 2022*. [arXiv:2109.12098](https://arxiv.org/abs/2109.12098) —— 语言条件操作里，空间通路和语义通路为什么要分开。
+1. Brohan, A., et al. (2023). RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control. _CoRL 2023_. [arXiv:2307.15818](https://arxiv.org/abs/2307.15818) —— 把视觉—语言骨干接到机器人动作上的代表性工作。
+2. Kim, M. J., et al. (2024). OpenVLA: An Open-Source Vision-Language-Action Model. _CoRL 2024_. [arXiv:2406.09246](https://arxiv.org/abs/2406.09246) —— 开源 VLA 基线，讨论数据混合与动作解码。
+3. Chi, C., et al. (2023). Diffusion Policy: Visuomotor Policy Learning via Action Diffusion. _RSS 2023_. [arXiv:2303.04137](https://arxiv.org/abs/2303.04137) —— 用扩散生成动作序列，和 action chunk 是同一类接口。
+4. Janner, M., Fu, J., Zhang, M., & Levine, S. (2019). When to Trust Your Model: Model-Based Policy Optimization. _NeurIPS 2019_. [arXiv:1906.08253](https://arxiv.org/abs/1906.08253) —— 模型只在可信区间里用：Checker 的直接祖先。
+5. Shridhar, M., Manuelli, L., & Fox, D. (2022). CLIPort: What and Where Pathways for Robotic Manipulation. _CoRL 2022_. [arXiv:2109.12098](https://arxiv.org/abs/2109.12098) —— 语言条件操作里，空间通路和语义通路为什么要分开。

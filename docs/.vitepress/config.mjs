@@ -30,15 +30,15 @@ export default defineConfig({
       },
       {
         text: "预备知识",
-        link: "/chapters/01-foundations/01-tensors-and-trajectories",
+        link: "/chapters/02-foundations/01-tensors-and-trajectories",
       },
       {
         text: "五个方向",
-        link: "/chapters/03-decision-and-planning/01-latent-world-model",
+        link: "/chapters/04-decision-and-planning/01-latent-world-model",
       },
       {
         text: "评价与研究",
-        link: "/chapters/08-evaluate-and-invent/01-baselines-and-horizons",
+        link: "/chapters/09-evaluate-and-invent/01-perception-and-utility",
       },
       {
         text: "GitHub",
@@ -51,96 +51,97 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: "绪论", link: "/guide/world-model-intro" },
+          { text: "课程总纲", link: "/课程总纲" },
           { text: "世界模型简史", link: "/guide/world-model-history" },
         ],
       },
       {
-        text: "0. 世界模型的基本问题",
+        text: "1. 世界模型的基本问题",
         collapsed: false,
         items: [
           {
-            text: "0.1. 观察、状态与历史",
-            link: "/chapters/00-why-world-models/01-current-observation",
+            text: "1.1. 观察、状态与历史",
+            link: "/chapters/01-why-world-models/01-current-observation",
           },
           {
-            text: "0.2. 动作条件预测",
-            link: "/chapters/00-why-world-models/02-action-conditioned-future",
+            text: "1.2. 动作条件预测",
+            link: "/chapters/01-why-world-models/02-action-conditioned-future",
           },
           {
-            text: "0.3. 多步预测与规划",
-            link: "/chapters/00-why-world-models/03-rollout-planning-policy",
+            text: "1.3. 多步预测与规划",
+            link: "/chapters/01-why-world-models/03-rollout-planning-policy",
           },
           {
-            text: "0.4. 从经历学习动态",
-            link: "/chapters/00-why-world-models/04-learned-dynamics",
+            text: "1.4. 从经历学习动态",
+            link: "/chapters/01-why-world-models/04-learned-dynamics",
           },
           {
-            text: "0.5. 经典世界模型",
-            link: "/chapters/00-why-world-models/05-classic-world-models",
+            text: "1.5. 经典世界模型",
+            link: "/chapters/01-why-world-models/05-classic-world-models",
           },
           {
-            text: "0.6. 动手：从零重新发明世界模型",
-            link: "/chapters/00-why-world-models/06-invent-a-world-model",
+            text: "1.6. 动手：从零重新发明世界模型",
+            link: "/chapters/01-why-world-models/06-invent-a-world-model",
           },
         ],
       },
       {
-        text: "1. 预备知识",
+        text: "2. 预备知识",
         collapsed: false,
         items: [
           {
-            text: "1.1. 张量、时间与轨迹",
-            link: "/chapters/01-foundations/01-tensors-and-trajectories",
+            text: "2.1. 张量、时间与轨迹",
+            link: "/chapters/02-foundations/01-tensors-and-trajectories",
           },
           {
-            text: "1.2. 图像编码器",
-            link: "/chapters/01-foundations/02-cnn-and-vit",
+            text: "2.2. 图像编码器",
+            link: "/chapters/02-foundations/02-cnn-and-vit",
           },
           {
-            text: "1.3. 记忆与动态",
-            link: "/chapters/01-foundations/03-memory-and-dynamics",
+            text: "2.3. 记忆与动态",
+            link: "/chapters/02-foundations/03-memory-and-dynamics",
           },
           {
-            text: "1.4. 压缩与生成",
-            link: "/chapters/01-foundations/04-compression-and-generation",
+            text: "2.4. 压缩与生成",
+            link: "/chapters/02-foundations/04-compression-and-generation",
           },
           {
-            text: "1.5. 空间表示",
-            link: "/chapters/01-foundations/05-space-representations",
+            text: "2.5. 空间表示",
+            link: "/chapters/02-foundations/05-space-representations",
           },
           {
-            text: "1.6. 决策接口",
-            link: "/chapters/01-foundations/06-value-policy-planner",
+            text: "2.6. 决策接口",
+            link: "/chapters/02-foundations/06-value-policy-planner",
           },
           {
-            text: "1.7. 经验回放与第一个模型",
-            link: "/chapters/01-foundations/07-data-and-first-model",
+            text: "2.7. 经验回放与第一个模型",
+            link: "/chapters/02-foundations/07-data-and-first-model",
           },
           {
-            text: "1.8. 动手：基础实验",
-            link: "/chapters/01-foundations/08-basic-experiments",
+            text: "2.8. 动手：基础实验",
+            link: "/chapters/02-foundations/08-basic-experiments",
           },
         ],
       },
       {
-        text: "2. 数据与第一个模型",
+        text: "3. 数据与第一个模型",
         collapsed: false,
         items: [
           {
-            text: "2.1. 经验的存储",
-            link: "/chapters/02-data-and-first-model/01-episodes-and-transitions",
+            text: "3.1. 经验的存储",
+            link: "/chapters/03-data-and-first-model/01-episodes-and-transitions",
           },
           {
-            text: "2.2. Replay Buffer 与数据切分",
-            link: "/chapters/02-data-and-first-model/02-replay-buffer-and-splits",
+            text: "3.2. Replay Buffer 与数据切分",
+            link: "/chapters/03-data-and-first-model/02-replay-buffer-and-splits",
           },
           {
-            text: "2.3. 从经验学习第一个模型",
-            link: "/chapters/02-data-and-first-model/03-first-learned-world",
+            text: "3.3. 从经验学习第一个模型",
+            link: "/chapters/03-data-and-first-model/03-first-learned-world",
           },
           {
-            text: "2.4. 动手：第一台可学习世界模型",
-            link: "/chapters/02-data-and-first-model/04-learn-a-table-world",
+            text: "3.4. 动手：第一台可学习世界模型",
+            link: "/chapters/03-data-and-first-model/04-learn-a-table-world",
           },
           {
             text: "PA0 · 动手：重新发明一台可学习世界模型",
@@ -149,36 +150,36 @@ export default defineConfig({
         ],
       },
       {
-        text: "3. 决策与规划",
+        text: "4. 决策与规划",
         collapsed: false,
         items: [
           {
-            text: "3.1. 潜在状态世界模型",
-            link: "/chapters/03-decision-and-planning/01-latent-world-model",
+            text: "4.1. 潜在状态世界模型",
+            link: "/chapters/04-decision-and-planning/01-latent-world-model",
           },
           {
-            text: "3.2. RSSM：记忆与不确定性",
-            link: "/chapters/03-decision-and-planning/02-rssm-training",
+            text: "4.2. RSSM：记忆与不确定性",
+            link: "/chapters/04-decision-and-planning/02-rssm-training",
           },
           {
-            text: "3.3. PlaNet 与 CEM",
-            link: "/chapters/03-decision-and-planning/03-planet-and-cem",
+            text: "4.3. PlaNet 与 CEM",
+            link: "/chapters/04-decision-and-planning/03-planet-and-cem",
           },
           {
-            text: "3.4. Dreamer：在想象中训练",
-            link: "/chapters/03-decision-and-planning/04-dreamer-imagination",
+            text: "4.4. Dreamer：在想象中训练",
+            link: "/chapters/04-decision-and-planning/04-dreamer-imagination",
           },
           {
-            text: "3.5. MuZero 与蒙特卡洛树搜索",
-            link: "/chapters/03-decision-and-planning/05-muzero",
+            text: "4.5. MuZero 与蒙特卡洛树搜索",
+            link: "/chapters/04-decision-and-planning/05-muzero",
           },
           {
-            text: "3.6. 对照：动手复现 World Models",
-            link: "/chapters/03-decision-and-planning/06-reproduce-world-models",
+            text: "4.6. 动手：复现 World Models",
+            link: "/chapters/04-decision-and-planning/06-reproduce-world-models",
           },
           {
-            text: "3.7. 动手：决策与规划实验",
-            link: "/chapters/03-decision-and-planning/07-decision-and-planning",
+            text: "4.7. 动手：决策与规划实验",
+            link: "/chapters/04-decision-and-planning/07-decision-and-planning",
           },
           {
             text: "PA1-A · 动手：做出一台 Dreamer-lite",
@@ -187,28 +188,28 @@ export default defineConfig({
         ],
       },
       {
-        text: "4. 交互式视频",
+        text: "5. 交互式视频",
         collapsed: false,
         items: [
           {
-            text: "4.1. 从视频生成到视频世界模型",
-            link: "/chapters/04-interactive-video/01-video-data",
+            text: "5.1. 从视频生成到视频世界模型",
+            link: "/chapters/05-interactive-video/01-video-data",
           },
           {
-            text: "4.2. 先决定预测什么",
-            link: "/chapters/04-interactive-video/02-vq-tokenizer",
+            text: "5.2. 先决定预测什么",
+            link: "/chapters/05-interactive-video/02-vq-tokenizer",
           },
           {
-            text: "4.3. AR、Diffusion 与 Diffusion Forcing",
-            link: "/chapters/04-interactive-video/03-action-transformer",
+            text: "5.3. AR、Diffusion 与 Diffusion Forcing",
+            link: "/chapters/05-interactive-video/03-action-transformer",
           },
           {
-            text: "4.4. 动作、记忆、长时生成与评价",
-            link: "/chapters/04-interactive-video/04-diffusion-and-evaluation",
+            text: "5.4. 动作、记忆、长时生成与评价",
+            link: "/chapters/05-interactive-video/04-diffusion-and-evaluation",
           },
           {
-            text: "4.5. 动手：交互视频实验",
-            link: "/chapters/04-interactive-video/05-interactive-video",
+            text: "5.5. 动手：交互视频实验",
+            link: "/chapters/05-interactive-video/05-interactive-video",
           },
           {
             text: "PA1-B · 动手：做出一个听从按键的视频小世界",
@@ -217,28 +218,28 @@ export default defineConfig({
         ],
       },
       {
-        text: "5. JEPA：特征空间预测",
+        text: "6. JEPA：特征空间预测",
         collapsed: false,
         items: [
           {
-            text: "5.1. 预测特征而非像素",
-            link: "/chapters/05-jepa/01-feature-prediction",
+            text: "6.1. 预测特征而非像素",
+            link: "/chapters/06-jepa/01-feature-prediction",
           },
           {
-            text: "5.2. 掩码、EMA 与表示坍缩",
-            link: "/chapters/05-jepa/02-mask-ema-collapse",
+            text: "6.2. 掩码、EMA 与表示坍缩",
+            link: "/chapters/06-jepa/02-mask-ema-collapse",
           },
           {
-            text: "5.3. 视频 JEPA",
-            link: "/chapters/05-jepa/03-video-jepa",
+            text: "6.3. 视频 JEPA",
+            link: "/chapters/06-jepa/03-video-jepa",
           },
           {
-            text: "5.4. 动作条件 JEPA",
-            link: "/chapters/05-jepa/04-action-jepa",
+            text: "6.4. 动作条件 JEPA",
+            link: "/chapters/06-jepa/04-action-jepa",
           },
           {
-            text: "5.5. 动手：JEPA 实验",
-            link: "/chapters/05-jepa/05-jepa",
+            text: "6.5. 动手：JEPA 实验",
+            link: "/chapters/06-jepa/05-jepa",
           },
           {
             text: "PA1-C · 动手：训练并审问一个 Tiny Video-JEPA",
@@ -247,28 +248,28 @@ export default defineConfig({
         ],
       },
       {
-        text: "6. 具身智能与机器人",
+        text: "7. 具身智能与机器人",
         collapsed: false,
         items: [
           {
-            text: "6.1. 机器人数据与行为克隆",
-            link: "/chapters/06-robot-vla/01-robot-data-and-bc",
+            text: "7.1. 机器人数据与行为克隆",
+            link: "/chapters/07-robot-vla/01-robot-data-and-bc",
           },
           {
-            text: "6.2. 视觉-语言-动作模型",
-            link: "/chapters/06-robot-vla/02-vision-language-action",
+            text: "7.2. 视觉-语言-动作模型",
+            link: "/chapters/07-robot-vla/02-vision-language-action",
           },
           {
-            text: "6.3. 动作分块与多模态动作",
-            link: "/chapters/06-robot-vla/03-action-chunk",
+            text: "7.3. 动作分块与多模态动作",
+            link: "/chapters/07-robot-vla/03-action-chunk",
           },
           {
-            text: "6.4. 世界模型检查器",
-            link: "/chapters/06-robot-vla/04-world-model-checker",
+            text: "7.4. 世界模型检查器",
+            link: "/chapters/07-robot-vla/04-world-model-checker",
           },
           {
-            text: "6.5. 动手：机器人与 VLA 实验",
-            link: "/chapters/06-robot-vla/05-robot-vla",
+            text: "7.5. 动手：机器人与 VLA 实验",
+            link: "/chapters/07-robot-vla/05-robot-vla",
           },
           {
             text: "PA1-D · 动手：Tiny VLA 与 World-Model Checker",
@@ -277,32 +278,32 @@ export default defineConfig({
         ],
       },
       {
-        text: "7. 空间世界与自动驾驶",
+        text: "8. 空间世界与自动驾驶",
         collapsed: false,
         items: [
           {
-            text: "7.1. 相机几何与投影",
-            link: "/chapters/07-spatial-worlds/01-camera-geometry",
+            text: "8.1. 相机几何与投影",
+            link: "/chapters/08-spatial-worlds/01-camera-geometry",
           },
           {
-            text: "7.2. BEV、占用网格与 LSS",
-            link: "/chapters/07-spatial-worlds/02-bev-and-occupancy",
+            text: "8.2. BEV、占用网格与 LSS",
+            link: "/chapters/08-spatial-worlds/02-bev-and-occupancy",
           },
           {
-            text: "7.3. NeRF、3DGS 与网格",
-            link: "/chapters/07-spatial-worlds/03-nerf-3dgs-mesh",
+            text: "8.3. NeRF、3DGS 与网格",
+            link: "/chapters/08-spatial-worlds/03-nerf-3dgs-mesh",
           },
           {
-            text: "7.4. 四维世界（4D）",
-            link: "/chapters/07-spatial-worlds/04-four-dimensional-worlds",
+            text: "8.4. 四维世界（4D）",
+            link: "/chapters/08-spatial-worlds/04-four-dimensional-worlds",
           },
           {
-            text: "7.5. 驾驶世界模型与未来占用",
-            link: "/chapters/07-spatial-worlds/05-driving-world-models",
+            text: "8.5. 驾驶世界模型与未来占用",
+            link: "/chapters/08-spatial-worlds/05-driving-world-models",
           },
           {
-            text: "7.6. 动手：空间世界实验",
-            link: "/chapters/07-spatial-worlds/06-spatial-world",
+            text: "8.6. 动手：空间世界实验",
+            link: "/chapters/08-spatial-worlds/06-spatial-world",
           },
           {
             text: "PA1-E · 动手：空间世界二选一",
@@ -311,40 +312,42 @@ export default defineConfig({
         ],
       },
       {
-        text: "8. 评价与研究设计",
+        text: "9. 评测与研究设计",
         collapsed: false,
         items: [
           {
-            text: "8.1. 基线与多步评价",
-            link: "/chapters/08-evaluate-and-invent/01-baselines-and-horizons",
+            text: "9.1. 感知质量与功能效用",
+            link: "/chapters/09-evaluate-and-invent/01-perception-and-utility",
           },
           {
-            text: "8.2. 反事实、分布外与鲁棒性",
-            link: "/chapters/08-evaluate-and-invent/02-counterfactual-and-ood",
+            text: "9.2. 动手：世界模型的系统评测",
+            link: "/chapters/09-evaluate-and-invent/02-systematic-evaluation",
           },
           {
-            text: "8.3. 运行证据与复现",
-            link: "/chapters/08-evaluate-and-invent/03-hardware-evidence",
-          },
-          {
-            text: "8.4. 失败分析与下一个世界模型",
-            link: "/chapters/08-evaluate-and-invent/04-next-world-model",
-          },
-          {
-            text: "8.5. 审问世界模型",
-            link: "/chapters/08-evaluate-and-invent/05-interrogate-world-model",
-          },
-          {
-            text: "8.6. 动手：审问一台世界模型",
-            link: "/chapters/08-evaluate-and-invent/06-test-a-world-model",
-          },
-          {
-            text: "8.7. 动手：实现自己的世界模型",
-            link: "/chapters/08-evaluate-and-invent/07-next-model-proposal",
+            text: "9.3. 动手：从失效到下一台世界模型",
+            link: "/chapters/09-evaluate-and-invent/03-failure-to-next-model",
           },
           {
             text: "PA2 · 动手：设计下一台世界模型",
             link: "/assignments/pa2",
+          },
+        ],
+      },
+      {
+        text: "附录",
+        collapsed: false,
+        items: [
+          {
+            text: "A. 数学、代码与术语速查",
+            link: "/appendices/math-code-glossary",
+          },
+          {
+            text: "B. 数据、算力与交付标准",
+            link: "/appendices/data-compute-delivery",
+          },
+          {
+            text: "C. 论文、榜单与产业地图",
+            link: "/appendices/papers-benchmarks-industry",
           },
         ],
       },

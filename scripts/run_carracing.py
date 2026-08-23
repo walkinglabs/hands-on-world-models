@@ -1,4 +1,4 @@
-"""第 3 章动手实验：在 CarRacing 上小规模复现 World Models 的 V-M-C 管线。
+"""第 4 章动手实验：在 CarRacing 上小规模复现 World Models 的 V-M-C 管线。
 
 流程与 Ha & Schmidhuber (2018) 一致：随机策略收集数据 -> 训练 V（ConvVAE）
 -> 训练 M（MDN-RNN）-> 用 CMA-ES 进化 C（线性控制器）。规模大幅打折，

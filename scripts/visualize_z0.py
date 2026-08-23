@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Z0 可视化：用与 Notebook 相同的解析 toy 生成讲义配图。
-数字必须与 notebooks/08_evaluation/Z0-test-a-world-model.ipynb 一致。
+数字必须与 notebooks/09_evaluation/Z0-test-a-world-model.ipynb 一致。
 """
 
 import json

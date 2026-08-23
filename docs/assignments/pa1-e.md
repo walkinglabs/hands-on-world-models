@@ -2,7 +2,7 @@
 
 > **本节目标**：先完成 E1 的共同基础（深度反投影、坐标变换、BEV Occupancy），再选择 E2a（3D/4D 动态场）或 E2b（驾驶 Occupancy 预测）中的一个方向，完成一次完整的空间世界模型实验。不是重建最漂亮的场景，而是用证据回答「模型真的理解了三维空间吗？」
 >
-> **本节代码**：[E1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_spatial/E1-from-camera-to-space.ipynb) · [E2a Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_spatial/E2a-build-a-small-4d-world.ipynb) · [E2b Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_spatial/E2b-predict-driving-space.ipynb) · [spatial.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/spatial.py) · [foundations.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/foundations.py)
+> **本节代码**：[E1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/08_spatial/E1-from-camera-to-space.ipynb) · [E2a Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/08_spatial/E2a-build-a-small-4d-world.ipynb) · [E2b Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/08_spatial/E2b-predict-driving-space.ipynb) · [spatial.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/spatial.py) · [foundations.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/foundations.py)
 >
 > **前置知识**：你已经跑过路线 E 的 E1（相机几何 + BEV Occupancy）、E2a（神经场 smoke）或 E2b（占用预测 smoke）。PA1-E 把它们扩成可评价的训练，并写清静态 / 动态 / 可控、开环 / 闭环的结论边界。
 
@@ -18,13 +18,13 @@ PA1-E 的任务是：**用完整训练回答「模型真的理解了三维空间
 
 路线 E 有两条分叉，一次只走一条：
 
-| 项目 | E2a（3D/4D 动态场） | E2b（驾驶 Occupancy） |
-| ---- | ------------------- | --------------------- |
-| 观测 | 坐标查询；PA 可升级到多视角 RGB | 历史 BEV；PA 可升级到多相机 |
-| 表示 | 神经场 \((x,y,z)\) 或 \((x,y,z,t,a)\) | \(16\times 16\) 占用网格 |
-| 预测 | 密度 / 颜色 | 未来占用 |
-| 评价 | 场拟合误差 + 反事实密度差 | IoU + 复制/匀速基线 + 动作敏感性 |
-| 应用 | 场景表示、新视角 | 开环驾驶预测 |
+| 项目 | E2a（3D/4D 动态场）                   | E2b（驾驶 Occupancy）            |
+| ---- | ------------------------------------- | -------------------------------- |
+| 观测 | 坐标查询；PA 可升级到多视角 RGB       | 历史 BEV；PA 可升级到多相机      |
+| 表示 | 神经场 \((x,y,z)\) 或 \((x,y,z,t,a)\) | \(16\times 16\) 占用网格         |
+| 预测 | 密度 / 颜色                           | 未来占用                         |
+| 评价 | 场拟合误差 + 反事实密度差             | IoU + 复制/匀速基线 + 动作敏感性 |
+| 应用 | 场景表示、新视角                      | 开环驾驶预测                     |
 
 **不要把两个项目各做一半。** 选一种，完整提交数据—模型—预测—评价。E1 对两条路都是必做。
 
@@ -64,7 +64,7 @@ PA1-E 的任务是：**用完整训练回答「模型真的理解了三维空间
 ```bash
 python -m pip install -r requirements-neural.txt   # E2a / E2b 需要
 jupyter lab
-# notebooks/07_spatial/E1-from-camera-to-space.ipynb
+# notebooks/08_spatial/E1-from-camera-to-space.ipynb
 # 然后只打开 E2a 或 E2b 其中一个
 ```
 
@@ -76,7 +76,7 @@ E1 只用 NumPy。E2a / E2b 用 PyTorch，CPU 就能跑 smoke。
 
 ## 第一步：E1 共同基础
 
-### 1.1 深度像素怎样变成三维点
+### 2.1 深度像素怎样变成三维点
 
 针孔反投影是从 2D 走到 3D 的第一公式：
 
@@ -96,7 +96,7 @@ points = depth_to_points(depth, fx=6, fy=6, cx=2.5, cy=2.5)
 
 **真实判据**：`points.shape == (36, 3)`，近/远 \(z\) 是 **2.0 / 4.0**。\(X,Y\) 范围大约 \([-1.67, 1.67]\)。如果所有点落在一个平面上，多半是 \(Z\) 写成了常数，或 \((u,v)\) 和 \((x,y)\) 对调了。
 
-### 1.2 外参把不同相机放进同一世界
+### 2.2 外参把不同相机放进同一世界
 
 ```python
 from hwm.foundations import make_camera_transform, transform_points
@@ -108,16 +108,16 @@ print(world.mean(0) - points.mean(0))
 
 齐次矩阵左乘点。平移写在最后一列，偏航绕 \(y\)。**真实判据**：均值平移必须是 \([1, 0, 0]\)，容差 \(10^{-5}\)。对不上，先查矩阵是 `T @ p` 还是 `p @ T`，再查相机系和世界系的轴。
 
-### 1.3 点落到俯视 Occupancy
+### 2.3 点落到俯视 Occupancy
 
 Occupancy 不看颜色，只记哪里有东西。E1 用 \(x\in[-2,4]\)、\(z\in[0,6]\)、分辨率 0.5 m，得到 **\((12, 12)\) 网格、8 个占用格**。近处 \(z=2\) 的 4 个像素挤进两格，远处 \(z=4\) 的像素摊得更开——这就是透视。
 
-### 1.4 标定误差会怎样
+### 2.4 标定误差会怎样
 
 ```python
 wrong = transform_points(points, make_camera_transform(tx=1.3))
 err = np.linalg.norm(wrong - world, axis=1).mean()
-# 0.3 m
+# 1.3 m
 ```
 
 **真实判据**：点云平均误差 **0.3 m**；错误占用 7 格；与正确占用的 IoU **0.5**。旧讲义里的 `occupancy_misalignment: 0.25` 对不上当前网格，不要再抄。神经网络可以在训练集上适应固定偏差，却不能把错误几何变正确。
@@ -168,11 +168,11 @@ mean |Δ| = 0.045
 
 ### 2a.3 结论边界
 
-| 声称 | 你必须交出的证据 |
-| ---- | ---------------- |
-| 静态重建 | 场拟合误差；若有体渲染，再加 PSNR / 深度误差 |
+| 声称     | 你必须交出的证据                                |
+| -------- | ----------------------------------------------- |
+| 静态重建 | 场拟合误差；若有体渲染，再加 PSNR / 深度误差    |
 | 动态重建 | 时间变化后误差仍可控；固定坐标换 \(t\) 密度会变 |
-| 可控 | 固定历史，只换动作，未来必须按动作方向分开 |
+| 可控     | 固定历史，只换动作，未来必须按动作方向分开      |
 
 换动作后未来不变，就只能称动态重建，不能称可控。3D Gaussian Splatting [3] 是另一种显式表示，渲染快，但同样不会自动带上动作动态。
 
@@ -205,12 +205,12 @@ $$
 
 **真实判据（80 步、seed=1）**：
 
-| 指标 | 数值 |
-| ---- | ---: |
-| loss | 1.127 → 0.253 |
-| 学习预测 IoU | 0.436 |
-| 复制上一帧 IoU | 0.277 |
-| 换动作后的占用差 | 0.085–0.110 |
+| 指标             |          数值 |
+| ---------------- | ------------: |
+| loss             | 1.127 → 0.253 |
+| 学习预测 IoU     |         0.436 |
+| 复制上一帧 IoU   |         0.277 |
+| 换动作后的占用差 |   0.085–0.110 |
 
 同一历史换 5 个动作，相对动作 0 的平均绝对差都大于 0。没有 ego action 的数据只能训练开环未来预测，不能称动作条件世界模型。
 
@@ -224,13 +224,13 @@ PA1-E 还要画 horizon 曲线：把未来 1 / 2 / 3 步的 IoU 拆开，不要�
 
 ## 评分
 
-| 项目 | 分数 | 检查重点 |
-| ---- | ---: | -------- |
-| E1 几何 | 25 | 36 点、平移 \([1,0,0]\)、占用 8 格、0.3 m / IoU 0.5 的标定实验 |
-| 所选分支的训练 | 25 | 曲线、参数量、shape 与代码一致 |
-| 基线与反事实 | 20 | E2a 换时间/动作；E2b 复制帧 + 匀速 + 换动作 |
-| 结论边界 | 20 | 静态/动态/可控，或开环/闭环，不越界声称 |
-| 表达与复现 | 10 | Notebook 可运行；seed 与输出完整 |
+| 项目           | 分数 | 检查重点                                                       |
+| -------------- | ---: | -------------------------------------------------------------- |
+| E1 几何        |   25 | 36 点、平移 \([1,0,0]\)、占用 8 格、0.3 m / IoU 0.5 的标定实验 |
+| 所选分支的训练 |   25 | 曲线、参数量、shape 与代码一致                                 |
+| 基线与反事实   |   20 | E2a 换时间/动作；E2b 复制帧 + 匀速 + 换动作                    |
+| 结论边界       |   20 | 静态/动态/可控，或开环/闭环，不越界声称                        |
+| 表达与复现     |   10 | Notebook 可运行；seed 与输出完整                               |
 
 选错分支、两个各做一半，按未完成计。把 E2a 的坐标查询叫做「新视角合成」，或把 E2b 的离线 IoU 叫做「闭环驾驶」，该项零分。
 
@@ -255,8 +255,8 @@ PA1-E 还要画 horizon 曲线：把未来 1 / 2 / 3 步的 IoU 拆开，不要�
 
 ## 参考文献
 
-1. Philion, J., & Fidler, S. (2020). Lift, Splat, Shoot: Encoding Images from Arbitrary Camera Rigs by Implicitly Unprojecting to 3D. *ECCV 2020*. [arXiv:2008.05711](https://arxiv.org/abs/2008.05711) —— 多相机「抬起—泼溅—射击」到 BEV 的原始方法。
-2. Mildenhall, B., et al. (2020). NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis. *ECCV 2020*. [arXiv:2003.08934](https://arxiv.org/abs/2003.08934) —— 神经辐射场与体渲染积分。
-3. Kerbl, B., Kopanas, G., Leimkühler, T., & Drettakis, G. (2023). 3D Gaussian Splatting for Real-Time Radiance Field Rendering. *SIGGRAPH 2023*. [项目页](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) —— 显式高斯的实时辐射场。
-4. Huang, Y., et al. (2023). Tri-Perspective View for Vision-Based 3D Semantic Occupancy Prediction. *CVPR 2023*. [arXiv:2302.07817](https://arxiv.org/abs/2302.07817) —— TPVFormer：用三平面做语义占用预测。
-5. Wang, X., et al. (2023). DriveDreamer: Towards Real-world-driven World Models for Autonomous Driving. *arXiv:2309.09777*. [链接](https://arxiv.org/abs/2309.09777) —— 用世界模型做驾驶视频生成与数据增强。
+1. Philion, J., & Fidler, S. (2020). Lift, Splat, Shoot: Encoding Images from Arbitrary Camera Rigs by Implicitly Unprojecting to 3D. _ECCV 2020_. [arXiv:2008.05711](https://arxiv.org/abs/2008.05711) —— 多相机「抬起—泼溅—射击」到 BEV 的原始方法。
+2. Mildenhall, B., et al. (2020). NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis. _ECCV 2020_. [arXiv:2003.08934](https://arxiv.org/abs/2003.08934) —— 神经辐射场与体渲染积分。
+3. Kerbl, B., Kopanas, G., Leimkühler, T., & Drettakis, G. (2023). 3D Gaussian Splatting for Real-Time Radiance Field Rendering. _SIGGRAPH 2023_. [项目页](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) —— 显式高斯的实时辐射场。
+4. Huang, Y., et al. (2023). Tri-Perspective View for Vision-Based 3D Semantic Occupancy Prediction. _CVPR 2023_. [arXiv:2302.07817](https://arxiv.org/abs/2302.07817) —— TPVFormer：用三平面做语义占用预测。
+5. Wang, X., et al. (2023). DriveDreamer: Towards Real-world-driven World Models for Autonomous Driving. _arXiv:2309.09777_. [链接](https://arxiv.org/abs/2309.09777) —— 用世界模型做驾驶视频生成与数据增强。

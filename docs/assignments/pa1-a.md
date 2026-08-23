@@ -2,9 +2,9 @@
 
 > **本节目标**：把路线 A 的 smoke 接成一条有证据的真实循环——从环境收集数据，在 RSSM 中想象，用 Actor-Critic 学习，再回到环境检查。不是复现 DreamerV3 的排行榜，而是亲眼看到「接口连通」与「策略收敛」之间的鸿沟，并诚实报告它从哪里开始裂开。
 
-> **本节代码**：[PA1 模板](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/assignments/PA1-route-template.ipynb) · [A1](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/03_decision/A1-learn-a-latent-world.ipynb) · [A2](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/03_decision/A2-act-in-imagination.ipynb) · [`neural.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/neural.py) · [`control.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/control.py)
+> **本节代码**：[PA1 模板](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/assignments/PA1-route-template.ipynb) · [A1](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/04_decision/A1-learn-a-latent-world.ipynb) · [A2](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/04_decision/A2-act-in-imagination.ipynb) · [`neural.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/neural.py) · [`control.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/control.py)
 
-> **前置知识**：你已经跑过 [3.7 动手：决策与规划](/chapters/03-decision-and-planning/07-decision-and-planning)。A1 确认 RSSM 接口连通，A2 用位置模型证明 learned dynamics 能改善真实行动，再用一次 Actor 更新接通想象训练。PA1-A **不再重复那两份 smoke**，而是把它们扩展成一次完整训练。
+> **前置知识**：你已经跑过 [4.7 动手：决策与规划](/chapters/04-decision-and-planning/07-decision-and-planning)。A1 确认 RSSM 接口连通，A2 用位置模型证明 learned dynamics 能改善真实行动，再用一次 Actor 更新接通想象训练。PA1-A **不再重复那两份 smoke**，而是把它们扩展成一次完整训练。
 
 ---
 
@@ -12,7 +12,7 @@ A1 用 4 段 PixelWorld、15 次更新证明了：shape 对、梯度通、loss �
 
 A2 用 180 条单步位置转移证明了另一件事：`PositionDynamics` 的 MSE 从 `0.315` 降到 `0.0001` 之后，四个不在训练网格上的起点，规划成功率 `1.0`，随机是 `0.0`，平均剩余距离 `0` 对 `15.54`。从 `(5, 5)` 走到 `(12, 12)` 只要 14 步。然后它把位置换成 RSSM latent，做了一次 5 步想象和一次 Actor 更新。参数变了，策略没有被证明变好。
 
-这些数字属于 3.7，不必在作业里再跑一遍当主结果。PA1-A 要回答的是：**把数据、更新次数和闭环都加大之后，latent 策略有没有在真实环境里变好？如果没有，失败稳定地出在哪一环？**
+这些数字属于 4.7，不必在作业里再跑一遍当主结果。PA1-A 要回答的是：**把数据、更新次数和闭环都加大之后，latent 策略有没有在真实环境里变好？如果没有，失败稳定地出在哪一环？**
 
 <div style="text-align:center; margin:20px 0;">
   <img src="/carracing/pa1a-dreamer-lite.png" alt="Dreamer-lite 完整训练循环" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
@@ -53,7 +53,7 @@ A2 用 180 条单步位置转移证明了另一件事：`PositionDynamics` 的 M
 
 ## 第一步：写清缺口，不要重跑 smoke
 
-先用一段话回答：A1 / A2 已经证明了什么，还缺什么。可以引用 3.7 的数字，不要把那两份 Notebook 再抄一遍。
+先用一段话回答：A1 / A2 已经证明了什么，还缺什么。可以引用 4.7 的数字，不要把那两份 Notebook 再抄一遍。
 
 ```text
 已证明
@@ -71,7 +71,7 @@ A2 用 180 条单步位置转移证明了另一件事：`PositionDynamics` 的 M
 
 **运行这一步，你会看到什么？** 一段不超过半页的对照表。如果这一段写成「我复现了 A1」，作业从这里就偏了。
 
-**这就是衔接而不是重复**：3.7 的结论是作业的前提，不是作业的正文。
+**这就是衔接而不是重复**：4.7 的结论是作业的前提，不是作业的正文。
 
 **一个值得做的实验**：把 A2 位置模型的训练起点收成左上角 3×3（45 条转移）。在我们跑过的这一次里，测试集四个起点仍然全部成功——残差 MLP 把「每步最多一格」写进了结构，短距离平移很容易外推。所以「缩小覆盖就一定掉点」不是自动成立的。你要找的失败，往往在 RSSM 和闭环里，不在这条可解释基线上。
 
@@ -202,21 +202,21 @@ copy-last MSE: 0.0057
 
 24GB 目标配方（你要自己改网络才能用，不是当前 `TinyWorldModel` 的默认值）：
 
-| 项目 | 教学默认 | 24GB 目标 |
-| ---- | -------- | --------: |
-| 观察 | 16×16 RGB | 64×64 RGB |
-| batch | 整集或 16 | 16 |
-| sequence length | 16 | 32 |
-| deterministic / stochastic | 64 / 16 | 256 / 32 |
-| imagination horizon | 15 | 15 |
-| mixed precision | 关 | 可选 |
-| peak reserved | CPU | 目标不超过 22GB |
+| 项目                       | 教学默认  |       24GB 目标 |
+| -------------------------- | --------- | --------------: |
+| 观察                       | 16×16 RGB |       64×64 RGB |
+| batch                      | 整集或 16 |              16 |
+| sequence length            | 16        |              32 |
+| deterministic / stochastic | 64 / 16   |        256 / 32 |
+| imagination horizon        | 15        |              15 |
+| mixed precision            | 关        |            可选 |
+| peak reserved              | CPU       | 目标不超过 22GB |
 
 **运行这一步，你会看到什么？** 四条曲线，以及「重建对复制上一帧」的同一张图。如果只交 total，不交 copy-last，这一步不算过。
 
 **这就是 A1 在更大一档上的重演**：数据加了五倍，更新加了一倍多，像素损失照样奖励偷懒。
 
-**一个值得做的实验**：把 `num_episodes` 从 20 扫到 80，看重建第一次低于 `0.0057` 发生在哪一档。3.7 把这件事列为扩展；PA1-A 允许你把它做成主证据之一，但不能只交这一条。
+**一个值得做的实验**：把 `num_episodes` 从 20 扫到 80，看重建第一次低于 `0.0057` 发生在哪一档。4.7 把这件事列为扩展；PA1-A 允许你把它做成主证据之一，但不能只交这一条。
 
 ## 第四步：想象训练，而不是一次更新
 
@@ -285,7 +285,7 @@ feature RMSE  一直向右 vs 一直停留:  0.084
 
 **这就是想象训练的风险**：目标是 \(\hat r\) 和 \(\hat v\)，不是环境里的 \(r\)。头错了，策略会朝着错误的山爬。
 
-**一个值得做的实验**：把 horizon 从 5 提到 15 再提到 30，画出预测奖励的均值和方差。复合误差在隐空间里一样会发生——3.6 那张 free-running 图的对应物。
+**一个值得做的实验**：把 horizon 从 5 提到 15 再提到 30，画出预测奖励的均值和方差。复合误差在隐空间里一样会发生——4.6 那张 free-running 图的对应物。
 
 ## 第五步：回到环境，把圈接上
 
@@ -383,25 +383,25 @@ python scripts/run_a2_reference.py --output runs/a2-reference
 
 ## Smoke 与 PA1-A 的区别
 
-| 项目 | A1 / A2 smoke（3.7 已完成） | PA1-A |
-| ---- | --------------------------- | ----- |
-| 数据 | 4 段 × 8 步；位置模型 180 条 | ≥20 段 PixelWorld，按 episode 进 buffer；选做 DMC |
-| 训练 | 15–100 步；Actor 更新 1 次 | 直到形成可讨论的曲线，并再收集至少一轮 |
-| 目的 | 控制增益、接口、梯度 | latent policy 的真实 return 与样本效率 |
-| 资源 | CPU | 单张 24GB，或明确标注的 CPU 缩减版 |
-| 结论 | 可解释动态能帮助行动；RSSM 接口可运行 | 闭环有没有转起来，失败在哪一环 |
+| 项目 | A1 / A2 smoke（4.7 已完成）           | PA1-A                                             |
+| ---- | ------------------------------------- | ------------------------------------------------- |
+| 数据 | 4 段 × 8 步；位置模型 180 条          | ≥20 段 PixelWorld，按 episode 进 buffer；选做 DMC |
+| 训练 | 15–100 步；Actor 更新 1 次            | 直到形成可讨论的曲线，并再收集至少一轮            |
+| 目的 | 控制增益、接口、梯度                  | latent policy 的真实 return 与样本效率            |
+| 资源 | CPU                                   | 单张 24GB，或明确标注的 CPU 缩减版                |
+| 结论 | 可解释动态能帮助行动；RSSM 接口可运行 | 闭环有没有转起来，失败在哪一环                    |
 
 ## 评分
 
-| 项目 | 分数 | 检查重点 |
-| ---- | ---: | -------- |
-| 问题与接口 | 10 | 写清 A1 / A2 已证明什么，本作业补哪一环 |
-| 数据与 buffer | 15 | episode 边界、时间对齐、连续序列采样 |
-| 世界模型 | 15 | 四条 loss，重建对复制上一帧 |
-| 想象与策略 | 15 | horizon、TD-λ、真实 return 对交互步数 |
-| 基线与反事实 | 15 | 至少一条强基线；换动作预测会变 |
-| 失败诊断 | 15 | 稳定、可复现、至少两种解释 |
-| 资源与复现 | 15 | seed、哈希、设备、墙钟时间 |
+| 项目          | 分数 | 检查重点                                |
+| ------------- | ---: | --------------------------------------- |
+| 问题与接口    |   10 | 写清 A1 / A2 已证明什么，本作业补哪一环 |
+| 数据与 buffer |   15 | episode 边界、时间对齐、连续序列采样    |
+| 世界模型      |   15 | 四条 loss，重建对复制上一帧             |
+| 想象与策略    |   15 | horizon、TD-λ、真实 return 对交互步数   |
+| 基线与反事实  |   15 | 至少一条强基线；换动作预测会变          |
+| 失败诊断      |   15 | 稳定、可复现、至少两种解释              |
+| 资源与复现    |   15 | seed、哈希、设备、墙钟时间              |
 
 ## 不接受的结论
 
@@ -441,7 +441,7 @@ Planner 进入 OOD 区域
 真实数据没有覆盖策略访问的状态
 ```
 
-至少提出两种解释，再选一项最小改动带到第 8 章或 PA2。
+至少提出两种解释，再选一项最小改动带到第 9 章或 PA2。
 
 ## 本节小结
 
@@ -463,10 +463,10 @@ PA1-A 用连续高斯 \(z_t\) 和 REINFORCE，已经够你看见闭环怎么裂�
 
 ## 参考文献
 
-1. Hafner, D., et al. (2019). Learning Latent Dynamics for Planning from Pixels. *ICML 2019*. [arXiv:1811.04551](https://arxiv.org/abs/1811.04551) —— PlaNet：RSSM + CEM，A2 beam search 的连续动作亲戚。
-2. Hafner, D., et al. (2019). Dream to Control: Learning Behaviors by Latent Imagination. *ICLR 2020*. [arXiv:1912.01603](https://arxiv.org/abs/1912.01603) —— DreamerV1：本节 RSSM、imagination 与 Actor-Critic 的原文。
-3. Hafner, D., et al. (2021). Mastering Atari with Discrete World Models. *ICLR 2021*. [arXiv:2010.02193](https://arxiv.org/abs/2010.02193) —— DreamerV2：离散 latent；若连续高斯把左右平均掉，从这里改。
-4. Hafner, D., et al. (2023). Mastering Diverse Domains through World Models. *arXiv:2301.04104*. [链接](https://arxiv.org/abs/2301.04104) —— DreamerV3：一套超参打通 150+ 任务，是 24GB 目标对照的工程标杆，不是本作业的及格线。
-5. Schrittwieser, J., et al. (2020). Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model. *Nature*, 588, 604–609. [arXiv:1911.08265](https://arxiv.org/abs/1911.08265) —— MuZero：不重建像素；也是 Mini-MuZero 选题的原文。
-6. Sutton, R. S. (1988). Learning to Predict by the Methods of Temporal Differences. *Machine Learning*, 3, 9–44. [链接](https://doi.org/10.1007/BF00115009) —— TD-λ；`lambda_returns` 的 \(\gamma=0.99,\lambda=0.95\) 从这里来。
-7. Tassa, Y., et al. (2018). DeepMind Control Suite. *arXiv:1801.00330*. [链接](https://arxiv.org/abs/1801.00330) —— 选做 DMC Cartpole 的环境说明。
+1. Hafner, D., et al. (2019). Learning Latent Dynamics for Planning from Pixels. _ICML 2019_. [arXiv:1811.04551](https://arxiv.org/abs/1811.04551) —— PlaNet：RSSM + CEM，A2 beam search 的连续动作亲戚。
+2. Hafner, D., et al. (2019). Dream to Control: Learning Behaviors by Latent Imagination. _ICLR 2020_. [arXiv:1912.01603](https://arxiv.org/abs/1912.01603) —— DreamerV1：本节 RSSM、imagination 与 Actor-Critic 的原文。
+3. Hafner, D., et al. (2021). Mastering Atari with Discrete World Models. _ICLR 2021_. [arXiv:2010.02193](https://arxiv.org/abs/2010.02193) —— DreamerV2：离散 latent；若连续高斯把左右平均掉，从这里改。
+4. Hafner, D., et al. (2023). Mastering Diverse Domains through World Models. _arXiv:2301.04104_. [链接](https://arxiv.org/abs/2301.04104) —— DreamerV3：一套超参打通 150+ 任务，是 24GB 目标对照的工程标杆，不是本作业的及格线。
+5. Schrittwieser, J., et al. (2020). Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model. _Nature_, 588, 604–609. [arXiv:1911.08265](https://arxiv.org/abs/1911.08265) —— MuZero：不重建像素；也是 Mini-MuZero 选题的原文。
+6. Sutton, R. S. (1988). Learning to Predict by the Methods of Temporal Differences. _Machine Learning_, 3, 9–44. [链接](https://doi.org/10.1007/BF00115009) —— TD-λ；`lambda_returns` 的 \(\gamma=0.99,\lambda=0.95\) 从这里来。
+7. Tassa, Y., et al. (2018). DeepMind Control Suite. _arXiv:1801.00330_. [链接](https://arxiv.org/abs/1801.00330) —— 选做 DMC Cartpole 的环境说明。

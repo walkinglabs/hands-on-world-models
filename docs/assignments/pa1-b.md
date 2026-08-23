@@ -2,7 +2,7 @@
 
 > **本节目标**：完成一次完整、可复现的视频世界模型实验——从同一段历史出发，更换动作，未来随之改变；模型连续读取自己的输出后，仍能说明从哪里开始失效。不是生成最好看的片段，而是用证据回答「模型真的听从按键了吗？」
 
-> **本节代码**：[B1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/04_interactive_video/B1-compress-and-predict-video.ipynb) · [B2 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/04_interactive_video/B2-make-video-controllable.ipynb) · [`src/hwm/video.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/video.py)
+> **本节代码**：[B1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/05_interactive_video/B1-compress-and-predict-video.ipynb) · [B2 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/05_interactive_video/B2-make-video-controllable.ipynb) · [`src/hwm/video.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/video.py)
 
 > **前置知识**：你已经跑过路线 B 的 B1（VQ tokenizer + token Transformer smoke）和 B2（动作注入对照 + free rollout），知道码本、直通估计器、动作 embedding。PA1-B 把它们扩展成完整训练。
 
@@ -52,8 +52,8 @@ PA1-B 的目标不是打破这些问题——教学版的数据量和计算量�
 仓库中的 Notebook 位于：
 
 ```text
-notebooks/04_interactive_video/B1-compress-and-predict-video.ipynb
-notebooks/04_interactive_video/B2-make-video-controllable.ipynb
+notebooks/05_interactive_video/B1-compress-and-predict-video.ipynb
+notebooks/05_interactive_video/B2-make-video-controllable.ipynb
 ```
 
 可复用实现位于 `src/hwm/video.py`。先装神经网络依赖，再跑路线 B 的单元测试：
@@ -418,15 +418,15 @@ Resource log:
 
 ## 评分
 
-| 项目 | 分数 | 检查重点 |
-| ---- | ---: | -------- |
-| 数据与时间对齐 | 10 | 按 episode 切分，`frame[t]+action[t]→frame[t+1]` 可核对 |
-| 基线 | 15 | 复制帧、复制 token、`none` 三者齐全，且被后面的数字真正比较 |
-| Tokenizer | 15 | 码本使用、位置误差与重建分开报；能解释小物体有没有丢 |
-| 动作反事实 | 20 | 换按键后面面或中心必须变；只报 logits 不得分 |
-| Free rollout | 15 | 有逐步曲线和首个失败时间，不拿 teacher-forced 冒充长时生成 |
-| 对照与资源 | 15 | 一次只换一个轴；延迟、显存、哈希齐全 |
-| 表达与复现 | 10 | Notebook 可运行，seed 与输出完整，失败写得诚实 |
+| 项目           | 分数 | 检查重点                                                    |
+| -------------- | ---: | ----------------------------------------------------------- |
+| 数据与时间对齐 |   10 | 按 episode 切分，`frame[t]+action[t]→frame[t+1]` 可核对     |
+| 基线           |   15 | 复制帧、复制 token、`none` 三者齐全，且被后面的数字真正比较 |
+| Tokenizer      |   15 | 码本使用、位置误差与重建分开报；能解释小物体有没有丢        |
+| 动作反事实     |   20 | 换按键后面面或中心必须变；只报 logits 不得分                |
+| Free rollout   |   15 | 有逐步曲线和首个失败时间，不拿 teacher-forced 冒充长时生成  |
+| 对照与资源     |   15 | 一次只换一个轴；延迟、显存、哈希齐全                        |
+| 表达与复现     |   10 | Notebook 可运行，seed 与输出完整，失败写得诚实              |
 
 ## 24GB 目标
 
@@ -496,10 +496,10 @@ PA1-B 用最小的离散 token 模型问了一件事：**按键能不能改变�
 
 ## 参考文献
 
-1. van den Oord, A., Vinyals, O., & Kavukcuoglu, K. (2017). Neural Discrete Representation Learning. *NeurIPS 2017*. [arXiv:1711.00937](https://arxiv.org/abs/1711.00937) —— VQ-VAE：离散 token、码本损失与直通估计器。
-2. Vaswani, A., et al. (2017). Attention Is All You Need. *NeurIPS 2017*. [arXiv:1706.03762](https://arxiv.org/abs/1706.03762) —— Transformer：自注意力与位置编码。
-3. Perez, E., et al. (2018). FiLM: Visual Reasoning with a General Conditioning Layer. *AAAI 2018*. [arXiv:1709.07871](https://arxiv.org/abs/1709.07871) —— 用条件信号缩放和平移特征；B2 的 `film` 是它的最小实现。
-4. Micheli, V., Alonso, E., & Fleuret, F. (2023). Transformers are Sample-Efficient World Models. *ICLR 2023*. [arXiv:2209.00588](https://arxiv.org/abs/2209.00588) —— IRIS：离散 token + Transformer 的世界模型，与路线 B 结构最接近。
-5. Bruce, J., et al. (2024). Genie: Generative Interactive Environments. *ICML 2024*. [arXiv:2402.15391](https://arxiv.org/abs/2402.15391) —— 从视频学习可交互环境。
-6. Chen, B., et al. (2024). Diffusion Forcing: Next-token Prediction Meets Full-Sequence Diffusion. *NeurIPS 2024*. [arXiv:2407.01392](https://arxiv.org/abs/2407.01392) —— 逐帧不同噪声等级；B2 只实现接口，不复现该系统。
-7. Alonso, E., et al. (2024). Diffusion for World Modeling: Visual Details Matter in Atari. *NeurIPS 2024*. [arXiv:2405.12399](https://arxiv.org/abs/2405.12399) —— DIAMOND：用扩散模型当世界模型并在其中训练策略。
+1. van den Oord, A., Vinyals, O., & Kavukcuoglu, K. (2017). Neural Discrete Representation Learning. _NeurIPS 2017_. [arXiv:1711.00937](https://arxiv.org/abs/1711.00937) —— VQ-VAE：离散 token、码本损失与直通估计器。
+2. Vaswani, A., et al. (2017). Attention Is All You Need. _NeurIPS 2017_. [arXiv:1706.03762](https://arxiv.org/abs/1706.03762) —— Transformer：自注意力与位置编码。
+3. Perez, E., et al. (2018). FiLM: Visual Reasoning with a General Conditioning Layer. _AAAI 2018_. [arXiv:1709.07871](https://arxiv.org/abs/1709.07871) —— 用条件信号缩放和平移特征；B2 的 `film` 是它的最小实现。
+4. Micheli, V., Alonso, E., & Fleuret, F. (2023). Transformers are Sample-Efficient World Models. _ICLR 2023_. [arXiv:2209.00588](https://arxiv.org/abs/2209.00588) —— IRIS：离散 token + Transformer 的世界模型，与路线 B 结构最接近。
+5. Bruce, J., et al. (2024). Genie: Generative Interactive Environments. _ICML 2024_. [arXiv:2402.15391](https://arxiv.org/abs/2402.15391) —— 从视频学习可交互环境。
+6. Chen, B., et al. (2024). Diffusion Forcing: Next-token Prediction Meets Full-Sequence Diffusion. _NeurIPS 2024_. [arXiv:2407.01392](https://arxiv.org/abs/2407.01392) —— 逐帧不同噪声等级；B2 只实现接口，不复现该系统。
+7. Alonso, E., et al. (2024). Diffusion for World Modeling: Visual Details Matter in Atari. _NeurIPS 2024_. [arXiv:2405.12399](https://arxiv.org/abs/2405.12399) —— DIAMOND：用扩散模型当世界模型并在其中训练策略。

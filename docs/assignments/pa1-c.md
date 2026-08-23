@@ -2,7 +2,7 @@
 
 > **本节目标**：不是把 feature loss 降到最低，而是弄清表示保留了什么、是否受动作控制、能否帮助一个小任务。完成一次完整的 JEPA 实验：训练被动 Video-JEPA → 排查坍缩 → linear probe → 加入动作 → 反事实测试 → 一步选择 → 对照实验。
 
-> **本节代码**：[C1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/05_jepa/C1-learn-video-features.ipynb) · [C2 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/05_jepa/C2-test-and-control-features.ipynb) · [`src/hwm/jepa.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/jepa.py)
+> **本节代码**：[C1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/06_jepa/C1-learn-video-features.ipynb) · [C2 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/06_jepa/C2-test-and-control-features.ipynb) · [`src/hwm/jepa.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/jepa.py)
 
 > **前置知识**：你已经跑过路线 C 的 C1（被动 Video-JEPA smoke）和 C2（linear probe + 动作条件），知道 online / target encoder 分工、EMA、表示坍缩。PA1-C 把它们扩展成完整训练。
 
@@ -20,13 +20,13 @@ PA1-B 用 VQ-VAE + Transformer 重建像素，能画出可观看的画面。PA1-
 
 **两种目标，两种代价：**
 
-| 项目 | PA1-B（重建像素） | PA1-C（预测特征） |
-| ---- | ----------------- | ----------------- |
-| 预测目标 | 离散 token → 重建画面 | 连续特征 → 不重建 |
-| 可观看性 | 能画出画面，一眼判断好坏 | 无法直接观看，需要 probe |
-| 训练稳定性 | 码本可能坍缩 | EMA 稳定，但可能表示坍缩 |
-| 可控性证据 | 换动作后画面改变 | 换动作后预测特征与 probe 位置改变 |
-| smoke 里已经看见的失败 | token accuracy 等于复制上一组 token | loss 降了，样本几乎共线 |
+| 项目                   | PA1-B（重建像素）                   | PA1-C（预测特征）                 |
+| ---------------------- | ----------------------------------- | --------------------------------- |
+| 预测目标               | 离散 token → 重建画面               | 连续特征 → 不重建                 |
+| 可观看性               | 能画出画面，一眼判断好坏            | 无法直接观看，需要 probe          |
+| 训练稳定性             | 码本可能坍缩                        | EMA 稳定，但可能表示坍缩          |
+| 可控性证据             | 换动作后画面改变                    | 换动作后预测特征与 probe 位置改变 |
+| smoke 里已经看见的失败 | token accuracy 等于复制上一组 token | loss 降了，样本几乎共线           |
 
 PA1-C 的优势是训练更稳、不需要解码器；劣势是屏幕上什么都不画，必须用 spread、探针和下游任务判断特征质量。
 
@@ -53,8 +53,8 @@ PA1-C 的优势是训练更稳、不需要解码器；劣势是屏幕上什么�
 仓库中的 Notebook 位于：
 
 ```text
-notebooks/05_jepa/C1-learn-video-features.ipynb
-notebooks/05_jepa/C2-test-and-control-features.ipynb
+notebooks/06_jepa/C1-learn-video-features.ipynb
+notebooks/06_jepa/C2-test-and-control-features.ipynb
 ```
 
 可复用实现位于 `src/hwm/jepa.py`。先装神经网络依赖，再跑路线 C 的单元测试：
@@ -378,15 +378,15 @@ Resource log:
 
 ## 评分
 
-| 项目 | 分数 | 检查重点 |
-| ---- | ---: | -------- |
-| 数据与切分 | 10 | 按 episode seed 切开，动作与最后一帧对齐 |
-| 坍缩诊断 | 20 | loss、spread、相似度齐全；能解释它们为何可能打架 |
-| Probe | 15 | held-out MSE + 常数基线；不把回归写成分类准确率 |
-| 动作条件 | 15 | 有动作 / 无动作分开报，不用被动视频声称可控 |
-| 反事实与选择 | 20 | 换动作后看位置，不看「feature MSE > 0」了事 |
-| 对照与资源 | 10 | 一次只换一个轴；哈希与显存齐全 |
-| 表达与复现 | 10 | Notebook 可运行，失败写得诚实 |
+| 项目         | 分数 | 检查重点                                         |
+| ------------ | ---: | ------------------------------------------------ |
+| 数据与切分   |   10 | 按 episode seed 切开，动作与最后一帧对齐         |
+| 坍缩诊断     |   20 | loss、spread、相似度齐全；能解释它们为何可能打架 |
+| Probe        |   15 | held-out MSE + 常数基线；不把回归写成分类准确率  |
+| 动作条件     |   15 | 有动作 / 无动作分开报，不用被动视频声称可控      |
+| 反事实与选择 |   20 | 换动作后看位置，不看「feature MSE > 0」了事      |
+| 对照与资源   |   10 | 一次只换一个轴；哈希与显存齐全                   |
+| 表达与复现   |   10 | Notebook 可运行，失败写得诚实                    |
 
 ## 24GB 目标
 
@@ -452,7 +452,7 @@ PA1-C 用最小的特征预测模型问了三件事：**表示里有什么、动
 
 **I-JEPA**（Assran 等人，2023）是图像版：遮住大块区域，预测被遮区域的抽象表示，而不是像素。C1 的 mask 接口对应这篇的出题方式，只是视频多了一个时间维。
 
-**V-JEPA**（Bardes 等人，2024）把同一骨架搬到视频，用时空 mask 和 EMA 目标编码学运动与对象一致性。课程的 Tiny Video-JEPA 是它的接口缩影，不是它的规模复现。仓库第 5 章收录的正式条目是 [arXiv:2404.08471](https://arxiv.org/abs/2404.08471)。
+**V-JEPA**（Bardes 等人，2024）把同一骨架搬到视频，用时空 mask 和 EMA 目标编码学运动与对象一致性。课程的 Tiny Video-JEPA 是它的接口缩影，不是它的规模复现。仓库第 6 章收录的正式条目是 [arXiv:2404.08471](https://arxiv.org/abs/2404.08471)。
 
 **V-JEPA 2 / V-JEPA 2-AC**（Bardes 等人，2025）在被动视频表示之上补了动作条件，并用大约 62 小时机器人数据做零样本规划。C2 的「有动作才谈控制」在这里变成一条完整的研究路线。
 
@@ -462,10 +462,10 @@ PA1-C 用最小的特征预测模型问了三件事：**表示里有什么、动
 
 ## 参考文献
 
-1. LeCun, Y. (2022). A Path Towards Autonomous Machine Intelligence. *OpenReview*. [链接](https://openreview.net/pdf?id=BZ5a1r-kVsf) —— JEPA 的立场论文：预测特征，而不是像素。
-2. Assran, M., et al. (2023). Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture. *CVPR 2023*. [arXiv:2301.08243](https://arxiv.org/abs/2301.08243) —— I-JEPA：图像上的掩码特征预测。
+1. LeCun, Y. (2022). A Path Towards Autonomous Machine Intelligence. _OpenReview_. [链接](https://openreview.net/pdf?id=BZ5a1r-kVsf) —— JEPA 的立场论文：预测特征，而不是像素。
+2. Assran, M., et al. (2023). Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture. _CVPR 2023_. [arXiv:2301.08243](https://arxiv.org/abs/2301.08243) —— I-JEPA：图像上的掩码特征预测。
 3. Bardes, A., et al. (2024). Revisiting Feature Prediction for Learning Visual Representations from Video. [arXiv:2404.08471](https://arxiv.org/abs/2404.08471) —— V-JEPA：视频版 JEPA，时空掩码与 EMA 目标编码。
 4. Bardes, A., et al. (2025). V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction and Planning. [arXiv:2506.09985](https://arxiv.org/abs/2506.09985) —— 动作条件 V-JEPA 2-AC 与机器人规划。
-5. Bardes, A., Ponce, J., & LeCun, Y. (2022). VICReg: Variance-Invariance-Covariance Regularization for Self-Supervised Learning. *ICLR 2022*. [arXiv:2105.04906](https://arxiv.org/abs/2105.04906) —— 防坍缩正则：方差、不变性、协方差要一起看。
-6. Grill, J.-B., et al. (2020). Bootstrap Your Own Latent: A New Approach to Self-Supervised Learning. *NeurIPS 2020*. [arXiv:2006.07733](https://arxiv.org/abs/2006.07733) —— BYOL：EMA target encoder 的自监督先例。
-7. Hafner, D., et al. (2019). Dream to Control: Learning Behaviors by Latent Imagination. *ICLR 2020*. [arXiv:1912.01603](https://arxiv.org/abs/1912.01603) —— 同是隐空间预测，但继续走到 Actor-Critic 与真实回报。
+5. Bardes, A., Ponce, J., & LeCun, Y. (2022). VICReg: Variance-Invariance-Covariance Regularization for Self-Supervised Learning. _ICLR 2022_. [arXiv:2105.04906](https://arxiv.org/abs/2105.04906) —— 防坍缩正则：方差、不变性、协方差要一起看。
+6. Grill, J.-B., et al. (2020). Bootstrap Your Own Latent: A New Approach to Self-Supervised Learning. _NeurIPS 2020_. [arXiv:2006.07733](https://arxiv.org/abs/2006.07733) —— BYOL：EMA target encoder 的自监督先例。
+7. Hafner, D., et al. (2019). Dream to Control: Learning Behaviors by Latent Imagination. _ICLR 2020_. [arXiv:1912.01603](https://arxiv.org/abs/1912.01603) —— 同是隐空间预测，但继续走到 Actor-Critic 与真实回报。
