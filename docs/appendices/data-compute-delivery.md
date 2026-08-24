@@ -82,4 +82,4 @@ metrics
 - 已知限制；
 - 一段不夸大的结论。
 
-评测方法见[第 9 章](/chapters/09-evaluate-and-invent/)，本附录只负责让结果可以被复核。
+评测方法见[第 9 章](/chapters/09-evaluate-and-invent/01-perception-and-utility)，本附录只负责让结果可以被复核。

@@ -1,6 +1,6 @@
 # 6.1　预测特征而非像素
 
-> **第 6 章 · JEPA：在特征空间预测**
+> **第 6 章 · JEPA：特征空间预测**
 >
 > 一片树叶下一秒向左抖还是向右抖，通常不影响机器人绕开桌子。JEPA 因此不要求还原所有像素，而是在特征空间里预测较稳定的未来。
 >
@@ -8,7 +8,7 @@
 >
 > 被动视频可以检查表示质量，不能单独证明模型理解控制。只有加入时间对齐的动作以后，才检查反事实与规划。
 >
-> 👉 本章实验：[视频特征预测（JEPA）](/chapters/06-jepa/05-jepa)（C1）、[动作条件特征预测（Action-JEPA）](/chapters/06-jepa/05-jepa)（C2）
+> 核心实验在 [6.5 动手：JEPA 实验](/chapters/06-jepa/05-jepa) 中串联 C1 视频特征预测与 C2 动作条件特征预测。学完本章后，将掌握如何在特征空间中预测未来物理演化并避免表示坍缩。
 
 先看一个具体场景。PixelWorld 的每一帧里，背景在不停换色、树叶在抖、水面在反光，但方块的位置和运动方向才是机器人绕桌要用的信息。
 
@@ -73,4 +73,22 @@ JEPA 让 $f_{\bar\theta}$ 自己从数据里产生训练目标，再通过 mask 
 - 特征目标让模型不必为不稳定的视觉细节买单。
 - feature loss 低不等于表示有用，仍要靠下游 probe 与控制任务来检验。
 
-[下一篇 → 5.2 掩码、EMA 与表示坍缩](./02-mask-ema-collapse.md) · [回到第 6 章](./index.md) · [动手：C1 视频特征预测](/chapters/06-jepa/05-jepa)
+[下一篇 → 6.2 掩码、EMA 与表示坍缩](./02-mask-ema-collapse.md) · [动手：C1 视频特征预测](/chapters/06-jepa/05-jepa)
+
+---
+
+## 参考资料
+
+### 实践博客
+1. [The first AI model based on Yann LeCun's vision for more human-like AI (Meta AI)](https://ai.meta.com/blog/yann-lecun-advances-in-ai-research/) —— Meta 官方博客，讲清 I-JEPA 为什么不做像素重建、以及它与 LeCun 蓝图的关系。
+2. [Meta 官方博客：V-JEPA 2 world model (Meta AI, 2025)](https://ai.meta.com/blog/v-jepa-2-world-model-benchmarks/) —— V-JEPA 2 与动作条件版 V-JEPA 2-AC 的官方发布页，配 6.4。
+3. [What Is JEPA? (Turing Post)](https://www.turingpost.com/p/jepa) —— 第三方综述博客，把 JEPA 家族与生成式路线的争论梳理得很清楚。
+4. [Self-Supervised Representation Learning (Lilian Weng, 2019)](https://lilianweng.github.io/posts/2019-11-10-self-supervised/) —— 自监督表示学习的谱系梳理，帮 JEPA 找到它在其中的位置。
+5. [V-JEPA 2 论文页 (Meta AI)](https://ai.meta.com/research/publications/v-jepa-2/) —— 论文官方页面，附 PDF 与代码入口，便于对照 6.3、6.4 查证细节。
+
+### 经典文献
+1. [A Path Towards Autonomous Machine Intelligence (LeCun, 2022)](https://openreview.net/forum?id=BZ5a1r-kVsf) —— JEPA 与世界模型架构蓝图的立场论文，本章的理论源头。
+2. [Self-Supervised Learning From Images with a JEPA: I-JEPA (Assran et al., 2023)](https://arxiv.org/abs/2301.08243) —— JEPA 在图像上的首次落地，掩码块预测抽象表示的原始论文。
+3. [Revisiting Feature Prediction for Learning Visual Representations from Video: V-JEPA (Bardes et al., 2024)](https://arxiv.org/abs/2404.08471) —— 视频版 JEPA，时空掩码与 EMA 目标编码的具体配方。
+4. [V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction and Planning (Bardes et al., 2025)](https://arxiv.org/abs/2506.09985) —— 动作条件版 V-JEPA 2-AC 用 62 小时机器人数据实现零样本规划，配 6.4。
+5. [VICReg: Variance-Invariance-Covariance Regularization for Self-Supervised Learning (Bardes et al., 2022)](https://arxiv.org/abs/2105.04906) —— 防坍塌正则化的来源，是理解 6.2 坍塌问题的关键拼图。

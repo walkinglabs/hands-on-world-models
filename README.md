@@ -180,7 +180,7 @@
 
 课程先用可以逐格检查的九格世界建立最小闭环。读者要先分清观察、状态、动作、动力学、规划器与策略，再进入神经网络。
 
-#### [第 1 章　引言](docs/chapters/01-why-world-models/)
+#### [第 1 章　引言](docs/chapters/01-why-world-models/01-current-observation.md)
 
 **核心问题：什么才算世界模型，它与预测、生成、规划和策略是什么关系？**
 
@@ -197,7 +197,7 @@
 
 这一部分只保留后续所有路线都会复用的组件，并把每个组件放回它要解决的问题中。
 
-#### [第 2 章　预备知识](docs/chapters/02-foundations/)
+#### [第 2 章　预备知识](docs/chapters/02-foundations/01-tensors-and-trajectories.md)
 
 **核心问题：造一台世界模型之前，需要掌握哪些最少但可复用的组件？**
 
@@ -210,7 +210,7 @@
 7. **2.7 训练稳定性**：串起回放、EMA、Free Bits、Symlog、Twohot、Unimix 与梯度裁剪。
 8. **2.8 动手：组件接口的简洁实现**：用小实验检查视觉、记忆、压缩、空间和规划接口。
 
-#### [第 3 章　数据与第一个世界模型](docs/chapters/03-data-and-first-model/)
+#### [第 3 章　数据与第一个世界模型](docs/chapters/03-data-and-first-model/01-episodes-and-transitions.md)
 
 **核心问题：怎样把经历变成训练数据，并证明第一台模型确实学到了动力学？**
 
@@ -224,7 +224,7 @@
 
 完成第 1–3 章后，从第 4–8 章选择一条深入。五条路线彼此并列；第 4 章是推荐入口，不是其余路线的先修课。
 
-#### [第 4 章　决策与规划](docs/chapters/04-decision-and-planning/)
+#### [第 4 章　决策与规划](docs/chapters/04-decision-and-planning/01-latent-world-model.md)
 
 **核心问题：怎样在潜在状态中推演未来，并把想象变成动作？**
 
@@ -236,7 +236,7 @@
 6. **4.6 动手：World Models 的复现**：复现 VAE、MDN-RNN 与小控制器组成的经典系统。
 7. **4.7 动手：Dreamer 的简化实现**：训练 RSSM，并在想象轨迹中更新 Actor-Critic。
 
-#### [第 5 章　交互式视频](docs/chapters/05-interactive-video/)
+#### [第 5 章　交互式视频](docs/chapters/05-interactive-video/01-video-data.md)
 
 **核心问题：怎样生成受动作控制、能够长时交互而不持续漂移的视频世界？**
 
@@ -247,7 +247,7 @@
 5. **5.5 记忆、漂移与实时生成**：讨论长时一致性、重访一致性、KV 缓存、蒸馏和延迟。
 6. **5.6 动手：动作条件视频模型的从零实现**：训练 token 预测器，并检查自由 rollout 与反事实动作。
 
-#### [第 6 章　联合嵌入预测架构（JEPA）](docs/chapters/06-jepa/)
+#### [第 6 章　联合嵌入预测架构（JEPA）](docs/chapters/06-jepa/01-feature-prediction.md)
 
 **核心问题：什么时候应预测抽象特征而不是像素，又怎样避免表示坍缩？**
 
@@ -257,7 +257,7 @@
 4. **6.4 动作条件 JEPA**：让特征预测响应动作，并服务短视野规划。
 5. **6.5 动手：视频 JEPA 的从零实现**：训练 Tiny Video-JEPA，用探针和反事实动作检查表征。
 
-#### [第 7 章　具身智能与机器人](docs/chapters/07-robot-vla/)
+#### [第 7 章　具身智能与机器人](docs/chapters/07-robot-vla/01-robot-data-and-bc.md)
 
 **核心问题：世界模型怎样进入机器人的数据、策略、分层控制和 Sim-to-Real 闭环？**
 
@@ -273,7 +273,7 @@
 10. **7.10 动手：灵巧手的视触觉控制**：融合视觉、关节与触觉信息，预测滑移和接触稳定性。
 11. **7.11 动手：全身策略的仿真与真机迁移**：完成特权教师、学生蒸馏、跨模拟器测试与真机观测对齐。
 
-#### [第 8 章　空间世界与自动驾驶](docs/chapters/08-spatial-worlds/)
+#### [第 8 章　空间世界与自动驾驶](docs/chapters/08-spatial-worlds/01-camera-geometry.md)
 
 **核心问题：怎样表示、重建并预测持续变化的三维世界？**
 
@@ -289,7 +289,7 @@
 
 最后把各条路线放回统一问题：模型是否真的响应动作、能否稳定推演，以及它是否改善下游任务。
 
-#### [第 9 章　评测与研究设计](docs/chapters/09-evaluate-and-invent/)
+#### [第 9 章　评测与研究设计](docs/chapters/09-evaluate-and-invent/01-perception-and-utility.md)
 
 **核心问题：怎样判断模型真正有用，并把一次失效转化为可检验的研究问题？**
 

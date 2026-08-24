@@ -6,7 +6,7 @@
 >
 > 直接 VLA 的输出是动作；世界模型的输出是动作后果。两者可以连接，但不能用同一个名字代替。动作 MSE 下降也不保证闭环成功，本章会一直保留这种诚实差距。
 >
-> 👉 本章实验：[视觉-语言-动作模型（VLA）](/chapters/07-robot-vla/05-robot-vla)（D1）、[动作后果检查（世界模型检查器）](/chapters/07-robot-vla/05-robot-vla)（D2）；课程作业 [PA1-D：Tiny VLA](/assignments/pa1-d)
+> 动手实验：[7.5 动手：机器人与 VLA 实验](/chapters/07-robot-vla/05-robot-vla)（包含 D1 视觉-语言-动作模型与 D2 动作后果检查）；课程作业 [PA1-D：Tiny VLA](/assignments/pa1-d)。
 
 图片分类里，一张图只配一个类别。机器人示范要复杂得多：每一步都要记下看到了什么、接到什么指令、关节处在什么状态，以及随后执行了什么动作。
 
@@ -72,3 +72,21 @@ $$
 - [ ] 动作 MSE 把多条可行路线平均成错误答案，不能替代真实任务成功率。
 
 下一篇把这些状态信号和图像、语言放在一起，看 VLA 如何把三种输入汇成一个动作。动手实验见 [D1：视觉-语言-动作模型（VLA）](/chapters/07-robot-vla/05-robot-vla)。
+
+---
+
+## 参考资料
+
+### 实践博客
+1. [RT-2: New model translates vision and language into action (DeepMind)](https://deepmind.google/discover/blog/rt-2-new-model-translates-vision-and-language-into-action/) —— 官方博客，用大量真机案例展示 VLA 的泛化与失败模式。
+2. [ALOHA: A Low-cost Open-source Hardware System (Tony Zhao)](https://tonyzhaozh.github.io/aloha/) —— ALOHA 项目页：低成本双臂遥操作硬件与 ACT 策略的配套说明，配 7.1、7.3。
+3. [Mobile ALOHA (Fu et al.)](https://mobile-aloha.github.io/) —— 项目页：移动底盘 + 50 条演示学出全身操作，展示小数据配方的效果。
+4. [Diffusion Policy 项目页 (Chi et al.)](https://diffusion-policy.cs.columbia.edu/) —— 扩散策略的项目页，含大量对比可视化，配 7.3 的多模态动作。
+5. [OpenVLA: Open-Source Vision-Language-Action Model](https://openvla.github.io/) —— 开源 VLA 项目页：配方、数据与评测全公开，适合动手复现。
+
+### 经典文献
+1. [RT-1: Robotics Transformer for Real-World Control at Scale (Brohan et al., 2022)](https://arxiv.org/abs/2212.06817) —— 首个大规模真机数据训出的通用机器人模型，本章数据与 BC 部分的参照。
+2. [RT-2: Vision-Language-Action Models (Zitkovich et al., 2023)](https://arxiv.org/abs/2307.15818) —— 把动作写成 token 接进 VLM 的原始论文，配 7.2。
+3. [Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware: ACT (Zhao et al., 2023)](https://arxiv.org/abs/2304.13705) —— 动作分块（action chunking）的来源，ALOHA 硬件与 CVAE 策略，配 7.3。
+4. [Diffusion Policy: Visuomotor Policy Learning via Action Diffusion (Chi et al., 2023)](https://arxiv.org/abs/2303.04137) —— 用扩散模型输出多模态动作序列，是“同一上下文多条可行路线”的代表实现。
+5. [OpenVLA: An Open-Source Vision-Language-Action Model (Kim et al., 2024)](https://arxiv.org/abs/2406.09246) —— 开源 VLA 的配方与评测，配 7.2 的可复现基线。

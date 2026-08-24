@@ -89,4 +89,4 @@ $m$ 叫动量系数。$m$ 越接近 $1$，靶子动得越慢。
 - EMA 让 Target Encoder 缓慢跟随在线参数，提供稳定但非静止的靶子。
 - 防坍缩不能靠直觉，要查特征统计与下游 probe。
 
-[上一篇 5.1 预测特征而非像素](./01-feature-prediction.md) · [下一篇 → 5.3 视频 JEPA](./03-video-jepa.md) · [回到第 6 章](./index.md) · [动手：C1 视频特征预测](/chapters/06-jepa/05-jepa)
+[上一篇 6.1 预测特征而非像素](./01-feature-prediction.md) · [下一篇 → 6.3 视频 JEPA](./03-video-jepa.md) · [动手：C1 视频特征预测](/chapters/06-jepa/05-jepa)
