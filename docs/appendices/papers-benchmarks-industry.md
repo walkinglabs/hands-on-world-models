@@ -20,8 +20,8 @@
 | 决策与规划 | World Models、PlaNet | Dreamer、MuZero、TD-MPC2             |
 | 交互式视频 | VideoGPT、Genie      | GameNGen、DIAMOND、Diffusion Forcing |
 | 特征预测   | I-JEPA               | V-JEPA、V-JEPA 2-AC                  |
-| 具身智能   | RT-1、ACT            | OpenVLA、Octo、π0、GR00T             |
-| 空间世界   | NeRF、3DGS           | DriveDreamer、GAIA、未来占用预测     |
+| 具身智能   | RT-1、ACT            | OpenVLA、Octo、π0、SmolVLA、GR00T、Track2Act |
+| 空间世界   | NeRF、3DGS           | DriveDreamer、GAIA、Cosmos、未来占用预测     |
 
 ## 评测基准
 

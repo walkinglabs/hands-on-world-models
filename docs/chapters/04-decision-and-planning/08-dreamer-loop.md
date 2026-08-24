@@ -362,6 +362,10 @@ DeepMind Control Suite 的 Cartpole，固定小配置。本地装不上 MuJoCo�
 
 若更喜欢棋类搜索，可用四子棋做 Mini-MuZero，替代 Dreamer-lite。必须包含 Representation、Dynamics、Prediction、MCTS，以及搜索改进前后的胜率。不能两个项目各做一半。
 
+## 替代选题：换动力学骨干
+
+同一套 PixelWorld 或位置数据上，把 RSSM 换成小型因果 Transformer（STORM 风格），只改 $g(s_{t-1},e_t,a_{t-1})$。必须并排报一步损失、多步漂移、反事实差异。细则见 [附录 D](/appendices/neighboring-fields)。不能和 Mini-MuZero 或 Dreamer-lite 各做一半。
+
 ## 运行与产物
 
 ```bash
