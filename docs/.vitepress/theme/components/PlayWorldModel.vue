@@ -24,18 +24,23 @@
       <button class="pwm-btn pwm-down" @click="act('down')">↓</button>
     </div>
     <div class="pwm-stats">
-      <span>经历转移：<b>{{ totalTransitions }}</b> / 36</span>
-      <span>最近 10 次预测命中：<b>{{ hits }}/{{ attempts }}</b></span>
+      <span>见过的状态-动作：<b>{{ totalTransitions }}</b> / 36</span>
+      <span>最近 10 次预测命中：<b>{{ recentHits }}/{{ recent.length }}</b></span>
       <span v-if="ended" class="pwm-ended">{{ endedText }}</span>
     </div>
   </div>
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 
 const real = ref(null);
 const imag = ref(null);
+const recentTicks = ref(0);
+const recentHits = computed(() => {
+  void recentTicks.value;
+  return recent.filter(Boolean).length;
+});
 
 // 与课程 1.1 相同的世界：3×3，陷阱 (1,1)，目标 (2,2)，起点 (0,0)
 const GOAL = [2, 2];
@@ -49,6 +54,7 @@ let totalTransitions = ref(0);
 let hits = ref(0);
 let attempts = ref(0);
 let lastPred = null;
+const recent = [];
 
 // 表格世界模型：counts[agent][action] -> {next: count}
 // 键用字符串 "r,c"，与 notebook 里的计数转移表一一对应
@@ -181,16 +187,33 @@ function act(action) {
   const hit = pred && pred.pos[0] === next[0] && pred.pos[1] === next[1];
   attempts.value++;
   if (hit) hits.value++;
+  recent.push(!!hit);
+  if (recent.length > 10) recent.shift();
+  recentTicks.value++;
   // 再走：真实世界执行动作，模型从这次经历中学习
   learn(from, action, next);
-  if (key(from) !== key(next)) totalTransitions.value++;
+  countKnown();
   agent = next;
   drawReal();
   // 后对照：想象画布展示「模型刚才的预测」，并标记命中与否
   lastPred = pred
-    ? { pos: pred.pos, conf: pred.conf, hit, moved: next }
-    : { hit: false, unknown: true, moved: next };
+    ? { pos: pred.pos, conf: pred.conf, hit }
+    : { hit: false, unknown: true };
   drawImag(lastPred);
+  // 终止判定：进入目标或陷阱，回合结束
+  if ((agent[0] === GOAL[0] && agent[1] === GOAL[1]) || (agent[0] === TRAP[0] && agent[1] === TRAP[1])) {
+    ended.value = true;
+    const win = agent[0] === GOAL[0] && agent[1] === GOAL[1];
+    endedText.value = win
+      ? "🏁 到达目标！重置后模型会保留学到的一切。"
+      : "💀 掉进陷阱。重置再试——注意看模型是否已经记住这个坑。";
+  }
+}
+
+function countKnown() {
+  let n = 0;
+  for (const k in counts) for (const a in counts[k]) n++;
+  totalTransitions.value = n;
 }
 
 function reset() {
