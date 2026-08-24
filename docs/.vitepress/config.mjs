@@ -173,7 +173,7 @@ export default defineConfig({
             link: "/chapters/04-decision-and-planning/02-rssm-training",
           },
           {
-            text: "4.3. 交叉熵方法与模型预测控制",
+            text: "4.3. 交叉熵方法、MPC 与 TD-MPC",
             link: "/chapters/04-decision-and-planning/03-planet-and-cem",
           },
           {
@@ -391,6 +391,10 @@ export default defineConfig({
           {
             text: "C. 论文、榜单与产业地图",
             link: "/appendices/papers-benchmarks-industry",
+          },
+          {
+            text: "D. 邻近课程与覆盖对照",
+            link: "/appendices/neighboring-fields",
           },
         ],
       },

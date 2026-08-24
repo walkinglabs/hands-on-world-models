@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 340" width="100%" height="100%">
+  <defs>
+    <style>
+      .text-title { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: 600; fill: #1e293b; }
+      .text-sub { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #64748b; }
+      .text-math { font-family: "SF Pro Display", -apple-system, "Times New Roman", serif; font-style: italic; font-size: 16px; font-weight: 600; fill: #0f172a; }
+      .text-badge { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; font-weight: 600; fill: #25636a; }
+      .text-action { font-family: "SF Pro Display", -apple-system, serif; font-style: italic; font-size: 15px; font-weight: 600; fill: #ffffff; }
+      .line-main { stroke: #94a3b8; stroke-width: 2; stroke-linecap: round; }
+      .line-dash { stroke: #cbd5e1; stroke-width: 2; stroke-dasharray: 4 4; }
+      .arrow { fill: #25636a; }
+    </style>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#25636a"/>
+    </marker>
+    <marker id="arrow-slate" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 2 L 7 5 L 0 8 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-emerald" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#059669"/>
+    </marker>
+    <filter id="card-shadow" x="-4%" y="-4%" width="108%" height="112%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="920" height="340" rx="16" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+
+  <!-- Top Timeline Header Bar -->
+  <g transform="translate(40, 24)">
+    <text x="0" y="16" font-family="system-ui, -apple-system, sans-serif" font-size="13px" font-weight="700" fill="#475569" letter-spacing="0.5">öôt / TIMELINE</text>
+    <line x1="140" y1="12" x2="810" y2="12" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" marker-end="url(#arrow-slate)"/>
+    <circle cx="140" cy="12" r="3" fill="#64748b"/>
+  </g>
+
+  <!-- Step Labels -->
+  <g transform="translate(0, 70)">
+    <text x="95" y="0" text-anchor="middle" class="text-sub" font-weight="600">t = 0</text>
+    <text x="275" y="0" text-anchor="middle" class="text-sub" font-weight="600">t = 1</text>
+    <text x="455" y="0" text-anchor="middle" class="text-sub" font-weight="600">t = 2</text>
+    <text x="590" y="0" text-anchor="middle" class="text-sub" font-weight="600" letter-spacing="3">...</text>
+    <text x="725" y="0" text-anchor="middle" class="text-sub" font-weight="600">t = T</text>
+  </g>
+
+  <!-- === Observation Nodes (o_0, o_1, o_2, ..., o_T) === -->
+  <!-- o_0 -->
+  <g transform="translate(45, 88)" filter="url(#card-shadow)">
+    <rect width="100" height="74" rx="10" fill="#ffffff" stroke="#25636a" stroke-width="1.5"/>
+    <rect width="100" height="24" rx="10" fill="#e6f4f5"/>
+    <path d="M 0 14 Q 0 24 10 24 L 90 24 Q 100 24 100 14 L 100 24 L 0 24 Z" fill="#e6f4f5"/>
+    <text x="50" y="16" text-anchor="middle" class="text-badge">Âß 0</text>
+    <text x="50" y="48" text-anchor="middle" class="text-math">o<tspan font-size="12" dy="4">0</tspan></text>
+    <text x="50" y="64" text-anchor="middle" font-size="10" font-family="system-ui, sans-serif" fill="#64748b">Ë¶</text>
+  </g>
+
+  <!-- o_1 -->
+  <g transform="translate(225, 88)" filter="url(#card-shadow)">
+    <rect width="100" height="74" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+    <rect width="100" height="24" rx="10" fill="#f1f5f9"/>
+    <path d="M 0 14 Q 0 24 10 24 L 90 24 Q 100 24 100 14 L 100 24 L 0 24 Z" fill="#f1f5f9"/>
+    <text x="50" y="16" text-anchor="middle" class="text-sub" font-weight="600">Âß 1</text>
+    <text x="50" y="48" text-anchor="middle" class="text-math">o<tspan font-size="12" dy="4">1</tspan></text>
+    <text x="50" y="64" text-anchor="middle" font-size="10" font-family="system-ui, sans-serif" fill="#64748b">þÏ + ¶</text>
+  </g>
+
+  <!-- o_2 -->
+  <g transform="translate(405, 88)" filter="url(#card-shadow)">
+    <rect width="100" height="74" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+    <rect width="100" height="24" rx="10" fill="#f1f5f9"/>
+    <path d="M 0 14 Q 0 24 10 24 L 90 24 Q 100 24 100 14 L 100 24 L 0 24 Z" fill="#f1f5f9"/>
+    <text x="50" y="16" text-anchor="middle" class="text-sub" font-weight="600">Âß 2</text>
+    <text x="50" y="48" text-anchor="middle" class="text-math">o<tspan font-size="12" dy="4">2</tspan></text>
+    <text x="50" y="64" text-anchor="middle" font-size="10" font-family="system-ui, sans-serif" fill="#64748b">þÏ + ¶</text>
+  </g>
+
+  <!-- Ellipsis -->
+  <g transform="translate(565, 120)">
+    <circle cx="10" cy="6" r="3" fill="#94a3b8"/>
+    <circle cx="25" cy="6" r="3" fill="#94a3b8"/>
+    <circle cx="40" cy="6" r="3" fill="#94a3b8"/>
+  </g>
+
+  <!-- o_T -->
+  <g transform="translate(675, 88)" filter="url(#card-shadow)">
+    <rect width="100" height="74" rx="10" fill="#ffffff" stroke="#059669" stroke-width="1.5"/>
+    <rect width="100" height="24" rx="10" fill="#ecfdf5"/>
+    <path d="M 0 14 Q 0 24 10 24 L 90 24 Q 100 24 100 14 L 100 24 L 0 24 Z" fill="#ecfdf5"/>
+    <text x="50" y="16" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12px" font-weight="600" fill="#059669">È¹Âß T</text>
+    <text x="50" y="48" text-anchor="middle" class="text-math">o<tspan font-size="12" dy="4">T</tspan></text>
+    <text x="50" y="64" text-anchor="middle" font-size="10" font-family="system-ui, sans-serif" fill="#059669">û¡Ó_</text>
+  </g>
+
+  <!-- === Action Nodes (a_0, a_1, ..., a_{T-1}) === -->
+  <!-- a_0 -->
+  <g transform="translate(142, 202)" filter="url(#card-shadow)">
+    <rect width="84" height="38" rx="19" fill="#25636a"/>
+    <text x="42" y="24" text-anchor="middle" class="text-action">a<tspan font-size="11" dy="3">0</tspan></text>
+  </g>
+
+  <!-- a_1 -->
+  <g transform="translate(322, 202)" filter="url(#card-shadow)">
+    <rect width="84" height="38" rx="19" fill="#25636a"/>
+    <text x="42" y="24" text-anchor="middle" class="text-action">a<tspan font-size="11" dy="3">1</tspan></text>
+  </g>
+
+  <!-- a_{T-1} -->
+  <g transform="translate(592, 202)" filter="url(#card-shadow)">
+    <rect width="84" height="38" rx="19" fill="#25636a"/>
+    <text x="42" y="24" text-anchor="middle" class="text-action">a<tspan font-size="11" dy="3">T-1</tspan></text>
+  </g>
+
+  <!-- === Connective Flow Arrows === -->
+  <!-- o_0 -> a_0 -> o_1 -->
+  <path d="M 95 162 L 95 221 Q 95 221 134 221" fill="none" stroke="#25636a" stroke-width="2" marker-end="url(#arrow-teal)"/>
+  <path d="M 226 221 Q 275 221 275 168" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+
+  <!-- o_1 -> a_1 -> o_2 -->
+  <path d="M 275 162 L 275 221 Q 275 221 314 221" fill="none" stroke="#25636a" stroke-width="2" marker-end="url(#arrow-teal)"/>
+  <path d="M 406 221 Q 455 221 455 168" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+
+  <!-- o_{T-1} -> a_{T-1} -> o_T -->
+  <path d="M 545 221 L 584 221" fill="none" stroke="#25636a" stroke-width="2" marker-end="url(#arrow-teal)"/>
+  <path d="M 676 221 Q 725 221 725 168" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+
+  <!-- === Explanatory Legend / Footer === -->
+  <g transform="translate(45, 275)">
+    <rect width="830" height="42" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    
+    <!-- Legend item 1: Policy -->
+    <circle cx="24" cy="21" r="5" fill="#25636a"/>
+    <text x="36" y="25" font-family="system-ui, sans-serif" font-size="12px" fill="#334155"><tspan font-weight="600">Ve³V (Policy À)</tspan>úŽSMÂß o<tspan font-size="10" dy="2">t</tspan><tspan font-size="12" dy="-2"> „K¨\ a</tspan><tspan font-size="10" dy="2">t</tspan></text>
+
+    <!-- Legend item 2: Transition -->
+    <circle cx="360" cy="21" r="5" fill="#059669"/>
+    <text x="372" y="25" font-family="system-ui, sans-serif" font-size="12px" fill="#334155"><tspan font-weight="600">ilû (Physics)</tspan>gL a<tspan font-size="10" dy="2">t</tspan><tspan font-size="12" dy="-2"> ¯ƒó ' o</tspan><tspan font-size="10" dy="2">t+1</tspan></text>
+
+    <!-- Highlight badge -->
+    <rect x="670" y="10" width="145" height="22" rx="11" fill="#fef3c7" stroke="#fde68a"/>
+    <text x="742" y="25" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11px" font-weight="600" fill="#92400e">T+1 Âß ù” T ¨\</text>
+  </g>
+</svg>

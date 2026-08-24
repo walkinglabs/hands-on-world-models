@@ -70,10 +70,19 @@ $$
 
 是否需要 Planner，取决于目标变化频率、实时预算和模型可靠性。简单稳定的任务，只用 Policy 往往就够。
 
+## 无模型方法在表上的位置
+
+世界模型课会碰到别人用 DQN、PPO、SAC 当基线。它们学的是 $Q$ 或 $\pi$，**不学转移**。腿式教师常用 PPO；操作仿真常用 SAC；离散游戏常用 DQN。和本章接口的关系只有一句：它们可以当 Controller，但实验若没有动作条件预测，就不要写进世界模型成绩单。
+
+离线 RL 更窄：策略改进不许再交互。它和第 3 章「用离线数据学转移」相邻，失败模式却是 Q 高估未见动作。细则、分层语言规划、元学习与多智能体见 [附录 D](/appendices/neighboring-fields)。
+
+内在动机把世界模型的预测误差当成探索奖励，接口在 [1.4](/chapters/01-why-world-models/04-learned-dynamics)。
+
 ## 小结
 
 - [ ] reward 描述一步，return $G_t=\sum\gamma^k r_{t+k}$ 描述一条未来，value 估计剩余回报。
 - [ ] Policy 直接输出动作，Planner 调用模型比较候选未来；MPC 每次只执行第一步再重算。
 - [ ] CEM 通过“采样—留 elite—更新分布”搜索连续动作序列，MCTS 适合树形搜索。
+- [ ] DQN / PPO / SAC 是无模型基线；没有 $P(s'\mid s,a)$ 就不是世界模型实验。
 
 零件到这里配齐了，但把它们接起来训练时还会遇到一类新问题：损失炸开、KL 坍缩、回报尺度失控。下一篇 [2.7 训练稳定性](/chapters/02-foundations/07-training-stability) 逐项对应这些失效模式，随后在 [2.8 动手：组件接口的简洁实现](/chapters/02-foundations/08-basic-experiments) 中把所有接口跑一遍。
