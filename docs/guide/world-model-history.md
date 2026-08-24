@@ -61,11 +61,6 @@
   <em>图 3：施密德胡伯 1990 年手绘的“控制器 + 世界模型”示意图——比深度学习时代早了二十八年。来源：<a href="https://worldmodels.github.io/" target="_blank" rel="noopener noreferrer">worldmodels.github.io</a>（CC-BY 4.0）</em>
 </div>
 
-![Dyna 架构：真实环境经验与模型想象出的经验共同训练策略](/guide/dyna-loop.svg)
-
-<div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 4：Dyna 的双循环。智能体一边从真实环境学习，一边用学到的模型想象额外经验——“在想象中训练”的最早形态。</em>
-</div>
 
 这两条思路的分工延续至今：Dyna 关心"模型如何帮**学习**"（生成训练数据），Schmidhuber 关心"模型如何帮**规划**"（搜索好动作）。现代工作几乎都是两者的混合。
 
@@ -89,13 +84,13 @@
 ![VAE 编码器把画面压缩为隐向量、解码器重建画面](/guide/vae.svg)
 
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 5：V 组件——VAE。编码器把高维画面压成低维隐向量，世界模型只在隐空间里预测未来，这是所有后续工作的共同起点。</em>
+  <em>图 4：V 组件——VAE。编码器把高维画面压成低维隐向量，世界模型只在隐空间里预测未来，这是所有后续工作的共同起点。</em>
 </div>
 
 ![MDN-RNN 根据当前隐状态与动作预测下一帧隐状态的分布](/guide/mdn_rnn.svg)
 
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 6：M 组件——MDN-RNN。混合密度输出让模型能表达“未来有多种可能”，而不是 collapsing 到模糊的均值。</em>
+  <em>图 5：M 组件——MDN-RNN。混合密度输出让模型能表达“未来有多种可能”，而不是 collapsing 到模糊的均值。</em>
 </div>
 
 这篇工作的意义不在性能——它跑的只是 CarRacing 和 VizDoom 两个玩具任务——而在**范式**：证明了"压缩 → 预测 → 在预测里训练"这条流水线可以端到端成立。本课程第 1 章的原型正是这篇论文，[4.6 动手：World Models 的复现](/chapters/04-decision-and-planning/06-reproduce-world-models) 用 CarRacing 把它完整跑通。
@@ -106,16 +101,11 @@
 - **隐空间 CEM 规划**：不再生成像素，直接在隐空间里用交叉熵方法搜索动作序列，一步规划只需毫秒级——模型法第一次在像素输入上实时跑起来。
 
 
-![RSSM 结构：确定性 GRU 记忆路径与随机隐变量节点交替传递](/guide/rssm-structure.svg)
-
-<div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 7：RSSM 的两条信息通路。确定性记忆保证长程预测不发散，随机隐变量吸收世界的不确定性。</em>
-</div>
 
 ![PlaNet 论文原图：RSSM 与先前状态空间模型变体的对比](/guide/paper/planet-rssm-comparison.png)
 
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 8：PlaNet 论文原图（Fig. 2）：四种状态空间模型的对比——确定性、随机性与两者结合，最右侧的 RSSM 在长程预测上最稳。来源：<a href="https://arxiv.org/abs/1811.04551" target="_blank" rel="noopener noreferrer">Hafner et al., PlaNet</a></em>
+  <em>图 6：PlaNet 论文原图（Fig. 2）：四种状态空间模型的对比——确定性、随机性与两者结合，最右侧的 RSSM 在长程预测上最稳。来源：<a href="https://arxiv.org/abs/1811.04551" target="_blank" rel="noopener noreferrer">Hafner et al., PlaNet</a></em>
 </div>
 同年，DeepMind 的 **SimPLe** 证明：只用 10 万帧真实 Atari 数据（约 2 小时游戏），加上视频世界模型生成的额外经验，就能训练出像样的策略——而无模型基线需要 5 亿帧。"模型省数据"从格言变成了数字。
 
@@ -125,30 +115,26 @@
 
 - **Dreamer**（Hafner 等，ICLR 2020）：不再做昂贵的在线规划，而是把世界模型当作可微"模拟器"，在想象的隐状态轨迹上**反向传播**，直接训练 Actor-Critic。规划从"推理时搜索"变成了"训练时想象"——Dyna 思想的深度化完整体。DreamerV2（2021）把隐变量改成离散类别并赢得 Atari 100k 挑战；**DreamerV3**（2023）用一套固定超参数打通 150 多个任务，成为第一个在 Minecraft 里从零采到钻石的模型。
 
+![Dreamer 论文原图：世界模型与环境交互采样、想象训练与真实环境重演的整体流程](/guide/paper/dreamer-overview.png)
+
+<div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
+  <em>图 7：Dreamer 论文原图（Fig. 1）：先与环境交互采样、再在世界模型中想象训练、最后把策略放回真实环境。来源：<a href="https://arxiv.org/abs/1912.01603" target="_blank" rel="noopener noreferrer">Hafner et al., Dream to Control</a></em>
+</div>
+
 ![Dreamer 论文原图：世界模型想象、Actor 反向传播与价值学习的三个组件](/guide/paper/dreamer-imagination.png)
 
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 9：Dreamer 论文原图（Fig. 2）：想象（Imagination）、模型学习、Actor 反向传播与 Critic 价值学习的完整闭环。来源：<a href="https://arxiv.org/abs/1912.01603" target="_blank" rel="noopener noreferrer">Hafner et al., Dream to Control</a></em>
+  <em>图 8：Dreamer 论文原图（Fig. 2）：想象（Imagination）、模型学习、Actor 反向传播与 Critic 价值学习的完整闭环。来源：<a href="https://arxiv.org/abs/1912.01603" target="_blank" rel="noopener noreferrer">Hafner et al., Dream to Control</a></em>
 </div>
 - **MuZero**（Schrittwieser 等，*Nature* 2020）：走向另一个极端——**不重建任何观测**，只学"对预测价值与奖励有用的隐式模型"，配合蒙特卡洛树搜索同时打通围棋、国际象棋、将棋与 Atari。AlphaGo 需要人类规则知识，AlphaZero 需要完美模拟器，MuZero 两者都不要。它证明了：世界模型不必"像世界"，只需"够用"。
 
 
-![Dreamer 在世界模型想象出的隐状态轨迹上反向传播训练 Actor-Critic](/guide/dreamer-imagination.svg)
 
-<div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 10：Dreamer 的想象训练。梯度直接穿过“梦境”到达策略——规划从推理时搬到了训练时。</em>
-</div>
-
-![MuZero 用隐式模型展开搜索树，只预测价值奖励与策略，不重建观测](/guide/muzero-tree.svg)
-
-<div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 11：MuZero 的隐式模型加蒙特卡洛树搜索。模型不必“像世界”，只需“够用”。</em>
-</div>
 
 ![MuZero 论文原图：学到的模型、搜索、执行与训练四个环节](/guide/paper/muzero-overview.png)
 
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 12：MuZero 论文原图（Fig. 1）：学到的模型用于搜索、搜索选出动作、动作产生真实经验、经验再训练模型——每一步都没有重建观测。来源：<a href="https://arxiv.org/abs/1911.08265" target="_blank" rel="noopener noreferrer">Schrittwieser et al., MuZero</a></em>
+  <em>图 9：MuZero 论文原图（Fig. 1）：学到的模型用于搜索、搜索选出动作、动作产生真实经验、经验再训练模型——每一步都没有重建观测。来源：<a href="https://arxiv.org/abs/1911.08265" target="_blank" rel="noopener noreferrer">Schrittwieser et al., MuZero</a></em>
 </div>
 Dreamer 与 MuZero 的对照，本质是"**模型该重建世界，还是只服务于决策**"这场古老争论（回想托尔曼与行为主义）在现代的重演。本课程 [4.5 MuZero](/chapters/04-decision-and-planning/05-muzero) 与 [4.4 Dreamer](/chapters/04-decision-and-planning/04-dreamer-imagination) 会分别动手实现两者的最小版本。
 
@@ -159,17 +145,12 @@ Dreamer 与 MuZero 的对照，本质是"**模型该重建世界，还是只服�
 就在决策路线趋于稳定时，视频生成技术让世界模型裂出了第二条路线——目标不再是帮策略决策，而是**生成可控的未来本身**。技术上的分水岭是 **VQ token 化 + 自回归 Transformer + 扩散解码器**这套组合拳（本课程第 5 章）：它把"预测下一帧"从像素回归问题变成了序列生成问题。
 
 
-![生成式世界模型流水线：视频 VQ 编码、自回归 Transformer、扩散解码器与潜在动作模型](/guide/genie-pipeline.svg)
-
-<div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 13：生成式路线的组合拳。把“预测下一帧”从像素回归问题变成了序列生成问题。</em>
-</div>
 - **2023 年**，Wayve 发布 **GAIA-1**：9B 参数视频世界模型，视频 token + 自回归 Transformer + 扩散解码器，在驾驶场景里用文字和动作控制未来——输入"迎面驶来一辆卡车"，画面里就真的出现卡车。世界模型第一次被当成"可控数据工厂"而非"策略教练"（第 8 章）。
 
 ![GAIA-1 论文原图：不同动作输入生成的未来画面对比](/guide/paper/gaia1-actions.png)
 
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 14：GAIA-1 论文原图：改变动作输入，生成的未来画面随之改变——视频世界模型第一次被当作文本与动作可控的“数据工厂”。来源：<a href="https://arxiv.org/abs/2309.17080" target="_blank" rel="noopener noreferrer">Hu et al., GAIA-1</a></em>
+  <em>图 10：GAIA-1 论文原图：改变动作输入，生成的未来画面随之改变——视频世界模型第一次被当作文本与动作可控的“数据工厂”。来源：<a href="https://arxiv.org/abs/2309.17080" target="_blank" rel="noopener noreferrer">Hu et al., GAIA-1</a></em>
 </div>
 - **2024 年**，三篇工作把这条路线推向高潮：
   - DeepMind 的 **Genie** 从**无动作标注**的互联网视频里学出潜在动作模型，单张图片生成可交互环境——"看游戏视频学会做游戏"；
@@ -180,12 +161,12 @@ Dreamer 与 MuZero 的对照，本质是"**模型该重建世界，还是只服�
 ![Genie 论文原图：潜在动作模型与动态模型协同生成可交互环境](/guide/paper/genie-architecture.png)
 
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 15：Genie 论文原图（Fig. 2）：无动作标注的视频被分解为潜在动作与动态，单张图片即可驱动一个可玩世界。来源：<a href="https://arxiv.org/abs/2402.15391" target="_blank" rel="noopener noreferrer">Bruce et al., Genie</a></em>
+  <em>图 11：Genie 论文原图（Fig. 2）：无动作标注的视频被分解为潜在动作与动态，单张图片即可驱动一个可玩世界。来源：<a href="https://arxiv.org/abs/2402.15391" target="_blank" rel="noopener noreferrer">Bruce et al., Genie</a></em>
 </div>
 ![World Models 论文的交互式演示：策略在学到的梦境环境中驾驶](/guide/wm-sandbox.webp)
 
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
-  <em>图 16：在“梦境”里驾驶。策略完全在世界模型想象出的环境中训练与行动——这条流水线从 2018 年的玩具，长成了 2025 年的基础设施。来源：<a href="https://worldmodels.github.io/" target="_blank" rel="noopener noreferrer">worldmodels.github.io</a>（CC-BY 4.0）</em>
+  <em>图 12：在“梦境”里驾驶。策略完全在世界模型想象出的环境中训练与行动——这条流水线从 2018 年的玩具，长成了 2025 年的基础设施。来源：<a href="https://worldmodels.github.io/" target="_blank" rel="noopener noreferrer">worldmodels.github.io</a>（CC-BY 4.0）</em>
 </div>
 
 ## 9. 基础模型化与评测（2025 至今）
