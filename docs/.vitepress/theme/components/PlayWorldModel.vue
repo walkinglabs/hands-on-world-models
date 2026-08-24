@@ -1,8 +1,8 @@
 <template>
   <div class="pwm">
     <div class="pwm-hint">
-      用键盘方向键（或点击按钮）移动。右侧是<b>模型想象</b>：它根据「当前格子 + 你按的方向」预测你会到哪——
-      这个预测来自它至今见过的一切转移。刚开始它会猜错；玩着玩着，它就学会了。
+      用键盘方向键（或点击按钮）移动。你每按一次方向，模型会在你移动<b>之前</b>先猜「你会到哪」；
+      移动后右侧画布定格为「模型刚才的预测」，并与左边真实位置对照：绿色 ✓ 表示猜对，橙色 ✗ 表示猜错，问号表示从未见过、一无所知。
     </div>
     <div class="pwm-row">
       <div class="pwm-panel">
@@ -48,6 +48,7 @@ let endedText = ref("");
 let totalTransitions = ref(0);
 let hits = ref(0);
 let attempts = ref(0);
+let lastPred = null;
 
 // 表格世界模型：counts[agent][action] -> {next: count}
 // 键用字符串 "r,c"，与 notebook 里的计数转移表一一对应
@@ -94,7 +95,11 @@ function drawReal() {
 }
 
 function drawImag(pred) {
-  draw(imag.value, pred ? { agent: pred.pos, goal: true, ghost: pred.conf } : null);
+  if (!pred || pred.unknown) {
+    draw(imag.value, null);
+    return;
+  }
+  draw(imag.value, { agent: pred.pos, goal: true, ghost: pred.conf, hit: pred.hit });
 }
 
 function draw(canvas, state) {
@@ -143,7 +148,7 @@ function draw(canvas, state) {
   const [ar, ac] = state.agent;
   const ax = ac * cell + 14;
   const ay = ar * cell + 12;
-  const body = state.ghost != null ? "#8f7ab5" : "#2f6fb0";
+  const body = state.hit === true ? "#2e9e5b" : state.hit === false ? "#c77d54" : "#8f7ab5";
   pixel(ctx, ax, ay, body, [
     [4,0],[8,0],
     [0,4],[4,4],[8,4],[12,4],
@@ -155,7 +160,10 @@ function draw(canvas, state) {
     ctx.fillStyle = "#8f7ab5";
     ctx.font = "11px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("置信 " + Math.round(state.ghost * 100) + "%", ac * cell + cell / 2 - 1, ar * cell + cell - 6);
+    ctx.fillText("置信 " + Math.round(state.ghost * 100) + "%", ac * cell + cell / 2 - 1, ar * cell + cell - 20);
+    ctx.fillStyle = state.hit ? "#2e9e5b" : "#d64545";
+    ctx.font = "bold 12px sans-serif";
+    ctx.fillText(state.hit ? "✓ 命中" : "✗ 未命中", ac * cell + cell / 2 - 1, ar * cell + cell - 6);
   }
 }
 
@@ -166,31 +174,23 @@ function pixel(ctx, ox, oy, color, dots) {
 
 function act(action) {
   if (ended.value) return;
+  // 先猜：模型在行动之前，预测「按这个方向会到哪」
   const pred = predict(agent, action);
+  const from = agent;
   const next = step(agent, action);
+  const hit = pred && pred.pos[0] === next[0] && pred.pos[1] === next[1];
   attempts.value++;
-  if (pred && pred.pos[0] === next[0] && pred.pos[1] === next[1]) hits.value++;
-  learn(agent, action, next);
-  if (key(agent) !== key(next)) totalTransitions.value++;
+  if (hit) hits.value++;
+  // 再走：真实世界执行动作，模型从这次经历中学习
+  learn(from, action, next);
+  if (key(from) !== key(next)) totalTransitions.value++;
   agent = next;
   drawReal();
-  if ((agent[0] === GOAL[0] && agent[1] === GOAL[1]) || (agent[0] === TRAP[0] && agent[1] === TRAP[1])) {
-    ended.value = true;
-    const win = agent[0] === GOAL[0] && agent[1] === GOAL[1];
-    endedText.value = win
-      ? "🏁 到达目标！重置后模型会保留学到的一切。"
-      : "💀 掉进陷阱。重置再试——注意看模型是否已经记住这个坑。";
-    drawImag(null);
-    return;
-  }
-  drawImag(predict(agent, "up")); // 展示一个“接下来最可能去哪”的样例预测
-  // 更贴近课程语义：显示对刚执行动作的预测结果已用于对照，这里预演下一步所有动作中最自信的
-  let bestPred = null;
-  for (const a of ["up", "down", "left", "right"]) {
-    const p = predict(agent, a);
-    if (p && (!bestPred || p.conf > bestPred.conf)) bestPred = { pos: p.pos, ghost: p.conf };
-  }
-  drawImag(bestPred);
+  // 后对照：想象画布展示「模型刚才的预测」，并标记命中与否
+  lastPred = pred
+    ? { pos: pred.pos, conf: pred.conf, hit, moved: next }
+    : { hit: false, unknown: true, moved: next };
+  drawImag(lastPred);
 }
 
 function reset() {
