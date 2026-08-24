@@ -35,6 +35,7 @@
   --vp-font-family-mono: var(--font-mono);
 
   /* ---- Hero Gradients (Apple 风格：极柔和、朦胧光晕) ---- */
+  --vp-home-hero-name-color: transparent;
   --vp-home-hero-name-background: linear-gradient(
     180deg,
     #163f44 0%,
@@ -208,6 +209,10 @@
 
 .VPNavBarTitle .title {
   padding-right: 18px;
+}
+
+.dark .VPNavBarTitle .logo {
+  content: url('/logo-dark.png');
 }
 
 .VPNavBarTitle .logo {
@@ -1563,7 +1568,7 @@ aside.VPSidebar {
 
 .vp-doc h1 {
   color: #194e54;
-  background: linear-gradient(105deg, #194e54 0%, #25636a 48%, #18a999 100%);
+  background: linear-gradient(105deg, #163f44 0%, #25636a 48%, #d97745 100%);
   background-clip: text;
   -webkit-background-clip: text;
   font-size: 3rem;
