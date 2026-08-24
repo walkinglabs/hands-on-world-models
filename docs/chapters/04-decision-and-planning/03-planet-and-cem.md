@@ -1,4 +1,4 @@
-# 4.3　PlaNet 与 CEM
+# 4.3　交叉熵方法与模型预测控制
 
 ViZDoom 里agent要绕过柱子去捡血包。连续动作空间有无数种转向角度，没法把每个动作都试一遍。RSSM 已经能从当前状态展开未来，现在的问题是：在一个连续的动作空间里，怎样找到较好的那组动作序列？
 
@@ -47,7 +47,7 @@ value 自身也可能错，所以实验里要和不加末端 value 的短 horizo
 
 ## 先用一个能验收的简单模型
 
-直接在 RSSM latent 里规划，失败可能来自 encoder、状态、动态或 planner，一次很难分清。A2 先做一个对照：从 PixelWorld 图片用颜色阈值量出红方块的二维位置，再学一个最简单的转移模型：
+直接在 RSSM latent 里规划，失败可能来自 encoder、状态、动态或 planner，一次很难分清。4.7 的第二份 Notebook 先做一个对照：从 PixelWorld 图片用颜色阈值量出红方块的二维位置，再学一个最简单的转移模型：
 
 $$
 p_{t+1} = T_\phi(p_t,\, a_t),\qquad p_t\in\mathbb{R}^2
@@ -82,4 +82,4 @@ PlaNet 不是「预测一次就照着走到底」。它采用 MPC：每次用最
 - [ ] 规划目标包含末端 value，补偿有限 horizon 之外的回报。
 - [ ] PlaNet 用 MPC 每步重算，适应目标变化，但计算慢，也会寻找模型漏洞。
 
-CEM 每步都要重新搜索，太慢。下一篇看 Dreamer 怎样把好动作直接练进 actor，部署时只做一次前向。动手实验见 [A2：在想象中规划与行动](/chapters/04-decision-and-planning/07-decision-and-planning)。
+CEM 每步都要重新搜索，太慢。下一篇看 Dreamer 怎样把好动作直接练进 actor，部署时只做一次前向。动手实验见 [4.7 动手：在想象中行动](/chapters/04-decision-and-planning/07-decision-and-planning)。

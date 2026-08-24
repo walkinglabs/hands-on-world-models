@@ -1,4 +1,4 @@
-# 5.1　从视频生成到视频世界模型
+# 5.1　视频世界模型
 
 > **第 5 章 · 交互式视频**
 >
@@ -10,7 +10,7 @@
 > 连续经历 → 选择视频表示 → 学习带动作的变化 → 连续生成 → 检查控制、记忆与速度
 > ```
 >
-> 动手实验：[5.5 动手：交互视频实验](/chapters/05-interactive-video/05-interactive-video)（B1–B2 涵盖离散 Token + 动作自回归与扩散去噪比较）。
+> 动手实验：[5.6 动手：动作条件视频模型的从零实现](/chapters/05-interactive-video/06-interactive-video)（两份 Notebook 涵盖离散 Token + 动作自回归与扩散去噪比较）。
 
 先看两项任务。
 
@@ -78,6 +78,7 @@ done:    [T]
 ## 参考资料
 
 ### 实践博客
+
 1. [Genie: Generative Interactive Environments (Google DeepMind, 2024)](https://deepmind.google/blog/genie-generative-interactive-environments/) —— Genie 官方博客：从无动作标注视频学潜在动作，是“动作从哪来”的直观讲解。
 2. [Genie 3: A new frontier for world models (Google DeepMind, 2025)](https://deepmind.google/blog/genie-3-a-new-frontier-for-world-models/) —— 实时交互世界模型的最新官方博客，展示长时间一致性现状。
 3. [Introducing GAIA-1 (Wayve, 2023)](https://wayve.ai/thinking/introducing-gaia1/) —— Wayve 官方博客，讲清视频 token + 自回归 Transformer 的驾驶世界模型配方。
@@ -85,6 +86,7 @@ done:    [T]
 5. [Genie 2: A large-scale foundation world model (Google DeepMind, 2024)](https://deepmind.google/blog/genie-2-a-large-scale-foundation-world-model/) —— 单图生成可玩 3D 世界的官方博客，展示工程取舍。
 
 ### 经典文献
+
 1. [Genie: Generative Interactive Environments (Bruce et al., 2024)](https://arxiv.org/abs/2402.15391) —— 从无动作标注视频学出潜在动作模型（LAM）的原始论文。
 2. [GAIA-1: A Generative World Model for Autonomous Driving (Hu et al., 2023)](https://arxiv.org/abs/2309.17080) —— 视频 token + 自回归 Transformer 的工业级实现，配 5.3 的动作条件生成。
 3. [DIAMOND: Diffusion for World Modeling (Alonso et al., 2024)](https://arxiv.org/abs/2405.12399) —— 用扩散模型当世界模型并直接在其中训练策略，配 5.4。

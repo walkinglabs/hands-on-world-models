@@ -32,7 +32,7 @@ class EvaluationTest(unittest.TestCase):
             path = Path(directory) / "manifest.json"
             manifest = RunManifest(
                 experiment="smoke",
-                route="Z",
+                route="evaluation",
                 seed=0,
                 dataset="toy",
                 split="test",

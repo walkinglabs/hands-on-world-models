@@ -6,11 +6,11 @@ from hwm.evaluation import sha256_file
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REFERENCE = ROOT / "runs" / "reference" / "a2-position-dynamics"
+REFERENCE = ROOT / "runs" / "reference" / "position-dynamics"
 
 
 class ReferenceRunTest(unittest.TestCase):
-    def test_a2_evidence_is_complete_and_self_consistent(self):
+    def test_reference_evidence_is_complete_and_self_consistent(self):
         metrics = json.loads((REFERENCE / "metrics.json").read_text(encoding="utf-8"))
         manifest = json.loads((REFERENCE / "manifest.json").read_text(encoding="utf-8"))
         checkpoint = REFERENCE / "position-dynamics.pt"
@@ -23,7 +23,7 @@ class ReferenceRunTest(unittest.TestCase):
         )
         self.assertEqual(manifest["checkpoint_sha256"], sha256_file(checkpoint))
         self.assertIn("not Dreamer-lite", manifest["notes"])
-        self.assertIn("--output runs/reference/a2-position-dynamics", manifest["command"])
+        self.assertIn("--output runs/reference/position-dynamics", manifest["command"])
 
 
 if __name__ == "__main__":

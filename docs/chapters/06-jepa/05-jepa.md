@@ -1,14 +1,14 @@
-# 6.5 动手：JEPA 实验
+# 6.5　动手：视频 JEPA 的从零实现
 
 > **本节目标**：在同一份 PixelWorld 上跑通 Video-JEPA。只预测未来特征，不画回像素，再用线性探针和换动作实验审问这些特征里还剩什么。
 
-> **本节代码**：[C1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/06_jepa/C1-learn-video-features.ipynb) · [C2 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/06_jepa/C2-test-and-control-features.ipynb)
+> **本节代码**：[学出视频特征](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/06_jepa/learn-video-features.ipynb) · [检验并控制特征](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/06_jepa/test-and-control-features.ipynb)
 
-> **前置知识**：你已经读过 5.1–5.4，知道 EMA 与表示坍缩。最好刚跑完 [5.5 动手：交互视频实验](/chapters/05-interactive-video/05-interactive-video)。上一节还能看见画面；这一节把画面收起来。
+> **前置知识**：你已经读过 6.1–6.4，知道 EMA 与表示坍缩。最好刚跑完 [3.5 动手：表格世界模型的从零开始实现](/chapters/03-data-and-first-model/05-learn-a-table-world)。上一节还能看见画面；这一节把画面收起来。
 
 ---
 
-4.5 还在「画出下一帧」。token 猜对了，你至少能把编号画回来，看红块走没走。
+5.6 还在「画出下一帧」。token 猜对了，你至少能把编号画回来，看红块走没走。
 
 可有人会问：决策真的需要把草地的纹理画回来吗？Yann LeCun 走得更远——JEPA 根本不预测像素，只预测未来特征。
 
@@ -25,14 +25,14 @@
 
 运行结束后，你会得到：
 
-- C1 的 feature loss 与 feature spread 曲线
-- C2 的 held-out 探针 MSE，以及同一段历史上换动作后的特征差
+- 第一份 Notebook「学出视频特征」的 feature loss 与 feature spread 曲线
+- 第二份 Notebook「检验并控制特征」的 held-out 探针 MSE，以及同一段历史上换动作后的特征差
 
 ## 怎样运行
 
 ```text
-notebooks/06_jepa/C1-learn-video-features.ipynb
-notebooks/06_jepa/C2-test-and-control-features.ipynb
+notebooks/06_jepa/learn-video-features.ipynb
+notebooks/06_jepa/test-and-control-features.ipynb
 ```
 
 需要 PyTorch：
@@ -114,7 +114,7 @@ print("feature spread:", round(spreads[0], 3), "→", round(spreads[-1], 3))
 
 <div style="text-align:center; margin:20px 0;">
   <img src="/carracing/bc-jepa-pipeline.png" alt="Video-JEPA 管线" style="max-width:min(900px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">路线 C 的数据流。历史 patch 进 online encoder，predictor 加上位置编码；target encoder 对未来帧给出无梯度目标。C1 默认不读动作。</div>
+  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">JEPA 路线（第 6 章）的数据流。历史 patch 进 online encoder，predictor 加上位置编码；target encoder 对未来帧给出无梯度目标。第一份 Notebook 默认不读动作。</div>
 </div>
 
 **运行这一步，你会看到什么？**
@@ -133,7 +133,7 @@ feature spread: 0.240 → 0.326
 
 shape 是 `[B, 16 patches, 16 dim]`。target 不接收梯度。loss 下降、spread 上升——这是你希望看见的方向。反过来，loss 下降且 spread 掉到接近零，才是坍缩。
 
-C1 最后用棋盘 mask 只计算一半 patch 的误差，确认接口：
+第一份 Notebook 最后用棋盘 mask 只计算一半 patch 的误差，确认接口：
 
 ```
 masked positions: 240  masked loss: 0.030
@@ -145,7 +145,7 @@ masked positions: 240  masked loss: 0.030
 
 ## 第二步：特征里还有没有位置
 
-低 feature loss 可能只是找到了容易预测的常量。C2 冻结表示，只用一个带偏置的岭回归读方块中心。位置在构造数据时按 `15.0` 归一化到 \([0, 1]\)。如果连这个简单属性都读不出，特征很难支持后续空间任务。
+低 feature loss 可能只是找到了容易预测的常量。第二份 Notebook 冻结表示，只用一个带偏置的岭回归读方块中心。位置在构造数据时按 `15.0` 归一化到 \([0, 1]\)。如果连这个简单属性都读不出，特征很难支持后续空间任务。
 
 训练和测试按 episode seed 切开：10 段训练、4 段测试，避免探针在同一条轨迹上自测。
 
@@ -203,7 +203,7 @@ held-out probe/base MSE: 0.0052  0.0223
 
 ## 第三步：固定历史，只替换动作
 
-被动视频表示可以保存运动，却不能证明模型懂得控制。C2 把同一段历史复制五份，只换动作，看预测特征会不会变。
+被动视频表示可以保存运动，却不能证明模型懂得控制。第二份 Notebook 把同一段历史复制五份，只换动作，看预测特征会不会变。
 
 ```python
 same_history = video[:1].expand(5, -1, -1, -1, -1)
@@ -246,10 +246,10 @@ PYTHONPATH=src python -m unittest tests.test_routes_bc -v
 
 跑完两份 Notebook 后，你应该有：
 
-- **C1**：feature loss 与 feature spread，以及 target 不接收梯度
-- **C2**：held-out 探针对常数基线、换动作后的特征差、一次动作选择
+- **第一份 Notebook**：feature loss 与 feature spread，以及 target 不接收梯度
+- **第二份 Notebook**：held-out 探针对常数基线、换动作后的特征差、一次动作选择
 
-| 项目 | 本节 smoke           | PA1-C                           |
+| 项目 | 本节 smoke           | 6.6                             |
 | ---- | -------------------- | ------------------------------- |
 | 数据 | 6–12 段 PixelWorld   | 更大的 PixelWorld，选做真实视频 |
 | 训练 | 20–40 步，CPU        | 直到曲线稳定                    |
@@ -258,18 +258,18 @@ PYTHONPATH=src python -m unittest tests.test_routes_bc -v
 
 ## 已知简化与坑
 
-- **C1 的损失是 Smooth L1，不是像素 L2。** 公式必须和 `F.smooth_l1_loss` 对齐。
-- **C2 的探针是坐标回归，不是分类准确率。** 报告 MSE 对常数基线，不要编一个 0.78 的 accuracy。
+- **第一份 Notebook 的损失是 Smooth L1，不是像素 L2。** 公式必须和 `F.smooth_l1_loss` 对齐。
+- **第二份 Notebook 的探针是坐标回归，不是分类准确率。** 报告 MSE 对常数基线，不要编一个 0.78 的 accuracy。
 - **被动视频不能证明 controllability。** 必须分开报告「换动作特征差」和「被动预测误差」。后者在这份数据上几乎不动。
-- **平均 pool 会抹掉位置。** C2 之所以 flatten，就是因为 `mean(dim=1)` 会把方块在哪个 patch 丢掉。
+- **平均 pool 会抹掉位置。** 第二份 Notebook 之所以 flatten，就是因为 `mean(dim=1)` 会把方块在哪个 patch 丢掉。
 - **PixelWorld 过于简单。** 16×16、红方块——特征在这里很容易「看起来没塌」，换真实视频会难得多。
 
 ## 扩展练习
 
-1. **EMA 动量**：把 C1 的 `momentum` 从 0.9 扫到 0.999，同时看 loss 和 spread。哪一侧先坍缩？
-2. **探针怎么读**：把 C2 的 `flatten` 换成 `mean(dim=1)`，看 held-out MSE 会不会重新输给常数基线。空间槽位被平均掉以后，位置信息还在不在？
+1. **EMA 动量**：把第一份 Notebook 的 `momentum` 从 0.9 扫到 0.999，同时看 loss 和 spread。哪一侧先坍缩？
+2. **探针怎么读**：把第二份 Notebook 的 `flatten` 换成 `mean(dim=1)`，看 held-out MSE 会不会重新输给常数基线。空间槽位被平均掉以后，位置信息还在不在？
 
-完成后进入 [PA1-C · 动手：训练并审问一个 Tiny Video-JEPA](/assignments/pa1-c)。
+完成后进入 [6.6 动手：审问一个视频 JEPA](/chapters/06-jepa/06-video-jepa)。
 
 ## 本节小结
 
@@ -277,13 +277,13 @@ PYTHONPATH=src python -m unittest tests.test_routes_bc -v
 - **EMA 是防止表示坍缩的关键**：target 不接收梯度，只按 \(m=0.99\) 跟着 online 走。
 - **Smoke 不是完整训练**：8–12 段 episode、20–40 步、CPU 运行。目标是检查数据流，不是复现 V-JEPA。
 
-从 4.5 的「要不要画像素」，到这一节的「不画出来以后怎么证明」，被替换的是监督目标，不是那句老话。
+从 5.6 的「要不要画像素」，到这一节的「不画出来以后怎么证明」，被替换的是监督目标，不是那句老话。
 
 ## 后续工作
 
-C1 / C2 只把特征预测接到了 PixelWorld。不重建像素以后，你必须另找证据。
+这两份 Notebook 只把特征预测接到了 PixelWorld。不重建像素以后，你必须另找证据。
 
-C2 已经演示了最小的审问方式：线性探针和反事实动作。I-JEPA [2] 把这件事做到图像，V-JEPA [3] 做到视频，V-JEPA 2 [4] 再加上动作，用几十小时机器人数据做零样本规划。它们仍然不画像素。评价从 PSNR 换成了探针、检索、以及下游控制——这也是这条路线比 4.5 更难「一眼看懂」的原因。
+第二份 Notebook 已经演示了最小的审问方式：线性探针和反事实动作。I-JEPA [2] 把这件事做到图像，V-JEPA [3] 做到视频，V-JEPA 2 [4] 再加上动作，用几十小时机器人数据做零样本规划。它们仍然不画像素。评价从 PSNR 换成了探针、检索、以及下游控制——这也是这条路线比 5.6 更难「一眼看懂」的原因。
 
 下一台模型要回答的，是你刚刚亲眼看见的那些失败：特征没塌但探针仍然读不准格子。
 

@@ -1,4 +1,4 @@
-# 3.2　Replay Buffer 怎样取出可学习的数据
+# 3.2　经验回放与数据切分
 
 一段 episode 只记录一次经历。Replay Buffer 保存许多段经历，让模型能够反复取样训练。
 

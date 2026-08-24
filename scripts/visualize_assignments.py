@@ -514,10 +514,10 @@ if __name__ == '__main__':
     output_dir = Path(__file__).parent.parent / 'docs' / 'public' / 'carracing'
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    visualize_pa0_loop(output_dir / 'pa0-world-loop.png')
-    visualize_pa1a_cycle(output_dir / 'pa1a-dreamer-lite.png')
-    visualize_pa1b_controllable(output_dir / 'pa1b-controllable.png')
-    visualize_pa1c_jepa(output_dir / 'pa1c-jepa-quality.png')
-    visualize_pa2_research(output_dir / 'pa2-research-cycle.png')
+    visualize_pa0_loop(output_dir / 'world-loop.png')
+    visualize_pa1a_cycle(output_dir / 'dreamer-lite.png')
+    visualize_pa1b_controllable(output_dir / 'controllable-video.png')
+    visualize_pa1c_jepa(output_dir / 'jepa-quality.png')
+    visualize_pa2_research(output_dir / 'research-cycle.png')
 
     print("\nAll assignment visualizations generated!")

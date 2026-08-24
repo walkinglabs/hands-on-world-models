@@ -2,9 +2,9 @@
 
 ## 当前结论
 
-仓库内 CPU/短训练 smoke 可运行；完整神经 PA 的 24GB 真机验证记录目前为 **0 个**。
+仓库内 CPU/短训练 smoke 可运行；各章最后一份动手要求的完整神经网络训练，其 24GB 验收记录目前为 **0 个**。
 
-仓库另保存一项 CPU toy 参考运行：`runs/reference/a2-position-dynamics/`。它证明 learned dynamics 加 Planner 在 PixelWorld 上优于随机动作，但不属于 Dreamer-lite 或 24GB 神经 PA。
+仓库另保存一项 CPU toy 参考运行：`runs/reference/position-dynamics/`。它证明 learned dynamics 加 Planner 在 PixelWorld 上优于随机动作，但既不是完整的 Dreamer 闭环，也不构成 24GB 验收。
 
 ## 必填运行清单
 
@@ -12,8 +12,8 @@
 
 ```json
 {
-  "experiment": "pa1-a-pixelworld",
-  "route": "A",
+  "experiment": "dreamer-loop-pixelworld",
+  "route": "decision-and-planning",
   "seed": 0,
   "dataset": "pixelworld-v1",
   "split": "episode-seed-v1",

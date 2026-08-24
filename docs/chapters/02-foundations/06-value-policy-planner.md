@@ -70,10 +70,10 @@ $$
 
 是否需要 Planner，取决于目标变化频率、实时预算和模型可靠性。简单稳定的任务，只用 Policy 往往就够。
 
-> 👉 动手实验：[动手：空间表示、决策与训练](/chapters/02-foundations/08-basic-experiments)
-
 ## 小结
 
 - [ ] reward 描述一步，return $G_t=\sum\gamma^k r_{t+k}$ 描述一条未来，value 估计剩余回报。
 - [ ] Policy 直接输出动作，Planner 调用模型比较候选未来；MPC 每次只执行第一步再重算。
 - [ ] CEM 通过“采样—留 elite—更新分布”搜索连续动作序列，MCTS 适合树形搜索。
+
+零件到这里配齐了，但把它们接起来训练时还会遇到一类新问题：损失炸开、KL 坍缩、回报尺度失控。下一篇 [2.7 训练稳定性](/chapters/02-foundations/07-training-stability) 逐项对应这些失效模式，随后在 [2.8 动手：组件接口的简洁实现](/chapters/02-foundations/08-basic-experiments) 中把所有接口跑一遍。

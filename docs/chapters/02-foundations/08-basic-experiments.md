@@ -1,10 +1,10 @@
-# 2.8 动手：基础实验
+# 2.8　动手：组件接口的简洁实现
 
 > **本节目标**：跑通两份 Notebook，把表示和空间接起来。一份用卷积和 patch 压缩一张小图，一份把深度像素算进三维格子并用 CEM 搜连续动作。从经历里学习动态留给 3.4。
 
-> **本节代码**：[看见与压缩](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/02_foundations/F1-see-remember-compress.ipynb) · [空间与规划](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/02_foundations/F2-space-plan-train.ipynb) · [foundations.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/foundations.py)
+> **本节代码**：[看见与压缩](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/02_foundations/see-remember-compress.ipynb) · [空间与规划](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/02_foundations/space-plan-train.ipynb) · [foundations.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/foundations.py)
 
-> **前置知识**：你已经读过第 2 章和第 3 章，并最好刚跑完 [1.6 动手：从零重新发明世界模型](/chapters/01-why-world-models/06-invent-a-world-model)。这一节把那些零件真跑一遍。
+> **前置知识**：你已经读过第 2 章前七节，并最好刚跑完 [1.8 动手：九格世界的从零实现](/chapters/01-why-world-models/08-invent-a-world-model)。这一节把那些零件真跑一遍。
 
 ---
 
@@ -42,8 +42,8 @@ jupyter lab
 两份 Notebook 在：
 
 ```text
-notebooks/02_foundations/F1-see-remember-compress.ipynb
-notebooks/02_foundations/F2-space-plan-train.ipynb
+notebooks/02_foundations/see-remember-compress.ipynb
+notebooks/02_foundations/space-plan-train.ipynb
 ```
 
 即使暂时不打开 Notebook，也可以先跑测试：
@@ -59,7 +59,7 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 路径：
 
 ```text
-notebooks/02_foundations/F1-see-remember-compress.ipynb
+notebooks/02_foundations/see-remember-compress.ipynb
 ```
 
 1.6 的观察是一个格子坐标。现在观察是一张图。世界模型要先回答：这张图里，哪些数值得留下来？
@@ -176,7 +176,7 @@ print(latent.shape, reconstruction_mse(image, recon))
 路径：
 
 ```text
-notebooks/02_foundations/F2-space-plan-train.ipynb
+notebooks/02_foundations/space-plan-train.ipynb
 ```
 
 格子世界的坐标是送进模型的。相机拍到的是深度图。要规划「会不会撞」，必须先把像素变回三维点，再落到俯视格子上。
@@ -320,7 +320,7 @@ clip:   [1.5 2. ]
 
 从经历里学习动态已单独成页，挂在第 3 章侧栏，不要再挤在 2.8 里跟做。
 
-> 👉 [3.4 动手：第一台可学习世界模型](/chapters/03-data-and-first-model/04-learn-a-table-world)
+> 👉 [3.5 动手：表格世界模型的从零开始实现](/chapters/03-data-and-first-model/05-learn-a-table-world)
 
 那里从装 `Episode`、段内取样，数到 \(\hat P(s'\mid s,a)\)，再用 MPC 走到终点。2.8 只负责看见与空间。
 
@@ -345,7 +345,7 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 
 1. **patch 扫描**：边长 2 / 4 / 8，画 token 数和块平均重建误差。有没有一个「既不太碎、边又没被抹掉」的点？
 2. **标定扫描**：平移误差从 0.05 m 扫到 1.0 m，看占用错几格。几何多准才「够用」？
-   下一步是 [3.4 动手：第一台可学习世界模型](/chapters/03-data-and-first-model/04-learn-a-table-world)，然后是 [PA0](/assignments/pa0)。那里不再给你完整转移表，你要自己留一个缺口，并让一种失败稳定出现。
+   下一步是 [3.5 动手：表格世界模型的从零开始实现](/chapters/03-data-and-first-model/05-learn-a-table-world)，然后是 [3.6 动手：重新发明一台可学习世界模型](/chapters/03-data-and-first-model/06-learnable-world)。那里不再给你完整转移表，你要自己留一个缺口，并让一种失败稳定出现。
 
 ## 本节小结
 

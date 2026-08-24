@@ -1,4 +1,4 @@
-# 5.3　AR、Diffusion 与 Diffusion Forcing
+# 5.3　自回归与扩散
 
 视频已经压短，接下来要决定怎样生成未来。三种常见办法可以从“模型一次负责多少未来”来理解。
 
@@ -10,7 +10,7 @@
 历史 → 下一 token 或下一帧 → 放回历史 → 再预测下一步
 ```
 
-离散 AR 使用交叉熵预测 token；连续 AR 也可以直接回归下一帧或连续 latent。B1 采用最小的离散版本：当前 token 加动作 embedding，预测下一组 token。
+离散 AR 使用交叉熵预测 token；连续 AR 也可以直接回归下一帧或连续 latent。5.6 的第一份 Notebook「压缩并预测视频」采用最小的离散版本：当前 token 加动作 embedding，预测下一组 token。
 
 因果遮罩保证模型不能偷看未来。空间位置、时间位置和 token 类型也要分开编码。部署时使用 KV Cache 保存已经计算过的历史，避免每一步从头处理。
 
@@ -48,7 +48,7 @@ noisy future clip + history + actions → 多次去噪 → future clip
 - 多个未来帧都很嘈杂：一次生成一段未来；
 - 已知片段保持干净，未知片段加噪：补全或条件生成。
 
-B2 会为 `[B,T,C,H,W]` 中每一帧单独采样噪声等级。这个 tiny 实验只展示训练接口，不声称复现 Nano World Model 或大型 Diffusion Forcing 系统。
+5.6 的第二份 Notebook「让视频听动作」会为 `[B,T,C,H,W]` 中每一帧单独采样噪声等级。这个 tiny 实验只展示训练接口，不声称复现 Nano World Model 或大型 Diffusion Forcing 系统。
 
 ## 三种方法怎样选
 
@@ -65,3 +65,5 @@ B2 会为 `[B,T,C,H,W]` 中每一帧单独采样噪声等级。这个 tiny 实�
 - [ ] Diffusion 对一段连续表示多次去噪，能表达多种未来，但通常更慢。
 - [ ] AR-Diffusion 在时间上自回归、在每个生成块内去噪。
 - [ ] Diffusion Forcing 用逐帧噪声等级统一下一帧预测和整段生成。
+
+生成方式定了，还剩一个更关键的接口问题：动作从哪里进入网络，以及怎样证明画面真的在听动作。下一篇 [5.4 动作条件与可控性](/chapters/05-interactive-video/04-action-conditioning) 比较拼接、FiLM、AdaLN 与交叉注意力四种注入方式。

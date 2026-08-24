@@ -1,10 +1,20 @@
-# 2.2 图像编码器：卷积网络与视觉 Transformer
+# 2.2　图像编码器
 
 > **从原始像素到结构化表征**
 >
 > 物理世界投射在传感器上的原始观测是一组高维、稠密且充斥着感知冗余的 RGB 像素阵列。以一张看似微不足道的 $64 \times 64 \times 3$ 像素图像为例，其单步输入维度便达到惊人的 $12{,}288$ 维。若直接在原始像素网格上建模物理转移，不仅会陷入无法逾越的“维度灾难”，更会被背景噪点、光影闪烁等无关高频扰动所淹没，掩盖真正支配系统演化的低维物理守恒量与运动微分。
 >
 > 空间视觉编码器（Spatial Visual Encoder）是世界模型感知大厦的基石：它的使命是将高维几何与外观观测压缩映射至紧凑的潜在状态空间（Latent Space），在剔除无关表观冗余的同时，忠实保留物体的空间拓扑、接触边界、相对位姿以及动作响应特征。本节我们将深入剖析卷积神经网络（CNN）与视觉 Transformer（ViT）的数学本质、归纳偏置、架构权衡与表征检验准则，为构建能够支撑因果动力学推演的世界模型奠定表征基础。
+
+---
+
+## 本节导读
+
+- **核心内容**：卷积算子的空间局部性与平移等变性证明；视觉 Transformer（ViT）图像分块投影与多头自注意力机制；1D/2D/RoPE/3D-Tubelet 时空位置编码代数体系；CNN 与 ViT 在世界模型中的归纳偏置与扩展法则权衡；世界模型视觉表征的三大核心诊断准则（物理状态线性探测、反事实动作敏感度、多步推演物体恒常性）。
+- **核心问题**：为什么高重构保真度（PSNR/SSIM）的自编码器往往无法支撑高质量的世界模型？在样本受限的具身控制与海量预训练的通用视频生成场景下，如何根据归纳偏置与扩展性选择视觉骨干？
+- **核心概念**：卷积归纳偏置（Convolutional Inductive Bias）、平移等变性（Translation Equivariance）、感受野（Receptive Field）、分块投影（Patch Projection）、多头自注意力（MHSA）、旋转位置编码（2D-RoPE）、时空管元（Spatio-Temporal Tubelet）、线性探测（Linear Probing）、反事实动作敏感度（Counterfactual Action Sensitivity）。
+- **核心公式**：
+  $$Y_{i,j} = \sum_{u,v} K_{u,v} P_{i,j}[u,v], \qquad f(T_{\Delta}(I)) = T_{\Delta}(f(I)), \qquad \operatorname{Attention}(Q, K, V) = \operatorname{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V, \qquad \Delta z = \|z(o_t, a^{(1)}) - z(o_t, a^{(2)})\|$$
 
 ---
 
@@ -489,7 +499,7 @@ PatchViT 输出潜在表征:     torch.Size([240, 64])
 - **位置编码（1D / 2D-RoPE / 3D-Tubelet）** 是自注意力网络感知物理空间拓扑与时空连续轨迹的代数桥梁。
 - **高重构保真度并不等价于高质量的世界模型表征**；必须通过物理状态线性探测、反事实动作敏感度与多步物体恒常性三大准则，检验隐空间是否真正具备支持未来动力学推演的因果可解耦性。
 
-空间观测被编码为潜在 Token 后，下一个核心问题随之浮现：如何跨越时间维度，将连续历史 Token 压缩为具有长期因果记忆的动态信念状态？在下一节 [2.3 记忆与动态](/chapters/02-foundations/03-memory-and-dynamics) 中，我们将深入剖析 RNN、GRU、Transformer 与循环状态空间模型（RSSM）的时序建模精髓。
+空间观测被编码为潜在 Token 后，下一个核心问题随之浮现：如何跨越时间维度，将连续历史 Token 压缩为具有长期因果记忆的动态信念状态？在下一节 [2.3 记忆与动力学](/chapters/02-foundations/03-memory-and-dynamics) 中，我们将深入剖析 RNN、GRU、Transformer 与循环状态空间模型（RSSM）的时序建模精髓。
 
 ---
 

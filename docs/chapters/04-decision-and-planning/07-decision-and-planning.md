@@ -1,10 +1,10 @@
-# 4.7 动手：决策与规划实验
+# 4.7　动手：Dreamer 的简化实现
 
-> **本节目标**：跑通一条从「像素观测」到「在想象中规划行动」的完整链路。A1 把 CNN Encoder、RSSM 和预测 head 接起来，确认 loss 能下降；A2 先在一个可解释的位置模型上证明 learned dynamics 真的能帮助行动，再把位置换成 RSSM latent，让 Actor-Critic 在隐空间里走完一次更新。
+> **本节目标**：跑通一条从「像素观测」到「在想象中规划行动」的完整链路。第一份 Notebook 把 CNN Encoder、RSSM 和预测 head 接起来，确认 loss 能下降；第二份先在一个可解释的位置模型上证明 learned dynamics 真的能帮助行动，再把位置换成 RSSM latent，让 Actor-Critic 在隐空间里走完一次更新。
 
-> **本节代码**：[A1 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/04_decision/A1-learn-a-latent-world.ipynb) · [A2 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/04_decision/A2-act-in-imagination.ipynb)
+> **本节代码**：[学出一个潜在世界](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/04_decision/learn-a-latent-world.ipynb) · [在想象中行动](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/04_decision/act-in-imagination.ipynb)
 
-> **前置知识**：你已经读过 3.1–3.4，知道 RSSM 的 prior/posterior、Dreamer 的 imagination 循环、Actor-Critic 的 TD-λ。最好刚跑完 [4.6 动手：复现 World Models](/chapters/04-decision-and-planning/06-reproduce-world-models)。这一节把它们真跑一遍。
+> **前置知识**：你已经读过 4.1–4.5，知道 RSSM 的 prior/posterior、Dreamer 的 imagination 循环、Actor-Critic 的 TD-λ。最好刚跑完 [4.6 动手：World Models 的复现](/chapters/04-decision-and-planning/06-reproduce-world-models)。这一节把它们真跑一遍。
 
 ---
 
@@ -16,10 +16,10 @@
 
 你当时大概和我一样，会问：能不能看得更清楚一点？能不能让策略直接沿着梦境反传，而不是蒙着眼进化？
 
-这一节的 A1 和 A2，就是 Dreamer 对这三个问题的回答。规模打折，原理不打折。跑完之后，你会对「在想象中训练」这句话有另一层理解。
+这一节的两份 Notebook，就是 Dreamer 对这三个问题的回答。规模打折，原理不打折。跑完之后，你会对「在想象中训练」这句话有另一层理解。
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/a1-pixelworld.png" alt="PixelWorld 小世界" style="max-width:min(900px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
+  <img src="/carracing/pixelworld.png" alt="PixelWorld 小世界" style="max-width:min(900px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">这就是我们要让模型学会的「世界」：16×16 的黑底小图，红色方块是自己，绿色方块是目标。模型从未被告知「红色是智能体、绿色是终点」，它要从像素流里自己发现「向右走，红块会右移」。</div>
 </div>
 
@@ -30,7 +30,7 @@ Dreamer 的完整训练需要 GPU、需要大量数据、需要跑几个小时�
 运行结束后，你会得到：
 
 - 一张 16×16 的 PixelWorld，以及红方块朝绿目标走的几帧
-- A1 一次前向的 shape：观测 `[4, 9, 16, 16, 3]`，特征 `[4, 8, 80]`
+- 第一份 Notebook 一次前向的 shape：观测 `[4, 9, 16, 16, 3]`，特征 `[4, 8, 80]`
 - 15 次更新的 total / reconstruction / KL 曲线
 - 原图、复制上一帧、RSSM 重建的并排对比
 - 位置模型的损失曲线，以及同一起点上规划 vs 随机的轨迹
@@ -39,7 +39,7 @@ Dreamer 的完整训练需要 GPU、需要大量数据、需要跑几个小时�
 
 ## 第一步：安装环境依赖
 
-路线 A 第一次使用 PyTorch。共同基础只需要 NumPy；选了这条路线，才装神经依赖：
+决策与规划路线（第 4 章）第一次使用 PyTorch。共同基础只需要 NumPy；选了这条路线，才装神经依赖：
 
 ```bash
 python -m pip install -r requirements-neural.txt
@@ -53,13 +53,13 @@ print('PyTorch:', torch.__version__, 'device:',
       'cuda' if torch.cuda.is_available() else 'cpu')
 ```
 
-教学版在 CPU 上运行，不需要 GPU。PA1-A 的完整训练建议用单张 24GB。
+教学版在 CPU 上运行，不需要 GPU。4.8 的完整训练建议用单张 24GB。
 
 两份 Notebook 在：
 
 ```text
-notebooks/04_decision/A1-learn-a-latent-world.ipynb
-notebooks/04_decision/A2-act-in-imagination.ipynb
+notebooks/04_decision/learn-a-latent-world.ipynb
+notebooks/04_decision/act-in-imagination.ipynb
 ```
 
 也可以先跑测试：
@@ -82,9 +82,9 @@ MOVE = {
 }
 ```
 
-每走一步奖励 `-0.01`，踩到目标给 `+1.0` 并结束。出界会被夹回来。这不是 Atari，也不是 CarRacing。它小到你可以在像素里数出方块挪了几格——后面 A2 正是靠这一点，先做一台你看得懂的世界模型。
+每走一步奖励 `-0.01`，踩到目标给 `+1.0` 并结束。出界会被夹回来。这不是 Atari，也不是 CarRacing。它小到你可以在像素里数出方块挪了几格——后面第二份 Notebook 正是靠这一点，先做一台你看得懂的世界模型。
 
-A1 用随机策略采 4 段、每段 8 步。第 `t` 个动作对应 `observations[t] → observations[t+1]`，所以观察比动作多一帧：
+第一份 Notebook 用随机策略采 4 段、每段 8 步。第 `t` 个动作对应 `observations[t] → observations[t+1]`，所以观察比动作多一帧：
 
 ```python
 from hwm.data import make_pixelworld_dataset
@@ -113,9 +113,9 @@ rewards:      (4, 8)
 
 如果时间维对不上，后面所有 head 都会看错帧。世界模型里，时间对齐比模型结构更先出错。
 
-## 第三步：A1——一次前向同时长出什么
+## 第三步：一次前向同时长出什么
 
-A1 的核心是 **RSSM**（Recurrent State-Space Model）。和 4.6 的 MDN-RNN 不同，它同时维护两段状态：确定性隐状态 \(h_t\) 带着长期记忆，随机 latent \(z_t\) 带着眼前的不确定性。
+第一份 Notebook 的核心是 **RSSM**（Recurrent State-Space Model）。和 4.6 的 MDN-RNN 不同，它同时维护两段状态：确定性隐状态 \(h_t\) 带着长期记忆，随机 latent \(z_t\) 带着眼前的不确定性。
 
 $$
 h_t = f(h_{t-1}, z_{t-1}, a_{t-1})
@@ -151,7 +151,7 @@ print('losses:', {k: round(float(v), 4) for k, v in metrics.items()})
 ```
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/a1-rssm-dataflow.png" alt="RSSM 数据流" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
+  <img src="/carracing/rssm-dataflow.png" alt="RSSM 数据流" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">一次前向的真实 shape。像素经 CNN 压成 64 维，RSSM 拆成 64 维记忆和 16 维随机 latent，拼起来是 80 维特征。M 和 C 之后读的，就是这 80 个数。</div>
 </div>
 
@@ -168,7 +168,7 @@ feature 的最后一维是 80 = 64 + 16。这就是 RSSM 的核心设计：记�
 
 `continue` 接近 \(0.69\)，差不多是还没训练的抛硬币。`kl` 大于 1，说明 prior 和 posterior 此刻差得很远——模型还不会在没有图片的时候猜下一帧。
 
-这不是一次完整的 Dreamer 训练。4 段 episode 太少，模型会迅速过拟合。A1 的目标是确认接口连通：shape 对、各个 head 的数值合理、梯度能流。
+这不是一次完整的 Dreamer 训练。4 段 episode 太少，模型会迅速过拟合。第一份 Notebook 的目标是确认接口连通：shape 对、各个 head 的数值合理、梯度能流。
 
 ## 第四步：15 次更新
 
@@ -199,7 +199,7 @@ KL:             3.312 → 0.561
 ```
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/a1-loss-curve.png" alt="A1 损失曲线" style="max-width:min(720px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
+  <img src="/carracing/world-model-loss-curve.png" alt="世界模型损失曲线" style="max-width:min(720px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">15 次更新。total 和 reconstruction 明显下降，KL 从 3.3 掉到 0.56。第二条更新 total 还会先抬一下——优化器在找路，不是曲线画错了。</div>
 </div>
 
@@ -220,13 +220,13 @@ print('15 步重建 MSE: ', round(float(metrics['reconstruction']), 4))
 ```
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/a1-reconstruction.png" alt="原图、复制上一帧与 RSSM 重建" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
+  <img src="/carracing/rssm-reconstruction.png" alt="原图、复制上一帧与 RSSM 重建" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">同一段 episode 的前 4 个下一帧。上排是真值，中排是复制上一帧，下排是 15 次更新后的解码。红方块在重建里糊成一团；复制上一帧几乎看不出差别——相邻帧本就很像。</div>
 </div>
 
 你会发现，训练后的解码器仍然差过「把上一帧原样拿来」。loss 下降了，动态没学会。
 
-**这就是 A1 真正要你看见的事**：loss 下降只说明这 32 个转移上的优化路径连通。它没有证明多步世界是对的，也没有证明模型能帮助行动。
+**这就是第一份 Notebook 真正要你看见的事**：loss 下降只说明这 32 个转移上的优化路径连通。它没有证明多步世界是对的，也没有证明模型能帮助行动。
 
 **一个值得做的实验**：把 `num_episodes` 从 4 提到 20，观察 reconstruction 能不能低于 0.006，以及 KL 会怎么变。数据变多之后，KL 通常会先升——posterior 看见了更多样的下一帧，prior 一时跟不上。这正是 RSSM 要最小化的东西：让 prior 尽量靠近 posterior，这样部署时（没有真实观测）采样才靠谱。
 
@@ -249,13 +249,13 @@ print('KL:', round(float(metrics['kl']), 4))
 KL: 0.561
 ```
 
-A2 会从这段 posterior 的最后一步出发，之后只调用 prior。如果 prior 学得不像 posterior，梦境从第一步就会偏。
+第二份 Notebook 会从这段 posterior 的最后一步出发，之后只调用 prior。如果 prior 学得不像 posterior，梦境从第一步就会偏。
 
-Posterior 用真实图片修正状态，prior 学习在没有未来图片时靠动作预测。A2 会从 posterior 出发，只用 prior 想象。
+Posterior 用真实图片修正状态，prior 学习在没有未来图片时靠动作预测；想象阶段能用的只有后者。
 
 ## 第六步：为什么先做位置模型，再做 latent 模型
 
-A2 有一个刻意的迂回：它不直接用 RSSM 做规划，而是先从图片里量出方块的 \((x, y)\)，学一个 `位置 + 动作 → 下一位置` 的小模型，在这个你看得懂的模型里做 beam search，再回到真实环境验收。
+第二份 Notebook 有一个刻意的迂回：它不直接用 RSSM 做规划，而是先从图片里量出方块的 \((x, y)\)，学一个 `位置 + 动作 → 下一位置` 的小模型，在这个你看得懂的模型里做 beam search，再回到真实环境验收。
 
 为什么要绕这个弯？因为你需要先确认 **learned dynamics 真的能帮助行动**，而不是把「loss 下降」当成成功的证据。位置模型的预测是二维坐标，你能一眼看出「预测的下一位置离真实下一位置差了多少」。如果这个可解释模型都不能改善行动，那 RSSM 更不可能——问题出在 Planner 或数据，而不是 latent 表示。
 
@@ -335,12 +335,12 @@ random_final_distance:  14.15
 四个测试起点都不在那 6×6 训练网格上。规划器用学到的动态走了 14 步到达目标；同样 24 步预算里，随机策略一次都没碰到。
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/a2-planned-vs-random.png" alt="规划轨迹对比随机" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
+  <img src="/carracing/planned-vs-random.png" alt="规划轨迹对比随机" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">同一起点 (5,5)。左：学到的动态带着规划器走进绿色目标；右：随机策略在左上角打转。这不是 loss 曲线能告诉你的。</div>
 </div>
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/a2-position-planning.png" alt="位置模型训练、预测与规划" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
+  <img src="/carracing/position-planning.png" alt="位置模型训练、预测与规划" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">位置模型的三张证据：损失降下来、单步预测贴着真实点、beam search 在模型里走出一条朝向目标的路径。</div>
 </div>
 
@@ -408,7 +408,7 @@ TD-lambda: [-0.107, 0.022, 0.067, 0.211, 0.084]
 ```
 
 <div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/a2-imagination.png" alt="五步 imagination" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
+  <img src="/carracing/imagination-training.png" alt="五步 imagination" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">从真实 posterior 出发的 5 步梦境。Actor 还是随机初始化，动作没有朝向目标；reward head 几乎没被训练，预测奖励会在正负之间晃。这一步检查的是「梦境能不能展开」，不是「梦境里已经会走路」。</div>
 </div>
 
@@ -453,20 +453,20 @@ Actor 参数改变: True
 
 ```bash
 PYTHONPATH=src python -m unittest tests.test_control tests.test_neural -v
-python scripts/run_a2_reference.py --output runs/a2-reference
+python scripts/run_position_dynamics_reference.py --output runs/reference/position-dynamics
 ```
 
 跑完两份 Notebook 后，你应该有：
 
-- **A1**：loss 下降曲线、prior / posterior 距离、原图 vs 复制上一帧 vs 重建
-- **A2 位置模型**：planned vs random 的成功率，一条 `(5,5) → (12,12)` 的真实路线
-- **A2 RSSM**：一次 5 步 imagination，以及「Actor 参数改变 = True」
+- **第一份 Notebook**：loss 下降曲线、prior / posterior 距离、原图 vs 复制上一帧 vs 重建
+- **第二份 Notebook 的位置模型**：planned vs random 的成功率，一条 `(5,5) → (12,12)` 的真实路线
+- **第二份 Notebook 的 RSSM 部分**：一次 5 步 imagination，以及「Actor 参数改变 = True」
 
-`run_a2_reference.py` 还会写出 `position-dynamics.pt`、`metrics.json` 和带 sha256 的 `manifest.json`。那是第 9 章运行证据规范在这条路线上的最小实例。
+`run_position_dynamics_reference.py` 还会写出 `position-dynamics.pt`、`metrics.json` 和带 sha256 的 `manifest.json`。那是第 9 章运行证据规范在这条路线上的最小实例。
 
-## Smoke 与 PA1 的区别
+## 本节与 4.8 的区别
 
-| 项目 | A1 / A2 smoke                         | PA1-A                             |
+| 项目 | 本节                                  | 4.8                               |
 | ---- | ------------------------------------- | --------------------------------- |
 | 数据 | 4 段 PixelWorld；位置模型 180 条单步  | 更大的 PixelWorld；选做 DMC       |
 | 训练 | 15–100 步；Actor 更新 1 次            | 直到形成稳定曲线                  |
@@ -479,36 +479,36 @@ python scripts/run_a2_reference.py --output runs/a2-reference
 教学版有几处刻意的简化，跑不通时先从这里找原因：
 
 - **复制上一帧是更强的像素基线。** 15 步重建 MSE 0.014 仍高于 0.006。不要把 reconstruction 下降写成「学会了动态」。
-- **数据量极小。** 4 段 episode 只有 32 个转移，A1 会迅速过拟合。loss 下降不代表泛化，只代表接口连通。
+- **数据量极小。** 4 段 episode 只有 32 个转移，第一份 Notebook 里的模型会迅速过拟合。loss 下降不代表泛化，只代表接口连通。
 - **PixelWorld 过于简单。** 16×16、5 个动作、红方块——这不是 Atari。RSSM 在这里学到的「世界」非常有限。
 - **位置来自颜色阈值，不是模拟器开挂。** `locate_red_square` 读的是像素。换一张没有大红块的图，这条基线立刻失效。
-- **A2 的 RSSM 部分只做了一次更新。** 真正的 Dreamer 需要数千次想象。A2 只证明梯度能流、参数能变，不证明策略能学。
+- **第二份 Notebook 的 RSSM 部分只做了一次更新。** 真正的 Dreamer 需要数千次想象。它只证明梯度能流、参数能变，不证明策略能学。
 - **教学版 Actor 是 REINFORCE。** 完整 Dreamer 还会让梯度穿过动态模型。动作采样把那条路截断了。
 
 ## 扩展练习
 
 跑通默认配置后，按从便宜到昂贵的顺序推荐：
 
-1. **重建对基线**：把 A1 的重建 MSE 和复制上一帧画在同一张图上，扫 `num_episodes` 从 4 到 40。哪一个规模上，模型第一次赢过复制？
-2. **改变 horizon**：把 A2 位置模型的规划深度从 1 提到 8，观察步数和成功率。horizon 越长，并不总是越好。
+1. **重建对基线**：把第一份 Notebook 的重建 MSE 和复制上一帧画在同一张图上，扫 `num_episodes` 从 4 到 40。哪一个规模上，模型第一次赢过复制？
+2. **改变 horizon**：把第二份 Notebook 里位置模型的规划深度从 1 提到 8，观察步数和成功率。horizon 越长，并不总是越好。
 3. **想象长度**：把 `imagine` 的 horizon 从 5 提到 20，观察预测奖励会不会爆、continue 会不会塌到 0。复合误差在隐空间里一样会发生。
 4. **把重建画进梦境**：对想象出来的特征调用 `model.decode`，看 5 步 prior rollout 的画面。前两步也许还能辨认方块，后面通常糊掉——这就是 4.6 里那张 free-running 图，在 RSSM 里的对应物。
 
-完成两份 Notebook 后进入 [PA1-A · 动手：做出一台 Dreamer-lite](/assignments/pa1-a)：那台模型不再用 4 段 episode 做 smoke，而是收集、想象、更新、再收集。你会亲身体会「接口连通」与「策略收敛」之间的巨大鸿沟。
+完成两份 Notebook 后进入 [4.8 动手：Dreamer 的完整闭环](/chapters/04-decision-and-planning/08-dreamer-loop)：那台模型不再用 4 段 episode 做 smoke，而是收集、想象、更新、再收集。你会亲身体会「接口连通」与「策略收敛」之间的巨大鸿沟。
 
 ## 本节小结
 
-- **A1 确认 RSSM 接口连通**：CNN 压像素，RSSM 的 prior / posterior 双路结构，三个预测 head，15 次更新后 loss 能下降。
-- **A1 同时证明 loss 不够**：复制上一帧的像素误差仍低于训练后的解码器。相邻帧太像，像素损失会奖励偷懒。
-- **A2 先做可解释基线**：位置模型的 MSE 下降，beam search 的成功率显著高于随机——证明 learned dynamics 真的能帮助行动。
-- **A2 再接通 Actor-Critic**：把位置换成 RSSM latent，Actor 采样动作、prior 推演、Critic 给 value、TD-λ 算 target，一次更新后参数确实改变。
+- **第一份 Notebook 确认 RSSM 接口连通**：CNN 压像素，RSSM 的 prior / posterior 双路结构，三个预测 head，15 次更新后 loss 能下降。
+- **第一份 Notebook 同时证明 loss 不够**：复制上一帧的像素误差仍低于训练后的解码器。相邻帧太像，像素损失会奖励偷懒。
+- **第二份 Notebook 先做可解释基线**：位置模型的 MSE 下降，beam search 的成功率显著高于随机——证明 learned dynamics 真的能帮助行动。
+- **第二份 Notebook 再接通 Actor-Critic**：把位置换成 RSSM latent，Actor 采样动作、prior 推演、Critic 给 value、TD-λ 算 target，一次更新后参数确实改变。
 - **Smoke 不是完整训练**：4 段 episode、15–100 步、CPU 运行——目标是检查数据流，不是复现 DreamerV3 的排行榜。
 
-从 4.6 的 World Models 到这一节的 Dreamer 接口，核心思想从未改变：**在行动之前，先在内部预见行动的后果**。4.6 用 CMA-ES 在梦境里进化控制器，这一节用梯度下降在梦境里训练 Actor-Critic——前者像蒙眼摸索，后者像看着地图走。而 PA1-A 会让你亲手把这张地图画完整。
+从 4.6 的 World Models 到这一节的 Dreamer 接口，核心思想从未改变：**在行动之前，先在内部预见行动的后果**。4.6 用 CMA-ES 在梦境里进化控制器，这一节用梯度下降在梦境里训练 Actor-Critic——前者像蒙眼摸索，后者像看着地图走。而 4.8 会让你亲手把这张地图画完整。
 
 ## 后续工作
 
-A1 / A2 只把 Dreamer 的接口接到了 PixelWorld。它留下了三个明显的缺口，后来的工作逐一走得更远。
+这两份 Notebook 只把 Dreamer 的接口接到了 PixelWorld。它留下了三个明显的缺口，后来的工作逐一走得更远。
 
 ### 短板一：还在用连续高斯猜下一帧
 
@@ -516,11 +516,11 @@ A1 / A2 只把 Dreamer 的接口接到了 PixelWorld。它留下了三个明显�
 
 ### 短板二：还在用枚举搜索动作
 
-A2 的 beam search 只适用于 5 个离散动作。连续控制里，动作树立刻爆炸。**PlaNet** [1] 还不用 Actor-Critic，它在 RSSM 里跑 CEM：采样一群动作序列，留下精英，收缩分布，再采一轮。和 beam search 是亲戚——都在模型里试动作，都只执行第一步。
+第二份 Notebook 的 beam search 只适用于 5 个离散动作。连续控制里，动作树立刻爆炸。**PlaNet** [1] 还不用 Actor-Critic，它在 RSSM 里跑 CEM：采样一群动作序列，留下精英，收缩分布，再采一轮。和 beam search 是亲戚——都在模型里试动作，都只执行第一步。
 
 ### 短板三：像素重建可能是负担
 
-A1 里，复制上一帧赢过了训练后的解码器。这已经在暗示一件事：像素不一定是对的监督。**MuZero** [4] 连重建头都去掉，只预测奖励、策略和价值，在隐空间里做蒙特卡洛树搜索。世界模型不需要重建世界，只需要重建决策需要的信息。
+第一份 Notebook 里，复制上一帧赢过了训练后的解码器。这已经在暗示一件事：像素不一定是对的监督。**MuZero** [4] 连重建头都去掉，只预测奖励、策略和价值，在隐空间里做蒙特卡洛树搜索。世界模型不需要重建世界，只需要重建决策需要的信息。
 
 从 4.6 的 867 个参数，到这一节的一次可微想象，被替换的是搜索方式，不是那句老话。下一台模型要回答的，是你刚刚亲眼看见的那些失败：重建赢不过复制上一帧、梦境里的 Actor 还不会走路、一次梯度改变了参数却改变不了行为。
 

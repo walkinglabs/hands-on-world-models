@@ -1,4 +1,4 @@
-# 4.5　MuZero 与蒙特卡洛树搜索
+# 4.5　蒙特卡洛树搜索（MuZero）
 
 四子棋、围棋、国际象棋有共同特点：规则完全确定，没有随机风，也不需要重画棋盘纹理。Dreamer 用 decoder 帮助训练状态，但棋类规划根本不需要还原棋子的颜色和质感，只需要知道「这一步之后的 reward、合法动作概率和价值」。
 
@@ -76,4 +76,4 @@ Dreamer 的状态受观察重建约束，保留了大量画面细节。MuZero �
 - [ ] MCTS 用 PUCT 在隐空间展开树，访问次数形成比原策略更集中的改进策略，作为训练目标。
 - [ ] 这种表示适合当前规划目标，但不保证保留所有世界信息。
 
-到这里，决策路线的五种思路——潜在状态、RSSM、PlaNet/CEM、Dreamer、MuZero——已经串成一条线。动手把这套接口跑通，见 [A2：在想象中规划与行动](/chapters/04-decision-and-planning/07-decision-and-planning)。
+到这里，决策路线的五种思路——潜在状态、RSSM、PlaNet/CEM、Dreamer、MuZero——已经串成一条线。动手把这套接口跑通，见 [4.7 动手：在想象中行动](/chapters/04-decision-and-planning/07-decision-and-planning)。

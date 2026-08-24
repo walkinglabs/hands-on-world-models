@@ -1,4 +1,4 @@
-# 4.4　Dreamer：在想象中训练
+# 4.4　Dreamer 与想象训练
 
 PlaNet 每做一个真实动作都要重跑一遍 CEM。CRAFTER、DMC Cartpole 这类任务要求高频控制，搜索开销可能压垮整个系统。
 
@@ -84,4 +84,4 @@ $$
 - [ ] λ 回报在一步 TD 和蒙特卡洛之间折中，critic 拟合它，actor 朝它提高动作概率。
 - [ ] 世界模型、actor、critic 各自优化，最终结果由真实 return 和样本效率检查。
 
-Dreamer 用想象训练可微的 actor，适合连续控制。下一篇看 MuZero 怎样换一条路：不重建观察，而是用树搜索改进 policy。动手实验见 [A2：在想象中规划与行动](/chapters/04-decision-and-planning/07-decision-and-planning)。
+Dreamer 用想象训练可微的 actor，适合连续控制。下一篇看 MuZero 怎样换一条路：不重建观察，而是用树搜索改进 policy。动手实验见 [4.7 动手：在想象中行动](/chapters/04-decision-and-planning/07-decision-and-planning)。

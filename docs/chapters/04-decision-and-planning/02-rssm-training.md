@@ -1,4 +1,4 @@
-# 4.2　RSSM：记忆与不确定性
+# 4.2　循环状态空间模型（RSSM）
 
 MiniGrid 里agent钻进一条走廊，前方拐角后面可能是一堵墙，也可能是出口。从当前画面看，两种情况完全一样。模型如果只输出一个确定的状态，就会把「墙」和「出口」平均掉，得到一个两边都不像的结果。
 
@@ -82,7 +82,7 @@ $$
 
 训练时每一步都能看到真实观察（posterior），部署 rollout 却要不断用自己的 prior。这两者差距会随步数累积。
 
-A1 因此同时画两条曲线：teacher-forced 的一步 loss，以及从某一步开始**只用 prior** 推演的 open-loop 多步 loss。后者更接近部署条件，也更容易暴露「prior 偷懒」的问题。
+4.7 的第一份 Notebook 因此同时画两条曲线：teacher-forced 的一步 loss，以及从某一步开始**只用 prior** 推演的 open-loop 多步 loss。后者更接近部署条件，也更容易暴露「prior 偷懒」的问题。
 
 ## 小结
 
@@ -91,4 +91,4 @@ A1 因此同时画两条曲线：teacher-forced 的一步 loss，以及从某一
 - [ ] 四项损失分别约束观察、reward、continue 和 KL，要分开记录。
 - [ ] open-loop 多步 rollout 比 teacher-forced 一步结果更接近部署条件。
 
-状态能预测了，下一步是让它替我们选动作。下一篇看 PlaNet 怎样在这个 latent 世界里用 CEM 现场搜索。动手训练见 [A1：潜在状态世界模型（RSSM）](/chapters/04-decision-and-planning/07-decision-and-planning)。
+状态能预测了，下一步是让它替我们选动作。下一篇看 PlaNet 怎样在这个 latent 世界里用 CEM 现场搜索。动手训练见 [4.7 动手：学出一个潜在世界](/chapters/04-decision-and-planning/07-decision-and-planning)。

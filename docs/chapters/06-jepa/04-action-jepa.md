@@ -13,7 +13,7 @@ $$
 = \frac{1}{N}\sum_{i=1}^{N}\Big\|g_\phi\big(h_i,\,a_i\big) - \tilde{y}_i\Big\|_2^{2}.
 $$
 
-对比 5.1 的 JEPA 损失，唯一的差别是 Predictor 多吃了 $a$ 这一项。但这一项的含义不小：它要求模型把动作当成变化的原因，而不是画面里的另一个像素。
+对比 6.1 的 JEPA 损失，唯一的差别是 Predictor 多吃了 $a$ 这一项。但这一项的含义不小：它要求模型把动作当成变化的原因，而不是画面里的另一个像素。
 
 动作通常先过一个 embedding 层 $e$，得到 $e(a)\in\mathbb{R}^{d_a}$，再和 $h$ 拼起来或相加，交给 Predictor：
 
@@ -27,7 +27,7 @@ action embedding e(a) ─┘
 
 要训上式，一条样本至少得有四件事：观察 $o_t$、动作 $a_t$、下一观察 $o_{t+1}$、时间戳 $t$。机器人数据还要补上 proprioception（本体感觉）、控制频率、执行延迟。
 
-这是被动预训练与动作条件训练的分界。UCF101-mini 只有视频、没有动作标签，适合做被动预训练。要训 Action-JEPA，得换成 PixelWorld 这种带动作记录的合成数据，或真实的机器人轨迹。C2 正是在带动作的 PixelWorld 上训练的。
+这是被动预训练与动作条件训练的分界。UCF101-mini 只有视频、没有动作标签，适合做被动预训练。要训 Action-JEPA，得换成 PixelWorld 这种带动作记录的合成数据，或真实的机器人轨迹。6.5 的第二份 Notebook「检验并控制特征」正是在带动作的 PixelWorld 上训练的。
 
 ## 反事实检查：动作有没有进动态
 
@@ -39,7 +39,7 @@ $$
 \Delta_{k} = \big\|\hat{z}^{(k)} - \hat{z}^{(1)}\big\|_2^{2}.
 $$
 
-如果所有 $\Delta_k$ 都接近 $0$，说明换动作几乎不改变预测——动作根本没进动态。这正是 C2 第 3 节检查的事情。
+如果所有 $\Delta_k$ 都接近 $0$，说明换动作几乎不改变预测——动作根本没进动态。这正是第二份 Notebook 第 3 节检查的事情。
 
 但只看 $\Delta_k$ 还不够，因为模型可能对动作敏感、却敏感在无关维度上。我们常常再训一个位置 probe $W$，把 $\hat{z}^{(k)}$ 映射成可解释的方块位置 $\hat{p}^{(k)}$，再看 $\hat{p}^{(k)}$ 是否随动作方向合理移动。
 
@@ -51,7 +51,7 @@ $$
 a^{*} = \arg\min_{a\in\mathcal{A}}\;\big\|\,W\,g_\phi(h, a) - g_{\text{goal}}\big\|_2^{2}.
 $$
 
-$g_{\text{goal}}$ 是目标位置。这就是一步 lookahead 的动作选择，C2 第 4 节把它实现成了一个 `argmin` 接口。
+$g_{\text{goal}}$ 是目标位置。这就是一步 lookahead 的动作选择，第二份 Notebook 第 4 节把它实现成了一个 `argmin` 接口。
 
 一个重要的诚实声明：probe 的训练集与测试集按 episode seed 分开。若 probe 只在训练 feature 上拟合得好，我们只能说表示记住了样本，不能说它保留了可迁移的位置。短期动作选择用的也是同一个 held-out probe——表示不可靠，选择就没有依据。
 
@@ -71,4 +71,4 @@ Action-JEPA 和 Dreamer（第 4 章）都能在特征空间预测未来，区别
 - 反事实检查与下游动作选择，才能说明特征真正支持控制。
 - JEPA 重表示，Dreamer 重回报；二者在 latent 预测上接壤、目标不同。
 
-[上一篇 6.3 视频 JEPA](./03-video-jepa.md) · [动手：C2 动作条件特征预测](/chapters/06-jepa/05-jepa)
+[上一篇 6.3 视频 JEPA](./03-video-jepa.md) · [动手：动作条件特征预测](/chapters/06-jepa/05-jepa)

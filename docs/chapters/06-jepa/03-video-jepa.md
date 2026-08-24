@@ -16,7 +16,7 @@ N_W = \frac{W}{p_w},
 \text{token 总数} = N_T N_H N_W.
 $$
 
-例如 PixelWorld 的 `16×16` 单帧、`patch=4` 时每帧得 $4\times4=16$ 个 token；若视频有 $3$ 帧，就是 $3\times16=48$ 个 token。这正是 C1 里 `patchify_video` 看到的形状。
+例如 PixelWorld 的 `16×16` 单帧、`patch=4` 时每帧得 $4\times4=16$ 个 token；若视频有 $3$ 帧，就是 $3\times16=48$ 个 token。这正是 6.5 第一份 Notebook 里 `patchify_video` 看到的形状。
 
 时间跨度的选择会改变问题本身。$t$ 太短，token 只看到瞬时外观；$t$ 太长，快速运动的物体被混进同一个 token，运动信息就被抹平了。
 
@@ -31,7 +31,7 @@ $$
 
 ## 被动观看能学到什么
 
-无动作的视频能学到物体、运动、外观、场景变化。在 C1 里，我们用 PixelWorld 的合成片段训练一个 Tiny Video-JEPA，先回答最基本的问题：特征预测能不能稳定训练、会不会坍缩。
+无动作的视频能学到物体、运动、外观、场景变化。在 6.5 的第一份 Notebook 里，我们用 PixelWorld 的合成片段训练一个 Tiny Video-JEPA，先回答最基本的问题：特征预测能不能稳定训练、会不会坍缩。
 
 但被动视频没有控制信号。它无法回答"如果机器人换一个动作，画面会怎么变"。这是被动 JEPA 的天然边界——它是一个表示模型，并不自动成为可控的规划模型。
 
@@ -53,7 +53,7 @@ $$
 
 其中 $\lambda$ 是一点正则项，保证数值稳定。
 
-probe 成绩仍有上限。它证明某种信息**可读**，不证明所有下游任务都会受益。在 C1/C2 中，probe 的训练与测试 episode 按 seed 分开，避免"记住样本"被误读成"理解了位置"。
+probe 成绩仍有上限。它证明某种信息**可读**，不证明所有下游任务都会受益。在 6.5 的两份 Notebook 里，probe 的训练与测试 episode 按 seed 分开，避免"记住样本"被误读成"理解了位置"。
 
 ## 小结
 
@@ -62,4 +62,4 @@ probe 成绩仍有上限。它证明某种信息**可读**，不证明所有下�
 - 被动视频能验证表示质量，不能验证动作可控性。
 - linear probe 是一个最小但有用的"特征里有什么"探针。
 
-[上一篇 6.2 掩码、EMA 与表示坍缩](./02-mask-ema-collapse.md) · [下一篇 → 6.4 动作条件 JEPA（Action-JEPA）](./04-action-jepa.md) · [动手：C1 视频特征预测](/chapters/06-jepa/05-jepa)
+[上一篇 6.2 掩码、EMA 与表示坍缩](./02-mask-ema-collapse.md) · [下一篇 → 6.4 动作条件 JEPA（Action-JEPA）](./04-action-jepa.md) · [动手：视频特征预测](/chapters/06-jepa/05-jepa)

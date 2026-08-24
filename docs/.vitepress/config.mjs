@@ -56,7 +56,7 @@ export default defineConfig({
         ],
       },
       {
-        text: "1. 世界模型的基本问题",
+        text: "1. 引言",
         collapsed: false,
         items: [
           {
@@ -68,20 +68,28 @@ export default defineConfig({
             link: "/chapters/01-why-world-models/02-action-conditioned-future",
           },
           {
-            text: "1.3. 多步预测与规划",
+            text: "1.3. 多步推演与规划",
             link: "/chapters/01-why-world-models/03-rollout-planning-policy",
           },
           {
-            text: "1.4. 从经历学习动态",
+            text: "1.4. 从经历学习动力学",
             link: "/chapters/01-why-world-models/04-learned-dynamics",
           },
           {
-            text: "1.5. 经典世界模型",
-            link: "/chapters/01-why-world-models/05-classic-world-models",
+            text: "1.5. 观察与动作的联合分布",
+            link: "/chapters/01-why-world-models/05-joint-distribution",
           },
           {
-            text: "1.6. 动手：从零重新发明世界模型",
-            link: "/chapters/01-why-world-models/06-invent-a-world-model",
+            text: "1.6. 世界模型的定义",
+            link: "/chapters/01-why-world-models/06-what-is-a-world-model",
+          },
+          {
+            text: "1.7. 经典世界模型",
+            link: "/chapters/01-why-world-models/07-classic-world-models",
+          },
+          {
+            text: "1.8. 动手：九格世界的从零实现",
+            link: "/chapters/01-why-world-models/08-invent-a-world-model",
           },
         ],
       },
@@ -98,7 +106,7 @@ export default defineConfig({
             link: "/chapters/02-foundations/02-cnn-and-vit",
           },
           {
-            text: "2.3. 记忆与动态",
+            text: "2.3. 记忆与动力学",
             link: "/chapters/02-foundations/03-memory-and-dynamics",
           },
           {
@@ -114,38 +122,42 @@ export default defineConfig({
             link: "/chapters/02-foundations/06-value-policy-planner",
           },
           {
-            text: "2.7. 经验回放与第一个模型",
-            link: "/chapters/02-foundations/07-data-and-first-model",
+            text: "2.7. 训练稳定性",
+            link: "/chapters/02-foundations/07-training-stability",
           },
           {
-            text: "2.8. 动手：基础实验",
+            text: "2.8. 动手：组件接口的简洁实现",
             link: "/chapters/02-foundations/08-basic-experiments",
           },
         ],
       },
       {
-        text: "3. 数据与第一个模型",
+        text: "3. 数据与第一个世界模型",
         collapsed: false,
         items: [
           {
-            text: "3.1. 经验的存储",
+            text: "3.1. 经历与转移",
             link: "/chapters/03-data-and-first-model/01-episodes-and-transitions",
           },
           {
-            text: "3.2. Replay Buffer 与数据切分",
+            text: "3.2. 经验回放与数据切分",
             link: "/chapters/03-data-and-first-model/02-replay-buffer-and-splits",
           },
           {
-            text: "3.3. 从经验学习第一个模型",
+            text: "3.3. 从经历学出转移模型",
             link: "/chapters/03-data-and-first-model/03-first-learned-world",
           },
           {
-            text: "3.4. 动手：第一台可学习世界模型",
-            link: "/chapters/03-data-and-first-model/04-learn-a-table-world",
+            text: "3.4. 世界模型的基本检查",
+            link: "/chapters/03-data-and-first-model/04-basic-checks",
           },
           {
-            text: "PA0 · 动手：重新发明一台可学习世界模型",
-            link: "/assignments/pa0",
+            text: "3.5. 动手：表格世界模型的从零开始实现",
+            link: "/chapters/03-data-and-first-model/05-learn-a-table-world",
+          },
+          {
+            text: "3.6. 动手：重新发明一台可学习世界模型",
+            link: "/chapters/03-data-and-first-model/06-learnable-world",
           },
         ],
       },
@@ -158,32 +170,32 @@ export default defineConfig({
             link: "/chapters/04-decision-and-planning/01-latent-world-model",
           },
           {
-            text: "4.2. RSSM：记忆与不确定性",
+            text: "4.2. 循环状态空间模型（RSSM）",
             link: "/chapters/04-decision-and-planning/02-rssm-training",
           },
           {
-            text: "4.3. PlaNet 与 CEM",
+            text: "4.3. 交叉熵方法与模型预测控制",
             link: "/chapters/04-decision-and-planning/03-planet-and-cem",
           },
           {
-            text: "4.4. Dreamer：在想象中训练",
+            text: "4.4. Dreamer 与想象训练",
             link: "/chapters/04-decision-and-planning/04-dreamer-imagination",
           },
           {
-            text: "4.5. MuZero 与蒙特卡洛树搜索",
+            text: "4.5. 蒙特卡洛树搜索（MuZero）",
             link: "/chapters/04-decision-and-planning/05-muzero",
           },
           {
-            text: "4.6. 动手：复现 World Models",
+            text: "4.6. 动手：World Models 的复现",
             link: "/chapters/04-decision-and-planning/06-reproduce-world-models",
           },
           {
-            text: "4.7. 动手：决策与规划实验",
+            text: "4.7. 动手：Dreamer 的简化实现",
             link: "/chapters/04-decision-and-planning/07-decision-and-planning",
           },
           {
-            text: "PA1-A · 动手：做出一台 Dreamer-lite",
-            link: "/assignments/pa1-a",
+            text: "4.8. 动手：Dreamer 的完整闭环",
+            link: "/chapters/04-decision-and-planning/08-dreamer-loop",
           },
         ],
       },
@@ -192,37 +204,41 @@ export default defineConfig({
         collapsed: false,
         items: [
           {
-            text: "5.1. 从视频生成到视频世界模型",
+            text: "5.1. 视频世界模型",
             link: "/chapters/05-interactive-video/01-video-data",
           },
           {
-            text: "5.2. 先决定预测什么",
+            text: "5.2. 词元化与预测目标",
             link: "/chapters/05-interactive-video/02-vq-tokenizer",
           },
           {
-            text: "5.3. AR、Diffusion 与 Diffusion Forcing",
+            text: "5.3. 自回归与扩散",
             link: "/chapters/05-interactive-video/03-action-transformer",
           },
           {
-            text: "5.4. 动作、记忆、长时生成与评价",
-            link: "/chapters/05-interactive-video/04-diffusion-and-evaluation",
+            text: "5.4. 动作条件与可控性",
+            link: "/chapters/05-interactive-video/04-action-conditioning",
           },
           {
-            text: "5.5. 动手：交互视频实验",
-            link: "/chapters/05-interactive-video/05-interactive-video",
+            text: "5.5. 记忆、漂移与实时生成",
+            link: "/chapters/05-interactive-video/05-memory-drift-realtime",
           },
           {
-            text: "PA1-B · 动手：做出一个听从按键的视频小世界",
-            link: "/assignments/pa1-b",
+            text: "5.6. 动手：动作条件视频模型的从零实现",
+            link: "/chapters/05-interactive-video/06-interactive-video",
+          },
+          {
+            text: "5.7. 动手：听从按键的视频小世界",
+            link: "/chapters/05-interactive-video/07-controllable-video",
           },
         ],
       },
       {
-        text: "6. JEPA：特征空间预测",
+        text: "6. 联合嵌入预测架构（JEPA）",
         collapsed: false,
         items: [
           {
-            text: "6.1. 预测特征而非像素",
+            text: "6.1. 特征预测",
             link: "/chapters/06-jepa/01-feature-prediction",
           },
           {
@@ -238,12 +254,12 @@ export default defineConfig({
             link: "/chapters/06-jepa/04-action-jepa",
           },
           {
-            text: "6.5. 动手：JEPA 实验",
+            text: "6.5. 动手：视频 JEPA 的从零实现",
             link: "/chapters/06-jepa/05-jepa",
           },
           {
-            text: "PA1-C · 动手：训练并审问一个 Tiny Video-JEPA",
-            link: "/assignments/pa1-c",
+            text: "6.6. 动手：审问一个视频 JEPA",
+            link: "/chapters/06-jepa/06-video-jepa",
           },
         ],
       },
@@ -252,28 +268,52 @@ export default defineConfig({
         collapsed: false,
         items: [
           {
-            text: "7.1. 机器人数据与行为克隆",
-            link: "/chapters/07-robot-vla/01-robot-data-and-bc",
+            text: "7.1. 机器人学习接口",
+            link: "/chapters/07-robot-vla/01-robot-interfaces",
           },
           {
-            text: "7.2. 视觉-语言-动作模型",
-            link: "/chapters/07-robot-vla/02-vision-language-action",
+            text: "7.2. 模仿学习与生成策略",
+            link: "/chapters/07-robot-vla/02-imitation-and-policies",
           },
           {
-            text: "7.3. 动作分块与多模态动作",
-            link: "/chapters/07-robot-vla/03-action-chunk",
+            text: "7.3. 视觉语言动作模型（VLA）",
+            link: "/chapters/07-robot-vla/03-vision-language-action",
           },
           {
-            text: "7.4. 世界模型检查器",
-            link: "/chapters/07-robot-vla/04-world-model-checker",
+            text: "7.4. 机器人世界模型",
+            link: "/chapters/07-robot-vla/04-robot-world-models",
           },
           {
-            text: "7.5. 动手：机器人与 VLA 实验",
-            link: "/chapters/07-robot-vla/05-robot-vla",
+            text: "7.5. 操作、接触与触觉",
+            link: "/chapters/07-robot-vla/05-manipulation-and-touch",
           },
           {
-            text: "PA1-D · 动手：Tiny VLA 与 World-Model Checker",
-            link: "/assignments/pa1-d",
+            text: "7.6. 腿式与全身控制",
+            link: "/chapters/07-robot-vla/06-legged-and-whole-body",
+          },
+          {
+            text: "7.7. 模拟器与 Sim-to-Real",
+            link: "/chapters/07-robot-vla/07-simulators-and-sim2real",
+          },
+          {
+            text: "7.8. 动手：从零实现 VLA 与世界模型检查器",
+            link: "/chapters/07-robot-vla/08-robot-vla",
+          },
+          {
+            text: "7.9. 动手：机械臂的仿真与真机迁移",
+            link: "/chapters/07-robot-vla/09-arm-sim2real",
+          },
+          {
+            text: "7.10. 动手：灵巧手的视触觉控制",
+            link: "/chapters/07-robot-vla/10-dexhand-visuotactile",
+          },
+          {
+            text: "7.11. 动手：全身策略的仿真与真机迁移",
+            link: "/chapters/07-robot-vla/11-whole-body-sim2real",
+          },
+          {
+            text: "7.12. 动手：VLA 与动作后果检查",
+            link: "/chapters/07-robot-vla/12-vla-checker",
           },
         ],
       },
@@ -286,28 +326,32 @@ export default defineConfig({
             link: "/chapters/08-spatial-worlds/01-camera-geometry",
           },
           {
-            text: "8.2. BEV、占用网格与 LSS",
+            text: "8.2. 鸟瞰图与占用网格",
             link: "/chapters/08-spatial-worlds/02-bev-and-occupancy",
           },
           {
-            text: "8.3. NeRF、3DGS 与网格",
+            text: "8.3. 神经辐射场与三维高斯",
             link: "/chapters/08-spatial-worlds/03-nerf-3dgs-mesh",
           },
           {
-            text: "8.4. 四维世界（4D）",
+            text: "8.4. 四维场景",
             link: "/chapters/08-spatial-worlds/04-four-dimensional-worlds",
           },
           {
-            text: "8.5. 驾驶世界模型与未来占用",
+            text: "8.5. 驾驶世界模型",
             link: "/chapters/08-spatial-worlds/05-driving-world-models",
           },
           {
-            text: "8.6. 动手：空间世界实验",
-            link: "/chapters/08-spatial-worlds/06-spatial-world",
+            text: "8.6. 物理先验",
+            link: "/chapters/08-spatial-worlds/06-physics-priors",
           },
           {
-            text: "PA1-E · 动手：空间世界二选一",
-            link: "/assignments/pa1-e",
+            text: "8.7. 动手：三维重建与占用预测",
+            link: "/chapters/08-spatial-worlds/07-spatial-world",
+          },
+          {
+            text: "8.8. 动手：空间世界二选一",
+            link: "/chapters/08-spatial-worlds/08-spatial-world",
           },
         ],
       },
@@ -328,8 +372,8 @@ export default defineConfig({
             link: "/chapters/09-evaluate-and-invent/03-failure-to-next-model",
           },
           {
-            text: "PA2 · 动手：设计下一台世界模型",
-            link: "/assignments/pa2",
+            text: "9.4. 动手：设计下一台世界模型",
+            link: "/chapters/09-evaluate-and-invent/04-next-world-model",
           },
         ],
       },

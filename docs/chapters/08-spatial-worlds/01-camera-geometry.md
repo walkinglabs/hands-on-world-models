@@ -8,7 +8,7 @@
 >
 > 静态场景重建不是动态世界模型；没有 ego action 和模拟器的未来预测也不是闭环驾驶。本章会分别标出这些边界。
 >
-> 动手实验：[8.6 动手：空间世界实验](/chapters/08-spatial-worlds/06-spatial-world)（包含 E1 从图像到空间、E2a 四维世界、E2b 驾驶未来占用预测）；课程作业 [PA1-E：3D/4D 或驾驶二选一](/assignments/pa1-e)。
+> 动手实验：[8.7 动手：三维重建与占用预测](/chapters/08-spatial-worlds/07-spatial-world)（第一份 Notebook 从图像走到空间，之后在四维世界分支和驾驶未来占用预测分支里选一个）；本章收尾是 [8.8 动手：空间世界二选一](/chapters/08-spatial-worlds/08-spatial-world)。
 
 桌上放着一个杯子。我们从左边拍一张，杯子出现在照片右侧；再从右边拍一张，同一个杯子又跑到照片左侧。
 
@@ -85,7 +85,7 @@ $$
 
 神经网络可能在固定偏差的训练集上适应下来，但它学到的是"如何抵消这个特定的错误几何"，而非"如何理解空间"。换一辆车、换一个安装角度，偏差就变。先验证几何，再训练网络。
 
-E1 用一个合成立方体和已知参数做数值检查：投影到像素、再反投影回三维、再做坐标变换，应当回到原点附近。先用数字确认 $K$、$R$、$\mathbf{t}$ 都写对了，再谈学习。
+8.7 的第一份 Notebook 用一个合成立方体和已知参数做数值检查：投影到像素、再反投影回三维、再做坐标变换，应当回到原点附近。先用数字确认 $K$、$R$、$\mathbf{t}$ 都写对了，再谈学习。
 
 ## 小结
 
@@ -100,6 +100,7 @@ E1 用一个合成立方体和已知参数做数值检查：投影到像素、�
 ## 参考资料
 
 ### 实践博客
+
 1. [GAIA-2: A Controllable Multi-View Generative World Model for Autonomous Driving (Wayve, 2025)](https://wayve.ai/thinking/gaia-2/) —— Wayve 官方博客，展示可控反事实场景怎样服务驾驶评测，配 8.5。
 2. [Introducing GAIA-1 (Wayve, 2023)](https://wayve.ai/thinking/introducing-gaia1/) —— GAIA-1 官方博客：视频 token 自回归世界模型在驾驶上的首个完整配方。
 3. [The Rise of 3D Gaussian Splatting (Magnopus)](https://www.magnopus.com/blog/the-rise-of-3d-gaussian-splatting/) —— 面向工程师的 3DGS 科普博客，讲清它相对 NeRF 的取舍，配 8.3。
@@ -107,6 +108,7 @@ E1 用一个合成立方体和已知参数做数值检查：投影到像素、�
 5. [3D Gaussian Splatting 官方项目页 (Kerbl et al.)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) —— 官方可视化 demo 与代码，直观感受显式表示的实时渲染。
 
 ### 经典文献
+
 1. [NeRF: Representing Scenes as Neural Radiance Fields (Mildenhall et al., 2020)](https://arxiv.org/abs/2003.08934) —— 神经辐射场原始论文，配 8.3 的体渲染方程。
 2. [3D Gaussian Splatting for Real-Time Radiance Field Rendering (Kerbl et al., 2023)](https://arxiv.org/abs/2308.04079) —— 高斯泼洒原始论文，显式表示与实时渲染的取舍。
 3. [Lift, Splat, Shoot: LSS (Philion & Fidler, 2020)](https://arxiv.org/abs/2008.05711) —— 从单目图像升到 BEV 的经典方法，配 8.2。

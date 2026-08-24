@@ -26,31 +26,31 @@ class NotebookSmokeTest(unittest.TestCase):
             with redirect_stdout(StringIO()):
                 exec(code, namespace)
 
-    def test_f0_is_valid_and_all_code_cells_run(self):
+    def test_reinvent_notebook_runs(self):
         self.execute_notebook(
-            "notebooks/01_reinvent/F0-invent-a-world-model.ipynb"
+            "notebooks/01_reinvent/invent-a-world-model.ipynb"
         )
 
     def test_foundation_notebooks_run(self):
         paths = [
-            "notebooks/02_foundations/F1-see-remember-compress.ipynb",
-            "notebooks/02_foundations/F2-space-plan-train.ipynb",
-            "notebooks/03_data/F3-learn-a-table-world.ipynb",
+            "notebooks/02_foundations/see-remember-compress.ipynb",
+            "notebooks/02_foundations/space-plan-train.ipynb",
+            "notebooks/03_data/learn-a-table-world.ipynb",
         ]
         for path in paths:
             with self.subTest(path=path):
                 self.execute_notebook(path)
 
-    def test_z0_notebook_runs(self):
+    def test_evaluation_notebook_runs(self):
         self.execute_notebook(
-            "notebooks/09_evaluation/Z0-test-a-world-model.ipynb"
+            "notebooks/09_evaluation/test-a-world-model.ipynb"
         )
 
-    def test_assignment_templates_are_valid(self):
+    def test_project_templates_are_valid(self):
         paths = [
-            "notebooks/assignments/PA0-template.ipynb",
-            "notebooks/assignments/PA1-route-template.ipynb",
-            "notebooks/assignments/PA2-next-model-template.ipynb",
+            "notebooks/projects/learnable-world-template.ipynb",
+            "notebooks/projects/route-template.ipynb",
+            "notebooks/projects/next-model-template.ipynb",
         ]
         for path in paths:
             with self.subTest(path=path):
@@ -60,10 +60,10 @@ class NotebookSmokeTest(unittest.TestCase):
         importlib.util.find_spec("torch") is None,
         "安装 requirements-neural.txt 后运行神经 Notebook smoke",
     )
-    def test_route_a_notebooks_run(self):
+    def test_decision_notebooks_run(self):
         paths = [
-            "notebooks/04_decision/A1-learn-a-latent-world.ipynb",
-            "notebooks/04_decision/A2-act-in-imagination.ipynb",
+            "notebooks/04_decision/learn-a-latent-world.ipynb",
+            "notebooks/04_decision/act-in-imagination.ipynb",
         ]
         for path in paths:
             with self.subTest(path=path):
@@ -71,14 +71,14 @@ class NotebookSmokeTest(unittest.TestCase):
 
     @unittest.skipIf(
         importlib.util.find_spec("torch") is None,
-        "安装 requirements-neural.txt 后运行路线 B/C Notebook smoke",
+        "安装 requirements-neural.txt 后运行第 5、6 章 Notebook smoke",
     )
-    def test_routes_bc_notebooks_run(self):
+    def test_video_and_jepa_notebooks_run(self):
         paths = [
-            "notebooks/05_interactive_video/B1-compress-and-predict-video.ipynb",
-            "notebooks/05_interactive_video/B2-make-video-controllable.ipynb",
-            "notebooks/06_jepa/C1-learn-video-features.ipynb",
-            "notebooks/06_jepa/C2-test-and-control-features.ipynb",
+            "notebooks/05_interactive_video/compress-and-predict-video.ipynb",
+            "notebooks/05_interactive_video/make-video-controllable.ipynb",
+            "notebooks/06_jepa/learn-video-features.ipynb",
+            "notebooks/06_jepa/test-and-control-features.ipynb",
         ]
         for path in paths:
             with self.subTest(path=path):
@@ -86,15 +86,15 @@ class NotebookSmokeTest(unittest.TestCase):
 
     @unittest.skipIf(
         importlib.util.find_spec("torch") is None,
-        "安装 requirements-neural.txt 后运行路线 D/E Notebook smoke",
+        "安装 requirements-neural.txt 后运行第 7、8 章 Notebook smoke",
     )
-    def test_routes_de_notebooks_run(self):
+    def test_robot_and_spatial_notebooks_run(self):
         paths = [
-            "notebooks/07_robot/D1-build-a-tiny-vla.ipynb",
-            "notebooks/07_robot/D2-check-actions-before-moving.ipynb",
-            "notebooks/08_spatial/E1-from-camera-to-space.ipynb",
-            "notebooks/08_spatial/E2a-build-a-small-4d-world.ipynb",
-            "notebooks/08_spatial/E2b-predict-driving-space.ipynb",
+            "notebooks/07_robot/build-a-tiny-vla.ipynb",
+            "notebooks/07_robot/check-actions-before-moving.ipynb",
+            "notebooks/08_spatial/from-camera-to-space.ipynb",
+            "notebooks/08_spatial/build-a-small-4d-world.ipynb",
+            "notebooks/08_spatial/predict-driving-space.ipynb",
         ]
         for path in paths:
             with self.subTest(path=path):

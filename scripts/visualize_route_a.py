@@ -565,12 +565,12 @@ if __name__ == '__main__':
     output_dir = Path(__file__).parent.parent / 'docs' / 'public' / 'carracing'
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    visualize_rssm_dataflow(output_dir / 'a1-rssm-dataflow.png')
-    visualize_position_planning(output_dir / 'a2-position-planning.png')
-    visualize_pixelworld(output_dir / 'a1-pixelworld.png')
-    visualize_reconstruction(output_dir / 'a1-reconstruction.png')
-    visualize_a1_loss(output_dir / 'a1-loss-curve.png')
-    visualize_planned_vs_random(output_dir / 'a2-planned-vs-random.png')
-    visualize_imagination(output_dir / 'a2-imagination.png')
+    visualize_rssm_dataflow(output_dir / 'rssm-dataflow.png')
+    visualize_position_planning(output_dir / 'position-planning.png')
+    visualize_pixelworld(output_dir / 'pixelworld.png')
+    visualize_reconstruction(output_dir / 'rssm-reconstruction.png')
+    visualize_a1_loss(output_dir / 'world-model-loss-curve.png')
+    visualize_planned_vs_random(output_dir / 'planned-vs-random.png')
+    visualize_imagination(output_dir / 'imagination-training.png')
 
     print("\nAll route-a visualizations generated!")

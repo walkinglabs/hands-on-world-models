@@ -1,10 +1,10 @@
-# 4.6 动手：复现 World Models
+# 4.6　动手：World Models 的复现
 
 > **本节目标**：在 CarRacing 赛道上，用不到原文百分之一的规模，完整跑通 World Models 的 V-M-C 管线。从随机数据开始，训练一个压缩器、一个想象器、一个进化出来的控制器，最后把它们接回真实环境，亲眼看到「在想象中训练」是怎样发生的。
 
 > **本节代码**：[训练脚本](https://github.com/walkinglabs/hands-on-world-models/blob/main/scripts/run_carracing.py)
 
-> **前置知识**：你已经读过绪论，知道 V-M-C 三组件各自做什么。这一节把它们真跑一遍。
+> **前置知识**：你已经读过 [1.7 经典世界模型](/chapters/01-why-world-models/07-classic-world-models)，知道 V-M-C 三个组件各自做什么。这一节把它们真跑一遍。
 
 ---
 
@@ -221,7 +221,7 @@ python scripts/run_carracing.py --output runs/carracing-world-model
 3. **数据量曲线**：把 `--rollouts` 提到 1,000，观察 V 的重建损失与真实分数的关系——数据多少开始「够用了」？
 4. **换 MLP 控制器**：把线性控制器换成一层 MLP（几十行改动），看 867 参数的预算是否是瓶颈。
 
-跑通之后，推荐接着做 [PA1-A · 做出一台 Dreamer-lite](/assignments/pa1-a)：那台模型不再进化 C，而是用可微的想象直接训练策略，你会亲身体会「进化」与「梯度下降」两条路线手感的不同。
+跑通之后，推荐接着做 [4.8 动手：Dreamer 的完整闭环](/chapters/04-decision-and-planning/08-dreamer-loop)：那台模型不再进化 C，而是用可微的想象直接训练策略，你会亲身体会「进化」与「梯度下降」两条路线手感的不同。
 
 ## 本节小结
 
