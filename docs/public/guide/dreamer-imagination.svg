@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <rect width="880" height="420" fill="#fbf9f4"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5a6b5d"/>
+    </marker>
+    <marker id="grad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b0568f"/>
+    </marker>
+  </defs>
+  <text x="440" y="40" text-anchor="middle" font-size="20" font-weight="700" fill="#3d3527">Dreamer：在想象中训练策略</text>
+
+  <!-- world model box -->
+  <rect x="80" y="80" width="700" height="170" rx="16" fill="#ffffff" stroke="#4a7fb5" stroke-width="2" stroke-dasharray="8 4"/>
+  <text x="440" y="105" text-anchor="middle" font-size="14" fill="#2c5a84" font-weight="600">世界模型（可微的“梦境”）</text>
+
+  <!-- latent rollout -->
+  <g text-anchor="middle">
+    <circle cx="180" cy="170" r="28" fill="#e7f0ea" stroke="#3aa675" stroke-width="2"/>
+    <circle cx="330" cy="170" r="28" fill="#e7f0ea" stroke="#3aa675" stroke-width="2"/>
+    <circle cx="480" cy="170" r="28" fill="#e7f0ea" stroke="#3aa675" stroke-width="2"/>
+    <circle cx="630" cy="170" r="28" fill="#e7f0ea" stroke="#3aa675" stroke-width="2"/>
+    <g font-size="13" fill="#2f6e4f" font-weight="600">
+      <text x="180" y="175">z₀</text><text x="330" y="175">z₁</text>
+      <text x="480" y="175">z₂</text><text x="630" y="175">z₃</text>
+    </g>
+    <g font-size="12" fill="#8a6116">
+      <rect x="238" y="192" width="34" height="26" rx="6" fill="#fdf3e0" stroke="#c9a227"/>
+      <rect x="388" y="192" width="34" height="26" rx="6" fill="#fdf3e0" stroke="#c9a227"/>
+      <rect x="538" y="192" width="34" height="26" rx="6" fill="#fdf3e0" stroke="#c9a227"/>
+      <text x="255" y="209">a₀</text><text x="405" y="209">a₁</text><text x="555" y="209">a₂</text>
+    </g>
+  </g>
+  <g stroke="#5a6b5d" stroke-width="2" fill="none">
+    <path d="M 208 162 L 240 200" marker-end="url(#a)"/>
+    <path d="M 272 200 L 300 168" marker-end="url(#a)"/>
+    <path d="M 358 162 L 390 200" marker-end="url(#a)"/>
+    <path d="M 422 200 L 450 168" marker-end="url(#a)"/>
+    <path d="M 508 162 L 540 200" marker-end="url(#a)"/>
+    <path d="M 572 200 L 600 168" marker-end="url(#a)"/>
+  </g>
+
+  <!-- real start -->
+  <text x="105" y="176" font-size="13" fill="#6b7280">真实观测</text>
+  <path d="M 128 170 L 148 170" stroke="#5a6b5d" stroke-width="2" fill="none" marker-end="url(#a)"/>
+
+  <!-- actor critic -->
+  <g text-anchor="middle">
+    <rect x="300" y="300" width="150" height="56" rx="10" fill="#f3e8f0" stroke="#b0568f" stroke-width="2"/>
+    <text x="375" y="323" fill="#7d3b6d" font-weight="600" font-size="14">Actor（演员）</text>
+    <text x="375" y="343" font-size="12" fill="#9c6d8d">输出动作 a</text>
+    <rect x="500" y="300" width="150" height="56" rx="10" fill="#e3edf7" stroke="#4a7fb5" stroke-width="2"/>
+    <text x="575" y="323" fill="#2c5a84" font-weight="600" font-size="14">Critic（评论家）</text>
+    <text x="575" y="343" font-size="12" fill="#5c7d9c">估计每步价值</text>
+  </g>
+  <!-- backprop arrow -->
+  <path d="M 430 296 L 430 262 L 630 205" stroke="#b0568f" stroke-width="2.5" fill="none" marker-end="url(#grad)"/>
+  <path d="M 500 328 L 445 328" stroke="#b0568f" stroke-width="2.5" fill="none" marker-end="url(#grad)"/>
+  <text x="700" y="270" font-size="13" fill="#b0568f" font-weight="600">梯度穿过梦境</text>
+  <text x="440" y="405" text-anchor="middle" font-size="13" fill="#6b7280">策略完全在模型想象出的隐状态轨迹上通过反向传播训练——Dyna 思想的深度化完整体。</text>
+</svg>
