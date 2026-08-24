@@ -157,11 +157,17 @@ action_joint = np.array(
 - **优点**：操作手感极其直观，物理 1:1 映射，关节空间数据天然对齐，能够完成穿针引线、剥香蕉皮等毫米级超精细操作；
 - **成本与开源方案**：早期工业级主从臂动辄数十万元，而如今基于 Dynamixel 舵机或 3D 打印的 Koch/GELLO 开源主臂成本已降至数千元人民币，极大降低了具身智能的数据门槛。
 
+![图 7-2 斯坦福大学 ALOHA 低成本双臂硬件遥操作与 ACT 算法协同系统 (Zhao et al., 2023)](/figures/aloha-hardware.png)
+
+![图 7-3 UC 伯克利 GELLO 低成本通用主从臂遥操作系统 (Wu et al., 2023)](/figures/gello-teleop.png)
+
 ### 2. 空间手柄与 VR 遥操作（VR / 6-DoF Spatial Controller）
 在需要大范围移动或末端控制的场景中，VR 头显（如 Meta Quest 3、Apple Vision Pro）与 3Dconnexion 空间鼠标成为主流：
 - **原理**：通过头显的视觉定位或手柄空间传感器，实时追踪人类手掌在三维空间中的绝对坐标 $(x, y, z, \text{roll}, \text{pitch}, \text{yaw})$，再将其转换为末端增量发送给机械臂底层 IK 解算器；
 - **优点**：无需制造昂贵的同构机械臂，支持跨不同型号机械臂的统一遥操作；
 - **局限**：缺乏物理力反馈阻尼，人类在空气中挥舞手柄时容易产生高频手抖，且手眼标定（Hand-Eye Calibration）误差和 Wi-Fi 传输延迟会导致操作精度下降。
+
+![图 7-4 常见机器人遥操作控制器对比：SpaceMouse vs VR vs GELLO (Wu et al., 2023)](/figures/teleop-controllers-compare.png)
 
 ### 3. 人类介入协助式示教（Human-in-the-Loop Intervention）
 这是针对行为克隆“分布偏移”问题的高级采集策略（类似 DAgger 思想）：
@@ -459,6 +465,8 @@ def normalize_action(action, stats, mode="quantile"):
 
 LeRobot 是 HuggingFace 专为机器人学习打造的开源库。它的核心设计理念是**极致轻量与高吞吐**：视频帧采用硬件级 MP4（H.264/AV1）深度压缩以节省磁盘空间，动作与关节数值采用 Safetensors / Arrow 存储，原生无缝对接 PyTorch `DataLoader`。
 
+![图 7-5 抱抱脸 HuggingFace LeRobot 开源机器人学习平台与生态](/figures/lerobot-thumbnail.png)
+
 一条典型的 LeRobot 样本字典在送入神经网络时的张量结构如下：
 
 ```python
@@ -504,6 +512,10 @@ print("动作维度形状:", sample["action"].shape)  # 输出: (6,)
 ### 2. Open X-Embodiment / RLDS 数据接口
 
 **RLDS**（Robot Learning Dataset Standard）是基于 TensorFlow Datasets（TFDS）构建的标准格式，是 Google 汇聚全球 22 个机器人实验室、跨几十种本体的 **Open X-Embodiment** 数据集所采用的核心标准。OpenVLA、RT-1、RT-2、Octo 等大模型均基于此接口进行分布式流式训练。
+
+![图 7-6 Open X-Embodiment 汇聚全球 22 种机器人本体与大规模数据集全景图 (Padalkar et al., 2023)](/figures/open-x-embodiment-overview.png)
+
+![图 7-7 Open X-Embodiment 数据分布与跨本体轨迹多样性统计 (Padalkar et al., 2023)](/figures/open-x-data-analysis.png)
 
 RLDS 将数据组织为嵌套的阶梯流（Step Sequence），每一个 Step 的典型字典结构如下：
 
