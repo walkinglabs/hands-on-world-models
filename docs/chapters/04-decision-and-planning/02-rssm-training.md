@@ -91,4 +91,4 @@ $$
 - [ ] 四项损失分别约束观察、reward、continue 和 KL，要分开记录。
 - [ ] open-loop 多步 rollout 比 teacher-forced 一步结果更接近部署条件。
 
-状态能预测了，下一步是让它替我们选动作。下一篇看 PlaNet 怎样在这个 latent 世界里用 CEM 现场搜索。动手训练见 [4.7 动手：学出一个潜在世界](/chapters/04-decision-and-planning/07-decision-and-planning)。
+状态能预测了，下一步是让它替我们选动作。下一篇看 PlaNet 怎样在这个 latent 世界里用 CEM 现场搜索。动手训练见 [4.7 动手：Dreamer 的简化实现](/chapters/04-decision-and-planning/07-decision-and-planning) 的第一份 Notebook「学出一个潜在世界」。

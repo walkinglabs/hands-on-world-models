@@ -74,7 +74,7 @@ $\hat r_t$ 预测这一步的 reward，$\hat c_t$ 预测 episode 是否继续（
 - [ ] decoder、reward head、continue head 从不同角度约束同一个状态。
 - [ ] latent 是否有用，由 reward、continue、多步预测和真实控制共同检查。
 
-下一篇我们拆开 $s_t$，看 RSSM 怎样把「长期记忆」和「当前不确定性」分开存放。动手实现见 [4.7 动手：学出一个潜在世界](/chapters/04-decision-and-planning/07-decision-and-planning)。
+下一篇我们拆开 $s_t$，看 RSSM 怎样把「长期记忆」和「当前不确定性」分开存放。动手实现见 [4.7 动手：Dreamer 的简化实现](/chapters/04-decision-and-planning/07-decision-and-planning) 的第一份 Notebook「学出一个潜在世界」。
 
 ---
 

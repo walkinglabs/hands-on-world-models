@@ -6,7 +6,7 @@
 >
 > 一条贯穿全章的区分：直接 VLA 的输出是动作，世界模型的输出是动作后果。两者可以串联，但不能互相冒名。动作 MSE 下降不保证闭环成功，仿真通过也不等于真机成功，这两道诚实的缺口会一直保留。
 >
-> 动手实验：[7.8 从零实现 VLA 与世界模型检查器](/chapters/07-robot-vla/08-robot-vla)、[7.9 机械臂的仿真与真机迁移](/chapters/07-robot-vla/09-arm-sim2real)、[7.10 灵巧手的视触觉控制](/chapters/07-robot-vla/10-dexhand-visuotactile)、[7.11 全身策略的仿真与真机迁移](/chapters/07-robot-vla/11-whole-body-sim2real)、[7.12 VLA 与动作后果检查](/chapters/07-robot-vla/12-vla-checker)。真机部分的成本与证据要求见 [附录 B](/appendices/data-compute-delivery)。
+> 本章的五份动手页依次是 [7.8 动手：从零实现 VLA 与世界模型检查器](/chapters/07-robot-vla/08-robot-vla)、[7.9 动手：机械臂的仿真与真机迁移](/chapters/07-robot-vla/09-arm-sim2real)、[7.10 动手：灵巧手的视触觉控制](/chapters/07-robot-vla/10-dexhand-visuotactile)、[7.11 动手：全身策略的仿真与真机迁移](/chapters/07-robot-vla/11-whole-body-sim2real)、[7.12 动手：VLA 与动作后果检查](/chapters/07-robot-vla/12-vla-checker)。真机部分的成本与证据要求见 [附录 B](/appendices/data-compute-delivery)。
 
 图片分类里，一张图只配一个类别。机器人示范要复杂得多：每一步都要记下看到了什么、接到什么指令、关节处在什么状态，以及随后执行了什么动作。
 

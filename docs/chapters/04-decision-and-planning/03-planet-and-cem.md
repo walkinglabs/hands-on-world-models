@@ -82,4 +82,4 @@ PlaNet 不是「预测一次就照着走到底」。它采用 MPC：每次用最
 - [ ] 规划目标包含末端 value，补偿有限 horizon 之外的回报。
 - [ ] PlaNet 用 MPC 每步重算，适应目标变化，但计算慢，也会寻找模型漏洞。
 
-CEM 每步都要重新搜索，太慢。下一篇看 Dreamer 怎样把好动作直接练进 actor，部署时只做一次前向。动手实验见 [4.7 动手：在想象中行动](/chapters/04-decision-and-planning/07-decision-and-planning)。
+CEM 每步都要重新搜索，太慢。下一篇看 Dreamer 怎样把好动作直接练进 actor，部署时只做一次前向。动手实验见 [4.7 动手：Dreamer 的简化实现](/chapters/04-decision-and-planning/07-decision-and-planning) 的第二份 Notebook「在想象中行动」。

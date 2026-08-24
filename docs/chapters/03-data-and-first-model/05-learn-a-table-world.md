@@ -8,7 +8,7 @@
 
 ---
 
-0.6 的转移表是你写的。现在拿走那张表。一段经历怎样保存、怎样取样、怎样切分，再怎样变成 \(\hat P(s'|s,a)\)，必须亲手接起来。跑完你会对「第一台世界模型」四个字有完全不同的理解——它甚至可以没有梯度。
+[1.8](/chapters/01-why-world-models/08-invent-a-world-model) 的转移表是你写的。现在拿走那张表。一段经历怎样保存、怎样取样、怎样切分，再怎样变成 \(\hat P(s'|s,a)\)，必须亲手接起来。跑完你会对「第一台世界模型」四个字有完全不同的理解——它甚至可以没有梯度。
 
 <div style="text-align:center; margin:20px 0;">
   <img src="/carracing/f3-mpc.png" alt="LineWorld 上的 MPC" style="max-width:min(900px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
