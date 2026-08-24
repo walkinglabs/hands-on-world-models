@@ -12,8 +12,8 @@
 | HF *Robot Learning Tutorial*：ACT、Diffusion、Flow、RTC、π₀、SmolVLA | [7.2](/chapters/07-robot-vla/02-imitation-and-policies)、[7.3](/chapters/07-robot-vla/03-vision-language-action) |
 | HF Deep RL：DQN / PPO / SAC、model-based bonus | [2.6](/chapters/02-foundations/06-value-policy-planner)、第 4 章 |
 | HF ML for 3D：多视图扩散、3DGS、mesh | [8.3](/chapters/08-spatial-worlds/03-nerf-3dgs-mesh) |
-| Datawhale L01–L05 / P01–P06：四代历史、RSSM、Dreamer、换骨干、反事实 | [1.7](/chapters/01-why-world-models/07-classic-world-models)、第 4 章、[9.2](/chapters/09-evaluate-and-invent/02-systematic-evaluation)、本附录的换骨干条目 |
-| MIT 6.s953：POMDP、少数据、Dyna、UniSim、好奇心、元学习、MARL | [1.1](/chapters/01-why-world-models/01-current-observation)、[1.4](/chapters/01-why-world-models/04-learned-dynamics)、[4.6](/chapters/04-decision-and-planning/06-reproduce-world-models)、本附录 |
+| Datawhale L01–L05 / P01–P06：四代历史、RSSM、Dreamer、换骨干、反事实 | [1.7](/chapters/01-why-world-models/04-classic-world-models)、第 4 章、[9.2](/chapters/09-evaluate-and-invent/02-systematic-evaluation)、本附录的换骨干条目 |
+| MIT 6.s953：POMDP、少数据、Dyna、UniSim、好奇心、元学习、MARL | [1.1](/chapters/01-why-world-models/02-observation-and-prediction)、[1.4](/chapters/01-why-world-models/02-observation-and-prediction)、[4.6](/chapters/04-decision-and-planning/06-reproduce-world-models)、本附录 |
 | Berkeley CS 285：模仿学习、model-based、offline RL、LLM-RL | [7.2](/chapters/07-robot-vla/02-imitation-and-policies)、第 4 章、本附录 |
 | Berkeley CS 294-277：触觉、腿式、视频世界模型当策略、长时程语言 | [7.4](/chapters/07-robot-vla/04-robot-world-models)–[7.6](/chapters/07-robot-vla/06-legged-and-whole-body)、[7.3](/chapters/07-robot-vla/03-vision-language-action) |
 | Stanford CS 123：PD、FK/IK、四足 RL、foundation model lab | [7.1](/chapters/07-robot-vla/01-robot-interfaces)、[7.6](/chapters/07-robot-vla/06-legged-and-whole-body)、[7.8](/chapters/07-robot-vla/08-robot-vla) |
@@ -133,6 +133,6 @@ Datawhale 的 P04 要求：同一套数据上，把 RSSM 换成小型因果 Tran
 Datawhale L05 的争论可以收成一个判断：
 
 - **语言 grounding**：表示能否对齐「红杯 / 蓝杯」这类符号，换指令则换动作。见 [7.3](/chapters/07-robot-vla/03-vision-language-action)。
-- **物理 grounding**：表示能否保留接触、碰撞、可达性，换动作则换未来。见 [1.6](/chapters/01-why-world-models/06-what-is-a-world-model) 的反事实条件。
+- **物理 grounding**：表示能否保留接触、碰撞、可达性，换动作则换未来。见 [1.6](/chapters/01-why-world-models/03-what-is-a-world-model) 的反事实条件。
 
 两者可以同时失败：画面清晰、指令对、手还是插进桌子。第 9 章要求两项分开报，不许用 FID 或指令准确率互相替代。LeCun 的 AMI 把世界模型、代价、演员拆开，是这个争论的架构版本，不是新的损失函数名词。
