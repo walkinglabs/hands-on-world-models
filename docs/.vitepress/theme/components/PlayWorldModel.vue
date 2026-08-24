@@ -1,8 +1,8 @@
 <template>
   <div class="pwm">
     <div class="pwm-hint">
-      用键盘方向键（或点击按钮）移动。你每按一次方向，模型会在你移动<b>之前</b>先猜「你会到哪」；
-      移动后右侧画布定格为「模型刚才的预测」，并与左边真实位置对照：绿色 ✓ 表示猜对，橙色 ✗ 表示猜错，问号表示从未见过、一无所知。
+      用键盘方向键（或点击按钮）移动。注意右侧的两拍节奏：<b>按下方向的瞬间，小人还在原地，模型先亮出它的预测（紫色，标记“预测中…”）</b>；
+      片刻后小人才真正移动，预测同时被判定——<b>绿色 ✓ 猜对、橙色 ✗ 猜错、问号表示从未见过、一无所知</b>。连续按方向键会立即揭晓上一次预测。
     </div>
     <div class="pwm-row">
       <div class="pwm-panel">
@@ -154,7 +154,7 @@ function draw(canvas, state) {
   const [ar, ac] = state.agent;
   const ax = ac * cell + 14;
   const ay = ar * cell + 12;
-  const body = state.hit === true ? "#2e9e5b" : state.hit === false ? "#c77d54" : "#8f7ab5";
+  const body = state.pending ? "#8f7ab5" : state.hit === true ? "#2e9e5b" : state.hit === false ? "#c77d54" : "#8f7ab5";
   pixel(ctx, ax, ay, body, [
     [4,0],[8,0],
     [0,4],[4,4],[8,4],[12,4],
@@ -167,9 +167,15 @@ function draw(canvas, state) {
     ctx.font = "11px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("置信 " + Math.round(state.ghost * 100) + "%", ac * cell + cell / 2 - 1, ar * cell + cell - 20);
-    ctx.fillStyle = state.hit ? "#2e9e5b" : "#d64545";
-    ctx.font = "bold 12px sans-serif";
-    ctx.fillText(state.hit ? "✓ 命中" : "✗ 未命中", ac * cell + cell / 2 - 1, ar * cell + cell - 6);
+    if (state.pending) {
+      ctx.fillStyle = "#2f6fb0";
+      ctx.font = "bold 12px sans-serif";
+      ctx.fillText("预测中…", ac * cell + cell / 2 - 1, ar * cell + cell - 6);
+    } else {
+      ctx.fillStyle = state.hit ? "#2e9e5b" : "#d64545";
+      ctx.font = "bold 12px sans-serif";
+      ctx.fillText(state.hit ? "✓ 命中" : "✗ 未命中", ac * cell + cell / 2 - 1, ar * cell + cell - 6);
+    }
   }
 }
 
@@ -178,29 +184,43 @@ function pixel(ctx, ox, oy, color, dots) {
   for (const [dx, dy] of dots) ctx.fillRect(ox + dx, oy + dy, 4, 4);
 }
 
+let pending = null; // { action, from, pred, timer }
+
 function act(action) {
   if (ended.value) return;
-  // 先猜：模型在行动之前，预测「按这个方向会到哪」
+  if (pending) {
+    // 上一次预测还在展示中：立即揭晓，再处理新按键
+    clearTimeout(pending.timer);
+    const p = pending;
+    pending = null;
+    execute(p.action, p.pred);
+  }
+  // 第一阶段：小人还在原地，模型先亮出预测
   const pred = predict(agent, action);
+  drawImag(pred ? { pos: pred.pos, conf: pred.conf, pending: true } : null);
   const from = agent;
-  const next = step(agent, action);
+  const timer = setTimeout(() => {
+    pending = null;
+    execute(action, pred);
+  }, 550);
+  pending = { action, from, pred, timer };
+}
+
+function execute(action, pred) {
+  const from = agent;
+  const next = step(from, action);
   const hit = pred && pred.pos[0] === next[0] && pred.pos[1] === next[1];
   attempts.value++;
   if (hit) hits.value++;
   recent.push(!!hit);
   if (recent.length > 10) recent.shift();
   recentTicks.value++;
-  // 再走：真实世界执行动作，模型从这次经历中学习
   learn(from, action, next);
   countKnown();
   agent = next;
   drawReal();
-  // 后对照：想象画布展示「模型刚才的预测」，并标记命中与否
-  lastPred = pred
-    ? { pos: pred.pos, conf: pred.conf, hit }
-    : { hit: false, unknown: true };
+  lastPred = pred ? { pos: pred.pos, conf: pred.conf, hit } : { hit: false, unknown: true };
   drawImag(lastPred);
-  // 终止判定：进入目标或陷阱，回合结束
   if ((agent[0] === GOAL[0] && agent[1] === GOAL[1]) || (agent[0] === TRAP[0] && agent[1] === TRAP[1])) {
     ended.value = true;
     const win = agent[0] === GOAL[0] && agent[1] === GOAL[1];
@@ -217,6 +237,10 @@ function countKnown() {
 }
 
 function reset() {
+  if (pending) {
+    clearTimeout(pending.timer);
+    pending = null;
+  }
   agent = [0, 0];
   ended.value = false;
   drawReal();
