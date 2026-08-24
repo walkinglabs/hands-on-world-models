@@ -46,7 +46,7 @@
 - **无模型路线**（model-free）：干脆不学环境模型，直接估计"每个动作有多好"。1988 年 Sutton 的 **TD 学习**用自举（bootstrapping）估计长期回报，1989 年 Watkins 的 **Q-Learning** 证明离策略收敛。优点是对模型误差免疫，缺点是样本效率极低——在这个时代，它们在真实机器人上几乎不可用。
 - **模型法路线**（model-based）：坚持**先学环境如何演化，再在模型内部推演**。样本效率高，但模型学错了，规划就会"垃圾进垃圾出"。
 
-这个取舍——**样本效率 vs 对模型误差的鲁棒性**——是贯穿后文全部历史的第二根主线。两条路线在此后四十年里轮流领先，谁也没能彻底淘汰对方。
+这个取舍—— **样本效率 vs 对模型误差的鲁棒性** ——是贯穿后文全部历史的第二根主线。两条路线在此后四十年里轮流领先，谁也没能彻底淘汰对方。
 
 ## 4. 模型法奠基（1990–1991）
 
@@ -97,7 +97,7 @@
 
 第二年，DeepMind 的 Danijar Hafner 等发表 **PlaNet**（2019），贡献有二：
 
-- **RSSM（递归状态空间模型）**：把 RNN 的确定性记忆（想起上一步）与 VAE 的随机隐变量（世界有偶然性）**分开建模、结合使用**——确定性路径保证长程预测不发散，随机路径防止模型对不确定的未来过度自信。这个结构成为后续 Dreamer 全系列的骨架，也是本课程 [4.2 RSSM](/chapters/04-decision-and-planning/02-rssm-training) 的主角。
+- **RSSM（递归状态空间模型）**：把 RNN 的确定性记忆（想起上一步）与 VAE 的随机隐变量（世界有偶然性）**分开建模、结合使用** ——确定性路径保证长程预测不发散，随机路径防止模型对不确定的未来过度自信。这个结构成为后续 Dreamer 全系列的骨架，也是本课程 [4.2 RSSM](/chapters/04-decision-and-planning/02-rssm-training) 的主角。
 - **隐空间 CEM 规划**：不再生成像素，直接在隐空间里用交叉熵方法搜索动作序列，一步规划只需毫秒级——模型法第一次在像素输入上实时跑起来。
 
 
@@ -107,6 +107,7 @@
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
   <em>图 6：PlaNet 论文原图（Fig. 2）：四种状态空间模型的对比——确定性、随机性与两者结合，最右侧的 RSSM 在长程预测上最稳。来源：<a href="https://arxiv.org/abs/1811.04551" target="_blank" rel="noopener noreferrer">Hafner et al., PlaNet</a></em>
 </div>
+
 同年，DeepMind 的 **SimPLe** 证明：只用 10 万帧真实 Atari 数据（约 2 小时游戏），加上视频世界模型生成的额外经验，就能训练出像样的策略——而无模型基线需要 5 亿帧。"模型省数据"从格言变成了数字。
 
 ## 7. 想象训练与隐式模型（2020–2023）
@@ -126,7 +127,8 @@
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
   <em>图 8：Dreamer 论文原图（Fig. 2）：想象（Imagination）、模型学习、Actor 反向传播与 Critic 价值学习的完整闭环。来源：<a href="https://arxiv.org/abs/1912.01603" target="_blank" rel="noopener noreferrer">Hafner et al., Dream to Control</a></em>
 </div>
-- **MuZero**（Schrittwieser 等，*Nature* 2020）：走向另一个极端——**不重建任何观测**，只学"对预测价值与奖励有用的隐式模型"，配合蒙特卡洛树搜索同时打通围棋、国际象棋、将棋与 Atari。AlphaGo 需要人类规则知识，AlphaZero 需要完美模拟器，MuZero 两者都不要。它证明了：世界模型不必"像世界"，只需"够用"。
+
+- **MuZero**（Schrittwieser 等，*Nature* 2020）：走向另一个极端—— **不重建任何观测**，只学"对预测价值与奖励有用的隐式模型"，配合蒙特卡洛树搜索同时打通围棋、国际象棋、将棋与 Atari。AlphaGo 需要人类规则知识，AlphaZero 需要完美模拟器，MuZero 两者都不要。它证明了：世界模型不必"像世界"，只需"够用"。
 
 
 
@@ -136,6 +138,7 @@
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
   <em>图 9：MuZero 论文原图（Fig. 1）：学到的模型用于搜索、搜索选出动作、动作产生真实经验、经验再训练模型——每一步都没有重建观测。来源：<a href="https://arxiv.org/abs/1911.08265" target="_blank" rel="noopener noreferrer">Schrittwieser et al., MuZero</a></em>
 </div>
+
 Dreamer 与 MuZero 的对照，本质是"**模型该重建世界，还是只服务于决策**"这场古老争论（回想托尔曼与行为主义）在现代的重演。本课程 [4.5 MuZero](/chapters/04-decision-and-planning/05-muzero) 与 [4.4 Dreamer](/chapters/04-decision-and-planning/04-dreamer-imagination) 会分别动手实现两者的最小版本。
 
 与 DreamerV3 同期，**TD-MPC2**（2024）沿 MPC 路线把模型预测控制扩展到 100 多个连续控制任务并支持多任务联合训练，说明"在线规划"这条路并未被"想象训练"取代。为决策服务的世界模型，至此成熟。
@@ -152,6 +155,7 @@ Dreamer 与 MuZero 的对照，本质是"**模型该重建世界，还是只服�
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
   <em>图 10：GAIA-1 论文原图：改变动作输入，生成的未来画面随之改变——视频世界模型第一次被当作文本与动作可控的“数据工厂”。来源：<a href="https://arxiv.org/abs/2309.17080" target="_blank" rel="noopener noreferrer">Hu et al., GAIA-1</a></em>
 </div>
+
 - **2024 年**，三篇工作把这条路线推向高潮：
   - DeepMind 的 **Genie** 从**无动作标注**的互联网视频里学出潜在动作模型，单张图片生成可交互环境——"看游戏视频学会做游戏"；
   - **GameNGen**（Google Research）用扩散模型实时模拟 DOOM，每秒 20 帧，玩家难以区分这是模拟还是游戏引擎；
@@ -163,6 +167,7 @@ Dreamer 与 MuZero 的对照，本质是"**模型该重建世界，还是只服�
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
   <em>图 11：Genie 论文原图（Fig. 2）：无动作标注的视频被分解为潜在动作与动态，单张图片即可驱动一个可玩世界。来源：<a href="https://arxiv.org/abs/2402.15391" target="_blank" rel="noopener noreferrer">Bruce et al., Genie</a></em>
 </div>
+
 ![World Models 论文的交互式演示：策略在学到的梦境环境中驾驶](/guide/wm-sandbox.webp)
 
 <div style="text-align:center; font-size:0.9em; color:var(--vp-c-text-2); margin-top:-10px; margin-bottom:20px;">
