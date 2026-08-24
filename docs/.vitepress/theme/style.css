@@ -211,10 +211,6 @@
   padding-right: 18px;
 }
 
-.dark .VPNavBarTitle .logo {
-  content: url('/logo-dark.png');
-}
-
 .VPNavBarTitle .logo {
   margin-right: 10px;
   transition:
