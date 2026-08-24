@@ -8,6 +8,8 @@
 > **本节代码**：[本节 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/01_reinvent/invent-a-world-model.ipynb) · [gridworld.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/gridworld.py)
 
 > **前置知识**：无。这是课程第一份实验，不需要神经网络、不需要 PyTorch、不需要 GPU。只需要 Python 基础。
+>
+> **算力门槛**：本节在任何笔记本电脑的 CPU 上就能跑完。整门课程以此为底线设计——所有主线实验都不超过一张 24GB 消费级显卡（如 RTX 4090）；多数章节的烟雾测试在纯 CPU 上即可通过。你不需要机房，就能把 Dreamer、视频世界模型和 JEPA 的最小版本全部亲手训一遍。
 
 ---
 
