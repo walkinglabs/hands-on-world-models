@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 600" font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3aa675"/>
+    </marker>
+  </defs>
+  <rect width="1100" height="600" fill="#f8f9fa"/>
+
+  <text x="550" y="38" text-anchor="middle" font-size="22" font-weight="700" fill="#24292f">世界模型八十年：八个阶段与两条路线</text>
+
+  <!-- central line -->
+  <line x1="50" y1="320" x2="1050" y2="320" stroke="#3aa675" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- era bands (8 stages) -->
+  <rect x="60"  y="300" width="140" height="40" rx="6" fill="#e7f0ea"/>
+  <rect x="210" y="300" width="120" height="40" rx="6" fill="#edf3ec"/>
+  <rect x="340" y="300" width="100" height="40" rx="6" fill="#fdf3e0"/>
+  <rect x="450" y="300" width="110" height="40" rx="6" fill="#f7ecd8"/>
+  <rect x="570" y="300" width="140" height="40" rx="6" fill="#e3edf7"/>
+  <rect x="720" y="300" width="130" height="40" rx="6" fill="#dbe9f6"/>
+  <rect x="860" y="300" width="90" height="40" rx="6" fill="#f3e8f0"/>
+  <rect x="960" y="300" width="88" height="40" rx="6" fill="#efe2ec"/>
+
+  <g text-anchor="middle" font-size="12" font-weight="600">
+    <text x="130" y="325" fill="#2f6e4f">① 心理学源头</text>
+    <text x="130" y="336" font-size="10" font-weight="400" fill="#5a7a68">1930s–40s</text>
+    <text x="270" y="325" fill="#3d6b52">② 控制论与 MDP</text>
+    <text x="270" y="336" font-size="10" font-weight="400" fill="#5a7a68">1948–57</text>
+    <text x="390" y="325" fill="#8a6116">③ 无模型/模型法</text>
+    <text x="390" y="336" font-size="10" font-weight="400" fill="#9a8a56">1980s</text>
+    <text x="505" y="325" fill="#7d5a10">④ Dyna 与控制器</text>
+    <text x="505" y="336" font-size="10" font-weight="400" fill="#9a8a56">1990–91</text>
+    <text x="640" y="325" fill="#2c5a84">⑤ 统计模型与机器人</text>
+    <text x="640" y="336" font-size="10" font-weight="400" fill="#5c7d9c">1995–2011</text>
+    <text x="785" y="325" fill="#2c5a84">⑥ 深度成型与想象训练</text>
+    <text x="785" y="336" font-size="10" font-weight="400" fill="#5c7d9c">2018–23</text>
+    <text x="905" y="325" fill="#7d3b6d">⑦ 生成式</text>
+    <text x="905" y="336" font-size="10" font-weight="400" fill="#9c6d8d">2023–24</text>
+    <text x="1004" y="325" fill="#7d3b6d">⑧ 基础模型化</text>
+    <text x="1004" y="336" font-size="10" font-weight="400" fill="#9c6d8d">2025–</text>
+  </g>
+
+  <!-- events above -->
+  <g font-size="13" fill="#24292f" text-anchor="middle">
+    <line x1="110" y1="300" x2="110" y2="170" stroke="#999" stroke-dasharray="3 3"/>
+    <circle cx="110" cy="300" r="6" fill="#3aa675"/>
+    <text x="110" y="140" font-weight="700">1943–48</text>
+    <text x="110" y="158">Craik 小尺度模型</text>
+    <text x="110" y="176">Tolman 认知地图</text>
+
+    <line x1="270" y1="300" x2="270" y2="170" stroke="#999" stroke-dasharray="3 3"/>
+    <circle cx="270" cy="300" r="6" fill="#3aa675"/>
+    <text x="270" y="140" font-weight="700">1948–57</text>
+    <text x="270" y="158">维纳《控制论》</text>
+    <text x="270" y="176">贝尔曼 MDP</text>
+
+    <line x1="390" y1="300" x2="390" y2="170" stroke="#999" stroke-dasharray="3 3"/>
+    <circle cx="390" cy="300" r="6" fill="#c9a227"/>
+    <text x="390" y="140" font-weight="700">1988–89</text>
+    <text x="390" y="158">TD 学习 / Q-Learning</text>
+    <text x="390" y="176">（无模型路线）</text>
+
+    <line x1="505" y1="300" x2="505" y2="170" stroke="#999" stroke-dasharray="3 3"/>
+    <circle cx="505" cy="300" r="6" fill="#c9a227"/>
+    <text x="505" y="122" font-weight="700">1990–91</text>
+    <text x="505" y="140">Dyna（Sutton）</text>
+    <text x="505" y="158">控制器+世界模型</text>
+    <text x="505" y="176">（Schmidhuber）</text>
+
+    <line x1="640" y1="300" x2="640" y2="170" stroke="#999" stroke-dasharray="3 3"/>
+    <circle cx="640" cy="300" r="6" fill="#4a7fb5"/>
+    <text x="640" y="140" font-weight="700">2011</text>
+    <text x="640" y="158">PILCO：真实机器人</text>
+    <text x="640" y="176">20 秒经验学会倒立</text>
+
+    <line x1="785" y1="300" x2="785" y2="170" stroke="#999" stroke-dasharray="3 3"/>
+    <circle cx="785" cy="300" r="6" fill="#4a7fb5"/>
+    <text x="785" y="122" font-weight="700">2018–23</text>
+    <text x="785" y="140">World Models / PlaNet</text>
+    <text x="785" y="158">Dreamer V1–V3 / MuZero</text>
+    <text x="785" y="176">TD-MPC2</text>
+
+    <line x1="905" y1="300" x2="905" y2="170" stroke="#999" stroke-dasharray="3 3"/>
+    <circle cx="905" cy="300" r="6" fill="#b0568f"/>
+    <text x="905" y="140" font-weight="700">2023–24</text>
+    <text x="905" y="158">GAIA-1 / Genie</text>
+    <text x="905" y="176">GameNGen / DIAMOND</text>
+
+    <line x1="1004" y1="300" x2="1004" y2="170" stroke="#999" stroke-dasharray="3 3"/>
+    <circle cx="1004" cy="300" r="6" fill="#b0568f"/>
+    <text x="1004" y="140" font-weight="700">2025–</text>
+    <text x="1004" y="158">Genie 2/3 / GAIA-2</text>
+    <text x="1004" y="176">V-JEPA 2 / WorldScore</text>
+  </g>
+
+  <!-- legend -->
+  <g font-size="13">
+    <rect x="250" y="552" width="14" height="14" rx="3" fill="#4a7fb5"/>
+    <text x="270" y="564">为决策服务：预测抽象状态，用于规划与训练策略</text>
+    <rect x="620" y="552" width="14" height="14" rx="3" fill="#b0568f"/>
+    <text x="640" y="564">为生成服务：预测像素本身，用于可控内容与数据</text>
+  </g>
+</svg>

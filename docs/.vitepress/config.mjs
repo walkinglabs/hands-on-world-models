@@ -51,8 +51,7 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: "绪论", link: "/guide/world-model-intro" },
-          { text: "课程总纲", link: "/课程总纲" },
-          { text: "世界模型简史", link: "/guide/world-model-history" },
+          { text: "世界模型八十年", link: "/guide/world-model-history" },
         ],
       },
       {

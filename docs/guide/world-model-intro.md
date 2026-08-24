@@ -169,7 +169,7 @@ _World Models_ 原文在 CarRacing 赛车任务里，把“复杂度放进世界
 - **能不能直接在梦里反向传播？** 原文的 C 太小，所以用进化算法；但如果世界模型是完全可微分的计算图，就能直接用梯度训练策略——这正是 Dreamer 在 2020 年做的事（第 4 章）。
 - **记忆容量够吗？** LSTM 的权重装不下人脑那样的长久记忆，还会遭遇灾难性遗忘。答案指向外部记忆与检索机制——第 1、3 章会看到这条线索的变体。
 
-原文的相关工作部分——PILCO 的高斯过程动态模型、Alex Graves 用 RNN“幻觉”出 Atari 关卡、施密德胡伯自己 1990 年的原始构想——都放在了[世界模型简史](/guide/world-model-history)里，那里有更完整的脉络。
+原文的相关工作部分——PILCO 的高斯过程动态模型、Alex Graves 用 RNN“幻觉”出 Atari 关卡、施密德胡伯自己 1990 年的原始构想——都放在了[世界模型八十年](/guide/world-model-history)里，那里有更完整的脉络。
 
 ## 世界模型与无模型方法
 
@@ -211,7 +211,7 @@ _World Models_ 原文在 CarRacing 赛车任务里，把“复杂度放进世界
 - **分岔**：预测 latent、画面、特征、动作后果还是三维占用，决定了它服务决策、审查还是机器人控制。
 - **代价**：复合误差与模型利用是它的两个天敌，也是评测的中心议题。
 
-接下来请进入[第 1 章：世界模型的基本问题](/chapters/01-why-world-models/01-current-observation)，或者先读[世界模型简史](/guide/world-model-history)，看看这条研究线索八十年的来历。
+接下来请进入[第 1 章：世界模型的基本问题](/chapters/01-why-world-models/01-current-observation)，或者先读[世界模型八十年](/guide/world-model-history)，看看这条研究线索八十年的来历。
 
 ## 参考文献
 
