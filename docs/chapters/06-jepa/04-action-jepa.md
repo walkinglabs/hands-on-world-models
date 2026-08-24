@@ -64,6 +64,8 @@ Action-JEPA 和 Dreamer（第 4 章）都能在特征空间预测未来，区别
 
 换句话说，Action-JEPA 是世界模型的"表示半成品"，Dreamer 把这种表示推到了完整的决策管线。加入 Action-JEPA 之后，如果一步规划没能优于"保持原动作"基线，就要怀疑表示里没保留任务需要的可控信息。
 
+这个"半成品"在 2026 年有了直接落地：LeRobot v0.6 的 VLA-JEPA 不另训 Actor-Critic，把预测出的特征直接当策略用。这说明表示质量足够高时，规划可以退化成一步 lookahead——见 [7.4](/chapters/07-robot-vla/04-robot-world-models) 的用法三。
+
 ## 小结
 
 - Action-JEPA 把动作 $a$ 作为 Predictor 的条件项，让特征未来随动作分叉。

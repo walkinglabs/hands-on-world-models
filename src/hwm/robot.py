@@ -267,3 +267,55 @@ def evaluate_reranker(model, num_cases=128, seed=0, collision_weight=4.0):
         "reranked_collision_rate": float(np.mean(chosen_collisions)),
         "reranked_mean_progress": float(np.mean(chosen_progress)),
     }
+
+
+def make_bimodal_line_dataset(num_episodes=96, horizon=12, seed=0):
+    """一维双模态示范：起点落在 [-0.4, 0.4]，专家随机选左（-0.8）或右（+0.8）走到底。
+
+    向左与向右的轨迹都穿过整个中段，所以 |x| < 0.4 的每个位置上，
+    数据里都同时存在两个方向的动作——回归在整个中段都会学成 0。
+    """
+    rng = np.random.default_rng(seed)
+    states, actions, modes = [], [], []
+    for _ in range(num_episodes):
+        target = float(rng.choice((-0.8, 0.8)))
+        x = float(rng.uniform(-0.4, 0.4))
+        for _ in range(horizon):
+            step = 0.2 * np.sign(target - x) if abs(target - x) > 0.05 else 0.0
+            action = float(np.clip(step + rng.normal(0, 0.02), -0.25, 0.25))
+            states.append(x)
+            actions.append(action)
+            modes.append(0 if target < 0 else 1)
+            x = float(np.clip(x + action, -1.0, 1.0))
+    return {
+        "states": torch.tensor(states, dtype=torch.float32)[:, None],
+        "actions": torch.tensor(actions, dtype=torch.float32)[:, None],
+        "modes": torch.tensor(modes, dtype=torch.long),
+    }
+
+
+@torch.no_grad()
+def rollout_line(policy_fn, x0=0.0, horizon=16, target_tol=0.12):
+    """policy_fn: 标量 x → 标量动作。成功 = 最终停在任一目标附近。"""
+    x = float(x0)
+    trajectory = [x]
+    for _ in range(horizon):
+        action = float(np.clip(float(policy_fn(x)), -0.25, 0.25))
+        x = float(np.clip(x + action, -1.0, 1.0))
+        trajectory.append(x)
+    success = min(abs(x - 0.8), abs(x + 0.8)) < target_tol
+    return {"success": bool(success), "final": x, "trajectory": np.asarray(trajectory)}
+
+
+def line_success_rate(policy_fn, num_episodes=32, seed=0, horizon=16):
+    """起点在双模态中段 [-0.3, 0.3] 内抖动，重复闭环 rollout。"""
+    rng = np.random.default_rng(seed)
+    runs = [
+        rollout_line(policy_fn, x0=float(rng.uniform(-0.3, 0.3)), horizon=horizon)
+        for _ in range(num_episodes)
+    ]
+    return {
+        "success_rate": float(np.mean([run["success"] for run in runs])),
+        "mean_abs_final": float(np.mean([abs(run["final"]) for run in runs])),
+        "runs": runs,
+    }

@@ -279,24 +279,32 @@ export default defineConfig({
             link: "/chapters/07-robot-vla/07-simulators-and-sim2real",
           },
           {
-            text: "7.8. 动手：从零实现 VLA 与世界模型检查器",
-            link: "/chapters/07-robot-vla/08-robot-vla",
+            text: "7.8. 动手：从示范到生成策略",
+            link: "/chapters/07-robot-vla/08-data-to-generative-policy",
           },
           {
-            text: "7.9. 动手：机械臂的仿真与真机迁移",
-            link: "/chapters/07-robot-vla/09-arm-sim2real",
+            text: "7.9. 动手：从零实现 VLA 与世界模型检查器",
+            link: "/chapters/07-robot-vla/09-robot-vla",
           },
           {
-            text: "7.10. 动手：灵巧手的视触觉控制",
-            link: "/chapters/07-robot-vla/10-dexhand-visuotactile",
+            text: "7.10. 动手：机械臂的仿真与真机迁移",
+            link: "/chapters/07-robot-vla/10-arm-sim2real",
           },
           {
-            text: "7.11. 动手：全身策略的仿真与真机迁移",
-            link: "/chapters/07-robot-vla/11-whole-body-sim2real",
+            text: "7.11. 动手：灵巧手的视触觉控制",
+            link: "/chapters/07-robot-vla/11-dexhand-visuotactile",
           },
           {
-            text: "7.12. 动手：VLA 与动作后果检查",
-            link: "/chapters/07-robot-vla/12-vla-checker",
+            text: "7.12. 动手：全身策略的仿真与真机迁移",
+            link: "/chapters/07-robot-vla/12-whole-body-sim2real",
+          },
+          {
+            text: "7.13. 动手：VLA 与动作后果检查",
+            link: "/chapters/07-robot-vla/13-vla-checker",
+          },
+          {
+            text: "7.14. 动手：把世界模型接上身体（毕业设计）",
+            link: "/chapters/07-robot-vla/14-world-model-meets-body",
           },
         ],
       },

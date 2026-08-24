@@ -1,4 +1,4 @@
-# 7.11　动手：全身策略的仿真与真机迁移
+# 7.12　动手：全身策略的仿真与真机迁移
 
 > **本节目标**：走完特权教师 → 学生蒸馏 → 跨模拟器交叉验证 → 真机观测对齐这条完整链路，并量出每一段掉了多少。
 
@@ -113,4 +113,4 @@ $$
 - 蒸馏数据必须由学生自己生成，否则复合误差原封不动地回来。
 - 跨模拟器的 checkpoint 排序相关系数，比单个成功率更能说明"训练分数能不能用来选模型"。
 
-第 7 章到此结束。本章最后一份动手见 [7.12 动手：VLA 与动作后果检查](/chapters/07-robot-vla/12-vla-checker)；下一章把空间从机器人本体扩展到整个场景与道路，见 [8.1 相机几何与投影](/chapters/08-spatial-worlds/01-camera-geometry)。算力与交付标准见 [附录 B](/appendices/data-compute-delivery)。
+下一篇是 [7.13 动手：VLA 与动作后果检查](/chapters/07-robot-vla/13-vla-checker)；之后是全章毕业设计 [7.14 动手：把世界模型接上身体](/chapters/07-robot-vla/14-world-model-meets-body)。下一章把空间从机器人本体扩展到整个场景与道路，见 [8.1 相机几何与投影](/chapters/08-spatial-worlds/01-camera-geometry)。算力与交付标准见 [附录 B](/appendices/data-compute-delivery)。

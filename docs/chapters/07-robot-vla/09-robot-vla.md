@@ -1,4 +1,4 @@
-# 7.8　动手：从零实现 VLA 与世界模型检查器
+# 7.9　动手：从零实现 VLA 与世界模型检查器
 
 > **本节目标**：先用行为克隆搭一台 Tiny VLA，再训练一个后果模型，在动手之前比较候选动作。
 
@@ -442,7 +442,7 @@ PYTHONPATH=src python -m unittest tests.test_routes_de -v
 1. **第一份 Notebook 的 chunk 扫描**：把 `chunk_size` 从 1 扫到 8，画出逐步 MSE。哪一步开始明显变差？
 2. **第二份 Notebook 的碰撞权重**：把 `collision_weight` 从 0 扫到 8，同时画碰撞率和进展。权重太大，模型会学会原地不动；太小，又回到直达。
 
-完成后进入 [7.12 动手：VLA 与动作后果检查](/chapters/07-robot-vla/12-vla-checker)。空间几何见 [8.7 动手：三维重建与占用预测](/chapters/08-spatial-worlds/07-spatial-world)。
+完成后进入 [7.13 动手：VLA 与动作后果检查](/chapters/07-robot-vla/13-vla-checker)。空间几何见 [8.7 动手：三维重建与占用预测](/chapters/08-spatial-worlds/07-spatial-world)。
 
 ## 本节小结
 
