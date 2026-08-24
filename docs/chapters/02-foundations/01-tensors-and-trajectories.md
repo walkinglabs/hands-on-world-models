@@ -8,17 +8,7 @@
 > 
 > 核心实验在 [2.8 动手：基础实验](/chapters/02-foundations/08-basic-experiments) 中串联看见、视觉、记忆、压缩、空间与规划。学完本章后，先明确模型最需要输出的形式（潜在向量、连续画面、特征表示、机器人动作或三维占用），再从第 4–8 章选择对应的设计路线——各路线彼此独立。
 
----
-
-## 本节导读
-
 世界模型旨在构建物理环境的内在仿真器。要让神经网络成功学习物理演化法则，首要前提并非设计精巧的注意力机制或庞大的参数规模，而是建立**严密无歧义的数据时空几何与因果表示**。在纯文本大模型中，输入是简单的一维 Token 序列；而在具身智能与物理世界模型中，输入是高度多模态、跨越连续时间且交织着因果控制动作的时空张量流。
-
-- **核心内容**：多维张量几何与时空布局规范（$B, T, C, H, W$ 与 $B, T, H, W, C$ 内存步长与连续性）；时序因果对齐与“差一律”（Off-by-One Law，$T+1$ 观测对齐 $T$ 动作与奖励）；转移元组 $(o_t, a_t, r_t, o_{t+1}, d_t)$ 与 Episode 截断/终止拓扑（Termination vs Truncation）；时间连续性、控制频率 $\Delta t$ 与硬件延迟（Phase Lag）；轨迹批处理机制（Padding/Masking 与 Sliding Chunking）。
-- **核心问题**：为什么简单的时序对齐错开 1 步会导致世界模型学到虚假因果并使规划崩溃？在离散轨迹中如何正确处理环境重置（Termination vs Truncation）以避免模型产生凭空瞬移的“虫洞陷阱”？硬件延迟与采样周期 $\Delta t$ 是如何改变物理动力学方程的？
-- **核心概念**：维度语义契约（Dimension Semantic Contract）、时序因果交织（Temporal Interleaving）、差一律（Off-by-One Law）、转移元组（Transition Tuple）、阶段截断与自然终止（Truncation vs Termination）、控制周期与时间步长（$\Delta t$）、硬件时延相位滞后（Phase Lag）、轨迹切片与掩码（Trajectory Slicing & Masking）。
-- **核心公式**：
-  $$\tau = (o_0, a_0, r_0, o_1, a_1, r_1, \dots, o_T), \quad \hat{v}_t = \frac{\Delta x}{\Delta t}, \quad d_t = \text{terminated}_t \lor \text{truncated}_t, \quad \mathcal{M}_{i,t} = \mathbb{I}(t < T_i)$$
 
 ```text
 +-----------------------------------------------------------------------------------------------+

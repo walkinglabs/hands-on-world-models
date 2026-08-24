@@ -8,16 +8,6 @@
 
 ---
 
-## 本节导读
-
-- **核心内容**：卷积算子的空间局部性与平移等变性证明；视觉 Transformer（ViT）图像分块投影与多头自注意力机制；1D/2D/RoPE/3D-Tubelet 时空位置编码代数体系；CNN 与 ViT 在世界模型中的归纳偏置与扩展法则权衡；世界模型视觉表征的三大核心诊断准则（物理状态线性探测、反事实动作敏感度、多步推演物体恒常性）。
-- **核心问题**：为什么高重构保真度（PSNR/SSIM）的自编码器往往无法支撑高质量的世界模型？在样本受限的具身控制与海量预训练的通用视频生成场景下，如何根据归纳偏置与扩展性选择视觉骨干？
-- **核心概念**：卷积归纳偏置（Convolutional Inductive Bias）、平移等变性（Translation Equivariance）、感受野（Receptive Field）、分块投影（Patch Projection）、多头自注意力（MHSA）、旋转位置编码（2D-RoPE）、时空管元（Spatio-Temporal Tubelet）、线性探测（Linear Probing）、反事实动作敏感度（Counterfactual Action Sensitivity）。
-- **核心公式**：
-  $$Y_{i,j} = \sum_{u,v} K_{u,v} P_{i,j}[u,v], \qquad f(T_{\Delta}(I)) = T_{\Delta}(f(I)), \qquad \operatorname{Attention}(Q, K, V) = \operatorname{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V, \qquad \Delta z = \|z(o_t, a^{(1)}) - z(o_t, a^{(2)})\|$$
-
----
-
 ## 空间局部性、平移等变性与卷积归纳偏置
 
 卷积神经网络（Convolutional Neural Network, CNN）统治计算机视觉数十年，其核心力量来源于对物理视觉世界的两项先验假设，即**归纳偏置（Inductive Bias）**：
