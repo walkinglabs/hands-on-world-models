@@ -82,3 +82,4 @@ RNN/GRU 强调逐步更新记忆；因果 Transformer 强调 token 序列与 KV 
 - [ ] GRU 用更新门 $z$ 与重置门 $r$ 逐步更新记忆；预测动作后果时要把 $a_{t-1}$ 送入。
 - [ ] 因果 Transformer 用遮罩保证第 $t$ 步只看 $0,\dots,t$。
 - [ ] RSSM 用确定状态 $h_t$ 保存线索，用随机状态 $z_t$ 表达不确定性，并用 KL 拉近 posterior 与 prior。
+- [ ] 把 GRU 换成因果 Transformer 是合法的骨干对照，必须锁死数据与 horizon，见 [附录 D](/appendices/neighboring-fields)。
