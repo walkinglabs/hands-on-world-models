@@ -105,7 +105,7 @@ function drawImag(pred) {
     draw(imag.value, null);
     return;
   }
-  draw(imag.value, { agent: pred.pos, goal: true, ghost: pred.conf, hit: pred.hit });
+  draw(imag.value, { agent: pred.pos, goal: true, ghost: pred.conf, hit: pred.hit, pending: pred.pending });
 }
 
 function draw(canvas, state) {
