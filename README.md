@@ -179,18 +179,14 @@
 
 课程先用可以逐格检查的九格世界建立最小闭环。读者要先分清观察、状态、动作、动力学、规划器与策略，再进入神经网络。
 
-#### [第 1 章　引言](docs/chapters/01-why-world-models/01-current-observation.md)
+#### [第 1 章　引言](docs/chapters/01-why-world-models/02-observation-and-prediction.md)
 
 **核心问题：什么才算世界模型，它与预测、生成、规划和策略是什么关系？**
 
-1. **[1.1 观察、状态与历史](docs/chapters/01-why-world-models/01-current-observation.md)**：一帧观察遗漏了什么，历史为什么能够恢复隐藏状态。
-2. **[1.2 动作条件预测](docs/chapters/01-why-world-models/02-action-conditioned-future.md)**：从“未来会怎样”走到“执行这个动作后会怎样”。
-3. **[1.3 多步推演与规划](docs/chapters/01-why-world-models/03-rollout-planning-policy.md)**：区分单步预测、rollout、规划器和策略。
-4. **[1.4 从经历学习动力学](docs/chapters/01-why-world-models/04-learned-dynamics.md)**：用轨迹估计转移规律，并认识模型误差。
-5. **[1.5 观察与动作的联合分布](docs/chapters/01-why-world-models/05-joint-distribution.md)**：把策略、视频生成、逆动力学和可控预测看成同一联合分布的不同查询。
-6. **[1.6 世界模型的定义](docs/chapters/01-why-world-models/06-what-is-a-world-model.md)**：划清世界模型、被动视频生成器、物理引擎和无模型策略的边界。
-7. **[1.7 经典世界模型](docs/chapters/01-why-world-models/07-classic-world-models.md)**：用 V–M–C 理解表示、记忆和控制器怎样形成闭环。
-8. **[1.8 动手：九格世界的从零实现](docs/chapters/01-why-world-models/08-invent-a-world-model.md)**：手写转移、rollout 与规划器，观察规划深度和模型漏洞。
+1. **[1.1 动手：九格世界的从零实现](docs/chapters/01-why-world-models/01-invent-a-world-model.md)**：手写转移、rollout 与规划器，先训一台最简单的世界模型，亲眼看到闭环跑起来。
+2. **[1.2 观察与预测：为什么需要世界模型](docs/chapters/01-why-world-models/02-observation-and-prediction.md)**：一帧观察遗漏了什么、动作条件预测、多步推演与规划、从经历学习动力学。
+3. **[1.3 什么是世界模型：定义与判据](docs/chapters/01-why-world-models/03-what-is-a-world-model.md)**：联合分布视角，加上可逐项检验的判据，划清世界模型与视频生成器、物理引擎、无模型策略的边界。
+4. **[1.4 经典世界模型](docs/chapters/01-why-world-models/04-classic-world-models.md)**：用 V–M–C 理解表示、记忆和控制器怎样形成闭环。
 
 ### 第二部分：共同基础
 

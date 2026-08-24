@@ -1,5 +1,8 @@
-# 1.8　动手：九格世界的从零实现
+# 1.1　动手：九格世界的从零实现
 
+> **第 1 章 · 引言**
+>
+> 人类在行动之前，总会在脑海中预演未来：“如果我这样走，会发生什么？”世界模型（World Model）正是赋予机器这种内在想象与推演能力的核心机制。本章不急着讲理论，而是先用 [1.1 动手：九格世界的从零实现](/chapters/01-why-world-models/01-invent-a-world-model) 跑通一个最小闭环——只用 Python 标准库，训练并使用一台最简单的世界模型。之后 [1.2 观察与预测](/chapters/01-why-world-models/02-observation-and-prediction) 解释它为什么必须这样设计，[1.3 定义与判据](/chapters/01-why-world-models/03-what-is-a-world-model) 给出可检验的判据，最后 [1.4 经典世界模型](/chapters/01-why-world-models/04-classic-world-models) 对照 V-M-C、PlaNet、Dreamer 与 MuZero。
 > **本节目标**：不依赖任何深度学习框架，只用 Python 标准库、整数和字典，把世界模型的最小闭环写出来。你会亲手实现一个九格网格世界、一个表格动态模型、一个规划器，亲眼看到「预测→规划→执行→修正」的完整循环。
 
 > **本节代码**：[本节 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/01_reinvent/invent-a-world-model.ipynb) · [gridworld.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/gridworld.py)

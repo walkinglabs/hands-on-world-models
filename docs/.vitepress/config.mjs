@@ -59,36 +59,20 @@ export default defineConfig({
         collapsed: false,
         items: [
           {
-            text: "1.1. 观察、状态与历史",
-            link: "/chapters/01-why-world-models/01-current-observation",
+            text: "1.1. 动手：九格世界的从零实现",
+            link: "/chapters/01-why-world-models/01-invent-a-world-model",
           },
           {
-            text: "1.2. 动作条件预测",
-            link: "/chapters/01-why-world-models/02-action-conditioned-future",
+            text: "1.2. 观察与预测：为什么需要世界模型",
+            link: "/chapters/01-why-world-models/02-observation-and-prediction",
           },
           {
-            text: "1.3. 多步推演与规划",
-            link: "/chapters/01-why-world-models/03-rollout-planning-policy",
+            text: "1.3. 什么是世界模型：定义与判据",
+            link: "/chapters/01-why-world-models/03-what-is-a-world-model",
           },
           {
-            text: "1.4. 从经历学习动力学",
-            link: "/chapters/01-why-world-models/04-learned-dynamics",
-          },
-          {
-            text: "1.5. 观察与动作的联合分布",
-            link: "/chapters/01-why-world-models/05-joint-distribution",
-          },
-          {
-            text: "1.6. 世界模型的定义",
-            link: "/chapters/01-why-world-models/06-what-is-a-world-model",
-          },
-          {
-            text: "1.7. 经典世界模型",
-            link: "/chapters/01-why-world-models/07-classic-world-models",
-          },
-          {
-            text: "1.8. 动手：九格世界的从零实现",
-            link: "/chapters/01-why-world-models/08-invent-a-world-model",
+            text: "1.4. 经典世界模型",
+            link: "/chapters/01-why-world-models/04-classic-world-models",
           },
         ],
       },

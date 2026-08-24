@@ -211,7 +211,7 @@ _World Models_ 原文在 CarRacing 赛车任务里，把“复杂度放进世界
 - **分岔**：预测 latent、画面、特征、动作后果还是三维占用，决定了它服务决策、审查还是机器人控制。
 - **代价**：复合误差与模型利用是它的两个天敌，也是评测的中心议题。
 
-接下来请进入[第 1 章：世界模型的基本问题](/chapters/01-why-world-models/01-current-observation)，或者先读[世界模型八十年](/guide/world-model-history)，看看这条研究线索八十年的来历。
+接下来请进入[第 1 章：世界模型的基本问题](/chapters/01-why-world-models/02-observation-and-prediction)，或者先读[世界模型八十年](/guide/world-model-history)，看看这条研究线索八十年的来历。
 
 ## 参考文献
 

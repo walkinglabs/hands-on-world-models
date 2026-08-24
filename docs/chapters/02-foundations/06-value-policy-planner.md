@@ -76,7 +76,7 @@ $$
 
 离线 RL 更窄：策略改进不许再交互。它和第 3 章「用离线数据学转移」相邻，失败模式却是 Q 高估未见动作。细则、分层语言规划、元学习与多智能体见 [附录 D](/appendices/neighboring-fields)。
 
-内在动机把世界模型的预测误差当成探索奖励，接口在 [1.4](/chapters/01-why-world-models/04-learned-dynamics)。
+内在动机把世界模型的预测误差当成探索奖励，接口在 [1.4](/chapters/01-why-world-models/02-observation-and-prediction)。
 
 ## 小结
 

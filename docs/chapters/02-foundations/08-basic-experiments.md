@@ -4,7 +4,7 @@
 
 > **本节代码**：[看见与压缩](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/02_foundations/see-remember-compress.ipynb) · [空间与规划](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/02_foundations/space-plan-train.ipynb) · [foundations.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/foundations.py)
 
-> **前置知识**：你已经读过第 2 章前七节，并最好刚跑完 [1.8 动手：九格世界的从零实现](/chapters/01-why-world-models/08-invent-a-world-model)。这一节把那些零件真跑一遍。
+> **前置知识**：你已经读过第 2 章前七节，并最好刚跑完 [1.8 动手：九格世界的从零实现](/chapters/01-why-world-models/01-invent-a-world-model)。这一节把那些零件真跑一遍。
 
 ---
 
