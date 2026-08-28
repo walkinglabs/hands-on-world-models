@@ -22,7 +22,7 @@ $$
 \min_\theta \sum_{t} \bigl\lVert \pi_\theta(o_t) - a_t^* \bigr\rVert_2^2
 $$
 
-![图 7-2 行为克隆的训练逻辑](/figures/7-2-imitation-learning.svg)
+![图 7-12 行为克隆的训练逻辑与数据流向](/figures/7-2-imitation-learning.svg)
 
 从表面上看，这和普通的图像识别没有什么区别。但请大家仔细思考一个问题：**机器人控制与传统图像识别之间，存在着一个什么样的本质区别？**
 
@@ -46,7 +46,7 @@ $$
 
 居然高达 $98.2\%$！这意味着，在长程控制任务中，机械臂几乎必然会走出人类曾经示范过的狭窄走廊。
 
-![图 7-3 复合误差导致轨迹偏离专家分布](/figures/7-3-compounding-error.svg)
+![图 7-13 复合误差导致实机闭环轨迹偏离专家示教分布](/figures/7-3-compounding-error.svg)
 
 一旦机械臂在某一步发生了微小的偏离，它就会进入一个新的状态 $s_2'$。而在离线训练数据中，人类专家从未把手臂放在过 $s_2'$ 这个位置，因此模型在当前状态下没有见过任何正确的标签。
 
@@ -62,7 +62,7 @@ $$
 - $60\%$ 的人习惯从**左侧绕过障碍物**去拿杯子（动作的横向位移分量 $a_y = +1.0$）；
 - $40\%$ 的人习惯从**右侧绕过障碍物**去拿杯子（动作的横向位移分量 $a_y = -1.0$）。
 
-![图 7-4 避障任务中的多模态动作选择](/figures/7-4-multimodal-action.svg)
+![图 7-14 避障任务中的多模态动作选择与安全走廊](/figures/7-4-multimodal-action.svg)
 
 显然，向左绕和向右绕都是完全安全、能够成功完成任务的优秀示范。
 
@@ -118,9 +118,9 @@ MSE 动作是否安全: False
 
 数据集中每一条示范都是 100% 安全的，但 MSE 算出来的策略执行起来却是 100% 撞车！
 
-![图 7-5 哥伦比亚大学 Diffusion Policy 在多模态动作仿真中的实测对比 (Chi et al., 2023)](/figures/diffusion-multimodal-sim.svg)
+![图 7-15 哥伦比亚大学 Diffusion Policy 在多模态动作仿真中的实测对比 (Chi et al., 2023)](/figures/diffusion-multimodal-sim.svg)
 
-从图 7-5 的真实论文实验中可以清晰看到：传统回归模型（Standard Regression）在面对 T-字形推块与绕障的多模态场景时，所有的预测点都被无情地拉扯到不可行的均值区域；而基于生成式建模的扩散策略则能精准贴合真实的多分支流形。
+从图 7-15 的真实论文实验中可以清晰看到：传统回归模型（Standard Regression）在面对 T-字形推块与绕障的多模态场景时，所有的预测点都被无情地拉扯到不可行的均值区域；而基于生成式建模的扩散策略则能精准贴合真实的多分支流形。
 
 这是因为，真实物理世界的动作分布往往是**多模态**（Multi-Modal，即包含多个可行的波峰）的。**面对多模态分布，我们绝不能将多个峰取平均，而必须让模型具备从完整的概率分布中采样出一个有效峰的能力。**
 
@@ -138,7 +138,7 @@ $$
 \hat A_t = \bigl[ \hat a_t, \, \hat a_{t+1}, \, \dots, \, \hat a_{t+K-1} \bigr] \in \mathbb{R}^{K \times A}
 $$
 
-![图 7-5 动作分块（Action Chunking）一次输出未来一段轨迹](/figures/7-5-action-chunking.svg)
+![图 7-16 动作分块（Action Chunking）一次预测输出未来连续一段轨迹](/figures/7-5-action-chunking.svg)
 
 在 50 Hz 的控制频率下，如果设置块大小 $K = 50$：
 1. **决策次数减少**：一个 400 步的任务，策略被调用的次数从 400 次骤降到 $400 / 50 = 8$ 次。
@@ -147,7 +147,7 @@ $$
 
 在实际执行时，ACT 在每个时间步都会滚动预测一个未来 chunk，并通过**时序集成**（Temporal Ensembling）对重叠时间步的预测进行加权平滑，让机械臂的动作变得如同抹了润滑油一般平稳丝滑。
 
-![图 7-7 斯坦福大学 ACT 算法架构与双臂精细操作示教系统 (Zhao et al., 2023)](/figures/aloha-hardware.png)
+![图 7-17 斯坦福大学 ACT 算法：C-VAE 编码器与 Transformer 解码器架构全景 (Zhao et al., RSS 2023)](/figures/act-algo-architecture.png)
 
 ---
 
@@ -155,7 +155,7 @@ $$
 
 动作分块解决了时序上的连贯性，但在生成每个动作块时，仍然需要一种强大的概率生成机制来表达多模态分布。
 
-![图 7-8 哥伦比亚大学 Diffusion Policy 基于视觉观察与隐变量去噪生成平滑连续动作轨迹 (Chi et al., 2023)](/figures/diffusion-policy-teaser.svg)
+![图 7-18 哥伦比亚大学 Diffusion Policy 基于视觉观察条件与隐变量去噪生成平滑连续动作轨迹 (Chi et al., RSS 2023)](/figures/diffusion-policy-teaser.svg)
 
 目前在机器人学习中表现最出色的两类生成策略是：
 
@@ -191,7 +191,7 @@ LeRobot 里还有第三条生成路线：**VQ-BeT**。它先用 VQ-VAE 把连续
 
 如果直接硬生生切入新计算出的动作，机械臂会因为速度突变而产生剧烈的冲击和抖动。
 
-![图 7-6 实时分块（RTC）处理推理延迟时的前缀约束](/figures/7-6-real-time-chunking.svg)
+![图 7-19 实时分块（RTC）处理硬件推理延迟时的前缀约束与无缝轨迹拼接 (Black et al., 2025)](/figures/7-6-real-time-chunking.svg)
 
 2025 年提出的 **RTC（Real-Time Chunking）** 给出了一个非常巧妙的解决方案：
 

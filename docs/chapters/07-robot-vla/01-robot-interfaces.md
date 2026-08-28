@@ -39,6 +39,10 @@
 
 如果在组织数据时不小心把动作平移错位，让模型误把后一帧画面当成前一帧的输入，离线训练时看似准确率很高，但放到真机上机器人就会因为无法感知动作引起的因果变化而失控。
 
+![图 7-2 DROID 真实世界大规模具身数据采集系统与多视角硬件配置 (Khazatsky et al., 2024)](/figures/droid-hardware-setup.png)
+
+在真实世界的数据采集系统中（如图 7-2 所示），通常会同时部署**固定视角的第三人称立体相机**（提供全局桌面的几何与深度信息）和**跟随手臂移动的第一人称腕部相机**（提供夹爪接触前的毫米级局部高分辨率画面），所有相机必须与机械臂关节传感器进行严格的因果时序绑定。
+
 ---
 
 ## 动作空间的表示
@@ -163,9 +167,9 @@ action_joint = np.array(
 - **优点**：操作手感极其直观，物理 1:1 映射，关节空间数据天然对齐，能够完成穿针引线、剥香蕉皮等毫米级超精细操作；
 - **成本与开源方案**：早期工业级主从臂动辄数十万元，而如今基于 Dynamixel 舵机或 3D 打印的 Koch/GELLO 开源主臂成本已降至数千元人民币，极大降低了具身智能的数据门槛。
 
-![图 7-2 斯坦福大学 ALOHA 低成本双臂硬件遥操作与 ACT 算法协同系统 (Zhao et al., 2023)](/figures/aloha-hardware.png)
+![图 7-3 斯坦福大学 ALOHA 低成本双臂硬件遥操作与 ACT 算法协同系统 (Zhao et al., 2023)](/figures/aloha-hardware.png)
 
-![图 7-3 UC 伯克利 GELLO 低成本通用主从臂遥操作系统 (Wu et al., 2023)](/figures/gello-teleop.png)
+![图 7-4 UC 伯克利 GELLO 低成本通用主从臂遥操作系统 (Wu et al., 2023)](/figures/gello-teleop.png)
 
 ### 2. 空间手柄与 VR 遥操作（VR / 6-DoF Spatial Controller）
 在需要大范围移动或末端控制的场景中，VR 头显（如 Meta Quest 3、Apple Vision Pro）与 3Dconnexion 空间鼠标成为主流：
@@ -173,12 +177,14 @@ action_joint = np.array(
 - **优点**：无需制造昂贵的同构机械臂，支持跨不同型号机械臂的统一遥操作；
 - **局限**：缺乏物理力反馈阻尼，人类在空气中挥舞手柄时容易产生高频手抖，且手眼标定（Hand-Eye Calibration）误差和 Wi-Fi 传输延迟会导致操作精度下降。
 
-![图 7-4 常见机器人遥操作控制器对比：SpaceMouse vs VR vs GELLO (Wu et al., 2023)](/figures/teleop-controllers-compare.png)
+![图 7-5 常见机器人遥操作控制器对比：SpaceMouse vs VR vs GELLO (Wu et al., 2023)](/figures/teleop-controllers-compare.png)
 
 ### 3. 人类介入协助式示教（Human-in-the-Loop Intervention）
 这是针对行为克隆“分布偏移”问题的高级采集策略（类似 DAgger 思想）：
 - **原理**：让初步训练好的神经网络策略自主控制机械臂运行。当机械臂即将偏离轨迹或发生碰撞时，旁边的人类工程师踩下脚踏板或拨动手柄切入控制权，手动将手臂纠正回正常轨道，随后松开踏板让模型继续运行；
 - **核心价值**：**专门收集“从错误偏离状态恢复到正确状态”的纠偏数据**。这类数据是常规成功示教中极度匮乏的，能有效提升策略在面对突发扰动时的鲁棒性。
+
+![图 7-6 SERL / HIL-SERL：人在回路介入式示教与快速故障恢复数据采集机制 (Luo et al., 2024)](/figures/serl-intervention.png)
 
 ---
 
@@ -626,7 +632,7 @@ def unnormalize_action(norm_action, stats):
 
 LeRobot 是 HuggingFace 专为机器人学习打造的开源库。它的核心设计理念是**极致轻量与高吞吐**：视频帧采用硬件级 MP4（H.264/AV1）深度压缩以节省磁盘空间，动作与关节数值采用 Safetensors / Arrow 存储，原生无缝对接 PyTorch `DataLoader`。
 
-![图 7-5 抱抱脸 HuggingFace LeRobot 开源机器人学习平台与生态](/figures/lerobot-thumbnail.png)
+![图 7-7 抱抱脸 HuggingFace LeRobot 开源机器人学习平台与生态](/figures/lerobot-thumbnail.png)
 
 一条典型的 LeRobot 样本字典在送入神经网络时的张量结构如下：
 
@@ -674,9 +680,9 @@ print("动作维度形状:", sample["action"].shape)  # 输出: (6,)
 
 **RLDS**（Robot Learning Dataset Standard）是基于 TensorFlow Datasets（TFDS）构建的标准格式，是 Google 汇聚全球 22 个机器人实验室、跨几十种本体的 **Open X-Embodiment** 数据集所采用的核心标准。OpenVLA、RT-1、RT-2、Octo 等大模型均基于此接口进行分布式流式训练。
 
-![图 7-6 Open X-Embodiment 汇聚全球 22 种机器人本体与大规模数据集全景图 (Padalkar et al., 2023)](/figures/open-x-embodiment-overview.png)
+![图 7-8 Open X-Embodiment 汇聚全球 22 种机器人本体与大规模数据集全景图 (Padalkar et al., 2023)](/figures/open-x-embodiment-overview.png)
 
-![图 7-7 Open X-Embodiment 数据分布与跨本体轨迹多样性统计 (Padalkar et al., 2023)](/figures/open-x-data-analysis.png)
+![图 7-9 Open X-Embodiment 数据分布与跨本体轨迹多样性统计 (Padalkar et al., 2023)](/figures/open-x-data-analysis.png)
 
 RLDS 将数据组织为嵌套的阶梯流（Step Sequence），每一个 Step 的典型字典结构如下：
 
@@ -726,7 +732,11 @@ for episode in dataset.take(1):
 
 ### 3. Robomimic / ACT HDF5 数据接口
 
-在学术界和本地单机训练中，**HDF5** 是使用最广泛的层级二进制存储格式。Stanford 的 ACT（ALOHA 双臂系统）和 Columbia 的 Diffusion Policy 均原生采用这一组织形式。
+在学术界和本地单机训练中，**HDF5** 是使用最广泛的层级二进制存储格式。Stanford 的 ACT（ALOHA 双臂系统）和 Columbia 的 Diffusion Policy 均原生采用这一组织形式。斯坦福与 UT 伯克利等团队提出的 **Robomimic** 基准库定义了标准化的 HDF5 观察解耦与示教数据集规范（如图 7-10 和图 7-11 所示）。
+
+![图 7-10 Robomimic：标准化 HDF5 示教数据格式与多模态观察模块化接口设计 (Mandlekar et al., CoRL 2021)](/figures/robomimic-core-features.png)
+
+![图 7-11 Robomimic 标准人类示教基准数据集与任务全景 (Mandlekar et al., 2021)](/figures/robomimic-dataset-tasks.png)
 
 一个典型的 HDF5 数据集文件在磁盘上按层级组织：
 

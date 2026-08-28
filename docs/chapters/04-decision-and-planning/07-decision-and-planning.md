@@ -301,7 +301,7 @@ position loss: 0.3341 → 0.0001
 
 ## 第七步：在模型里试动作，再回到真实环境
 
-Planner 是 beam search：往前看 4 步，保留离目标最近的若干条，只在真实 PixelWorld 执行第一步，再重新观察。这就是 MPC——1.8 里那句「只执行第一步，然后重新观察真实世界」。
+Planner 是 beam search：往前看 4 步，保留离目标最近的若干条，只在真实 PixelWorld 执行第一步，再重新观察。这就是 MPC——1.1 里那句「只执行第一步，然后重新观察真实世界」。
 
 ```python
 from hwm.control import evaluate_controllers, run_pixelworld_controller
@@ -346,7 +346,7 @@ random_final_distance:  14.15
 
 如果 planned 明显高于 random，说明 learned dynamics 的预测确实能被 Planner 用来改善真实行动——**这不是 loss 下降能告诉你的**。
 
-**一个值得做的实验**：把训练起点改成只覆盖左上角 3×3，再在右下的 `(8, 2)`、`(5, 5)` 上评估。训练集上的 MSE 仍然可以很低，成功率通常会掉。1.8 里你见过「没见过的 (状态, 动作)」；换成神经网络，泛化边界一样在。
+**一个值得做的实验**：把训练起点改成只覆盖左上角 3×3，再在右下的 `(8, 2)`、`(5, 5)` 上评估。训练集上的 MSE 仍然可以很低，成功率通常会掉。1.1 里你见过「没见过的 (状态, 动作)」；换成神经网络，泛化边界一样在。
 
 ## 第八步：把位置换成 RSSM latent
 

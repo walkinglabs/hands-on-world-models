@@ -4,7 +4,7 @@
 
 > **本节代码**：[训练脚本](https://github.com/walkinglabs/hands-on-world-models/blob/main/scripts/run_carracing.py)
 
-> **前置知识**：你已经读过 [1.7 经典世界模型](/chapters/01-why-world-models/04-classic-world-models)，知道 V-M-C 三个组件各自做什么。这一节把它们真跑一遍。
+> **前置知识**：你已经读过 [1.4 经典世界模型](/chapters/01-why-world-models/04-classic-world-models)，知道 V-M-C 三个组件各自做什么。这一节把它们真跑一遍。
 
 ---
 

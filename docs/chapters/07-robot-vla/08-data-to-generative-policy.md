@@ -2,7 +2,7 @@
 
 > **本节目标**：把一份示范数据写成标准格式，在同一数据、同一预算上训练三档策略——逐步 MSE、ACT 分块、扩散或流匹配——闭环对比，亲眼看到 MSE 把「左右绕行」平均成「撞墙」。
 
-> **本节代码**：[搭一台小型 VLA](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_robot/build-a-tiny-vla.ipynb)（烟雾版基线）· [robot.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/robot.py) · [data.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/data.py)；完整版 Notebook 模板：`notebooks/07_robot/from-demos-to-generative-policies.ipynb`
+> **本节代码**：[搭一台小型 VLA](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_robot/build-a-tiny-vla.ipynb)（7.9 的烟雾版基线）· [robot.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/robot.py) · [data.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/data.py)；本节配套冒烟 Notebook：`notebooks/07_robot/from-demos-to-generative-policies.ipynb`（岔路口世界，三档对照，CPU 约两分钟跑完）
 
 > **前置知识**：[7.1 机器人学习接口](/chapters/07-robot-vla/01-robot-interfaces)（动作空间与数据格式）、[7.2 模仿学习与生成策略](/chapters/07-robot-vla/02-imitation-and-policies)（分块、扩散、流匹配）、[3.1 经历与转移](/chapters/03-data-and-first-model/01-episodes-and-transitions)。
 
@@ -51,7 +51,7 @@ dataset = LeRobotDataset("lerobot/pusht")
 - **时间基准是什么**：fps 多少，图像、状态、动作三路时间戳是否对齐（零阶保持）？
 - **归一化统计**：均值方差存在哪，训练与部署用的是否同一份。
 
-烟雾版用 `hwm.robot` 的桌面生成器造 $160$ 条示范，按同样的字段结构（图像、状态、指令、动作序列）存好——格式思想完全一致，只是规模小。
+烟雾版用 `hwm.robot` 的岔路口生成器（`make_fork_dataset`）造 $128$ 条示范：起点在底部中央，障碍在正中，目标在左上/右上两角，专家各以 $50\%$ 概率绕一侧。字段是状态、动作、模式标签与 6 步动作序列——比完整版少了图像与指令两路，但「对齐、分块、双模态」三个关键结构都在。
 
 ## 步骤 2：同一数据上训三档策略
 

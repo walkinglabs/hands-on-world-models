@@ -269,53 +269,105 @@ def evaluate_reranker(model, num_cases=128, seed=0, collision_weight=4.0):
     }
 
 
-def make_bimodal_line_dataset(num_episodes=96, horizon=12, seed=0):
-    """一维双模态示范：起点落在 [-0.4, 0.4]，专家随机选左（-0.8）或右（+0.8）走到底。
+FORK_START = np.array([0.5, 0.12], dtype=np.float32)
+FORK_TARGETS = (
+    np.array([0.18, 0.85], dtype=np.float32),
+    np.array([0.82, 0.85], dtype=np.float32),
+)
+FORK_OBSTACLE = np.array([0.5, 0.5], dtype=np.float32)
 
-    向左与向右的轨迹都穿过整个中段，所以 |x| < 0.4 的每个位置上，
-    数据里都同时存在两个方向的动作——回归在整个中段都会学成 0。
+
+def _fork_state(position):
+    state = np.zeros(8, dtype=np.float32)
+    state[0:2] = position
+    state[2:4] = FORK_TARGETS[0]
+    state[4:6] = FORK_TARGETS[1]
+    state[6:8] = FORK_OBSTACLE
+    return state
+
+
+def _fork_expert_action(position, mode, rng, noise=0.03):
+    """朝本模式目标直走；快撞上中央障碍时沿本模式一侧切向绕行。"""
+    target = FORK_TARGETS[mode]
+    direction = target - position
+    direction /= np.linalg.norm(direction) + 1e-6
+    to_obstacle = FORK_OBSTACLE - position
+    distance = np.linalg.norm(to_obstacle)
+    if distance < 0.3 and np.dot(direction, to_obstacle) > 0:
+        side = np.array([-direction[1], direction[0]], dtype=np.float32)
+        if mode == 1:
+            side = -side
+        direction = 0.35 * direction + 0.65 * side
+        direction /= np.linalg.norm(direction) + 1e-6
+    return (direction + rng.normal(0, noise, 2)).astype(np.float32)
+
+
+def make_fork_dataset(num_episodes=128, horizon=20, chunk_size=6, seed=0):
+    """二维岔路示范：起点在底部中央，障碍在中央，目标在左上/右上两角。
+
+    专家每条 episode 随机选一边目标并绕开障碍。两种做法都对，
+    但平均动作直指障碍——执行会被墙挡住，这是回归平均化的最小失败场景。
+    除逐步 (state, action) 外，还返回 action chunk 序列，供扩散策略学习整段轨迹。
     """
     rng = np.random.default_rng(seed)
     states, actions, modes = [], [], []
+    chunk_states, chunks = [], []
     for _ in range(num_episodes):
-        target = float(rng.choice((-0.8, 0.8)))
-        x = float(rng.uniform(-0.4, 0.4))
+        mode = int(rng.integers(0, 2))
+        position = FORK_START + rng.normal(0, 0.02, 2).astype(np.float32)
+        episode_states, episode_actions = [], []
         for _ in range(horizon):
-            step = 0.2 * np.sign(target - x) if abs(target - x) > 0.05 else 0.0
-            action = float(np.clip(step + rng.normal(0, 0.02), -0.25, 0.25))
-            states.append(x)
+            action = _fork_expert_action(position, mode, rng)
+            states.append(position.copy())
             actions.append(action)
-            modes.append(0 if target < 0 else 1)
-            x = float(np.clip(x + action, -1.0, 1.0))
+            modes.append(mode)
+            episode_states.append(position.copy())
+            episode_actions.append(action)
+            position, _ = step_tabletop(_fork_state(position), action)
+            position = position[:2]
+        for start in range(horizon - chunk_size + 1):
+            chunk_states.append(episode_states[start])
+            chunks.append(episode_actions[start : start + chunk_size])
     return {
-        "states": torch.tensor(states, dtype=torch.float32)[:, None],
-        "actions": torch.tensor(actions, dtype=torch.float32)[:, None],
+        "states": torch.tensor(np.asarray(states), dtype=torch.float32),
+        "actions": torch.tensor(np.asarray(actions), dtype=torch.float32),
         "modes": torch.tensor(modes, dtype=torch.long),
+        "chunk_states": torch.tensor(np.asarray(chunk_states), dtype=torch.float32),
+        "action_chunks": torch.tensor(np.asarray(chunks), dtype=torch.float32),
     }
 
 
 @torch.no_grad()
-def rollout_line(policy_fn, x0=0.0, horizon=16, target_tol=0.12):
-    """policy_fn: 标量 x → 标量动作。成功 = 最终停在任一目标附近。"""
-    x = float(x0)
-    trajectory = [x]
-    for _ in range(horizon):
-        action = float(np.clip(float(policy_fn(x)), -0.25, 0.25))
-        x = float(np.clip(x + action, -1.0, 1.0))
-        trajectory.append(x)
-    success = min(abs(x - 0.8), abs(x + 0.8)) < target_tol
-    return {"success": bool(success), "final": x, "trajectory": np.asarray(trajectory)}
-
-
-def line_success_rate(policy_fn, num_episodes=32, seed=0, horizon=16):
-    """起点在双模态中段 [-0.3, 0.3] 内抖动，重复闭环 rollout。"""
+def rollout_fork(policy_fn, horizon=24, target_tol=0.15, seed=None):
+    """policy_fn: 2 维位置 → 2 维动作。成功 = 限时内到达任一目标。"""
     rng = np.random.default_rng(seed)
+    position = FORK_START + rng.normal(0, 0.02, 2).astype(np.float32)
+    collisions = 0
+    trajectory = [position.copy()]
+    for _ in range(horizon):
+        action = np.asarray(policy_fn(position.copy()), dtype=np.float32)
+        position, collision = step_tabletop(_fork_state(position), action)
+        position = position[:2]
+        collisions += int(collision)
+        trajectory.append(position.copy())
+    distances = [float(np.linalg.norm(position - target)) for target in FORK_TARGETS]
+    return {
+        "success": bool(min(distances) < target_tol),
+        "collisions": collisions,
+        "final_distance": float(min(distances)),
+        "trajectory": np.stack(trajectory),
+    }
+
+
+def fork_success_rate(policy_factory, num_episodes=32, seed=0, horizon=24):
+    """policy_factory 每次返回一个新策略（带记忆的策略每条轨迹重置）。"""
     runs = [
-        rollout_line(policy_fn, x0=float(rng.uniform(-0.3, 0.3)), horizon=horizon)
-        for _ in range(num_episodes)
+        rollout_fork(policy_factory(), horizon=horizon, seed=seed * 1000 + index)
+        for index in range(num_episodes)
     ]
     return {
         "success_rate": float(np.mean([run["success"] for run in runs])),
-        "mean_abs_final": float(np.mean([abs(run["final"]) for run in runs])),
+        "mean_collisions": float(np.mean([run["collisions"] for run in runs])),
+        "mean_final_distance": float(np.mean([run["final_distance"] for run in runs])),
         "runs": runs,
     }

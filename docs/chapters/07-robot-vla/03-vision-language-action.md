@@ -4,7 +4,9 @@
 
 **VLA**（vision-language-action）模型要做的，就是把视觉、语言和机器人状态三种输入，共同映射到一个动作。所谓 VLA，就是一台同时会看、会听、会动的策略网络。
 
-![图 7-9 Google RT-2：直接将网络规模预训练的视觉语言模型转化为机器人动作生成策略 (Brohan et al., 2023)](/figures/rt2-architecture.png)
+![图 7-20 Google RT-2：直接将网络规模预训练的视觉语言模型转化为机器人动作生成策略 (Brohan et al., 2023)](/figures/rt2-architecture.png)
+
+![图 7-21 Google RT-1：面向真实厨房与移动操作的大规模 Robotics Transformer (Brohan et al., 2022)](/figures/rt1-model-teaser.png)
 
 ---
 
@@ -26,7 +28,7 @@ $$
 [ Z_v ; Z_ℓ ; z_s ] → Transformer → action head → â_t
 ```
 
-![图 7-10 OpenVLA：基于 Llama 2 与 DINOv2 / SigLIP 骨干的 7B 通用视觉-语言-动作基础模型 (Kim et al., 2024)](/figures/openvla-model.jpg)
+![图 7-22 OpenVLA：基于 Llama 2 与 DINOv2 / SigLIP 骨干的 7B 通用视觉-语言-动作基础模型 (Kim et al., 2024)](/figures/openvla-model.jpg)
 
 ---
 
@@ -42,7 +44,7 @@ $$
 
 无论哪种融合，关键是语言必须真的参与决定动作。如果删掉语言 token、输出几乎不变，模型就只是把图像和状态又用了一遍，并没有“听”这句话。
 
-![图 7-11 Octo：基于 Transformer 与扩散动作头的跨本体通用机器人策略架构 (Octo Model Team, 2024)](/figures/octo-model.png)
+![图 7-23 Octo：基于 Transformer 与扩散动作头的跨本体通用机器人策略架构 (Octo Model Team, 2024)](/figures/octo-model.png)
 
 ---
 
@@ -64,7 +66,7 @@ $$
 
 换句话说，VLM 给的是一个会看会说的底座。VLA 还要补上动作示范、机器人自身状态和控制接口。会看会说，不等于已经会动。
 
-![图 7-12 Google RT-2 在未见物体识别、符号推理与常识理解中展现出的零样本动作泛化能力 (Brohan et al., 2023)](/figures/rt2-generalization.png)
+![图 7-24 Google RT-2 在未见物体识别、符号推理与常识理解中展现出的零样本动作泛化能力 (Brohan et al., 2023)](/figures/rt2-generalization.png)
 
 ---
 
@@ -74,13 +76,17 @@ $\pi_0$ 不是「把 VLM 后面接一个 MLP」。它是一个混合专家 Trans
 
 **SmolVLA** 把同一接口收到大约 $2.5\times 10^8$ 参数，目标是消费级 GPU 上能微调。**GR00T** 一类通才模型再把人形、全身和跨本体数据加进去。课程动手用小型 VLA；读论文时要能指出：冻结的是哪一段、动作头是离散 token、扩散还是流匹配、有没有独立的 action expert。
 
-![图 7-13 HuggingFace LeRobot 端到端开源 VLA 训练、评测与部署闭环流程](/figures/lerobot-vla-architecture.jpg)
+![图 7-25 HuggingFace LeRobot 端到端开源 VLA 训练、评测与部署闭环流程](/figures/lerobot-vla-architecture.jpg)
 
 ---
 
 ## 长时程：先选技能再动手
 
 「热一杯咖啡」不能只靠 50 Hz 的 chunk。**SayCan** 用语言模型给技能打分，再用价值或可达性扔掉身体做不到的技能。它改的是技能选择，不是像素动力学。VLA 把技能和低层焊在一起；分层系统把它们拆开。世界模型可以出现在两层：高层预测倒水后台面会不会湿，低层预测这一段 chunk 会不会撞。评价必须分开报技能选择错误和技能执行错误，见 [附录 D](/appendices/neighboring-fields)。
+
+![图 7-26 SayCan：结合大语言模型常识推理与机器人可执行度（Affordance）的分层长程规划框架 (Ahn et al., 2022)](/figures/saycan-architecture.png)
+
+![图 7-27 RT-1 在真实世界多任务长程评测与基线对比结果 (Brohan et al., 2022)](/figures/rt1-real-evals.png)
 
 ---
 
