@@ -1,4 +1,4 @@
-# 8.1　相机几何与投影
+# 8.1　相机模型与多视角投影
 
 > **第 8 章 · 空间世界与自动驾驶**
 >
@@ -8,7 +8,7 @@
 >
 > 静态场景重建不是动态世界模型；没有 ego action 和模拟器的未来预测也不是闭环驾驶。本章会分别标出这些边界。
 >
-> 动手实验：[8.7 动手：三维重建与占用预测](/chapters/08-spatial-worlds/07-spatial-world)（第一份 Notebook 从图像走到空间，之后在四维世界分支和驾驶未来占用预测分支里选一个）；本章收尾是 [8.8 动手：空间世界二选一](/chapters/08-spatial-worlds/08-spatial-world)。
+> 动手实验：[8.6 动手：占用网格预测的从零开始实现](/chapters/08-spatial-worlds/06-occupancy-prediction)；本章收尾是 [8.7 动手：驾驶场景下的四维世界模型](/chapters/08-spatial-worlds/07-four-d-driving)。
 
 桌上放着一个杯子。我们从左边拍一张，杯子出现在照片右侧；再从右边拍一张，同一个杯子又跑到照片左侧。
 

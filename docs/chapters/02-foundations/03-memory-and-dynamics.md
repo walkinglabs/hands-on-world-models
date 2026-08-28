@@ -1,4 +1,4 @@
-# 2.3　记忆与动力学
+# 2.3　循环神经网络与注意力机制
 
 两段视频的最后一帧完全相同：红方块都停在画面中央。但第一段里方块从左边滑过来，第二段里从右边滑过来。
 
@@ -70,11 +70,11 @@ $$
 
 RNN/GRU 强调逐步更新记忆；因果 Transformer 强调 token 序列与 KV Cache；RSSM 在记忆之上再显式区分确定与随机。
 
-同一套「状态 + 动作 → 下一状态」也可以把 GRU 整段换成因果 Transformer：把 $(z_{\le t}, a_{\le t})$ 当成一条 token 序列，用遮罩预测 $z_{t+1}$。这就是 STORM 一类模型相对 RSSM 的那一步，不是第 5 章的像素 token。合法对照必须锁死编码器、数据与 horizon，只换动力学骨干，并同时报一步损失、多步漂移和反事实。细则见 [附录 D](/appendices/neighboring-fields)，4.8 允许把它当作 Dreamer-lite 的替代选题。
+同一套「状态 + 动作 → 下一状态」也可以把 GRU 整段换成因果 Transformer：把 $(z_{\le t}, a_{\le t})$ 当成一条 token 序列，用遮罩预测 $z_{t+1}$。这就是 STORM 一类模型相对 RSSM 的那一步，不是第 5 章的像素 token。合法对照必须锁死编码器、数据与 horizon，只换动力学骨干，并同时报一步损失、多步漂移和反事实。细则见 [附录 D](/appendices/neighboring-fields)，4.7 的简洁档允许把它当作 Dreamer-lite 的替代选题。
 
 它们本身都不是一台完整的世界模型。完整系统还需要动作条件转移、预测目标、数据，以及一套使用预测做决策的程序——这些是后面几节和后续章节的主题。
 
-> 👉 动手实验：[动手：观察编码、记忆与压缩](/chapters/02-foundations/08-basic-experiments)
+> 👉 动手实验：[动手：观察编码、记忆与压缩](/chapters/02-foundations/07-basic-experiments)
 
 ## 小结
 

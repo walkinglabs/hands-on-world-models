@@ -1,10 +1,10 @@
-# 2.8　动手：组件接口的简洁实现
+# 2.7　动手：核心组件的简洁实现
 
 > **本节目标**：跑通两份 Notebook，把表示和空间接起来。一份用卷积和 patch 压缩一张小图，一份把深度像素算进三维格子并用 CEM 搜连续动作。从经历里学习动态留给 3.4。
 
 > **本节代码**：[看见与压缩](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/02_foundations/see-remember-compress.ipynb) · [空间与规划](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/02_foundations/space-plan-train.ipynb) · [foundations.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/foundations.py)
 
-> **前置知识**：你已经读过第 2 章前七节，并最好刚跑完 [1.1 动手：九格世界的从零实现](/chapters/01-why-world-models/01-invent-a-world-model)。这一节把那些零件真跑一遍。
+> **前置知识**：你已经读过第 2 章前六节，并最好刚在 [1.4](/chapters/01-why-world-models/04-imagine-driving) 玩过表格世界模型。这一节把那些零件真跑一遍。
 
 ---
 
@@ -318,11 +318,11 @@ clip:   [1.5 2. ]
 
 ## 从经历中学习概率动态
 
-从经历里学习动态已单独成页，挂在第 3 章侧栏，不要再挤在 2.8 里跟做。
+从经历里学习动态已单独成页，挂在第 3 章侧栏，不要再挤在 2.7 里跟做。
 
 > 👉 [3.5 动手：表格世界模型的从零开始实现](/chapters/03-data-and-first-model/05-learn-a-table-world)
 
-那里从装 `Episode`、段内取样，数到 \(\hat P(s'\mid s,a)\)，再用 MPC 走到终点。2.8 只负责看见与空间。
+那里从装 `Episode`、段内取样，数到 \(\hat P(s'\mid s,a)\)，再用 MPC 走到终点。2.7 只负责看见与空间。
 
 ## 自动检查
 
@@ -359,7 +359,7 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 
 ## 后续工作
 
-2.8 与 3.4 只把零件放到正确的位置。后面三条线都从这里分叉。
+2.7 与 3.4 只把零件放到正确的位置。后面三条线都从这里分叉。
 
 **卷积变成 Encoder。** 4.6 的 ConvVAE、4.7 的 `PixelEncoder`，第一步仍是滑动窗口，只是核变成了可学习的。ViT 则从本节的 `patchify` 出发，不再扫核。
 

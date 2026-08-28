@@ -10,18 +10,18 @@
 | --- | --- |
 | HF Robotics Course Unit 0–2：LeRobot、经典控制极限 | [7.1](/chapters/07-robot-vla/01-robot-interfaces) |
 | HF *Robot Learning Tutorial*：ACT、Diffusion、Flow、RTC、π₀、SmolVLA | [7.2](/chapters/07-robot-vla/02-imitation-and-policies)、[7.3](/chapters/07-robot-vla/03-vision-language-action) |
-| LeRobot v0.4–v0.6：teleop→record→train→rollout 闭环、DAgger 回流、HIL-SERL、LIBERO 评测协议、世界模型策略（VLA-JEPA、FastWAM） | [7.8](/chapters/07-robot-vla/08-data-to-generative-policy)、[7.7](/chapters/07-robot-vla/07-simulators-and-sim2real)、[9.2](/chapters/09-evaluate-and-invent/02-systematic-evaluation)、[7.4](/chapters/07-robot-vla/04-robot-world-models) |
-|| EVA-Client 类部署框架：遥操作采集、质检回放、checkpoint 下发、延迟补偿、轨迹平滑、日志对比 | [7.8](/chapters/07-robot-vla/08-data-to-generative-policy) 的采集与部署两节 |
+| LeRobot v0.4–v0.6：teleop→record→train→rollout 闭环、DAgger 回流、HIL-SERL、LIBERO 评测协议、世界模型策略（VLA-JEPA、FastWAM） | [7.8](/chapters/07-robot-vla/06-data-to-generative-policy)、[7.7](/chapters/07-robot-vla/05-simulators-and-sim2real)、[9.2](/chapters/09-evaluate-and-invent/02-systematic-evaluation)、[7.4](/chapters/07-robot-vla/03-vision-language-action) |
+|| EVA-Client 类部署框架：遥操作采集、质检回放、checkpoint 下发、延迟补偿、轨迹平滑、日志对比 | [7.8](/chapters/07-robot-vla/06-data-to-generative-policy) 的采集与部署两节 |
 | HF Deep RL：DQN / PPO / SAC、model-based bonus | [2.6](/chapters/02-foundations/06-value-policy-planner)、第 4 章 |
 | HF ML for 3D：多视图扩散、3DGS、mesh | [8.3](/chapters/08-spatial-worlds/03-nerf-3dgs-mesh) |
-| Datawhale L01–L05 / P01–P06：四代历史、RSSM、Dreamer、换骨干、反事实 | [1.4](/chapters/01-why-world-models/04-classic-world-models)、第 4 章、[9.2](/chapters/09-evaluate-and-invent/02-systematic-evaluation)、本附录的换骨干条目 |
-| Datawhale every-embodied：VAE/DDPM 代码、LeWM 复现、SO-101 遥操作 | [4.6](/chapters/04-decision-and-planning/06-reproduce-world-models)、[6.5](/chapters/06-jepa/05-jepa)、[7.8](/chapters/07-robot-vla/08-data-to-generative-policy) |
-| Datawhale dive-into-embodied-ai：CS123 中文仿真版、VLA 十二讲 | [7.1](/chapters/07-robot-vla/01-robot-interfaces)、[7.6](/chapters/07-robot-vla/06-legged-and-whole-body)、[7.3](/chapters/07-robot-vla/03-vision-language-action) |
-| MIT 6.s953：POMDP、少数据、Dyna、UniSim、好奇心、元学习、MARL | [1.2](/chapters/01-why-world-models/02-observation-and-prediction)、[4.6](/chapters/04-decision-and-planning/06-reproduce-world-models)、本附录 |
+| Datawhale L01–L05 / P01–P06：四代历史、RSSM、Dreamer、换骨干、反事实 | [1.4](/chapters/01-why-world-models/03-classic-world-models)、第 4 章、[9.2](/chapters/09-evaluate-and-invent/02-systematic-evaluation)、本附录的换骨干条目 |
+| Datawhale every-embodied：VAE/DDPM 代码、LeWM 复现、SO-101 遥操作 | [4.6](/chapters/04-decision-and-planning/06-reproduce-world-models)、[6.5](/chapters/06-jepa/05-jepa)、[7.8](/chapters/07-robot-vla/06-data-to-generative-policy) |
+| Datawhale dive-into-embodied-ai：CS123 中文仿真版、VLA 十二讲 | [7.1](/chapters/07-robot-vla/01-robot-interfaces)、[7.6](/chapters/07-robot-vla/04-contact-and-whole-body)、[7.3](/chapters/07-robot-vla/03-vision-language-action) |
+| MIT 6.s953：POMDP、少数据、Dyna、UniSim、好奇心、元学习、MARL | [1.2](/chapters/01-why-world-models/01-observation-and-state)、[4.6](/chapters/04-decision-and-planning/06-reproduce-world-models)、本附录 |
 | Berkeley CS 285：模仿学习、model-based、offline RL、LLM-RL | [7.2](/chapters/07-robot-vla/02-imitation-and-policies)、第 4 章、本附录 |
-| Berkeley CS 294-277：触觉、腿式、视频世界模型当策略、长时程语言 | [7.4](/chapters/07-robot-vla/04-robot-world-models)–[7.6](/chapters/07-robot-vla/06-legged-and-whole-body)、[7.3](/chapters/07-robot-vla/03-vision-language-action) |
-| Stanford CS 123：PD、FK/IK、四足 RL、foundation model lab | [7.1](/chapters/07-robot-vla/01-robot-interfaces)、[7.6](/chapters/07-robot-vla/06-legged-and-whole-body)、[7.9](/chapters/07-robot-vla/09-robot-vla) |
-| 北大《具身智能导论》：三维抓取、Sim2Real、多模态大模型 | [7.5](/chapters/07-robot-vla/05-manipulation-and-touch)、[7.7](/chapters/07-robot-vla/07-simulators-and-sim2real)、[7.3](/chapters/07-robot-vla/03-vision-language-action) |
+| Berkeley CS 294-277：触觉、腿式、视频世界模型当策略、长时程语言 | [7.4](/chapters/07-robot-vla/03-vision-language-action)–[7.6](/chapters/07-robot-vla/04-contact-and-whole-body)、[7.3](/chapters/07-robot-vla/03-vision-language-action) |
+| Stanford CS 123：PD、FK/IK、四足 RL、foundation model lab | [7.1](/chapters/07-robot-vla/01-robot-interfaces)、[7.6](/chapters/07-robot-vla/04-contact-and-whole-body)、[7.9](/chapters/07-robot-vla/06-data-to-generative-policy) |
+| 北大《具身智能导论》：三维抓取、Sim2Real、多模态大模型 | [7.5](/chapters/07-robot-vla/04-contact-and-whole-body)、[7.7](/chapters/07-robot-vla/05-simulators-and-sim2real)、[7.3](/chapters/07-robot-vla/03-vision-language-action) |
 
 动手配方仍只出现在各章「动手：」页。本附录不另开 Notebook。
 
@@ -51,7 +51,7 @@
 - 世界模型：学 $\hat P(s'\mid s,a)$，评价看反事实与多步漂移。
 - 离线策略：学 $\pi$，评价看在 $\mathcal{D}$ 支持内的回报；超出支持时 Q 函数会高估未见过的动作。
 
-常见对策是约束策略不要远离行为策略（CQL、IQL 一类）。对世界模型课的含义是：只用成功示范训后果模型，会把碰撞区当成 OOD 并自信外推——这正是 [7.4](/chapters/07-robot-vla/04-robot-world-models) 要求混入坏动作的原因。
+常见对策是约束策略不要远离行为策略（CQL、IQL 一类）。对世界模型课的含义是：只用成功示范训后果模型，会把碰撞区当成 OOD 并自信外推——这正是 [7.4](/chapters/07-robot-vla/03-vision-language-action) 要求混入坏动作的原因。
 
 ---
 
@@ -95,8 +95,8 @@ $$
 
 Berkeley CS 294-277 用生物力学开场，不是为了讲解剖，而是给出三条工程约束：
 
-1. **延迟**：视觉约 $100\,\mathrm{ms}$、本体感觉更快；控制回路必须在延迟下稳定。见 [7.2](/chapters/07-robot-vla/02-imitation-and-policies) 的 RTC 与 [7.7](/chapters/07-robot-vla/07-simulators-and-sim2real) 的动作延迟。
-2. **欠驱动与接触**：没有电机连着地面，力只能通过摩擦锥传递。见 [7.6](/chapters/07-robot-vla/06-legged-and-whole-body)。
+1. **延迟**：视觉约 $100\,\mathrm{ms}$、本体感觉更快；控制回路必须在延迟下稳定。见 [7.2](/chapters/07-robot-vla/02-imitation-and-policies) 的 RTC 与 [7.7](/chapters/07-robot-vla/05-simulators-and-sim2real) 的动作延迟。
+2. **欠驱动与接触**：没有电机连着地面，力只能通过摩擦锥传递。见 [7.6](/chapters/07-robot-vla/04-contact-and-whole-body)。
 3. **发育式课程**：婴儿先稳定头和躯干，再走、再抓。对应工程上的课程学习：先状态观察的教师，再视觉学生。
 
 生物启发到此为止。本书不把肌肉模型或中枢模式发生器当成可打分实验。
@@ -115,7 +115,7 @@ Berkeley CS 294-277 用生物力学开场，不是为了讲解剖，而是给出
 
 用语言模型直接输出技能名或代码（Code as Policies），是 CS 285 近年的 LLM-RL 线。它解决的是长时程离散选择，不解决 $50\,\mathrm{Hz}$ 的连续控制。
 
-和世界模型的接法只有一种合法形式：语言模型提出候选，世界模型或价值函数否决做不到的候选。只把 LLM 的文本当成功证据，不能代替 [7.4](/chapters/07-robot-vla/04-robot-world-models) 的动作后果检查。
+和世界模型的接法只有一种合法形式：语言模型提出候选，世界模型或价值函数否决做不到的候选。只把 LLM 的文本当成功证据，不能代替 [7.4](/chapters/07-robot-vla/03-vision-language-action) 的动作后果检查。
 
 ---
 
@@ -128,7 +128,7 @@ Datawhale 的 P04 要求：同一套数据上，把 RSSM 换成小型因果 Tran
 - RSSM：GRU 维护 $h_t$，随机 $z_t$ 走 KL。
 - 因果 Transformer：把 $(z_{\le t}, a_{\le t})$ 当成 token 序列，用遮罩预测 $z_{t+1}$。
 
-必须同时报一步损失、多步漂移、反事实差异。只报 Transformer 的 next-token loss 更低，不能声称规划变好。第 4.8 节允许把这个对照当作 Dreamer-lite 的替代选题；第 5 章的视频 Transformer 是另一条路线，不要把像素 token 和 RSSM latent 混在一张表里。
+必须同时报一步损失、多步漂移、反事实差异。只报 Transformer 的 next-token loss 更低，不能声称规划变好。第 4.7 节的简洁档允许把这个对照当作 Dreamer-lite 的替代选题；第 5 章的视频 Transformer 是另一条路线，不要把像素 token 和 RSSM latent 混在一张表里。
 
 ---
 
@@ -137,6 +137,6 @@ Datawhale 的 P04 要求：同一套数据上，把 RSSM 换成小型因果 Tran
 Datawhale L05 的争论可以收成一个判断：
 
 - **语言 grounding**：表示能否对齐「红杯 / 蓝杯」这类符号，换指令则换动作。见 [7.3](/chapters/07-robot-vla/03-vision-language-action)。
-- **物理 grounding**：表示能否保留接触、碰撞、可达性，换动作则换未来。见 [1.3](/chapters/01-why-world-models/03-what-is-a-world-model) 的反事实条件。
+- **物理 grounding**：表示能否保留接触、碰撞、可达性，换动作则换未来。见 [1.3](/chapters/01-why-world-models/02-what-is-a-world-model) 的反事实条件。
 
 两者可以同时失败：画面清晰、指令对、手还是插进桌子。第 9 章要求两项分开报，不许用 FID 或指令准确率互相替代。LeCun 的 AMI 把世界模型、代价、演员拆开，是这个争论的架构版本，不是新的损失函数名词。

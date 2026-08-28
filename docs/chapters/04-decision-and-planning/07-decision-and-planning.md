@@ -1,4 +1,4 @@
-# 4.7　动手：Dreamer 的简化实现
+# 4.7　动手：想象训练的简洁实现
 
 > **本节目标**：跑通一条从「像素观测」到「在想象中规划行动」的完整链路。第一份 Notebook 把 CNN Encoder、RSSM 和预测 head 接起来，确认 loss 能下降；第二份先在一个可解释的位置模型上证明 learned dynamics 真的能帮助行动，再把位置换成 RSSM latent，让 Actor-Critic 在隐空间里走完一次更新。
 
@@ -53,7 +53,7 @@ print('PyTorch:', torch.__version__, 'device:',
       'cuda' if torch.cuda.is_available() else 'cpu')
 ```
 
-教学版在 CPU 上运行，不需要 GPU。4.8 的完整训练建议用单张 24GB。
+教学版在 CPU 上运行，不需要 GPU。本节第二档的完整训练建议用单张 24GB。
 
 两份 Notebook 在：
 
@@ -464,16 +464,6 @@ python scripts/run_position_dynamics_reference.py --output runs/reference/positi
 
 `run_position_dynamics_reference.py` 还会写出 `position-dynamics.pt`、`metrics.json` 和带 sha256 的 `manifest.json`。那是第 9 章运行证据规范在这条路线上的最小实例。
 
-## 本节与 4.8 的区别
-
-| 项目 | 本节                                  | 4.8                               |
-| ---- | ------------------------------------- | --------------------------------- |
-| 数据 | 4 段 PixelWorld；位置模型 180 条单步  | 更大的 PixelWorld；选做 DMC       |
-| 训练 | 15–100 步；Actor 更新 1 次            | 直到形成稳定曲线                  |
-| 目的 | 检查控制增益、接口与梯度              | 检查完整 latent policy 的回报     |
-| 资源 | CPU                                   | 单张 24GB GPU                     |
-| 结论 | 可解释动态能帮助行动；RSSM 接口可运行 | latent 模型与策略是否形成稳定闭环 |
-
 ## 已知简化与坑
 
 教学版有几处刻意的简化，跑不通时先从这里找原因：
@@ -494,17 +484,26 @@ python scripts/run_position_dynamics_reference.py --output runs/reference/positi
 3. **想象长度**：把 `imagine` 的 horizon 从 5 提到 20，观察预测奖励会不会爆、continue 会不会塌到 0。复合误差在隐空间里一样会发生。
 4. **把重建画进梦境**：对想象出来的特征调用 `model.decode`，看 5 步 prior rollout 的画面。前两步也许还能辨认方块，后面通常糊掉——这就是 4.6 里那张 free-running 图，在 RSSM 里的对应物。
 
-完成两份 Notebook 后进入 [4.8 动手：Dreamer 的完整闭环](/chapters/04-decision-and-planning/08-dreamer-loop)：那台模型不再用 4 段 episode 做 smoke，而是收集、想象、更新、再收集。你会亲身体会「接口连通」与「策略收敛」之间的巨大鸿沟。
+完成两份 Notebook 后，本节还有第二档：**不给完整配方**。把数据、更新次数和闭环都加大，回答「latent 策略有没有在真实环境里变好」。这是本章最后一档动手，对应总纲里「自己设计缺口、放大到单张 24GB」。
 
-## 本节小结
+## 第二档：想象训练的完整闭环（不给配方）
 
-- **第一份 Notebook 确认 RSSM 接口连通**：CNN 压像素，RSSM 的 prior / posterior 双路结构，三个预测 head，15 次更新后 loss 能下降。
-- **第一份 Notebook 同时证明 loss 不够**：复制上一帧的像素误差仍低于训练后的解码器。相邻帧太像，像素损失会奖励偷懒。
-- **第二份 Notebook 先做可解释基线**：位置模型的 MSE 下降，beam search 的成功率显著高于随机——证明 learned dynamics 真的能帮助行动。
-- **第二份 Notebook 再接通 Actor-Critic**：把位置换成 RSSM latent，Actor 采样动作、prior 推演、Critic 给 value、TD-λ 算 target，一次更新后参数确实改变。
-- **Smoke 不是完整训练**：4 段 episode、15–100 步、CPU 运行——目标是检查数据流，不是复现 DreamerV3 的排行榜。
+跟做实验证明的是接口连通。下面要证明策略收敛。提交时八项证据缺一不可：
 
-从 4.6 的 World Models 到这一节的 Dreamer 接口，核心思想从未改变：**在行动之前，先在内部预见行动的后果**。4.6 用 CMA-ES 在梦境里进化控制器，这一节用梯度下降在梦境里训练 Actor-Critic——前者像蒙眼摸索，后者像看着地图走。而 4.8 会让你亲手把这张地图画完整。
+1. 按 episode 切分的数据卡，以及 `ReplayBuffer` 采出的连续序列 shape
+2. RSSM 的四条 loss：reconstruction、reward、continue、KL
+3. one-step 与 5 / 15 / 30 步预测，并且明确和「复制上一帧」比过
+4. 至少一个基线：随机策略，或位置模型 MPC（`planned 1.0` / `random 0.0`）
+5. **真实环境 return 对真实交互步数**，不是对训练步数
+6. 同一起点只换动作的反事实
+7. 一组 Actor 或 Planner 利用模型漏洞的失败，固定 seed 可重复
+8. GPU / CPU、peak 显存、墙钟时间和 checkpoint sha256
+
+CPU 缩减档可以用 20 段 × 16 步、40 次世界模型更新把数字钉死，但不能用第一份 Notebook 的 4 段、15 步冒充完整训练。模板见 [`notebooks/projects/route-template.ipynb`](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/projects/route-template.ipynb)。
+
+**不接受的结论**：loss 下降了所以训成了；Actor 参数变了所以策略变好了；真实 return 没动是因为 PixelWorld 不可控（位置模型已经 `1.0` 对 `0.0`）。
+
+从 4.6 的 World Models 到这一节的 Dreamer 接口，核心思想从未改变：**在行动之前，先在内部预见行动的后果**。4.6 用 CMA-ES 在梦境里进化控制器，这一节用梯度下降在梦境里训练 Actor-Critic。
 
 ## 后续工作
 

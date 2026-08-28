@@ -1,4 +1,4 @@
-# 5.6　动手：动作条件视频模型的从零实现
+# 5.5　动手：交互式视频模型的从零开始实现
 
 > **本节目标**：在 PixelWorld 上跑通一台离散视频世界模型。用 VQ-VAE 把每一帧压成离散 token，再用动作条件 Transformer 猜下一组编号，解码后你能看见画面。
 
@@ -54,7 +54,7 @@ python -m pip install -r requirements-neural.txt
 PYTHONPATH=src python -m unittest tests.test_routes_bc -v
 ```
 
-做完这一节再进入 [5.7 动手：听从按键的视频小世界](/chapters/05-interactive-video/07-controllable-video)。特征空间预测留给 [6.5](/chapters/06-jepa/05-jepa)。
+做完这一节再进入 [5.6 动手：听从按键的视频小世界](/chapters/05-interactive-video/06-controllable-video)。特征空间预测留给 [6.5](/chapters/06-jepa/05-jepa)。
 
 ## 第一步：先把时间接对
 
@@ -192,7 +192,7 @@ token grid: (128, 4, 4)
   <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">同一批帧。上排是原图，中排是复制上一帧，下排是 20 步 VQ 之后的解码。红块糊成棋盘格。重建项是前景加权损失 0.1533，不能拿去和复制帧的普通 MSE 0.00647 直接比大小。</div>
 </div>
 
-**这就是 VQ 在这份小数据上的真实样子**：接口通了，码本没死，画面还远远不能当「看得见的世界」。5.7 才会把 tokenizer 训到能辨认方块。
+**这就是 VQ 在这份小数据上的真实样子**：接口通了，码本没死，画面还远远不能当「看得见的世界」。5.6 才会把 tokenizer 训到能辨认方块。
 
 **一个值得做的实验**：把 `codebook_size` 从 16 提到 64，观察 `used codes` 和占用直方图。码本越大，每个码字代表的模式越细，但 128 张 16×16 的小图喂不饱它——使用率会掉下去。这是表示容量和数据量的张力，不是调参玄学。
 
@@ -395,7 +395,7 @@ PYTHONPATH=src python -m unittest tests.test_routes_bc -v
 - **第一份 Notebook**：复制帧 MSE、码本使用数、token accuracy、解码方向准确率
 - **第二份 Notebook**：三种注入的 sensitivity、teacher-forced 与 free rollout 中心
 
-| 项目 | 本节 smoke                     | 5.7                             |
+| 项目 | 本节 smoke                     | 5.6                             |
 | ---- | ------------------------------ | ------------------------------- |
 | 数据 | 6–12 段 PixelWorld             | 更大的 PixelWorld，选做真实视频 |
 | 训练 | 20–40 步，CPU                  | 直到曲线稳定                    |
@@ -421,7 +421,7 @@ PYTHONPATH=src python -m unittest tests.test_routes_bc -v
 1. **码本大小扫描**：把第一份 Notebook 的 `codebook_size` 从 8 扫到 64，画使用率和 token accuracy。有没有一个「再加大就开始空转」的点？
 2. **Free rollout 长度**：把第二份 Notebook 的连续按键从 8 步提到 20 步，观察中心坐标和 `NaN` 出现的步数。
 
-完成后进入 [5.7 动手：听从按键的视频小世界](/chapters/05-interactive-video/07-controllable-video)。下一章换一种预测目标：不画回像素，只预测未来特征，见 [6.5 动手：视频 JEPA 的从零实现](/chapters/06-jepa/05-jepa)。
+完成后进入 [5.6 动手：听从按键的视频小世界](/chapters/05-interactive-video/06-controllable-video)。下一章换一种预测目标：不画回像素，只预测未来特征，见 [6.5 动手：视频 JEPA 的从零实现](/chapters/06-jepa/05-jepa)。
 
 ## 本节小结
 

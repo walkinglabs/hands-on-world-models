@@ -1,14 +1,30 @@
-# 3.5　动手：表格世界模型的从零开始实现
+# 3.5　动手：表格型世界模型的从零开始实现
 
-> **本节目标**：把一段经历装进 Episode，在段内取样、按段切开，再从打滑的 LineWorld 里数出转移概率，用 MPC 走到终点。第一台世界模型甚至可以没有梯度。
+> **本节目标**：先用九格网格把「预测→规划→执行→修正」写出来，再把人工转移表拿走：把经历装进 Episode，从打滑的 LineWorld 里数出 \(\hat P(s'\mid s,a)\)，用 MPC 走到终点。第一台世界模型甚至可以没有梯度。
 
-> **本节代码**：[本节 Notebook](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/03_data/learn-a-table-world.ipynb) · [data.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/data.py) · [gridworld.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/gridworld.py)
+> **本节代码**：[九格世界](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/01_reinvent/invent-a-world-model.ipynb) · [表格世界](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/03_data/learn-a-table-world.ipynb) · [gridworld.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/gridworld.py) · [data.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/data.py)
 
-> **前置知识**：你已经读过第 3 章前四篇，知道观察比动作多一帧、不能跨 episode 拼接，以及怎样检查一台模型。这一节把它们真跑一遍。
+> **前置知识**：你已经在 [1.4](/chapters/01-why-world-models/04-imagine-driving) 玩过九格上的表格模型，并读过第 3 章前四篇。这一节把它们真写一遍。
 
 ---
 
-[1.1](/chapters/01-why-world-models/01-invent-a-world-model) 的转移表是你写的。现在拿走那张表。一段经历怎样保存、怎样取样、怎样切分，再怎样变成 \(\hat P(s'|s,a)\)，必须亲手接起来。跑完你会对「第一台世界模型」四个字有完全不同的理解——它甚至可以没有梯度。
+[1.4](/chapters/01-why-world-models/04-imagine-driving) 里那台模型，你只玩过，没写过。现在分两档：九格上先把手写闭环跑通；然后拿走那张表，从轨迹里把转移数学出来。
+
+## 先写九格：预测、规划、执行
+
+九格世界是 3×3 网格：起点 `(0,0)`，陷阱 `(1,1)`，目标 `(2,2)`。动作是 `up / down / left / right`，撞墙原地不动。完整代码在 [invent-a-world-model.ipynb](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/01_reinvent/invent-a-world-model.ipynb) 与 [`gridworld.py`](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/gridworld.py)，这里只钉住闭环。
+
+```python
+# 计数转移：P(s'|s,a) = n(s,a,s') / n(s,a)
+counts = {}
+for (s, a, s_next) in trajectory:
+    counts.setdefault((s, a), {})
+    counts[(s, a)][s_next] = counts[(s, a)].get(s_next, 0) + 1
+```
+
+没有模型的贪心策略会走进陷阱。有了转移表，MPC 只在模型里往前看几步、只执行第一步、再用真实观察修正。跑 Notebook 时你应当看到：贪心失败、MPC 绕开陷阱、没见过的 `(s,a)` 只能回答「不知道」。
+
+下面把人工表拿走。一段经历怎样保存、怎样取样、怎样切分，再怎样变成 \(\hat P(s'|s,a)\)，必须亲手接起来——环境换成会打滑的 LineWorld。
 
 <div style="text-align:center; margin:20px 0;">
   <img src="/carracing/f3-mpc.png" alt="LineWorld 上的 MPC" style="max-width:min(900px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">

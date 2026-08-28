@@ -1,4 +1,4 @@
-# 2.4　压缩与生成
+# 2.4　变分自编码器与向量量化
 
 把一张 $16\times16\times3$ 图片里每个 $4\times4$ 区域取平均，会缩成 $4\times4\times3$。数字量减少了 16 倍，方块大致还在，但清晰的边缘消失了。
 
@@ -70,7 +70,29 @@ JEPA 走得更远：它不要求解码完整像素，只预测目标特征。第
 
 除了重建误差，还应检查小物体、位置、速度和动作后果能否从 latent 恢复。若任务依赖碰撞，而 latent 丢掉了杯沿或障碍物，再漂亮的背景也补不上这个缺口。
 
-> 👉 动手实验：[动手：观察编码、记忆与压缩](/chapters/02-foundations/08-basic-experiments)
+## KL 坍缩与 Free Bits
+
+带随机潜变量的世界模型（如 RSSM）在损失里有一项 KL，把后验 $q(z_t\mid o_t,h_t)$ 往先验 $p(z_t\mid h_t)$ 拉。优化器很快会发现一个捷径：让后验完全等于先验，KL 降到 $0$，潜变量不再携带任何关于观察的信息。这就是 **KL 坍缩**（posterior collapse）——重构靠解码器硬记，动力学学了个寂寞。
+
+**Free Bits** 给 KL 设一个下界，只在超过阈值时才产生梯度：
+
+$$
+\mathcal{L}_{\mathrm{KL}} = \sum_{i=1}^{G}\max\bigl(\beta,\; \mathrm{KL}_i\bigr).
+$$
+
+$G$ 是潜变量的分组数，$\beta$ 通常取 $1$ nat。DreamerV3 用 $32$ 组 $\times\,32$ 类的离散潜变量，于是总 KL 在 $32$ nats 以下时梯度为零；只有想携带更多信息时才付出正则代价。
+
+## Unimix：不让概率真的等于零
+
+离散潜变量要算 $-\ln p$。若 softmax 把某一类压到 $0$，损失直接变成 $\infty$。**Unimix** 把预测分布与均匀分布混合：
+
+$$
+p = (1-\alpha)\,\hat{p} + \frac{\alpha}{K}.
+$$
+
+取 $\alpha=0.01$、$K=32$，最小概率是 $3.125\times10^{-4}$，$-\ln p$ 有硬上界。代价是分布永远无法真正确定。
+
+> 👉 动手实验：[2.7 动手：核心组件的简洁实现](/chapters/02-foundations/07-basic-experiments)
 
 ## 小结
 

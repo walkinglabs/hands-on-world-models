@@ -99,4 +99,4 @@ HF ML-for-3D 课把生成式三维拆成三步：多视图扩散生成若干新�
 
 下一篇把时间加进来，看看三维世界怎样变成四维。
 
-> 👉 动手实验：[动手：从图像到空间（相机几何、BEV、NeRF）](/chapters/08-spatial-worlds/07-spatial-world)
+> 👉 动手实验：[动手：从图像到空间（相机几何、BEV、NeRF）](/chapters/08-spatial-worlds/06-occupancy-prediction)

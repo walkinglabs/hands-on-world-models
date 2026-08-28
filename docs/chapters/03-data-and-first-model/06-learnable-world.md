@@ -1,4 +1,4 @@
-# 3.6　动手：重新发明一台可学习世界模型
+# 3.6　动手：神经网络世界模型的简洁实现
 
 > **本节目标**：不再使用人工写的转移表。你将面对一个「当前观察不够用、数据盖不住、规划 horizon 不够长」的小世界，自行决定什么状态值得保存、模型输出一个结果还是分布、Planner 怎样使用它。最终交出一份完整的证据链：接口图、数据卡、基线、learned dynamics、四类评价、一组稳定失败、一项最小改动。
 
@@ -545,7 +545,7 @@ PYTHONPATH=src python -m unittest tests.test_gridworld -v
 
 Dyna 把「用模型生成想象经验」写成完整算法，每一步真实交互后都在表格里再做几步规划更新。World Models 把同一件事做到像素上：V 压缩、M 想象、C 在梦里进化。Dreamer 再把无梯度进化换成可微的 Actor-Critic。你在本节里亲手碰到的覆盖空洞、复合误差、模型被 Planner 钻空子，都会在那些更大的模型里再次出现。
 
-若你已经决定走决策与规划路线，下一份实验是 [4.7 动手：Dreamer 的简化实现](/chapters/04-decision-and-planning/07-decision-and-planning)，收尾是 [4.8 动手：Dreamer 的完整闭环](/chapters/04-decision-and-planning/08-dreamer-loop)。
+若你已经决定走决策与规划路线，下一份实验是 [4.6](/chapters/04-decision-and-planning/06-reproduce-world-models)，收尾是 [4.7 动手：想象训练的简洁实现](/chapters/04-decision-and-planning/07-decision-and-planning)。
 
 ## 参考文献
 

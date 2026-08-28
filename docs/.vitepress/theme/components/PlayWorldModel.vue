@@ -42,7 +42,7 @@ const recentHits = computed(() => {
   return recent.filter(Boolean).length;
 });
 
-// 与课程 1.1 相同的世界：3×3，陷阱 (1,1)，目标 (2,2)，起点 (0,0)
+// 与课程 1.4 / 3.5 相同的世界：3×3，陷阱 (1,1)，目标 (2,2)，起点 (0,0)
 const GOAL = [2, 2];
 const TRAP = [1, 1];
 const DELTA = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };

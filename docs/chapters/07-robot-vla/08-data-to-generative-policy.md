@@ -1,10 +1,10 @@
-# 7.8　动手：从示范到生成策略
+# 7.8　动手：扩散策略的从零开始实现
 
 > **本节目标**：把一份示范数据写成标准格式，在同一数据、同一预算上训练三档策略——逐步 MSE、ACT 分块、扩散或流匹配——闭环对比，亲眼看到 MSE 把「左右绕行」平均成「撞墙」。
 
-> **本节代码**：[搭一台小型 VLA](https://github.com/walkinglabs/hands-on-world-models/blob/main/notebooks/07_robot/build-a-tiny-vla.ipynb)（7.9 的烟雾版基线）· [robot.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/robot.py) · [data.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/data.py)；本节配套冒烟 Notebook：`notebooks/07_robot/from-demos-to-generative-policies.ipynb`（岔路口世界，三档对照，CPU 约两分钟跑完）
+> **本节代码**：[robot.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/robot.py) · [data.py](https://github.com/walkinglabs/hands-on-world-models/blob/main/src/hwm/data.py)；本节配套冒烟 Notebook：`notebooks/07_robot/from-demos-to-generative-policies.ipynb`（岔路口世界，三档对照，CPU 约两分钟跑完）
 
-> **前置知识**：[7.1 机器人学习接口](/chapters/07-robot-vla/01-robot-interfaces)（动作空间与数据格式）、[7.2 模仿学习与生成策略](/chapters/07-robot-vla/02-imitation-and-policies)（分块、扩散、流匹配）、[3.1 经历与转移](/chapters/03-data-and-first-model/01-episodes-and-transitions)。
+> **前置知识**：[7.1 机器人数据与异构观测](/chapters/07-robot-vla/01-robot-interfaces)（动作空间与数据格式）、[7.2 行为克隆与扩散策略](/chapters/07-robot-vla/02-imitation-and-policies)（分块、扩散、流匹配）、[3.1 经历与转移](/chapters/03-data-and-first-model/01-episodes-and-transitions)。
 
 ---
 
@@ -63,7 +63,7 @@ dataset = LeRobotDataset("lerobot/pusht")
 | B | ACT 分块 | chunk $K=16$，时间集成 | 用一小段动作对抗复合误差 |
 | C | 扩散或流匹配 | DDPM/DDIM 采样步数，或 flow matching | 把动作当分布来建模 |
 
-三档都必须报两个数：**离线动作 MSE** 和**闭环成功率**。7.9 已经演示过这两者可以背离——离线 MSE 最低的策略，闭环不一定最好。如果三档的离线 MSE 排序和闭环成功率排序完全一致，说明你的任务太简单，进入步骤 3 之前先把任务调难。
+三档都必须报两个数：**离线动作 MSE** 和**闭环成功率**。[7.3 动手入口](/chapters/07-robot-vla/03-vision-language-action) 的 Tiny VLA 烟雾实验已经演示过这两者可以背离——离线 MSE 最低的策略，闭环不一定最好。如果三档的离线 MSE 排序和闭环成功率排序完全一致，说明你的任务太简单，进入步骤 3 之前先把任务调难。
 
 ## 步骤 3：闭环对比——让 MSE 当众撞墙
 
@@ -71,7 +71,7 @@ dataset = LeRobotDataset("lerobot/pusht")
 
 三档策略各跑同一批 $n \geq 50$ 个初始状态，记录：
 
-- **成功率**与**碰撞率**（带置信区间，统计学见 [7.7](/chapters/07-robot-vla/07-simulators-and-sim2real)）
+- **成功率**与**碰撞率**（带置信区间，统计学见 [7.5](/chapters/07-robot-vla/09-sim2real-and-deployment)）
 - **模式覆盖率**：成功的轨迹里，左绕和右绕各占多少
 
 预期方向：A 档（MSE）在障碍正前方的初始位置上大量撞墙——它学到的是「左绕和右绕的平均」，即直穿；C 档每次 rollout 采样到一个模态，两档模式覆盖率形成对照。B 档介于中间：分块减少了复合误差，但 chunk 内部仍是回归，模态混合的 chunk 照样存在。
@@ -114,7 +114,7 @@ dataset = LeRobotDataset("lerobot/pusht")
 2. **状态预测**（中等）：训练一个小模型，从当前观察预测 $d$ 步后的状态，把预测状态喂给策略。策略以为自己在"现在"决策，其实喂进去的是"未来"。
 3. **RTC 异步流水线**（最贵，LeRobot 的做法）：一边算下一批动作，一边执行上一批，重叠部分做 inpainting 式引导。延迟被流水线藏起来，代价是实现复杂、要调 `execution_horizon` 和 `max_guidance_weight`。
 
-7.7 讲的是"仿真里怎么建模延迟"——训练时加延迟让策略见过它。这里讲的是"部署时怎么补偿延迟"——推理时怎么把延迟的影响消掉。两件事都要做：训练时见过，部署时补偿。
+[7.5](/chapters/07-robot-vla/09-sim2real-and-deployment) 讲的是「仿真里怎么建模延迟」——训练时加延迟让策略见过它。这里讲的是「部署时怎么补偿延迟」——推理时怎么把延迟的影响消掉。两件事都要做：训练时见过，部署时补偿。
 
 ### 轨迹平滑：零阶保持会让机器人抖
 
@@ -124,7 +124,7 @@ dataset = LeRobotDataset("lerobot/pusht")
 
 1. **指数移动平均**（EMA，最便宜）：$\tilde a_t = \alpha\, a_t + (1-\alpha)\,\tilde a_{t-1}$。$\alpha$ 越小越平滑、越滞后。代价是动作变迟钝，抓快东西会慢半拍。
 2. **B 样条插值**（中等）：把离散动作点用三次 B 样条连成连续曲线，电机跟曲线走而不是跟离散点走。平滑且不滞后太多，代价是要算插值。
-3. **动作分块本身就是平滑**（免费）：ACT/扩散一次输出 $K$ 步，天然是一段连续轨迹，比逐步 MSE 的跳变小得多。这是 7.8 三档对照里 ACT 档"看起来更顺"的原因。
+3. **动作分块本身就是平滑**（免费）：ACT/扩散一次输出 $K$ 步，天然是一段连续轨迹，比逐步 MSE 的跳变小得多。这是 7.6 三档对照里 ACT 档「看起来更顺」的原因。
 
 平滑和延迟补偿会打架：EMA 平滑引入滞后，滞后加在延迟上更糟。所以常见做法是先补偿延迟（用分块或预测把动作提前），再在补偿后的轨迹上做轻度平滑。顺序反了，越平越迟。
 
@@ -135,11 +135,11 @@ dataset = LeRobotDataset("lerobot/pusht")
 - [ ] 首次部署速度限制到正常的 $20\%$ 以下
 - [ ] 相机视角、标定、坐标系与采集时完全一致
 
-真机报告规范沿用 [7.7](/chapters/07-robot-vla/07-simulators-and-sim2real)：$n \geq 20$ 次试验、置信区间、失败分类（未抓住 / 滑落 / 碰撞 / 超时）、每类失败一段视频。$20$ 次试验的半宽约 $\pm 0.20$——只报一个均值不构成证据。
+真机报告规范沿用 [7.5](/chapters/07-robot-vla/09-sim2real-and-deployment)：$n \geq 20$ 次试验、置信区间、失败分类（未抓住 / 滑落 / 碰撞 / 超时）、每类失败一段视频。$20$ 次试验的半宽约 $\pm 0.20$——只报一个均值不构成证据。
 
 ## 部署不是终点：纠错回流
 
-第一次部署的成功率通常难看。HF 体系最值得整条搬来的设计在这里：rollout 时人随时可以接管纠正（`lerobot-rollout` 的 dagger 模式；HIL-SERL 的介入，见 [7.7](/chapters/07-robot-vla/07-simulators-and-sim2real)），**纠错轨迹回流数据集，再训一轮**。
+第一次部署的成功率通常难看。HF 体系最值得整条搬来的设计在这里：rollout 时人随时可以接管纠正（`lerobot-rollout` 的 dagger 模式；HIL-SERL 的介入，见 [7.5](/chapters/07-robot-vla/09-sim2real-and-deployment)），**纠错轨迹回流数据集，再训一轮**。
 
 ```text
 部署 → 失败时人工接管 → 纠错轨迹入库 → 再训练 → 再部署
@@ -166,6 +166,12 @@ dataset = LeRobotDataset("lerobot/pusht")
 - [ ] 若做了步骤 4/5，判断清单逐条作答；真机报告含失败分类与视频。
 - [ ] 若做了纠错回流，介入率随轮次下降有曲线，且每轮成功率并排报告。
 
+## 相关：Tiny VLA 烟雾实验
+
+本节的三档策略还没有语言指令。要把图像、中文指令和本体状态拼成一台会听话的小 VLA，走 [7.3](/chapters/07-robot-vla/03-vision-language-action) 的动手入口，跑 `notebooks/07_robot/build-a-tiny-vla.ipynb`。
+
+它是烟雾实验，不是本节的配方：160 条 $32\times 32$ 桌面示范、CPU 上几分钟，用来检查「同一张图换指令，动作是否真的变」。后果检查器的烟雾版在同一目录的 `check-actions-before-moving.ipynb`。把检查器做成可验证证据，留给 [7.8](/chapters/07-robot-vla/08-world-model-meets-body)。
+
 ## 本节小结
 
 - **数据 → 训练 → 部署是一条闭环**：LeRobotDataset 是入口，闭环成功率是出口，中间的离线指标只是参考。
@@ -173,7 +179,9 @@ dataset = LeRobotDataset("lerobot/pusht")
 - **换大模型是判断题不是升级瘾**：OpenVLA-7B、π₀、GR00T 各有一张入场券，三条清单全中才值得花那张显卡。
 - **真机是统计学问题**：$n$、置信区间、失败分类，一个都不能少。
 
-下一篇 [7.9 动手：从零实现 VLA 与世界模型检查器](/chapters/07-robot-vla/09-robot-vla) 把语言指令接进来，搭一台会听话的 Tiny VLA；本节的三档策略在那里成为它的动作头候选。
+下一篇把同一套「仿真通过 ≠ 真机成功」的关口，做成机械臂与全身两条轨道的简洁实现：[7.7 动手：现实迁移的简洁实现](/chapters/07-robot-vla/09-sim2real)。
+
+[上一篇 7.7　现实迁移与真机部署](/chapters/07-robot-vla/09-sim2real-and-deployment) · [下一篇 → 7.9　动手：现实迁移的简洁实现](/chapters/07-robot-vla/09-sim2real)
 
 ## 参考文献
 
