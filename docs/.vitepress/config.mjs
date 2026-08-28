@@ -47,229 +47,87 @@ export default defineConfig({
     ],
     sidebar: [
       {
-        text: "导览",
+        text: "1. 为什么需要世界模型",
         collapsed: false,
         items: [
-          { text: "绪论", link: "/guide/world-model-intro" },
-          { text: "世界模型八十年", link: "/guide/world-model-history" },
+          { text: "1.1. 观察、状态与变化", link: "/chapters/01-why-world-models/01-observation-and-state" },
+          { text: "1.2. 什么是世界模型", link: "/chapters/01-why-world-models/02-what-is-a-world-model" },
+          { text: "1.3. 技术流派与应用全景", link: "/chapters/01-why-world-models/03-factions-and-landscape" },
+          { text: "1.4. 动手：在想象中驾驶", link: "/chapters/01-why-world-models/04-imagine-driving" },
         ],
       },
       {
-        text: "1. 引言",
+        text: "2. 表征、生成与决策基础",
         collapsed: false,
         items: [
-          {
-            text: "1.1. 观察、状态与变化",
-            link: "/chapters/01-why-world-models/01-observation-and-state",
-          },
-          {
-            text: "1.2. 什么是世界模型",
-            link: "/chapters/01-why-world-models/02-what-is-a-world-model",
-          },
-          {
-            text: "1.3. 经典世界模型",
-            link: "/chapters/01-why-world-models/03-classic-world-models",
-          },
-          {
-            text: "1.4. 动手：在想象中驾驶（交互式体验）",
-            link: "/chapters/01-why-world-models/04-imagine-driving",
-          },
-        ],
-      },
-      {
-        text: "2. 预备知识",
-        collapsed: false,
-        items: [
-          {
-            text: "2.1. 张量与轨迹",
-            link: "/chapters/02-foundations/01-tensors-and-trajectories",
-          },
-          {
-            text: "2.2. 卷积神经网络与视觉 Transformer",
-            link: "/chapters/02-foundations/02-cnn-and-vit",
-          },
-          {
-            text: "2.3. 循环神经网络与注意力机制",
-            link: "/chapters/02-foundations/03-memory-and-dynamics",
-          },
-          {
-            text: "2.4. 变分自编码器与向量量化",
-            link: "/chapters/02-foundations/04-compression-and-generation",
-          },
-          {
-            text: "2.5. 坐标系与三维表示",
-            link: "/chapters/02-foundations/05-space-representations",
-          },
-          {
-            text: "2.6. 价值函数与策略梯度",
-            link: "/chapters/02-foundations/06-value-policy-planner",
-          },
-          {
-            text: "2.7. 动手：核心组件的简洁实现",
-            link: "/chapters/02-foundations/07-basic-experiments",
-          },
+          { text: "2.1. 表征与序列建模", link: "/chapters/02-foundations/01-representation-and-sequence" },
+          { text: "2.2. 生成模型：自回归与扩散", link: "/chapters/02-foundations/02-generative-models" },
+          { text: "2.3. 决策基础：强化学习与模型预测控制", link: "/chapters/02-foundations/03-decision-foundations" },
+          { text: "2.4. 动手：核心组件的简洁实现", link: "/chapters/02-foundations/04-basic-components" },
         ],
       },
       {
         text: "3. 数据与第一个世界模型",
         collapsed: false,
         items: [
-          {
-            text: "3.1. 经历与状态转移",
-            link: "/chapters/03-data-and-first-model/01-episodes-and-transitions",
-          },
-          {
-            text: "3.2. 经验回放池",
-            link: "/chapters/03-data-and-first-model/02-replay-buffer-and-splits",
-          },
-          {
-            text: "3.3. 转移概率与极大似然估计",
-            link: "/chapters/03-data-and-first-model/03-first-learned-world",
-          },
-          {
-            text: "3.4. 多步预测与累积误差",
-            link: "/chapters/03-data-and-first-model/04-basic-checks",
-          },
-          {
-            text: "3.5. 动手：表格型世界模型的从零开始实现",
-            link: "/chapters/03-data-and-first-model/05-learn-a-table-world",
-          },
-          {
-            text: "3.6. 动手：神经网络世界模型的简洁实现",
-            link: "/chapters/03-data-and-first-model/06-learnable-world",
-          },
+          { text: "3.1. 经历与状态转移", link: "/chapters/03-data-and-first-model/01-episodes-and-transitions" },
+          { text: "3.2. 经验回放池", link: "/chapters/03-data-and-first-model/02-replay-buffer-and-splits" },
+          { text: "3.3. 转移概率与极大似然估计", link: "/chapters/03-data-and-first-model/03-first-learned-world" },
+          { text: "3.4. 多步预测与累积误差", link: "/chapters/03-data-and-first-model/04-basic-checks" },
+          { text: "3.5. 动手：表格型世界模型的从零开始实现", link: "/chapters/03-data-and-first-model/05-learn-a-table-world" },
+          { text: "3.6. 动手：神经网络世界模型的简洁实现", link: "/chapters/03-data-and-first-model/06-learnable-world" },
         ],
       },
       {
-        text: "4. 决策与规划",
+        text: "4. 潜在动力学与想象决策",
         collapsed: false,
         items: [
-          {
-            text: "4.1. 潜在动力学模型",
-            link: "/chapters/04-decision-and-planning/01-latent-world-model",
-          },
-          {
-            text: "4.2. 循环状态空间模型（RSSM）",
-            link: "/chapters/04-decision-and-planning/02-rssm-training",
-          },
-          {
-            text: "4.3. 交叉熵方法与模型预测控制",
-            link: "/chapters/04-decision-and-planning/03-planet-and-cem",
-          },
-          {
-            text: "4.4. 想象训练（Dreamer）",
-            link: "/chapters/04-decision-and-planning/04-dreamer-imagination",
-          },
-          {
-            text: "4.5. 蒙特卡洛树搜索（MuZero）",
-            link: "/chapters/04-decision-and-planning/05-muzero",
-          },
-          {
-            text: "4.6. 动手：循环状态空间模型的从零开始实现",
-            link: "/chapters/04-decision-and-planning/06-reproduce-world-models",
-          },
-          {
-            text: "4.7. 动手：想象训练的简洁实现",
-            link: "/chapters/04-decision-and-planning/07-decision-and-planning",
-          },
+          { text: "4.1. 潜在动力学模型", link: "/chapters/04-decision-and-planning/01-latent-world-model" },
+          { text: "4.2. 循环状态空间模型", link: "/chapters/04-decision-and-planning/02-rssm-training" },
+          { text: "4.3. 想象训练", link: "/chapters/04-decision-and-planning/03-dreamer-imagination" },
+          { text: "4.4. 蒙特卡洛树搜索", link: "/chapters/04-decision-and-planning/04-muzero" },
+          { text: "4.5. 动手：循环状态空间模型的从零开始实现", link: "/chapters/04-decision-and-planning/05-rssm-reproduce" },
+          { text: "4.6. 动手：想象训练的简洁实现", link: "/chapters/04-decision-and-planning/06-dreamer-practice" },
         ],
       },
       {
-        text: "5. 交互式视频",
+        text: "5. 交互式视频生成",
         collapsed: false,
         items: [
-          {
-            text: "5.1. 自回归视频生成",
-            link: "/chapters/05-interactive-video/01-video-data",
-          },
-          {
-            text: "5.2. 图像与视频词元化（Tokenizer）",
-            link: "/chapters/05-interactive-video/02-vq-tokenizer",
-          },
-          {
-            text: "5.3. 动作条件注入",
-            link: "/chapters/05-interactive-video/03-action-conditioning",
-          },
-          {
-            text: "5.4. 键值缓存（KV Cache）与实时生成",
-            link: "/chapters/05-interactive-video/04-memory-drift-realtime",
-          },
-          {
-            text: "5.5. 动手：交互式视频模型的从零开始实现",
-            link: "/chapters/05-interactive-video/05-interactive-video",
-          },
-          {
-            text: "5.6. 动手：受动作控制的视频小世界",
-            link: "/chapters/05-interactive-video/06-controllable-video",
-          },
+          { text: "5.1. 自回归视频生成", link: "/chapters/05-interactive-video/01-video-data" },
+          { text: "5.2. 图像与视频词元化", link: "/chapters/05-interactive-video/02-vq-tokenizer" },
+          { text: "5.3. 动作条件注入", link: "/chapters/05-interactive-video/03-action-conditioning" },
+          { text: "5.4. 键值缓存与实时生成", link: "/chapters/05-interactive-video/04-memory-drift-realtime" },
+          { text: "5.5. 动手：交互式视频模型的从零开始实现", link: "/chapters/05-interactive-video/05-interactive-video" },
+          { text: "5.6. 动手：受动作控制的视频小世界", link: "/chapters/05-interactive-video/06-controllable-video" },
         ],
       },
       {
         text: "6. 联合嵌入预测架构",
         collapsed: false,
         items: [
-          {
-            text: "6.1. 联合嵌入与特征预测",
-            link: "/chapters/06-jepa/01-feature-prediction",
-          },
-          {
-            text: "6.2. 掩码机制与表示坍缩",
-            link: "/chapters/06-jepa/02-mask-ema-collapse",
-          },
-          {
-            text: "6.3. 目标网络（EMA）",
-            link: "/chapters/06-jepa/03-video-jepa",
-          },
-          {
-            text: "6.4. 动作条件特征预测",
-            link: "/chapters/06-jepa/04-action-jepa",
-          },
-          {
-            text: "6.5. 动手：联合嵌入预测架构的从零开始实现",
-            link: "/chapters/06-jepa/05-jepa",
-          },
-          {
-            text: "6.6. 动手：视频 JEPA 的简洁实现",
-            link: "/chapters/06-jepa/06-video-jepa",
-          },
+          { text: "6.1. 联合嵌入与特征预测", link: "/chapters/06-jepa/01-feature-prediction" },
+          { text: "6.2. 掩码机制与表示坍缩", link: "/chapters/06-jepa/02-mask-ema-collapse" },
+          { text: "6.3. 目标网络", link: "/chapters/06-jepa/03-video-jepa" },
+          { text: "6.4. 动作条件特征预测", link: "/chapters/06-jepa/04-action-jepa" },
+          { text: "6.5. 动手：联合嵌入预测架构的从零开始实现", link: "/chapters/06-jepa/05-jepa" },
+          { text: "6.6. 动手：视频 JEPA 的简洁实现", link: "/chapters/06-jepa/06-video-jepa" },
         ],
       },
       {
         text: "7. 具身智能与机器人",
         collapsed: false,
         items: [
-          {
-            text: "7.1. 机器人数据与异构观测",
-            link: "/chapters/07-robot-vla/01-robot-interfaces",
-          },
-          {
-            text: "7.2. 行为克隆与扩散策略",
-            link: "/chapters/07-robot-vla/02-imitation-and-policies",
-          },
-          {
-            text: "7.3. 视觉语言动作模型（VLA）",
-            link: "/chapters/07-robot-vla/03-vision-language-action",
-          },
-          {
-            text: "7.4. 接触力与全身控制",
-            link: "/chapters/07-robot-vla/04-contact-and-whole-body",
-          },
-          {
-            text: "7.5. 模拟器与现实迁移",
-            link: "/chapters/07-robot-vla/05-simulators-and-sim2real",
-          },
-          {
-            text: "7.6. 动手：扩散策略的从零开始实现",
-            link: "/chapters/07-robot-vla/06-data-to-generative-policy",
-          },
-          {
-            text: "7.7. 动手：现实迁移的简洁实现",
-            link: "/chapters/07-robot-vla/07-sim2real",
-          },
-          {
-            text: "7.8. 动手：把世界模型接上身体（毕业设计）",
-            link: "/chapters/07-robot-vla/08-world-model-meets-body",
-          },
+          { text: "7.1. 视觉语言动作模型与 WAM", link: "/chapters/07-robot-vla/01-vla-and-wam" },
+          { text: "7.2. 行为克隆与扩散策略", link: "/chapters/07-robot-vla/02-imitation-and-policies" },
+          { text: "7.3. 机器人数据与异构观测", link: "/chapters/07-robot-vla/03-robot-interfaces" },
+          { text: "7.4. 接触力与灵巧操作", link: "/chapters/07-robot-vla/04-contact-and-manipulation" },
+          { text: "7.5. 腿式运动与全身控制", link: "/chapters/07-robot-vla/05-legged-and-whole-body" },
+          { text: "7.6. 物理引擎与仿真构建", link: "/chapters/07-robot-vla/06-physics-and-simulation" },
+          { text: "7.7. 现实迁移与真机部署", link: "/chapters/07-robot-vla/07-sim2real-and-deployment" },
+          { text: "7.8. 动手：扩散策略的从零开始实现", link: "/chapters/07-robot-vla/08-data-to-generative-policy" },
+          { text: "7.9. 动手：现实迁移的简洁实现", link: "/chapters/07-robot-vla/09-sim2real" },
+          { text: "7.10. 动手：把世界模型接上身体", link: "/chapters/07-robot-vla/10-world-model-meets-body" },
         ],
       },
       {

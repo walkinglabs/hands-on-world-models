@@ -1,3 +1,112 @@
+# 2.1 表征与序列建模
+
+> 本节整合了视觉模块（CNN/ViT）与序列建模（RNN/Transformer）的核心逻辑。假设读者已有一定的深度学习基础，我们不再拆解底层反向传播，而是聚焦它们如何为世界模型提供「表征」与「记忆」。
+
+# 2.1　张量与轨迹
+
+> **第 2 章 · 预备知识**
+>
+> 网格世界只有几个整数。现实中的一次观察可能包含图片、相机、语言和机器人状态，一段经历还要包含动作、奖励与时间顺序。
+>
+> 这一章建立后续五条世界模型路线共用的基础语言。每个组件只讲到足以判断它的输入、输出和用途；完整实现留到真正使用它的路线章节。
+>
+> 核心实验在 [2.7 动手：核心组件的简洁实现](/chapters/02-foundations/07-basic-experiments) 中串联看见、视觉、记忆、压缩、空间与规划。学完本章后，先明确模型最需要输出的形式（潜在向量、连续画面、特征表示、机器人动作或三维占用），再从第 4–8 章选择对应的设计路线——各路线彼此独立。
+
+网格世界只有几个整数就能讲清楚状态。真实的一次观察却可能是一张彩色图片、一段视频，再加上机器人关节角度。要把这些数据交给模型，我们需要一种统一的装法。
+
+所谓**张量**（tensor），可以先理解成一个装有许多数字的多维盒子。盒子的每一维有固定的长度，这些长度排在一起就构成 shape。
+
+## 从一张图片到一段视频
+
+一张 $16\times16$ 的彩色图片可以写成 shape $[16,16,3]$。三个数字分别表示高、宽和颜色通道，数字总数是 $16\times16\times3=768$。
+
+十六段这样的视频，每段各有 20 帧，合并成一个批量一起计算，shape 就变成：
+
+$$
+[B,T,H,W,C]=[16,20,16,16,3].
+$$
+
+这里 $B$ 表示一次并排处理多少段样本（batch），$T$ 表示时间步数。把单张图片推广到视频，本质只是在盒子前面再多加两根轴。
+
+## 维度名称比大小更重要
+
+光看 $[32,10,5]$ 这串数字，我们无法判断它到底是什么：可能是 32 段轨迹、每段 10 步、每步 5 个状态量，也可能是完全不同的对象。因此数据卡必须同时写出每一维的语义，而不只是长度。
+
+深度学习框架对图像维度的顺序也有约定。PyTorch 的图像默认是 $[B,C,H,W]$，视频是 $[B,T,C,H,W]$，通道轴靠前；而 NumPy 存储的视频常常是 $[B,T,H,W,C]$，通道轴在最后。两种顺序之间转换需要显式交换维度：
+
+```python
+video = video.permute(0, 1, 4, 2, 3)  # [B,T,H,W,C] -> [B,T,C,H,W]
+```
+
+顺序错了，模型会把宽当成通道，训练看似能跑，结果却毫无意义。
+
+## T+1 个观察对应 T 个动作
+
+四张连续图片之间只发生了三个动作：
+
+$$
+o_0 \xrightarrow{a_0} o_1 \xrightarrow{a_1} o_2 \xrightarrow{a_2} o_3.
+$$
+
+观察有 $T+1$ 个，动作只有 $T$ 个，因为动作 $a_t$ 发生在观察 $o_t$ 和 $o_{t+1}$ 之间。一段 episode 的基本 shape 因此是：
+
+```text
+observations: [T + 1, ...]
+actions:      [T, ...]
+rewards:      [T]
+dones:        [T]
+```
+
+如果把动作整体错开一格对齐，模型仍可能靠画面惯性猜中下一帧，却永远学不会“换了动作，未来会变”。这是动作条件学习里最常见、也最隐蔽的错误。
+
+## Episode 与 transition
+
+一条 **transition** 保存一次完整的变化：
+
+$$
+(o_t,\; a_t,\; r_t,\; o_{t+1},\; d_t),
+$$
+
+其中 $r_t$ 是这步奖励，$d_t$ 是一个布尔量，表示这一步是否触发了环境重置。许多条连续 transition 串起来，就组成一条 **episode**。
+
+`done=True` 之后，下一条记录不能直接接上一段新起点。否则模型会把“环境重置”当成一种普通动态，认为从终点能凭空跳回起点。正确做法是在 `done` 处切断，分别保存每段 episode。
+
+不同长度的 episode 处理起来麻烦。我们可以从内部采样固定长度的小片段，也可以 padding 后配一张 mask 标出有效位置。本课程优先采用前者，把注意力先放在动态本身。
+
+## 时间信息不能省略
+
+同样移动 5 厘米，用时 $0.1$ 秒和 $1$ 秒代表完全不同的速度。所谓速度，就是位移除以时间：$v=\Delta x/\Delta t$。缺少 $\Delta t$，模型无法把像素位移换算成物理量。
+
+因此动作数据至少要记录：观察时间戳、动作时间戳、控制频率、观察频率和执行延迟。机器人与驾驶数据还可能存在动作重复、跳帧和控制器内部延迟。这些元数据错了，换更大的网络也补救不了。
+
+## 小结
+
+- [ ] shape 要同时标出每一维的长度与含义。
+- [ ] $T+1$ 个观察对应 $T$ 个动作，$a_t$ 落在 $o_t$ 与 $o_{t+1}$ 之间。
+- [ ] transition 是一次变化，episode 是不跨重置的连续经历。
+- [ ] 时间戳与控制频率是动作条件学习的前提，不能省略。
+
+---
+
+## 参考资料
+
+### 实践博客
+
+1. [The Illustrated Transformer (Jay Alammar)](https://jalammar.github.io/illustrated-transformer/) —— 图解 Transformer 的经典博客，配 2.2 的 ViT 与 2.3 的注意力记忆。
+2. [Understanding LSTM Networks (Chris Olah, 2015)](https://colah.github.io/posts/2015-08-Understanding-LSTMs/) —— RNN 与 LSTM 的直觉讲解，配 2.3 的记忆组件。
+3. [The Unreasonable Effectiveness of Recurrent Neural Networks (Karpathy, 2015)](https://karpathy.github.io/2015/05/21/rnn-effectiveness/) —— 用大量可视化展示序列模型怎样“记住”过去，配 2.3。
+4. [What are Diffusion Models? (Lilian Weng, 2021)](https://lilianweng.github.io/posts/2021-07-11-diffusion-models/) —— 扩散模型从公式到采样的系统梳理，配 2.4 与第 5 章。
+5. [Transformers for Image Recognition at Scale (Google AI, 2020)](https://ai.googleblog.com/2020/12/transformers-for-image-recognition-at.html) —— ViT 官方解读博客，讲清 patch 化与规模效应，配 2.2。
+
+### 经典文献
+
+1. [Attention Is All You Need (Vaswani et al., 2017)](https://arxiv.org/abs/1706.03762) —— Transformer 原始论文，2.2、2.3 注意力的来源。
+2. [An Image is Worth 16x16 Words: ViT (Dosovitskiy et al., 2021)](https://arxiv.org/abs/2010.11929) —— Vision Transformer 原始论文，patch token 的来源。
+3. [Long Short-Term Memory (Hochreiter & Schmidhuber, 1997)](https://doi.org/10.1162/neco.1997.9.8.1735) —— LSTM 原始论文，记忆组件的奠基工作。
+4. [Neural Discrete Representation Learning: VQ-VAE (van den Oord et al., 2017)](https://arxiv.org/abs/1711.00937) —— 离散 token 表示的奠基论文，第 5 章视频分词器的直接前身。
+5. [Denoising Diffusion Probabilistic Models (Ho et al., 2020)](https://arxiv.org/abs/2006.11239) —— DDPM 原始论文，2.4 与第 5 章扩散路线的数学基础。
+
+
 # 2.2　卷积神经网络与视觉 Transformer
 
 > **从原始像素到结构化表征**
@@ -512,3 +621,90 @@ PatchViT 输出潜在表征:     torch.Size([240, 64])
 5. **V-JEPA: Video Joint Embedding Predictive Architecture** (Bardes et al., 2024) [[arXiv:2404.08471](https://arxiv.org/abs/2404.08471)]：提出基于时空特征预测的无自回归视频表征学习架构，摒弃像素重构，专注高级物理特征演化。
 6. **RoFormer: Enhanced Transformer with Rotary Position Embedding** (Su et al., Neurocomputing, 2024) [[arXiv:2104.09864](https://arxiv.org/abs/2104.09864)]：提出旋转位置编码（RoPE），严格证明内积形式下的相对位置解析性质与距离衰减规律。
 $$
+
+
+# 2.3　循环神经网络与注意力机制
+
+两段视频的最后一帧完全相同：红方块都停在画面中央。但第一段里方块从左边滑过来，第二段里从右边滑过来。
+
+只看末帧，下一步往哪走根本判断不了。模型若想预测未来，就必须让历史参与当前状态。这一节讲三种把过去“带到现在”的工具。
+
+## RNN 与 GRU：每步更新一份记忆
+
+**循环神经网络**（RNN）的核心动作，是每一步把旧记忆和新输入合并成新记忆：
+
+$$
+h_t = f(h_{t-1},\, x_t),
+$$
+
+其中 $x_t$ 是当前输入，$h_{t-1}$ 是上一步留下的记忆，$h_t$ 是更新后的记忆。
+
+简单 RNN 在长序列上容易梯度爆炸或消失。**GRU** 引入门控，用一组 $0$ 到 $1$ 之间的门决定保留多少旧信息、写入多少新信息。设重置门为 $r$、更新门为 $z$，GRU 的一步更新大致是：
+
+$$
+\begin{aligned}
+\tilde{h}_t &= \tanh\!\big(W\,x_t + U\,(r\odot h_{t-1})\big),\\
+h_t &= (1-z)\odot h_{t-1} + z\odot \tilde{h}_t.
+\end{aligned}
+$$
+
+门控让长序列训练更稳定。但如果 GRU 只读观察、不读动作，它顶多是个记忆器，预测不了动作的后果。要让状态对动作敏感，必须把上一步动作 $a_{t-1}$ 和观察一起送进去：
+
+$$
+h_t = \mathrm{GRU}\!\big(h_{t-1},\;\mathrm{concat}(z_{t-1},\, a_{t-1})\big).
+$$
+
+## 因果 Transformer：一次看一整段
+
+Transformer 可以一次性处理整条 token 序列，效率比逐步 RNN 高。但在预测下一步时，必须使用**因果遮罩**（causal mask）：第 $t$ 步只能看到 $0,\dots,t$，不能偷看未来的答案。
+
+设注意力分数为 $A$，因果遮罩把所有“未来位置”的分数置为负无穷，softmax 之后这些位置的权重就变成零：
+
+$$
+\mathrm{softmax}(A)_{ij}=0,\quad \forall\, j>i.
+$$
+
+它特别适合由图像 token、动作 token、语言 token 拼成的长序列。推理时还可以用 KV Cache 把已经算过的历史存起来，避免每一步都从头重算。
+
+## 确定记忆仍然不够
+
+一辆车开进隧道后暂时看不见了。根据进隧道前的速度，我们能估计它的大致位置，但真实位置可能是一整段区间。
+
+如果内部状态只有一个确定向量，这段“多种可能”就会被压成一个平均结果——画面常常糊掉，方向也模棱两可。世界模型需要同时保留长期记忆和当前的不确定性。
+
+## RSSM：确定状态加随机状态
+
+**循环状态空间模型**（RSSM）把隐状态拆成两半：
+
+$$
+\begin{aligned}
+h_t &:\text{ 确定状态，由 GRU 更新，保存长期线索},\\
+z_t &:\text{ 随机状态，描述当前仍不确定的部分}.
+\end{aligned}
+$$
+
+训练时，posterior 网络根据当前观察 $o_t$ 推断 $z_t$ 的分布 $q(z_t\mid h_t,o_t)$；想象未来时，prior 网络只靠历史和动作预测 $z_t$ 的分布 $p(z_t\mid h_t,a_{t-1})$。两者通过一个 KL 项相互靠近：
+
+$$
+\mathcal{L}_{\mathrm{KL}} = \mathrm{KL}\!\big(q(z_t\mid h_t,o_t)\;\|\; p(z_t\mid h_t,a_{t-1})\big).
+$$
+
+若 KL 压力过强，posterior 会被迫塌缩到 prior，模型干脆忽略观察——这叫 posterior collapse。**Free Bits** 给每个 $z$ 维度预留一小段免罚额度，只在超出部分计 KL，从而缓解这种坍缩。
+
+## 三种工具的边界
+
+RNN/GRU 强调逐步更新记忆；因果 Transformer 强调 token 序列与 KV Cache；RSSM 在记忆之上再显式区分确定与随机。
+
+同一套「状态 + 动作 → 下一状态」也可以把 GRU 整段换成因果 Transformer：把 $(z_{\le t}, a_{\le t})$ 当成一条 token 序列，用遮罩预测 $z_{t+1}$。这就是 STORM 一类模型相对 RSSM 的那一步，不是第 5 章的像素 token。合法对照必须锁死编码器、数据与 horizon，只换动力学骨干，并同时报一步损失、多步漂移和反事实。细则见 [附录 D](/appendices/neighboring-fields)，4.7 的简洁档允许把它当作 Dreamer-lite 的替代选题。
+
+它们本身都不是一台完整的世界模型。完整系统还需要动作条件转移、预测目标、数据，以及一套使用预测做决策的程序——这些是后面几节和后续章节的主题。
+
+> 👉 动手实验：[动手：观察编码、记忆与压缩](/chapters/02-foundations/07-basic-experiments)
+
+## 小结
+
+- [ ] 末帧相同、运动方向不同时，必须靠历史区分。
+- [ ] GRU 用更新门 $z$ 与重置门 $r$ 逐步更新记忆；预测动作后果时要把 $a_{t-1}$ 送入。
+- [ ] 因果 Transformer 用遮罩保证第 $t$ 步只看 $0,\dots,t$。
+- [ ] RSSM 用确定状态 $h_t$ 保存线索，用随机状态 $z_t$ 表达不确定性，并用 KL 拉近 posterior 与 prior。
+- [ ] 把 GRU 换成因果 Transformer 是合法的骨干对照，必须锁死数据与 horizon，见 [附录 D](/appendices/neighboring-fields)。
