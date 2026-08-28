@@ -307,7 +307,7 @@
 
 #### [附录 D　相关领域对照](docs/appendices/neighboring-fields.md)
 
-无模型强化学习（Model-free RL）、离线强化学习（Offline RL）、分层规划与多智能体系统对照。
+无模型强化学习（Model-free RL）、离线强化学习（Offline RL）、分层规划，以及多智能体世界模型（Multi-Agent World Models）对照。
 
 ## 🧪 实验代码
 
