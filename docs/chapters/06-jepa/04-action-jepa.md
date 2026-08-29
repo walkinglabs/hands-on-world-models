@@ -1,4 +1,4 @@
-# 6.4　动作条件特征预测
+# 6.4　动作条件特征预测（Action-JEPA）
 
 同一个机器人状态，向左推和向右推会得到截然不同的下一刻。被动 JEPA 只看视频，无从知道"动作"究竟是变化的原因，还是一段顺带录下来的伴随信号。
 
@@ -64,7 +64,7 @@ Action-JEPA 和 Dreamer（第 4 章）都能在特征空间预测未来，区别
 
 换句话说，Action-JEPA 是世界模型的"表示半成品"，Dreamer 把这种表示推到了完整的决策管线。加入 Action-JEPA 之后，如果一步规划没能优于"保持原动作"基线，就要怀疑表示里没保留任务需要的可控信息。
 
-这个"半成品"在 2026 年有了直接落地：LeRobot v0.6 的 VLA-JEPA 不另训 Actor-Critic，把预测出的特征直接当策略用。这说明表示质量足够高时，规划可以退化成一步 lookahead——见 [7.4](/chapters/07-robot-vla/03-vision-language-action) 的用法三。
+这个"半成品"在 2026 年有了直接落地：LeRobot v0.6 的 VLA-JEPA 不另训 Actor-Critic，把预测出的特征直接当策略用。这说明表示质量足够高时，规划可以退化成一步 lookahead——见 [7.4](/chapters/07-robot-policy/07-vla-rtx) 的用法三。
 
 ## 小结
 
@@ -73,4 +73,4 @@ Action-JEPA 和 Dreamer（第 4 章）都能在特征空间预测未来，区别
 - 反事实检查与下游动作选择，才能说明特征真正支持控制。
 - JEPA 重表示，Dreamer 重回报；二者在 latent 预测上接壤、目标不同。
 
-[上一篇 6.3 视频 JEPA](./03-video-jepa.md) · [动手：动作条件特征预测](/chapters/06-jepa/05-jepa)
+[上一篇 6.3 视频 JEPA](./03-target-network-ema.md) · [动手：动作条件特征预测](/chapters/06-jepa/05-jepa-scratch)

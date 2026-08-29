@@ -4,7 +4,7 @@
 >
 > 机器看见的只是一帧画面。世界模型要回答的是：当前观察是不是状态？看不见的东西怎么补回来？怎样才算一台世界模型，而不是视频生成器或反应式策略？
 >
-> 本章先把观察、状态与变化说清楚，再给出可检验的判据，对照 V-M-C、PlaNet、Dreamer 与 MuZero，最后用浏览器里的交互体验把「在想象中预演」摸一遍。手写九格转移表放到 [3.5](/chapters/03-data-and-first-model/05-learn-a-table-world)；训一台会做梦的赛车放到 [4.6](/chapters/04-decision-and-planning/06-reproduce-world-models)。
+> 本章先把观察、状态与变化说清楚，再给出可检验的判据，对照 V-M-C、PlaNet、Dreamer 与 MuZero，最后用浏览器里的交互体验把「在想象中预演」摸一遍。手写九格转移表放到 [3.5](/chapters/03-data-and-first-model/05-rl-foundation-scratch)；训一台会做梦的赛车放到 [4.6](/chapters/04-latent-dynamics/07-rssm-scratch)。
 
 ## 1. 观察、状态与历史
 

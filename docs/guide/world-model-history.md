@@ -61,7 +61,6 @@
   <em>图 3：施密德胡伯 1990 年手绘的“控制器 + 世界模型”示意图——比深度学习时代早了二十八年。来源：<a href="https://worldmodels.github.io/" target="_blank" rel="noopener noreferrer">worldmodels.github.io</a>（CC-BY 4.0）</em>
 </div>
 
-
 这两条思路的分工延续至今：Dyna 关心"模型如何帮**学习**"（生成训练数据），Schmidhuber 关心"模型如何帮**规划**"（搜索好动作）。现代工作几乎都是两者的混合。
 
 ## 5. 统计学习与真实机器人（1995–2011）
@@ -93,14 +92,12 @@
   <em>图 5：M 组件——MDN-RNN。混合密度输出让模型能表达“未来有多种可能”，而不是 collapsing 到模糊的均值。</em>
 </div>
 
-这篇工作的意义不在性能——它跑的只是 CarRacing 和 VizDoom 两个玩具任务——而在**范式**：证明了"压缩 → 预测 → 在预测里训练"这条流水线可以端到端成立。本课程第 1 章的原型正是这篇论文，[4.6 动手：World Models 的复现](/chapters/04-decision-and-planning/06-reproduce-world-models) 用 CarRacing 把它完整跑通。
+这篇工作的意义不在性能——它跑的只是 CarRacing 和 VizDoom 两个玩具任务——而在**范式**：证明了"压缩 → 预测 → 在预测里训练"这条流水线可以端到端成立。本课程第 1 章的原型正是这篇论文，[4.6 动手：World Models 的复现](/chapters/04-latent-dynamics/07-rssm-scratch) 用 CarRacing 把它完整跑通。
 
 第二年，DeepMind 的 Danijar Hafner 等发表 **PlaNet**（2019），贡献有二：
 
-- **RSSM（递归状态空间模型）**：把 RNN 的确定性记忆（想起上一步）与 VAE 的随机隐变量（世界有偶然性）**分开建模、结合使用** ——确定性路径保证长程预测不发散，随机路径防止模型对不确定的未来过度自信。这个结构成为后续 Dreamer 全系列的骨架，也是本课程 [4.2 RSSM](/chapters/04-decision-and-planning/02-rssm-training) 的主角。
+- **RSSM（递归状态空间模型）**：把 RNN 的确定性记忆（想起上一步）与 VAE 的随机隐变量（世界有偶然性）**分开建模、结合使用** ——确定性路径保证长程预测不发散，随机路径防止模型对不确定的未来过度自信。这个结构成为后续 Dreamer 全系列的骨架，也是本课程 [4.2 RSSM](/chapters/04-latent-dynamics/02-rssm) 的主角。
 - **隐空间 CEM 规划**：不再生成像素，直接在隐空间里用交叉熵方法搜索动作序列，一步规划只需毫秒级——模型法第一次在像素输入上实时跑起来。
-
-
 
 ![PlaNet 论文原图：RSSM 与先前状态空间模型变体的对比](/guide/paper/planet-rssm-comparison.png)
 
@@ -128,10 +125,7 @@
   <em>图 8：Dreamer 论文原图（Fig. 2）：想象（Imagination）、模型学习、Actor 反向传播与 Critic 价值学习的完整闭环。来源：<a href="https://arxiv.org/abs/1912.01603" target="_blank" rel="noopener noreferrer">Hafner et al., Dream to Control</a></em>
 </div>
 
-- **MuZero**（Schrittwieser 等，*Nature* 2020）：走向另一个极端—— **不重建任何观测**，只学"对预测价值与奖励有用的隐式模型"，配合蒙特卡洛树搜索同时打通围棋、国际象棋、将棋与 Atari。AlphaGo 需要人类规则知识，AlphaZero 需要完美模拟器，MuZero 两者都不要。它证明了：世界模型不必"像世界"，只需"够用"。
-
-
-
+- **MuZero**（Schrittwieser 等，_Nature_ 2020）：走向另一个极端—— **不重建任何观测**，只学"对预测价值与奖励有用的隐式模型"，配合蒙特卡洛树搜索同时打通围棋、国际象棋、将棋与 Atari。AlphaGo 需要人类规则知识，AlphaZero 需要完美模拟器，MuZero 两者都不要。它证明了：世界模型不必"像世界"，只需"够用"。
 
 ![MuZero 论文原图：学到的模型、搜索、执行与训练四个环节](/guide/paper/muzero-overview.png)
 
@@ -139,14 +133,13 @@
   <em>图 9：MuZero 论文原图（Fig. 1）：学到的模型用于搜索、搜索选出动作、动作产生真实经验、经验再训练模型——每一步都没有重建观测。来源：<a href="https://arxiv.org/abs/1911.08265" target="_blank" rel="noopener noreferrer">Schrittwieser et al., MuZero</a></em>
 </div>
 
-Dreamer 与 MuZero 的对照，本质是"**模型该重建世界，还是只服务于决策**"这场古老争论（回想托尔曼与行为主义）在现代的重演。本课程 [4.5 MuZero](/chapters/04-decision-and-planning/05-muzero) 与 [4.4 Dreamer](/chapters/04-decision-and-planning/04-dreamer-imagination) 会分别动手实现两者的最小版本。
+Dreamer 与 MuZero 的对照，本质是"**模型该重建世界，还是只服务于决策**"这场古老争论（回想托尔曼与行为主义）在现代的重演。本课程 [4.5 MuZero](/chapters/04-latent-dynamics/06-muzero) 与 [4.4 Dreamer](/chapters/04-latent-dynamics/04-dreamer-v1) 会分别动手实现两者的最小版本。
 
 与 DreamerV3 同期，**TD-MPC2**（2024）沿 MPC 路线把模型预测控制扩展到 100 多个连续控制任务并支持多任务联合训练，说明"在线规划"这条路并未被"想象训练"取代。为决策服务的世界模型，至此成熟。
 
 ## 8. 生成式世界模型（2023–2024）
 
 就在决策路线趋于稳定时，视频生成技术让世界模型裂出了第二条路线——目标不再是帮策略决策，而是**生成可控的未来本身**。技术上的分水岭是 **VQ token 化 + 自回归 Transformer + 扩散解码器**这套组合拳（本课程第 5 章）：它把"预测下一帧"从像素回归问题变成了序列生成问题。
-
 
 - **2023 年**，Wayve 发布 **GAIA-1**：9B 参数视频世界模型，视频 token + 自回归 Transformer + 扩散解码器，在驾驶场景里用文字和动作控制未来——输入"迎面驶来一辆卡车"，画面里就真的出现卡车。世界模型第一次被当成"可控数据工厂"而非"策略教练"（第 8 章）。
 
@@ -160,7 +153,6 @@ Dreamer 与 MuZero 的对照，本质是"**模型该重建世界，还是只服�
   - DeepMind 的 **Genie** 从**无动作标注**的互联网视频里学出潜在动作模型，单张图片生成可交互环境——"看游戏视频学会做游戏"；
   - **GameNGen**（Google Research）用扩散模型实时模拟 DOOM，每秒 20 帧，玩家难以区分这是模拟还是游戏引擎；
   - **DIAMOND** 则把扩散世界模型接回强化学习，直接在其中训练策略——生成路线与决策路线在这里第一次交汇（第 5 章）。
-
 
 ![Genie 论文原图：潜在动作模型与动态模型协同生成可交互环境](/guide/paper/genie-architecture.png)
 
@@ -188,13 +180,13 @@ Dreamer 与 MuZero 的对照，本质是"**模型该重建世界，还是只服�
 
 回看整段历史，世界模型始终存在一个核心张力：
 
-| | 为决策服务 | 为生成服务 |
-|---|---|---|
-| 代表 | Dyna → PlaNet → Dreamer → MuZero | GAIA → Genie → GameNGen |
-| 输出 | 抽象隐状态 | 像素/视频 |
-| 优点 | 预测快、可直接规划与训练 | 可见、可审查、能造数据 |
-| 缺点 | 人看不见模型在想什么 | 像素预测昂贵，物理正确性存疑 |
-| 典型用途 | 机器人、游戏 AI | 内容生成、驾驶仿真、数据增强 |
+|          | 为决策服务                       | 为生成服务                   |
+| -------- | -------------------------------- | ---------------------------- |
+| 代表     | Dyna → PlaNet → Dreamer → MuZero | GAIA → Genie → GameNGen      |
+| 输出     | 抽象隐状态                       | 像素/视频                    |
+| 优点     | 预测快、可直接规划与训练         | 可见、可审查、能造数据       |
+| 缺点     | 人看不见模型在想什么             | 像素预测昂贵，物理正确性存疑 |
+| 典型用途 | 机器人、游戏 AI                  | 内容生成、驾驶仿真、数据增强 |
 
 JEPA 路线试图两头兼顾：只预测抽象特征，不生成像素，同时保留动作条件与规划能力。这场争论仍在进行——也正是本课程第 6 章与第 9 章的中心议题。
 

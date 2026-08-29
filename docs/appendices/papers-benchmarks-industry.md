@@ -15,16 +15,16 @@
 
 ## 论文路线
 
-| 路线       | 起点                 | 继续阅读                             |
-| ---------- | -------------------- | ------------------------------------ |
-| 决策与规划 | World Models、PlaNet | Dreamer、MuZero、TD-MPC2             |
-| 交互式视频 | VideoGPT、Genie      | GameNGen、DIAMOND、Diffusion Forcing |
-| 特征预测   | I-JEPA               | V-JEPA、V-JEPA 2-AC                  |
-| 具身智能   | RT-1、ACT            | OpenVLA、Octo、π0、SmolVLA、GR00T、Track2Act |
-| 空间世界   | NeRF、3DGS           | DriveDreamer、GAIA、Cosmos、未来占用预测     |
-| 世界模型×机器人（2026 前沿） | τ0-WM、GE-Sim 2.0 | WALL-WM、RoboDream、RISE、RAW-Dream、PhysBrain |
+| 路线                         | 起点                 | 继续阅读                                       |
+| ---------------------------- | -------------------- | ---------------------------------------------- |
+| 决策与规划                   | World Models、PlaNet | Dreamer、MuZero、TD-MPC2                       |
+| 交互式视频                   | VideoGPT、Genie      | GameNGen、DIAMOND、Diffusion Forcing           |
+| 特征预测                     | I-JEPA               | V-JEPA、V-JEPA 2-AC                            |
+| 具身智能                     | RT-1、ACT            | OpenVLA、Octo、π0、SmolVLA、GR00T、Track2Act   |
+| 空间世界                     | NeRF、3DGS           | DriveDreamer、GAIA、Cosmos、未来占用预测       |
+| 世界模型×机器人（2026 前沿） | τ0-WM、GE-Sim 2.0    | WALL-WM、RoboDream、RISE、RAW-Dream、PhysBrain |
 
-最后一行是 2026 年的前沿，它们不是新方向，而是 [7.4](/chapters/07-robot-vla/03-vision-language-action) 三种用法的工程化：τ0-WM 把策略和后果检查器焊进同一个视频模型，GE-Sim 2.0 是数据引擎加"世界裁判"，RoboDream 专攻合成数据，PhysBrain 从人类第一视角视频里提炼物理常识再接到 VLA。读它们时用四问阅读法，都能落回本书的接口图上。
+最后一行是 2026 年的前沿，它们不是新方向，而是 [7.4](/chapters/07-robot-policy/07-vla-rtx) 三种用法的工程化：τ0-WM 把策略和后果检查器焊进同一个视频模型，GE-Sim 2.0 是数据引擎加"世界裁判"，RoboDream 专攻合成数据，PhysBrain 从人类第一视角视频里提炼物理常识再接到 VLA。读它们时用四问阅读法，都能落回本书的接口图上。
 
 ## 评测基准
 

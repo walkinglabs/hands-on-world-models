@@ -2,7 +2,9 @@
   <div class="pwm">
     <div class="pwm-hint">
       用键盘方向键（或点击按钮）移动。注意右侧的两拍节奏：<b>按下方向的瞬间，小人还在原地，模型先亮出它的预测（紫色，标记“预测中…”）</b>；
-      片刻后小人才真正移动，预测同时被判定——<b>绿色 ✓ 猜对、橙色 ✗ 猜错、问号表示从未见过、一无所知</b>。连续按方向键会立即揭晓上一次预测。
+      片刻后小人才真正移动，预测同时被判定——<b
+        >绿色 ✓ 猜对、橙色 ✗ 猜错、问号表示从未见过、一无所知</b
+      >。连续按方向键会立即揭晓上一次预测。
     </div>
     <div class="pwm-row">
       <div class="pwm-panel">
@@ -18,14 +20,20 @@
       <button class="pwm-btn pwm-up" @click="act('up')">↑</button>
       <div class="pwm-mid">
         <button class="pwm-btn" @click="act('left')">←</button>
-        <button class="pwm-btn pwm-reset" @click="reset" title="重置世界和模型">重置</button>
+        <button class="pwm-btn pwm-reset" @click="reset" title="重置世界和模型">
+          重置
+        </button>
         <button class="pwm-btn" @click="act('right')">→</button>
       </div>
       <button class="pwm-btn pwm-down" @click="act('down')">↓</button>
     </div>
     <div class="pwm-stats">
-      <span>见过的状态-动作：<b>{{ totalTransitions }}</b> / 36</span>
-      <span>最近 10 次预测命中：<b>{{ recentHits }}/{{ recent.length }}</b></span>
+      <span
+        >见过的状态-动作：<b>{{ totalTransitions }}</b> / 36</span
+      >
+      <span
+        >最近 10 次预测命中：<b>{{ recentHits }}/{{ recent.length }}</b></span
+      >
       <span v-if="ended" class="pwm-ended">{{ endedText }}</span>
     </div>
   </div>
@@ -105,7 +113,13 @@ function drawImag(pred) {
     draw(imag.value, null);
     return;
   }
-  draw(imag.value, { agent: pred.pos, goal: true, ghost: pred.conf, hit: pred.hit, pending: pred.pending });
+  draw(imag.value, {
+    agent: pred.pos,
+    goal: true,
+    ghost: pred.conf,
+    hit: pred.hit,
+    pending: pred.pending,
+  });
 }
 
 function draw(canvas, state) {
@@ -123,19 +137,43 @@ function draw(canvas, state) {
         ctx.fillStyle = "#d64545";
         ctx.fillRect(x, y, cell - 2, cell - 2);
         pixel(ctx, x + 18, y + 16, "#7c1f1f", [
-          [0,0],[4,0],[12,0],[16,0],
-          [4,4],[8,4],[12,4],
-          [0,8],[4,8],[8,8],[12,8],[16,8],
-          [4,12],[12,12],
-          [0,16],[4,16],[12,16],[16,16],
+          [0, 0],
+          [4, 0],
+          [12, 0],
+          [16, 0],
+          [4, 4],
+          [8, 4],
+          [12, 4],
+          [0, 8],
+          [4, 8],
+          [8, 8],
+          [12, 8],
+          [16, 8],
+          [4, 12],
+          [12, 12],
+          [0, 16],
+          [4, 16],
+          [12, 16],
+          [16, 16],
         ]); // 骷髅像素点阵
       } else if (state && r === GOAL[0] && c === GOAL[1]) {
         ctx.fillStyle = "#3f9e63";
         ctx.fillRect(x, y, cell - 2, cell - 2);
         pixel(ctx, x + 14, y + 12, "#eaf5ec", [
-          [0,4],[4,4],[8,4],[12,4],[16,4],
-          [4,0],[4,8],[12,0],[12,8],[16,0],[16,8],
-          [8,12],[8,16],[8,20],
+          [0, 4],
+          [4, 4],
+          [8, 4],
+          [12, 4],
+          [16, 4],
+          [4, 0],
+          [4, 8],
+          [12, 0],
+          [12, 8],
+          [16, 0],
+          [16, 8],
+          [8, 12],
+          [8, 16],
+          [8, 20],
         ]); // 旗帜像素点阵
       } else {
         ctx.fillStyle = "rgba(128,128,128,0.10)";
@@ -154,19 +192,39 @@ function draw(canvas, state) {
   const [ar, ac] = state.agent;
   const ax = ac * cell + 14;
   const ay = ar * cell + 12;
-  const body = state.pending ? "#8f7ab5" : state.hit === true ? "#2e9e5b" : state.hit === false ? "#c77d54" : "#8f7ab5";
+  const body = state.pending
+    ? "#8f7ab5"
+    : state.hit === true
+      ? "#2e9e5b"
+      : state.hit === false
+        ? "#c77d54"
+        : "#8f7ab5";
   pixel(ctx, ax, ay, body, [
-    [4,0],[8,0],
-    [0,4],[4,4],[8,4],[12,4],
-    [0,8],[4,8],[8,8],[12,8],
-    [4,12],[8,12],
-    [2,16],[6,16],[10,16],
+    [4, 0],
+    [8, 0],
+    [0, 4],
+    [4, 4],
+    [8, 4],
+    [12, 4],
+    [0, 8],
+    [4, 8],
+    [8, 8],
+    [12, 8],
+    [4, 12],
+    [8, 12],
+    [2, 16],
+    [6, 16],
+    [10, 16],
   ]);
   if (state.ghost != null) {
     ctx.fillStyle = "#8f7ab5";
     ctx.font = "11px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("置信 " + Math.round(state.ghost * 100) + "%", ac * cell + cell / 2 - 1, ar * cell + cell - 20);
+    ctx.fillText(
+      "置信 " + Math.round(state.ghost * 100) + "%",
+      ac * cell + cell / 2 - 1,
+      ar * cell + cell - 20,
+    );
     if (state.pending) {
       ctx.fillStyle = "#2f6fb0";
       ctx.font = "bold 12px sans-serif";
@@ -174,7 +232,11 @@ function draw(canvas, state) {
     } else {
       ctx.fillStyle = state.hit ? "#2e9e5b" : "#d64545";
       ctx.font = "bold 12px sans-serif";
-      ctx.fillText(state.hit ? "✓ 命中" : "✗ 未命中", ac * cell + cell / 2 - 1, ar * cell + cell - 6);
+      ctx.fillText(
+        state.hit ? "✓ 命中" : "✗ 未命中",
+        ac * cell + cell / 2 - 1,
+        ar * cell + cell - 6,
+      );
     }
   }
 }
@@ -219,9 +281,14 @@ function execute(action, pred) {
   countKnown();
   agent = next;
   drawReal();
-  lastPred = pred ? { pos: pred.pos, conf: pred.conf, hit } : { hit: false, unknown: true };
+  lastPred = pred
+    ? { pos: pred.pos, conf: pred.conf, hit }
+    : { hit: false, unknown: true };
   drawImag(lastPred);
-  if ((agent[0] === GOAL[0] && agent[1] === GOAL[1]) || (agent[0] === TRAP[0] && agent[1] === TRAP[1])) {
+  if (
+    (agent[0] === GOAL[0] && agent[1] === GOAL[1]) ||
+    (agent[0] === TRAP[0] && agent[1] === TRAP[1])
+  ) {
     ended.value = true;
     const win = agent[0] === GOAL[0] && agent[1] === GOAL[1];
     endedText.value = win
@@ -248,7 +315,12 @@ function reset() {
 }
 
 function onKey(e) {
-  const map = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+  const map = {
+    ArrowUp: "up",
+    ArrowDown: "down",
+    ArrowLeft: "left",
+    ArrowRight: "right",
+  };
   if (map[e.key]) {
     e.preventDefault();
     act(map[e.key]);
