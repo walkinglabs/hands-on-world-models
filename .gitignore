@@ -1,6 +1,7 @@
 node_modules/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+/.vitepress/
 .DS_Store
 
 temp/
@@ -23,3 +24,9 @@ uv.lock
 outputs/
 artifacts/
 *.log
+
+docs/public/readme/logo-concepts/
+docs/public/readme/logo-concepts-soft-industrial/
+docs/public/readme/logo-world-model-variants/
+docs/public/readme/logo-world-model-radical/
+docs/public/readme/logo-mark-v2.png
