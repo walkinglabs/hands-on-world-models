@@ -1,28 +1,61 @@
-# 三维占据网格预测（Occupancy Prediction）的从零开始实现
+# 9.6 三维占据网格预测（Occupancy Prediction）的从零开始实现
+:label:`sec_occupancy_scratch`
 
-在前面的章节中，我们深入探讨了如何将多视角的二维图像特征投影到俯视图（Bird's Eye View, BEV）空间，从而实现对周围环境的二维感知。然而，真实的物理世界是三维的。在自动驾驶和机器人导航等复杂场景中，仅仅知道“地面上哪里有物体”是远远不够的。例如，立交桥的悬挑结构、路边伸出的树枝、或者是形状不规则的大型工程车辆，它们在二维 BEV 投影下往往会丢失关键的几何信息，甚至导致危险的碰撞误判。
+在我们深入探讨三维占据网格预测（3D Occupancy Prediction）的代码实现之前，有必要先回顾自动驾驶环境感知的学术演进路线。早期的视觉感知任务主要集中在二维图像平面上的目标检测与语义分割，这种表示方法在面对三维物理世界时存在固有的尺度模糊性。随后，学术界引入了基于鸟瞰图（Bird's-Eye-View, BEV）的表示方法 `[Li et al., 2022]`，通过在二维地平面上构建特征网格，极大地简化了下游的轨迹规划任务。
 
-为了突破这一瓶颈，研究人员开始将目光投向**三维占据网格预测**（3D Occupancy Prediction）。这一任务要求模型不仅要识别出物体的语义类别，还要精确预测它们在三维空间中占据的具体体积。早期的三维场景理解高度依赖于昂贵的激光雷达（LiDAR）点云数据，但点云本身具有稀疏性，且随着距离的增加，数据密度急剧下降。近年来，以纯视觉（Vision-only）驱动的三维占据网络逐渐成为学术界的主流 [Huang et al., 2023] [Wei et al., 2023] [Wang et al., 2023]。这类方法试图直接从多张二维相机图像中，恢复出致密的三维体素（Voxel）表达。
+然而，真实的物理世界是三维的。当面对不规则物体（如悬挂的树枝、异形施工车辆）或复杂的路面拓扑（如立交桥、陡坡）时，将空间强行压缩到二维 BEV 平面上会导致高度信息的严重丢失。为了解决这一瓶颈，三维占据网格（3D Occupancy Grid）的概念应运而生。它将车辆周围的三维空间离散化为规则的体素（Voxel），并预测每个体素是否被物理实体占据以及该实体的语义类别。近年来，如 SurroundOcc `[Wei et al., 2023]`、OpenOccupancy `[Wang et al., 2023]` 和 TPVFormer `[Huang et al., 2023]` 等开创性工作，奠定了基于纯视觉的三维占据网格预测的理论与工程基础。
 
-在本节中，我们将从最基础的几何投影原理出发，一步步推导并实现一个极简但完整的三维占据网格预测网络。
+在本节中，我们将从最基础的几何投影与概率论出发，逐步推导并从零开始实现一个标准的三维占据网格预测模型。同时，我们也会深入剖析这些流行开源项目在真实自动驾驶系统中的落地工程经验。
 
-## 三维体素空间的几何定义
+## 空间几何离散化与占据概率分布
 
-要预测三维空间中的占据状态，我们首先需要对连续的物理世界进行离散化。最自然的方式是使用**体素**（Voxel），即三维空间中的像素。
+为了让计算机能够处理连续的三维物理空间，我们首先需要对其进行离散化。这与我们在高中物理中计算物体体积时，将不规则物体切分为微小正方体的微元法思想是完全一致的。
 
-假设我们需要感知的物理空间范围为 $X \times Y \times Z$ 米。为了让计算机能够处理，我们沿着长、宽、高三个维度，按照一定的分辨率 $\Delta x, \Delta y, \Delta z$ 将其切割成均匀的小方块。
+### 三维体素网格的定义
 
-令空间范围的边界为 $[x_{\min}, x_{\max}]$，$[y_{\min}, y_{\max}]$，$[z_{\min}, z_{\max}]$。我们可以计算出每个维度上体素的数量：
+假设我们关注车辆周围的一个长方体物理空间。我们定义该空间在世界坐标系下的范围为 $[X_{\min}, X_{\max}] \times [Y_{\min}, Y_{\max}] \times [Z_{\min}, Z_{\max}]$。如果我们在三个维度上的空间分辨率（即每个微小正方体的边长）分别为 $r_x, r_y, r_z$，那么该空间可以被划分为一个三维网格，其网格的维度 $(W, H, D)$ 可以表示为：
 
-$$W = \frac{x_{\max} - x_{\min}}{\Delta x}, \quad H = \frac{y_{\max} - y_{\min}}{\Delta y}, \quad D = \frac{z_{\max} - z_{\min}}{\Delta z}$$
+$$W = \frac{X_{\max} - X_{\min}}{r_x}, \quad H = \frac{Y_{\max} - Y_{\min}}{r_y}, \quad D = \frac{Z_{\max} - Z_{\min}}{r_z}$$
+:eqlabel:`eq_voxel_grid_dim`
 
-这样，我们将原本连续的三维坐标 $(x, y, z)$ 映射到了一个离散的三维张量网格索引 $(u, v, w)$ 中。对于任意一个体素网格中的索引 $(u, v, w)$，它所代表的三维物理空间中心坐标可以通过以下线性变换得出：
+在这个网格系统中，每一个离散的三维坐标索引 $(i, j, k)$（其中 $0 \le i < W, 0 \le j < H, 0 \le k < D$）都唯一对应物理空间中的一个体素微元。
 
-$$x_c = x_{\min} + (u + 0.5) \cdot \Delta x$$
-$$y_c = y_{\min} + (v + 0.5) \cdot \Delta y$$
-$$z_c = z_{\min} + (w + 0.5) \cdot \Delta z$$
+### 占据状态的概率建模
 
-**(**我们首先定义三维体素网格的基本参数，并生成其在物理空间中的三维坐标网格。**)**
+对于网格中的任意体素 $v_{i,j,k}$，它的物理状态最基础的描述是“是否被占据”（Occupied or Free）。这是一个典型的伯努利试验（Bernoulli Trial）。我们设随机变量 $O_{i,j,k} \in \{0, 1\}$ 表示该状态：
+
+$$P(O_{i,j,k} = 1) = p_{i,j,k}$$
+:eqlabel:`eq_occ_prob`
+
+当我们进一步考虑该空间的语义类别（例如：车辆、行人、道路、建筑物等）时，状态空间将扩展为多项分布（Multinomial Distribution）。假设共有 $C$ 个语义类别，并额外增加一个表示“游离态（Free）”的类别，总类别数为 $K = C + 1$。则我们希望模型预测的是条件概率分布：
+
+$$\hat{y}_{i,j,k}^{(c)} = P(S_{i,j,k} = c \mid \mathbf{I})$$
+:eqlabel:`eq_occ_semantic`
+
+其中 $\mathbf{I}$ 表示输入的多视角环视图像序列，$\hat{y}_{i,j,k}^{(c)}$ 表示体素属于第 $c$ 类的概率。
+
+## 2D 到 3D 空间的特征提升（2D-to-3D Lift）
+
+占据网格预测的核心挑战在于：输入数据是二维的透视图像，而输出目标是三维的空间网格。我们需要建立一种严谨的数学映射，将二维图像特征“拉升”（Lift）到三维空间中。
+
+> 唯一的例外：我们可以借用射影几何中的光线追踪（Ray Casting）思想来理解这个过程。想象在黑夜中，多个相机的像素就像是一束束向外发射的手电筒光束。每一束光在穿过三维空间时，会在沿途的每一个体素上留下一定的“照亮概率”（深度分布）。当所有相机发出的光束在三维空间中交汇重叠时，物理实体所在的位置就会被多束概率高光所点亮，从而在黑暗的三维网格中“显影”出物体的真实轮廓。
+
+### 深度分布估计
+
+经典的 LSS (Lift, Splat, Shoot) `[Philion & Fidler, 2020]` 方法通过显式地预测像素的深度分布来解决这一问题。对于图像上提取的某一个特征像素点及其特征向量 $\mathbf{f} \in \mathbb{R}^F$，我们不预测一个确定性的单一深度值，而是预测它在预定义的离散深度区间 $[d_1, d_2, \ldots, d_D]$ 上的概率分布 $\mathbf{p} \in \mathbb{R}^D$。
+
+通过特征向量 $\mathbf{f}$ 与概率分布 $\mathbf{p}$ 的外积，我们得到该像素对应的视锥体（Frustum）特征 $\mathbf{F} \in \mathbb{R}^{D \times F}$：
+
+$$\mathbf{F} = \mathbf{p} \otimes \mathbf{f} \implies F_{d, f} = p_d \cdot f_f$$
+:eqlabel:`eq_outer_product`
+
+这意味着，二维像素的特征被沿着相机光心出发的射线，按照深度概率权重播撒到了三维空间中。
+
+### 初始化三维体素查询特征
+
+在真实工程中，如 SurroundOcc 项目，通常会显式地在三维空间中初始化一套可学习的体素特征参数（Voxel Queries） $\mathbf{Q} \in \mathbb{R}^{W \times H \times D \times C_{emb}}$。
+
+(**我们先定义三维体素查询的初始化代码**)：
 
 ```{.python .input}
 #@tab pytorch
@@ -30,293 +63,155 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-def generate_3d_grid(x_bound, y_bound, z_bound):
-    """
-    生成三维体素网格坐标
-    边界格式为: [min, max, resolution]
-    """
-    # 计算各个维度上的体素数量
-    nx = int((x_bound[1] - x_bound[0]) / x_bound[2])
-    ny = int((y_bound[1] - y_bound[0]) / y_bound[2])
-    nz = int((z_bound[1] - z_bound[0]) / z_bound[2])
-    
-    # 生成一维坐标序列，加上 0.5 取得体素中心
-    x_coords = torch.arange(nx, dtype=torch.float32) * x_bound[2] + x_bound[0] + x_bound[2] / 2
-    y_coords = torch.arange(ny, dtype=torch.float32) * y_bound[2] + y_bound[0] + y_bound[2] / 2
-    z_coords = torch.arange(nz, dtype=torch.float32) * z_bound[2] + z_bound[0] + z_bound[2] / 2
-    
-    # 生成三维网格，形状为 (nx, ny, nz)
-    grid_x, grid_y, grid_z = torch.meshgrid(x_coords, y_coords, z_coords, indexing='ij')
-    
-    # 将坐标拼接，形状变为 (nx, ny, nz, 3)
-    grid_3d = torch.stack([grid_x, grid_y, grid_z], dim=-1)
-    return grid_3d
+class VoxelQueryGenerator(nn.Module):
+    def __init__(self, grid_size, embed_dims):
+        super().__init__()
+        # grid_size = [W, H, D]
+        self.W, self.H, self.D = grid_size
+        self.embed_dims = embed_dims
+        
+        # 显式初始化三维体素查询参数
+        # 维度: (1, C, D, H, W)，遵循 PyTorch 常规的 3D 卷积排列方式
+        self.voxel_queries = nn.Parameter(
+            torch.zeros(1, embed_dims, self.D, self.H, self.W)
+        )
+        # 初始化权重
+        nn.init.normal_(self.voxel_queries, mean=0., std=1.)
+        
+    def forward(self, batch_size):
+        # 将查询参数扩展至当前批次大小
+        return self.voxel_queries.repeat(batch_size, 1, 1, 1, 1)
 
-# 定义一个 10m x 10m x 4m 的极小空间，分辨率为 1m，仅作演示
-x_bound = [-5.0, 5.0, 1.0]
-y_bound = [-5.0, 5.0, 1.0]
-z_bound = [-2.0, 2.0, 1.0]
-
-voxel_grid = generate_3d_grid(x_bound, y_bound, z_bound)
-print("体素网格形状:", voxel_grid.shape) # 预期: (10, 10, 4, 3)
+# 测试初始化
+grid_size = [100, 100, 8] # X=100, Y=100, Z=8 的体素网格
+embed_dims = 64
+query_gen = VoxelQueryGenerator(grid_size, embed_dims)
+queries = query_gen(batch_size=2)
+print("Voxel queries shape:", queries.shape) # 预期: [2, 64, 8, 100, 100]
 ```
 
-## 二维到三维的特征投影（2D-to-3D Lifting）
+## 空间交叉注意力与特征聚合
 
-我们已经定义了三维体素网格。现在的核心难点在于：如何将二维图像提取到的特征，填充到这个三维的网格中？
+拿到三维体素查询 $\mathbf{Q}$ 后，我们需要用二维图像特征来更新它们。这里我们引入 BEVFormer `[Li et al., 2022]` 中首创的空间交叉注意力机制（Spatial Cross-Attention, SCA），并将其扩展到三维。
 
-在二维图像中，一个像素点的值受到一整条光线（Ray）上所有物理空间点的影响。由于缺失深度信息，我们无法直接确定图像上的某个像素究竟对应三维空间中的哪一个确切的点。一种经典且直观的策略是**基于几何投影的查询机制**（Geometry-guided Query），类似于 [Li et al., 2022a] 在 BEVFormer 中提出的空间交叉注意力机制（Spatial Cross-Attention）向三维空间的自然扩展。
+对于任意一个三维体素中心点 $(x, y, z)$，我们可以通过相机的内外参矩阵 $\mathbf{P} \in \mathbb{R}^{3 \times 4}$ 将其投影到第 $i$ 个相机的图像平面像素坐标 $(u_i, v_i)$ 上：
 
-其核心思想非常朴素：对于三维网格中的每一个体素，我们主动去“询问”它应该包含什么特征。
+$$d [u_i, v_i, 1]^T = \mathbf{P} \cdot [x, y, z, 1]^T$$
+:eqlabel:`eq_3d_to_2d_proj`
 
-### 相机投影原理与几何变换
+其中 $d$ 是该三维点在相机坐标系下的深度值。
 
-回顾高中的几何光学知识，相机的成像过程本质上是一个透视投影。假设我们在自车坐标系下有一个三维点 $P_{\text{ego}} = (X, Y, Z)$，我们首先需要将其转换到相机坐标系下 $P_{\text{cam}} = (X_c, Y_c, Z_c)$。这一步通过外参矩阵（Extrinsics）完成。
+如果投影点 $(u_i, v_i)$ 落在了图像边界内，这就意味着该相机能够“看到”这个体素。在此基础上，我们可以使用可变形注意力机制（Deformable Attention）在图像特征图上采样局部特征，来更新体素查询：
 
-由于平移和旋转操作无法用简单的三维线性矩阵直接叠加表示，我们引入齐次坐标（Homogeneous Coordinates），将三维点扩充为四维向量 $\tilde{P}_{\text{ego}} = (X, Y, Z, 1)^T$。外参矩阵 $E \in \mathbb{R}^{4 \times 4}$ 描述了相机相对于自车的旋转矩阵 $R \in \mathbb{R}^{3 \times 3}$ 和平移向量 $\mathbf{t} \in \mathbb{R}^{3}$：
+$$\mathbf{Q}_{x,y,z}' = \mathbf{Q}_{x,y,z} + \sum_{i \in \mathcal{V}_{x,y,z}} \text{DeformAttn}(\mathbf{Q}_{x,y,z}, \mathbf{F}_i, \mathbf{P}(x,y,z))$$
+:eqlabel:`eq_spatial_cross_attn`
 
-$$
-\begin{bmatrix}
-X_c \\ Y_c \\ Z_c \\ 1
-\end{bmatrix}
-= E \tilde{P}_{\text{ego}} =
-\begin{bmatrix}
-R & \mathbf{t} \\
-\mathbf{0}^T & 1
-\end{bmatrix}
-\begin{bmatrix}
-X \\ Y \\ Z \\ 1
-\end{bmatrix}
-$$
+其中 $\mathcal{V}_{x,y,z}$ 表示能观测到该体素的相机集合，$\mathbf{F}_i$ 是第 $i$ 视角的图像特征。
 
-接着，我们将相机坐标系下的三维点投影到二维像素平面上。这一步通过相机内参矩阵（Intrinsics）$K \in \mathbb{R}^{3 \times 3}$ 完成。内参矩阵包含了焦距 $f_x, f_y$ 和光心偏移 $c_x, c_y$。投影公式为：
+### 开源项目的架构演进
 
-$$
-Z_c \begin{bmatrix}
-u \\ v \\ 1
-\end{bmatrix}
-= K \begin{bmatrix}
-X_c \\ Y_c \\ Z_c
-\end{bmatrix} =
-\begin{bmatrix}
-f_x & 0 & c_x \\
-0 & f_y & c_y \\
-0 & 0 & 1
-\end{bmatrix}
-\begin{bmatrix}
-X_c \\ Y_c \\ Z_c
-\end{bmatrix}
-$$
+在这一步的工程落地上，不同开源项目采取了截然不同的优化策略：
+1. **SurroundOcc**：采用多尺度 3D 卷积网络来逐步上采样和精细化 3D Voxel 特征。为了显存可控，其通常采用相对较粗的初始网格分辨率。
+2. **TPVFormer**：敏锐地意识到稠密 $W \times H \times D$ 体素带来的 $O(W \cdot H \cdot D)$ 显存爆炸问题。它极其聪明地将三维空间投影到三个正交的平面（顶视图、侧视图、正视图），即 Tri-Perspective View。通过三个面积为 $W \times H$、$H \times D$、$W \times D$ 的 2D 平面特征来隐式表达 3D 空间，将复杂度降维到了 $O(W \cdot H + H \cdot D + W \cdot D)$，极大地降低了计算开销。
+3. **OpenOccupancy**：提出了一个自适应分辨率的框架，结合了密集 3D 卷积和级联的稀疏注意力机制。
 
-其中 $(u, v)$ 就是该三维点在图像上的像素坐标。需要注意的是，由于除以了深度 $Z_c$，这是一个非线性的归一化过程。
-
-### 基于网格采样的特征聚合
-
-当我们知道了一个体素在不同相机图像上的像素位置 $(u, v)$ 后，我们就可以直接使用双线性插值（Bilinear Interpolation）从对应的图像特征图上采样特征向量。由于同一体素可能被多个相机观察到，我们需要将来自不同视图的特征进行融合（例如简单的求均值或拼接后经过感知机处理）。
-
-**(**我们现在实现这个从三维体素向二维图像反投影并采样特征的模块。**)**
+(**我们利用简化的几何投影机制来实现 3D 到 2D 的特征采样更新**)：
 
 ```{.python .input}
 #@tab pytorch
-class VolumeFeatureLifting(nn.Module):
-    def __init__(self, x_bound, y_bound, z_bound):
+class SimpleSpatialCrossAttention(nn.Module):
+    def __init__(self, embed_dims):
         super().__init__()
-        # 生成体素中心的三维坐标，注册为不可训练的 buffer
-        grid_3d = generate_3d_grid(x_bound, y_bound, z_bound)
-        # 将网格展平为 (N, 3)，方便批量处理，N = nx * ny * nz
-        self.register_buffer('grid_3d', grid_3d.reshape(-1, 3))
+        self.embed_dims = embed_dims
+        # 为了演示，我们使用简单的线性映射代替复杂的 Deformable Attention
+        self.value_proj = nn.Linear(embed_dims, embed_dims)
+        self.output_proj = nn.Linear(embed_dims, embed_dims)
         
-        self.nx = int((x_bound[1] - x_bound[0]) / x_bound[2])
-        self.ny = int((y_bound[1] - y_bound[0]) / y_bound[2])
-        self.nz = int((z_bound[1] - z_bound[0]) / z_bound[2])
-
-    def forward(self, img_features, extrinsics, intrinsics):
+    def forward(self, voxel_queries, image_features, proj_mats):
         """
-        img_features: (B, N_cam, C, H, W) 图像特征序列
-        extrinsics: (B, N_cam, 4, 4) 从自车到相机的外参变换矩阵
-        intrinsics: (B, N_cam, 3, 3) 相机内参矩阵
+        voxel_queries: [B, C, D, H, W]
+        image_features: [B, N_cams, C, H_img, W_img]
+        proj_mats: 投影矩阵等几何信息 (此处简化)
         """
-        B, N_cam, C, H, W = img_features.shape
-        N_voxels = self.grid_3d.shape[0]
+        B, C, D, H, W = voxel_queries.shape
+        # 将体素展平为序列 [B, D*H*W, C]
+        queries_flat = voxel_queries.view(B, C, -1).permute(0, 2, 1)
         
-        # 将三维网格扩展至具有 Batch 维度: (B, N_voxels, 3)
-        pts_3d = self.grid_3d.unsqueeze(0).expand(B, -1, -1)
+        # [演示简化逻辑] 假设我们已经通过公式 (9.6.5) 找到了每个体素在图像上的对应特征
+        # 在实际工程中，这里会调用 grid_sample 或自定义 CUDA 算子进行高效采样
+        # 我们随机生成一个模拟采样后的上下文特征
+        sampled_context = torch.randn_like(queries_flat) 
         
-        # 补充齐次坐标位: (B, N_voxels, 4)
-        ones = torch.ones((B, N_voxels, 1), device=pts_3d.device)
-        pts_3d_homo = torch.cat([pts_3d, ones], dim=-1)
+        # 简单的线性融合
+        updated_queries = queries_flat + self.output_proj(F.relu(self.value_proj(sampled_context)))
         
-        # 准备输出容器，初始化为全零: (B, C, Nx, Ny, Nz)
-        volume_features = torch.zeros(B, C, self.nx, self.ny, self.nz, device=img_features.device)
-        # 记录每个体素被多少个相机看到，用于求均值
-        hit_counts = torch.zeros(B, 1, self.nx, self.ny, self.nz, device=img_features.device)
-        
-        # 遍历每个相机视角
-        for cam_idx in range(N_cam):
-            extrinsic = extrinsics[:, cam_idx, :, :] # (B, 4, 4)
-            intrinsic = intrinsics[:, cam_idx, :, :] # (B, 3, 3)
-            feat = img_features[:, cam_idx, :, :, :] # (B, C, H, W)
-            
-            # 1. 自车坐标系转换至相机坐标系
-            # pts_3d_homo: (B, N_voxels, 4) -> (B, 4, N_voxels)
-            pts_cam_homo = torch.bmm(extrinsic, pts_3d_homo.transpose(1, 2))
-            # 提取前三个坐标 (X_c, Y_c, Z_c)
-            pts_cam = pts_cam_homo[:, :3, :] # (B, 3, N_voxels)
-            
-            # 过滤掉相机背后的点 (深度 Z_c < 0)
-            depth = pts_cam[:, 2:3, :] # (B, 1, N_voxels)
-            valid_depth_mask = depth > 1e-5
-            
-            # 2. 相机坐标系投影至图像像素坐标平面
-            # intrinsic: (B, 3, 3), pts_cam: (B, 3, N_voxels)
-            uv_homo = torch.bmm(intrinsic, pts_cam) # (B, 3, N_voxels)
-            # 归一化深度
-            uv = uv_homo[:, :2, :] / (depth + 1e-5) # (B, 2, N_voxels)
-            u, v = uv[:, 0, :], uv[:, 1, :]
-            
-            # 检查像素坐标是否在图像视野范围内
-            valid_u = (u >= 0) & (u < W)
-            valid_v = (v >= 0) & (v < H)
-            valid_mask = valid_depth_mask.squeeze(1) & valid_u & valid_v # (B, N_voxels)
-            
-            # 为了使用 F.grid_sample，我们需要将 (u, v) 归一化到 [-1, 1] 区间
-            # grid_sample 接受的坐标形状必须为 (B, H_out, W_out, 2)
-            u_norm = (u / (W - 1)) * 2.0 - 1.0
-            v_norm = (v / (H - 1)) * 2.0 - 1.0
-            grid = torch.stack([u_norm, v_norm], dim=-1) # (B, N_voxels, 2)
-            grid = grid.unsqueeze(1) # (B, 1, N_voxels, 2)，将 N_voxels 视为 W_out 维度
-            
-            # 3. 双线性插值采样特征
-            # sampled_feat: (B, C, 1, N_voxels)
-            sampled_feat = F.grid_sample(feat, grid, align_corners=True, padding_mode='zeros')
-            sampled_feat = sampled_feat.squeeze(2) # (B, C, N_voxels)
-            
-            # 应用掩码，只保留有效的采样特征
-            valid_mask_ext = valid_mask.unsqueeze(1).float() # (B, 1, N_voxels)
-            sampled_feat = sampled_feat * valid_mask_ext
-            
-            # 将展平的特征重新变回三维体素的形状
-            sampled_feat_3d = sampled_feat.reshape(B, C, self.nx, self.ny, self.nz)
-            valid_mask_3d = valid_mask_ext.reshape(B, 1, self.nx, self.ny, self.nz)
-            
-            # 累加多视角的特征
-            volume_features += sampled_feat_3d
-            hit_counts += valid_mask_3d
-            
-        # 求特征均值融合
-        hit_counts_safe = torch.clamp(hit_counts, min=1.0)
-        volume_features = volume_features / hit_counts_safe
-        
-        return volume_features
+        # 恢复 3D 形状
+        voxel_queries = updated_queries.permute(0, 2, 1).view(B, C, D, H, W)
+        return voxel_queries
 ```
 
-> [!NOTE]
-> 在真实的复杂模型中，上述特征融合过程往往还会结合变形注意力机制（Deformable Attention），让体素不仅采样投影中心点的特征，还能自适应地学习周边区域的关键特征，从而克服由深度估计不准带来的投影偏差。
+## 占据分类头与损失函数设计
 
-## 三维特征聚合与语义占据预测网络
+经过多层 3D 卷积或 Transformer 的处理，我们最终得到了高分辨率的稠密三维特征图 $\mathbf{V}_{out} \in \mathbb{R}^{B \times C_{emb} \times D \times H \times W}$。
 
-在获取了初步的、填充好的三维特征空间后，我们得到了一个张量，其形状为 `(B, C, X, Y, Z)`。这是一个不折不扣的四维时空张量（若将批次 $B$ 忽略，仅看特征通道和三个空间维度）。
+最后一步是施加一个分类头，将其映射到 $K$ 个语义类别的概率对数（Logits）。
 
-这与我们在图像处理中遇到的二维特征图 `(B, C, H, W)` 极为相似。因此，自然的做法是采用三维卷积（3D Convolution）来进一步对空间信息进行上下文聚合。正如二维卷积能够捕捉图像的边缘和纹理，三维卷积能够捕捉三维空间中的几何表面特征和物体形状。
-
-然而，三维卷积的计算代价和显存占用是极其昂贵的。其参数量和计算量随着体素分辨率的增加呈立方级增长。为了在保证性能的同时控制计算成本，我们通常设计一个轻量级的三维编码器-解码器结构，或者使用具有残差连接的简单 3D 卷积堆叠。
-
-最后，在这个聚合后的三维特征张量上，我们使用一个 $1 \times 1 \times 1$ 的 3D 卷积层作为输出分类头，将特征通道维度压缩为语义类别的数量 $N_{classes}$。这样，网络为三维网格中的每一个体素输出一个概率分布，指示该空间是被空气占据（空闲），还是被某类特定物体占据。
-
-**(**我们将三维特征提取与预测头整合成一个完整的纯视觉占据网格预测网络。**)**
+(**定义占据网格的三维卷积预测头**)：
 
 ```{.python .input}
 #@tab pytorch
-class OccupancyPredictionNetwork(nn.Module):
-    def __init__(self, in_channels, num_classes, x_bound, y_bound, z_bound):
+class OccupancyHead(nn.Module):
+    def __init__(self, in_channels, num_classes):
         super().__init__()
-        # 1. 2D到3D提升模块
-        self.lifting_module = VolumeFeatureLifting(x_bound, y_bound, z_bound)
+        self.num_classes = num_classes
+        # 使用 3D 卷积进行局部特征融合并输出分类预测
+        self.conv = nn.Sequential(
+            nn.Conv3d(in_channels, in_channels // 2, kernel_size=3, padding=1),
+            nn.BatchNorm3d(in_channels // 2),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(in_channels // 2, num_classes, kernel_size=1)
+        )
         
-        # 2. 三维特征聚合网络 (简单的 3D 残差块)
-        hidden_dim = 64
-        self.conv3d_1 = nn.Conv3d(in_channels, hidden_dim, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm3d(hidden_dim)
-        
-        self.conv3d_2 = nn.Conv3d(hidden_dim, hidden_dim, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm3d(hidden_dim)
-        
-        # 3. 占据分类头 (预测每一个体素的类别，包含 'free' 类)
-        self.head = nn.Conv3d(hidden_dim, num_classes, kernel_size=1)
-
-    def forward(self, img_features, extrinsics, intrinsics):
-        # 得到形状为 (B, C, Nx, Ny, Nz) 的初始三维特征
-        vol_feat = self.lifting_module(img_features, extrinsics, intrinsics)
-        
-        # 3D 卷积聚合上下文特征
-        x = F.relu(self.bn1(self.conv3d_1(vol_feat)))
-        x_res = F.relu(self.bn2(self.conv3d_2(x)))
-        x = x + x_res # 残差连接
-        
-        # 输出分类逻辑回归值 (Logits)，形状为 (B, num_classes, Nx, Ny, Nz)
-        logits = self.head(x)
+    def forward(self, x):
+        # 输入维度: [B, C, D, H, W]
+        # 输出维度: [B, num_classes, D, H, W]
+        logits = self.conv(x)
         return logits
+
+# 实例化预测头，假设16个语义类别 + 1个空闲类 = 17类
+occ_head = OccupancyHead(in_channels=64, num_classes=17)
+final_logits = occ_head(queries)
+print("Final logits shape:", final_logits.shape) # [2, 17, 8, 100, 100]
 ```
 
-## 损失函数：处理极度不平衡的三维空间
+### 极度不平衡的三维空间损失
 
-有了网络的输出逻辑回归值 $y \in \mathbb{R}^{C \times W \times H \times D}$ 和真实的占据网格标签 $\hat{y} \in \{0, 1, \dots, C-1\}^{W \times H \times D}$，其中 $C$ 代表类别数，类别 0 通常保留给“空闲空间（Free Space）”。
+在真实的物理空间中，“空闲（Free）”体素往往占据了 90% 以上的空间。如果直接使用标准的交叉熵损失（Cross Entropy Loss），网络将被大量的空闲体素所主导，导致难以正确预测稀有物体（如行人、自行车）。
 
-乍看之下，我们可以简单地将多维张量展平，并在所有体素上计算标准的多类别交叉熵损失（Cross-Entropy Loss）：
+因此，工程上强制要求使用加权焦点损失（Weighted Focal Loss）。对于类别 $c$ 的体素标签 $y$ 和预测概率 $\hat{y}$，Focal Loss 定义为：
 
-$$L_{\text{CE}} = - \frac{1}{W H D} \sum_{u=1}^{W} \sum_{v=1}^{H} \sum_{w=1}^{D} \log p(\hat{y}_{u,v,w} \mid x)$$
+$$L_{focal} = - \alpha_c (1 - \hat{y})^\gamma y \log(\hat{y})$$
+:eqlabel:`eq_focal_loss`
 
-其中 $p$ 是经过 Softmax 函数后的模型预测概率分布。
+其中 $\alpha_c$ 是针对不同类别的频率所设置的静态权重（频率越低，权重越高），$\gamma$ 是聚焦参数（通常取 2.0），用于降低易分样本（高置信度的 Free 体素）的梯度贡献。
 
-然而，在真实世界中，三维空间呈现出**极端的类别不平衡（Class Imbalance）**。绝大部分空间都是空气（Free），而只有少部分体素被真实的物理表面占据。不仅如此，不同类别的物体体积差异巨大，例如一辆卡车所占据的体素数量可能是一辆自行车的数百倍。
-
-如果在训练时不加干预，模型会倾向于预测所有体素都是“空闲”，从而轻易地获得非常高的准确率，但这在自动驾驶中是致命的。为了解决这一问题，我们通常采用加权交叉熵或引入**焦点损失（Focal Loss）** [Lin et al., 2017]。焦点损失通过降低易分类样本（大部分背景和简单类别）的权重，迫使模型将更多的注意力集中在困难且稀有的占据前景上。
-
-> [!TIP]
-> **深层几何直觉：**
-> 预测三维空间的占据属性，本质上等同于在一片汪洋大海中寻找孤岛。为了避免网络彻底被“水”（背景）淹没，我们可以采用一种策略：**仅针对物体表面及附近的体素计算梯度**，或者给予“空闲”类别极低的损失权重。这就是为何诸如 OHEM（Online Hard Example Mining）或 Focal Loss 在三维场景感知任务中不可或缺的原因。
-
-**(**我们构建一个带有类别权重的 3D 占据网格交叉熵损失函数。**)**
-
-```{.python .input}
-#@tab pytorch
-def occupancy_loss(logits, targets, class_weights=None):
-    """
-    计算三维占据网格的损失
-    logits: (B, num_classes, Nx, Ny, Nz)
-    targets: (B, Nx, Ny, Nz) 长整型，值为 [0, num_classes-1]
-    class_weights: (num_classes,) 用于应对类别不平衡的张量
-    """
-    # CrossEntropyLoss 原生支持 N 维输入
-    # 要求预测值的 C 位于维度 1，target 不包含通道维度，这恰好满足我们的设计
-    criterion = nn.CrossEntropyLoss(weight=class_weights, reduction='mean')
-    loss = criterion(logits, targets)
-    return loss
-
-# 演示损失计算
-B, num_classes, Nx, Ny, Nz = 2, 12, 10, 10, 4
-# 随机生成网络输出
-mock_logits = torch.randn(B, num_classes, Nx, Ny, Nz)
-# 随机生成真实标签 (在大多数场景下，0 代表 Free，应当占绝大比例)
-mock_targets = torch.randint(0, num_classes, (B, Nx, Ny, Nz))
-# 大量填充 0 模拟真实稀疏性
-mock_targets[mock_targets > 3] = 0 
-
-# 为类别赋予权重，假设 0 是 free_space，权重最低；其余障碍物类别权重较高
-weights = torch.ones(num_classes)
-weights[0] = 0.1
-weights[1:] = 2.0
-
-loss = occupancy_loss(mock_logits, mock_targets, class_weights=weights)
-print(f"训练步骤的体素分类损失: {loss.item():.4f}")
-```
+此外，由于相机只能观测到物体面向镜头的表面，物体背面的体素不可见。这就要求模型具备“场景补全（Scene Completion）”的推理能力。在 OpenOccupancy 中，研究者利用几何一致性损失，鼓励模型依据可见的局部几何特征推断出物体完整的 3D 体积。
 
 ## 小结
 
-在本节中，我们从物理和几何的源头探讨了如何赋予深度学习模型重构三维空间的能力：
-1. 我们建立了一个**离散化的三维体素网格**来映射真实世界的连续空间。
-2. 通过深入推导相机外参和内参的作用，我们实现了**基于几何反向投影的三维特征采样**，建立了二维图像与三维空间之间的桥梁。
-3. 利用三维卷积聚合空间上下文，我们设计了一个端到端的三维特征感知与预测网络。
-4. 我们剖析了空间极度稀疏性和类别不平衡所带来的挑战，并引入了加权损失来引导模型的优化方向。
+* 三维占据网格预测旨在将 2D 环视图像直接映射为 3D 体素级的语义分类，彻底解决了 2D Bounding Box 或 2D BEV 带来的空间信息丢失问题。
+* 核心操作包含了三维体素查询的初始化，以及基于相机内外参投影的空间交叉注意力特征采样。
+* 在真实世界的工程落地中，3D 高分辨率网格带来的显存开销是致命瓶颈。TPVFormer 的正交平面降维思想，以及 SurroundOcc 的多尺度层级上采样，都是极为经典的工程优化策略。
+* 针对 3D 空间中极端的“空闲-占据”类别不平衡，Focal Loss 及其变体是不可或缺的优化手段。
 
-这套基础架构不仅是当代纯视觉三维占据预测的核心基石，也为理解复杂的三维场景生成和重建技术铺平了道路。
+## 练习
+
+1. 在公式 :eqref:`eq_voxel_grid_dim` 中，如果感知范围是前后各 50 米，左右各 50 米，上下从 -5 米到 3 米。网格分辨率为 0.5 米。请计算 $W, H, D$ 的精确数值，并估算在 FP32 精度下，存储该 64 维隐藏特征图需要多少显存？
+   * **提示**：先计算三个维度的网格数量，然后相乘得到总的体素个数。结合每个浮点数 4 字节（Bytes）计算总内存。
+2. 尝试修改 `VoxelQueryGenerator`，不再使用 `nn.Parameter` 初始化全局查询向量，而是用 `torch.meshgrid` 生成网格的三维绝对坐标，并对其应用一层多层感知机（MLP）和正弦位置编码（Sine Positional Encoding）。这会对模型的收敛速度产生什么影响？
+   * **提示**：查阅 Transformer 的位置编码机制，思考显式提供空间坐标是否能帮助模型更快学习到 2D-to-3D 的映射几何关系。
+3. 仔细思考 TPVFormer 将 $V \in \mathbb{R}^{W \times H \times D}$ 降维到三个二维张量的思路。这种隐式表示在表达一个中空的管状物体（如隧道）时，会出现哪些信息模糊或混叠？
+
+:begin_tab:pytorch
+[讨论](https://discuss.d2l.ai/t/1234)
+:end_tab:

@@ -1,100 +1,119 @@
-# 7.10 扩散策略的从零开始实现
+# 扩散策略（Diffusion Policy）的从零开始实现
+:label:sec_diffusion_policy_scratch
 
-在过去的几十年里，机器人学习社区一直在探索如何让智能体从人类演示中学习复杂的交互行为。传统的行为克隆（Behavior Cloning, BC）通常将策略学习建模为从状态到动作的确定性映射，或者简单的单峰高斯分布。然而，当面临多模态的人类演示时——例如，遇到障碍物时既可以从左侧绕过，也可以从右侧绕过——试图用均方误差（MSE）回归单一动作的模型往往会输出这两个合理动作的平均值，即控制机器人直接撞向正前方的障碍物。这就是机器人学习中著名的“布里丹之驴（Buridan's ass）”困境。
+在探讨具身智能（Embodied AI）中的动作生成时，我们常常面临一个基础性却极难克服的挑战：对于相同的环境状态，专家演示（Expert Demonstrations）可能包含多种完全合理的动作序列。传统的行为克隆（Behavior Cloning, BC）广泛依赖于均方误差（Mean Squared Error, MSE）作为损失函数，这在数学上等价于假设动作分布服从单峰高斯分布。然而，当真实专家数据呈现多模态（Multi-modal）分布时，最小化均方误差会驱使模型预测出所有可能动作的平均值，这往往会导致灾难性的失败。例如，在面对障碍物时，专家可能选择从左侧绕过或从右侧绕过，而模型预测的平均动作则是径直撞向障碍物。
 
-为了解决这一问题，研究者们曾引入混合密度网络（MDN）或基于能量的模型（EBM），但它们在训练稳定性或采样效率上依然存在瓶颈。直到最近，Chi 等人提出了扩散策略（Diffusion Policy）`[Chi et al., 2023]`，创造性地将动作生成建模为条件去噪扩散概率模型（Denoising Diffusion Probabilistic Models, DDPM）`[Ho et al., 2020]`。扩散策略不仅优雅地解决了多模态动作分布的问题，还在多个复杂的机器人操作任务中展现出了惊人的稳定性与鲁棒性。
+为了解决这一多模态动作分布问题，Chi 等人提出了扩散策略（Diffusion Policy） `[Chi et al., 2023]`。该方法将动作生成重构为一个条件去噪扩散概率过程（Conditional Denoising Diffusion Probabilistic Process）。扩散模型最初在图像生成领域取得了革命性的成功，特别是去噪扩散概率模型（DDPM） `[Ho et al., 2020]` 的提出，彻底改变了生成模型的格局。将扩散机制引入机器人连续控制与策略学习，标志着具身大脑从确定性的点估计（Point Estimation）向复杂的概率分布建模迈出了关键一步。
 
-在本节中，我们将不依赖于抽象的高阶数学推导，而是从最基础的概率与线性变换出发，逐步推演并从零开始实现一个完整的扩散策略模型。
+在本节中，我们将从最基础的统计学概念起步，逐步推导扩散策略的严密数学公式，并最终从零开始实现一个完整的扩散策略模型。
 
-## 7.10.1 动作块与条件生成
+## 从高中统计学起步：状态与动作的概率映射
+:label:subsec_diffusion_math_basics
 
-在连续控制中，如果我们只预测当前时刻的单一动作 $a_t$，模型往往容易受到瞬时噪声的干扰而产生执行轨迹的抖动。扩散策略继承并发挥了“动作块（Action Chunking）”的思想 `[Zhao et al., 2023]`。
+为了深刻理解扩散模型的本质，我们不必立刻深陷高维张量和随机微分方程。让我们从高中统计学中最简单的标量概念出发。
 
-具体而言，在时刻 $t$，我们收集过去 $T_o$ 步的连续观测数据，形成观测序列 $\mathbf{O} = [o_{t-T_o+1}, \dots, o_t]$。我们的目标不再是仅仅预测下一步动作，而是预测未来 $T_a$ 步的完整动作序列，即**动作块** $\mathbf{A} = [a_t, a_{t+1}, \dots, a_{t+T_a-1}]$。
-在实际推断时，机器人会执行这组生成序列的前几步动作，然后在下一个决策周期重新观测并规划。这种时间尺度上的重叠与平均，极大地平滑了控制轨迹。
+假设机器人的动作是一个标量 $a \in \mathbb{R}$，观察状态是 $o$。传统回归试图学习一个确定性函数 $f(o) = a$。但如果对于相同的 $o$，存在两个等概率的正确动作 $a_1=1$ 和 $a_2=-1$，函数 $f$ 只能输出其期望值 $0$。
 
-在扩散策略的视角下，我们将多维动作序列 $\mathbf{A}$ 视作一幅一维的“图像”或信号序列，通过扩散模型来生成它。而历史观测序列 $\mathbf{O}$ 则作为指导动作生成过程的“条件（Condition）”。
+为了能够表示这种分布，我们不再直接预测 $a$，而是引入“加噪”与“去噪”的过程。假设我们拥有一个完美的专家动作 $a_0$。如果我们对其施加一个微小的高斯噪声 $\epsilon \sim \mathcal{N}(0, 1)$，得到 $a_1 = a_0 + \sigma_1 \epsilon$。如果我们不断重复这个加噪过程 $T$ 次，每次都累加微小的随机扰动，最终 $a_T$ 的信息将完全丧失，退化为一个标准正态分布的随机变量。
 
-## 7.10.2 前向加噪过程：从标量到矩阵
+在生成（推理）时，我们反转这一过程：从标准正态分布中随机抽取一个初始值 $a_T$，然后逐步“去除”噪声，最终恢复出一个具体的动作 $a_0$。由于我们的起点 $a_T$ 是随机采样的，去噪过程有可能会沿着不同的概率路径收敛到 $a_1=1$ 或 $a_2=-1$，从而完美解决了多模态问题。
 
-> [!NOTE]
-> 我们可以将扩散过程想象为往一杯清水中滴入一滴墨水。最初，墨水的分布是高度集中且结构化的（即演示数据中精准的确定性动作）。随着时间的推移，水分子的随机热运动不断撞击墨水颗粒，结构逐渐瓦解，最终整杯水变成了均匀的灰色（即完全的纯高斯噪声）。我们用数学来精确描述这个热运动破坏结构的过程，并试图利用神经网络学习如何“时光倒流”，把均匀的灰水重新聚集回那一滴清晰的墨水。这是全篇唯一一次类比，接下来我们将完全依靠严格的代数推导。
+在这里，我们引入全篇唯一一次类比：这一去噪过程宛如古典主义雕刻。纯粹的随机噪声 $a_T$ 是一块未经雕琢的粗糙大理石（代表毫无规律的高斯分布），而基于视觉或状态的条件观察 $o$ 则是艺术家心中的蓝图。随着时间步 $t$ 从 $T$ 逐渐递减到 $0$，神经网络像凿子一样，在每一步精准地剔除多余的石料（即预测并减去噪声），直到最终显露出那尊完美符合蓝图的雕像——即物理上可行且高效的动作序列 $a_0$。
 
-为了便于理解，我们先抽离出动作序列中某一个特定时间点上的某一维度的标量动作，记为 $x$。最初的真实且精准的动作记为 $x_0$。
-在第 $k$ 步加噪时（扩散步数 $k \in [1, K]$），我们以极小的比例 $\beta_k \in (0, 1)$ 向数据中注入标准正态分布的噪声 $\epsilon \sim \mathcal{N}(0, 1)$。同时，为了保持数据的方差不至于在多次加噪后发散爆炸，我们需要对上一时刻的值 $x_{k-1}$ 进行按比例的轻微缩放。标量形式的递推更新公式如下：
+## 扩散过程的严密数学推导
+:label:subsec_diffusion_derivation
 
-$$x_k = \sqrt{1 - \beta_k} x_{k-1} + \sqrt{\beta_k} \epsilon$$
+现在，我们将上述直觉转化为严格的数学语言。定义动作序列为 $a_0$。我们设计一个包含 $T$ 步的马尔可夫前向加噪过程（Forward Process）。
 
-其中，$\beta_k$ 被称为方差表（Variance Schedule），它通常被设定为随着 $k$ 的增加而缓慢变大的常数序列。
+### 前向加噪过程
 
-然而，在实际训练中，我们需要经历数十甚至数百步加噪。如果每一步都依赖上一步的迭代计算来获取 $x_k$，计算将极其低效。由于高斯分布具有优良的可加性（两个独立高斯随机变量的线性组合依然是高斯分布），我们可以直接推导出从 $x_0$ 一步跨越到 $x_k$ 的直接表达式。
+在任意时间步 $t \in [1, T]$，我们在前一步 $a_{t-1}$ 的基础上添加少量的高斯噪声。给定一族预先设定的方差表（Variance Schedule） $\beta_1, \beta_2, \dots, \beta_T \in (0, 1)$，前向转移概率定义为：
 
-令 $\alpha_k = 1 - \beta_k$，并定义其从第 $1$ 步到第 $k$ 步的累积乘积为 $\bar{\alpha}_k = \prod_{i=1}^k \alpha_i$。经过连续代入与方差合并，我们可以得到非常简洁的单步跳跃公式：
+$$
+q(a_t | a_{t-1}) = \mathcal{N}(a_t; \sqrt{1-\beta_t} a_{t-1}, \beta_t \mathbf{I})
+$$
+:eqlabel:eq_diffusion_forward_step
 
-$$x_k = \sqrt{\bar{\alpha}_k} x_0 + \sqrt{1 - \bar{\alpha}_k} \epsilon$$
+为了能够在训练时直接跳跃到任意时间步 $t$，而不需要一步步迭代计算，我们利用高斯分布的叠加性质（重参数化技巧）。令 $\alpha_t = 1 - \beta_t$，并定义 $\bar{\alpha}_t = \prod_{i=1}^t \alpha_i$。我们可以直接得到给定初始动作 $a_0$ 时，时刻 $t$ 的边缘概率分布：
 
-现在，我们将这个标量公式自然地推广到高维矩阵形式。设 $\mathbf{A}_0 \in \mathbb{R}^{T_a \times D_a}$ 为完整的原始动作块矩阵，其中 $T_a$ 是动作序列长度，$D_a$ 是动作空间的维度。注入的随机噪声 $\boldsymbol{\epsilon}$ 是与 $\mathbf{A}_0$ 形状完全相同的纯高斯噪声矩阵。那么，在第 $k$ 步被破坏后的加噪动作块 $\mathbf{A}_k$ 可以表示为：
+$$
+q(a_t | a_0) = \mathcal{N}(a_t; \sqrt{\bar{\alpha}_t} a_0, (1-\bar{\alpha}_t) \mathbf{I})
+$$
+:eqlabel:eq_diffusion_forward_t
 
-$$\mathbf{A}_k = \sqrt{\bar{\alpha}_k} \mathbf{A}_0 + \sqrt{1 - \bar{\alpha}_k} \boldsymbol{\epsilon}$$
+这意味着，时刻 $t$ 的含噪动作 $a_t$ 可以被确定性地表示为：
 
-## 7.10.3 逆向去噪过程与目标函数
+$$
+a_t = \sqrt{\bar{\alpha}_t} a_0 + \sqrt{1-\bar{\alpha}_t} \epsilon
+$$
+:eqlabel:eq_diffusion_reparam
 
-训练扩散策略的核心在于学习一个深度神经网络 $\boldsymbol{\epsilon}_\theta$。该网络需要能够在给定当前带噪动作块 $\mathbf{A}_k$、当前的扩散时间步 $k$ 以及历史观测条件 $\mathbf{O}$ 的情况下，准确预测出在第 $k$ 步时究竟注入了怎样形状的真实噪声 $\boldsymbol{\epsilon}$。
+其中 $\epsilon \sim \mathcal{N}(0, \mathbf{I})$ 是真实注入的噪声。当 $T$ 足够大且 $\bar{\alpha}_T \to 0$ 时，$q(a_T | a_0)$ 趋近于标准正态分布 $\mathcal{N}(0, \mathbf{I})$。
 
-优化目标非常直接，即网络预测的噪声与真实注入噪声之间的均方误差（MSE）：
+### 逆向去噪过程与损失函数
 
-$$\mathcal{L}_{DP} = \mathbb{E}_{\mathbf{A}_0, \boldsymbol{\epsilon}, k, \mathbf{O}} \left[ \left\| \boldsymbol{\epsilon} - \boldsymbol{\epsilon}_\theta(\mathbf{A}_k, k, \mathbf{O}) \right\|_2^2 \right]$$
+生成动作的目标是从 $a_T \sim \mathcal{N}(0, \mathbf{I})$ 出发，逐步采样逆向过程的转移概率 $p(a_{t-1} | a_t)$。由于真正的逆向分布 $q(a_{t-1} | a_t, a_0)$ 在给定 $a_0$ 时是一个高斯分布，我们可以用一个参数化的神经网络 $p_\theta(a_{t-1} | a_t, o)$ 来近似它。在扩散策略中，网络以上下文观察 $o$ 为条件。
 
-一旦这个网络训练完成，在实际推断（控制机器人）时，我们就可以从纯随机的高斯噪声 $\mathbf{A}_K \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$ 出发。利用预测出的噪声 $\boldsymbol{\epsilon}_\theta$，我们可以依据 DDPM 的逆向采样推导公式，逐步减去预测出的噪声，恢复出干净的动作序列：
+根据变分下界（Variational Lower Bound, VLB）理论及 [Ho et al., 2020] 的推导，与其直接预测均值，不如让神经网络去预测前向过程中加入的噪声 $\epsilon$。我们定义神经网络为 $\epsilon_\theta(a_t, t, o)$，其目标是最小化预测噪声与真实噪声之间的均方误差：
 
-$$\mathbf{A}_{k-1} = \frac{1}{\sqrt{\alpha_k}} \left( \mathbf{A}_k - \frac{1 - \alpha_k}{\sqrt{1 - \bar{\alpha}_k}} \boldsymbol{\epsilon}_\theta(\mathbf{A}_k, k, \mathbf{O}) \right) + \sigma_k \mathbf{z}$$
+$$
+L(\theta) = \mathbb{E}_{t \sim \mathcal{U}(1,T), a_0, \epsilon \sim \mathcal{N}(0,\mathbf{I})} \left[ \| \epsilon - \epsilon_\theta(a_t, t, o) \|^2 \right]
+$$
+:eqlabel:eq_diffusion_loss
 
-其中 $\mathbf{z} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$ 是为了维持逆向随机过程的分布形状而加入的补偿项（当最后一步 $k=1$ 迈向 $k=0$ 时 $\mathbf{z}=0$），而 $\sigma_k$ 的方差系数通常取为 $\sqrt{\beta_k}$ 或者更精确的后验方差。
+这是扩散模型中极为优雅的结果：尽管背后的概率推导涉及复杂的积分与边界，其最终的训练目标却异常简洁，仅是对高斯噪声的误差匹配。
 
-## 7.10.4 核心组件的代码实现
+## 动作组块与时间维度
+:label:subsec_action_chunking
 
-在这一部分，我们将基于 PyTorch 从零实现扩散策略的核心逻辑。首先，我们定义调度器（Scheduler），负责管理所有的常数并执行前向加噪。
+在实际的具身智能中，为了保证运动的平滑性和应对网络延迟，扩散策略通常结合了动作组块（Action Chunking）技术。具体而言，模型并非在每个控制周期只预测单步动作，而是一次性预测未来 $H$ 步的动作序列。
 
-(**定义DDPM的方差表与前向辅助常数**)
+假设每个单步动作的维度为 $D_a$，那么网络的预测目标就是一个形状为 $(H, D_a)$ 的张量。在去噪网络 $\epsilon_\theta$ 内部，这一动作序列可以被视作一个一维的时间序列，因此我们通常使用一维卷积神经网络（1D CNN）或者 Transformer 来处理它。在下面的代码实现中，我们将采用经典的 1D CNN 结构。
+
+## 从零开始的代码实现
+:label:subsec_diffusion_implementation
+
+我们将分别实现噪声调度器、去噪神经网络以及整体的训练流程。首先，我们需要构建前向加噪过程的调度器。
+
+(**实现 DDPM 的方差调度器**)
 
 ```{.python .input}
 #@tab pytorch
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
 import math
 
 class DDPMScheduler:
-    def __init__(self, num_train_timesteps=100, beta_start=0.0001, beta_end=0.02):
+    def __init__(self, num_train_timesteps=100, beta_start=1e-4, beta_end=2e-2):
         self.num_train_timesteps = num_train_timesteps
         
-        # 构造线性增长的方差表 beta
+        # 线性方差表 (Linear Variance Schedule)
         self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps)
         self.alphas = 1.0 - self.betas
-        # 计算 alpha 的累积乘积
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
         
-        # 预计算前向加噪所需的项，避免在训练循环中重复计算
-        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
-        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1.0 - self.alphas_cumprod)
-        
     def add_noise(self, original_samples, noise, timesteps):
-        """实现基于方程式(7.10.4)的前向矩阵加噪过程"""
-        # 根据 timestep 提取对应的系数，并将其形状对齐到输入张量
-        sqrt_alpha_prod = self.sqrt_alphas_cumprod[timesteps].to(original_samples.device)
-        sqrt_alpha_prod = sqrt_alpha_prod.view(-1, 1, 1)
+        """
+        基于 :eqref:`eq_diffusion_reparam` 实现前向加噪
+        original_samples: 形状为 (B, H, D_a) 的初始动作 a_0
+        noise: 从 N(0, I) 采样的同形状噪声
+        timesteps: 形状为 (B,) 的整数时间步
+        """
+        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        timesteps = timesteps.to(original_samples.device)
         
-        sqrt_one_minus_alpha_prod = self.sqrt_one_minus_alphas_cumprod[timesteps].to(original_samples.device)
+        sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = sqrt_alpha_prod.view(-1, 1, 1) # 调整形状以支持广播
+        
+        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.view(-1, 1, 1)
         
-        # 返回加噪后的动作块 A_k
         return sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
 ```
 
-接下来，我们需要构建条件去噪网络 $\boldsymbol{\epsilon}_\theta$。在图像生成中，U-Net 架构是标准的解决方案。而在扩散策略中，由于动作块通常是一个相对较短的一维序列，我们采用一维的条件卷积网络（1D Conditional CNN）。
-为了将标量扩散步数 $k$ 提供给网络，我们需要使用正弦位置编码将其映射为高维特征。为了将历史观测序列 $\mathbf{O}$ 作为条件注入，我们采用特征线性调制（Feature-wise Linear Modulation, FiLM）技术对卷积层输出的均值和方差进行缩放与平移。
+接下来，我们需要实现去噪网络。在这里，我们实现一个精简版的带有正弦位置编码的一维卷积残差网络。条件观察 $o$ 将作为额外的特征通道注入到网络中。
 
-(**构建带有时间嵌入与条件特征注入的一维卷积块**)
+(**实现条件一维卷积去噪网络**)
 
 ```{.python .input}
 #@tab pytorch
@@ -112,159 +131,127 @@ class SinusoidalPosEmb(nn.Module):
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
 
-class ConditionalConv1dBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, cond_dim):
+class Conditional1DCNN(nn.Module):
+    def __init__(self, action_dim, obs_dim, hidden_dim=128):
         super().__init__()
-        # 使用 1D 卷积处理时序连续的动作序列数据
-        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1)
-        self.norm = nn.GroupNorm(8, out_channels)
-        self.activation = nn.Mish()
-        
-        # 将条件特征向量映射到线性调制的缩放 (scale) 和平移 (shift) 参数
-        self.cond_encoder = nn.Linear(cond_dim, out_channels * 2)
-        
-    def forward(self, x, cond):
-        out = self.conv(x)
-        out = self.norm(out)
-        
-        # FiLM 操作: 基于条件 cond 生成特定的缩放与偏移
-        # cond 的形状为 (Batch, cond_dim)
-        cond_emb = self.cond_encoder(cond)
-        scale, shift = cond_emb.chunk(2, dim=-1)
-        # 将维度对齐到 (Batch, out_channels, 1) 以便在动作序列长度维度上进行广播
-        scale = scale.unsqueeze(-1)
-        shift = shift.unsqueeze(-1)
-        
-        # 执行调制，使用 scale + 1.0 作为残差偏置策略
-        out = out * (scale + 1.0) + shift
-        return self.activation(out)
-```
-
-具备了基础的特征调制层之后，我们可以将其组装成一个完整的网络结构。真实的论文实现中通常会使用带有完整编码器-解码器和跳跃连接（Skip-Connection）的深层一维 U-Net。在此处，为了保证逻辑的清晰并突出参数传递方式，我们抽象实现一个多层堆叠的条件卷积预测网络。
-
-(**组装完整的条件去噪预测网络**)
-
-```{.python .input}
-#@tab pytorch
-class ConditionalNoisePredictor(nn.Module):
-    def __init__(self, action_dim, obs_dim, time_emb_dim=32):
-        super().__init__()
-        # 将标量时间步转换为高维嵌入
         self.time_mlp = nn.Sequential(
-            SinusoidalPosEmb(time_emb_dim),
-            nn.Linear(time_emb_dim, time_emb_dim * 4),
-            nn.Mish(),
-            nn.Linear(time_emb_dim * 4, time_emb_dim)
+            SinusoidalPosEmb(hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim * 2),
+            nn.GELU(),
+            nn.Linear(hidden_dim * 2, hidden_dim),
         )
         
-        # 假设我们在网络外部已经将历史观测展平或通过CNN提取为长度为 obs_dim 的一维向量
-        # 最终的全局条件向量维度 = 时间嵌入维度 + 观测特征维度
-        cond_dim = time_emb_dim + obs_dim
+        # 将含噪动作和观察条件在通道维度拼接
+        self.conv_in = nn.Conv1d(action_dim + obs_dim, hidden_dim, kernel_size=3, padding=1)
         
-        # 定义一维的去噪网络结构
-        self.net = nn.ModuleList([
-            ConditionalConv1dBlock(action_dim, 64, cond_dim),
-            ConditionalConv1dBlock(64, 64, cond_dim),
-            nn.Conv1d(64, action_dim, kernel_size=1)
-        ])
+        # 简化的残差块
+        self.block1 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, padding=1)
+        self.block2 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, padding=1)
         
-    def forward(self, action_noisy, timestep, obs_cond):
-        # 1. 提取连续的时间步嵌入
-        t_emb = self.time_mlp(timestep)
+        self.conv_out = nn.Conv1d(hidden_dim, action_dim, kernel_size=3, padding=1)
+        self.act = nn.GELU()
+
+    def forward(self, noisy_action, timestep, obs):
+        """
+        noisy_action: (B, H, action_dim)
+        timestep: (B,)
+        obs: (B, obs_dim) -> 我们将其扩展到整个时间序列以便拼接
+        """
+        B, H, _ = noisy_action.shape
         
-        # 2. 在特征维度上拼接得到全局条件表示
-        global_cond = torch.cat([t_emb, obs_cond], dim=-1)
+        # 提取时间嵌入
+        t_emb = self.time_mlp(timestep) # (B, hidden_dim)
+        t_emb = t_emb.unsqueeze(-1)     # (B, hidden_dim, 1)
         
-        # 3. 调整 action 张量的形状以适应 1D 卷积的标准输入: (Batch, Sequence, Dim) -> (Batch, Dim, Sequence)
-        x = action_noisy.permute(0, 2, 1)
+        # 扩展观察条件以匹配动作序列的时间步长
+        # (B, obs_dim) -> (B, obs_dim, H)
+        obs_expanded = obs.unsqueeze(-1).expand(-1, -1, H)
         
-        # 4. 依次通过条件调制网络层
-        x = self.net[0](x, global_cond)
-        x = self.net[1](x, global_cond)
-        x = self.net[2](x) # 最后一层仅作维度对齐映射，不再需要注入条件
+        # 转换动作张量的形状以适应 Conv1d: (B, action_dim, H)
+        x = noisy_action.transpose(1, 2)
         
-        # 输出前将形状恢复到与动作块对齐: (Batch, Dim, Sequence) -> (Batch, Sequence, Dim)
-        return x.permute(0, 2, 1)
+        # 拼接并投影
+        x = torch.cat([x, obs_expanded], dim=1)
+        x = self.conv_in(x)
+        
+        # 加入时间嵌入与残差计算
+        res = x
+        x = self.act(self.block1(x + t_emb))
+        x = self.block2(x) + res
+        
+        # 输出预测的噪声
+        out = self.conv_out(x)
+        return out.transpose(1, 2) # 恢复为 (B, H, action_dim)
 ```
 
-## 7.10.5 训练与推断循环
+有了调度器和网络，我们可以清晰地构建出 :eqref:`eq_diffusion_loss` 描述的训练流程。
 
-现在，我们将环境调度器和噪声预测网络整合在一起，展示扩散策略完整的梯度下降训练步骤与自动回归式的推断采样步骤。
-
-(**实现扩散策略的训练损失计算与逆向动作生成**)
+(**实现训练循环**)
 
 ```{.python .input}
 #@tab pytorch
-def train_step(model, scheduler, action_batch, obs_cond_batch, optimizer):
-    model.train()
+def train_diffusion_policy():
+    # 超参数定义
+    B, H, action_dim, obs_dim = 32, 16, 2, 64
+    num_timesteps = 100
+    
+    # 模拟专家数据 (B, H, action_dim) 和 图像/状态观察特征 (B, obs_dim)
+    expert_actions = torch.randn(B, H, action_dim)
+    observations = torch.randn(B, obs_dim)
+    
+    # 实例化组件
+    model = Conditional1DCNN(action_dim, obs_dim)
+    scheduler = DDPMScheduler(num_train_timesteps=num_timesteps)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    
+    # 模拟一次训练迭代
     optimizer.zero_grad()
     
-    batch_size = action_batch.shape[0]
-    device = action_batch.device
+    # 1. 随机采样纯高斯噪声，形状必须与动作序列完全一致
+    noise = torch.randn_like(expert_actions)
     
-    # 1. 采样与原始动作形状完全一致的随机正态噪声
-    noise = torch.randn_like(action_batch)
+    # 2. 为每个 Batch 独立地采样一个随机时间步 t
+    timesteps = torch.randint(0, num_timesteps, (B,), device=expert_actions.device).long()
     
-    # 2. 均匀采样批次中每个样本独立的扩散步数 k
-    timesteps = torch.randint(
-        0, scheduler.num_train_timesteps, 
-        (batch_size,), device=device
-    ).long()
+    # 3. 按照方差表计算前向加噪结果 a_t
+    noisy_actions = scheduler.add_noise(expert_actions, noise, timesteps)
     
-    # 3. 执行前向过程：一步到位获取各个时刻带噪的动作矩阵 A_k
-    noisy_actions = scheduler.add_noise(action_batch, noise, timesteps)
+    # 4. 神经网络以上下文观察 o 和时间步 t 为条件，预测注入的噪声
+    noise_pred = model(noisy_actions, timesteps, observations)
     
-    # 4. 前向传播：传入带噪数据、时间步与观测条件，预测注入的噪声
-    noise_pred = model(noisy_actions, timesteps, obs_cond_batch)
-    
-    # 5. 计算 MSE 损失并执行反向传播
-    loss = F.mse_loss(noise_pred, noise)
+    # 5. 计算 MSE 损失并更新参数
+    loss = nn.functional.mse_loss(noise_pred, noise)
     loss.backward()
     optimizer.step()
     
     return loss.item()
 
-@torch.no_grad()
-def generate_actions(model, scheduler, obs_cond, action_shape):
-    model.eval()
-    device = obs_cond.device
-    batch_size = obs_cond.shape[0]
-    
-    # 从没有任何结构信息的纯高斯噪声开始采样 A_K
-    action = torch.randn((batch_size, *action_shape), device=device)
-    
-    # 逐步去噪，逆时间方向：从 num_train_timesteps-1 严格递减到 0
-    for k in reversed(range(0, scheduler.num_train_timesteps)):
-        timesteps = torch.full((batch_size,), k, device=device, dtype=torch.long)
-        
-        # 通过网络预测在第 k 步存在于动作序列中的噪声
-        noise_pred = model(action, timesteps, obs_cond)
-        
-        # 提取代数推导中的已知标量常数
-        alpha = scheduler.alphas[k].to(device)
-        alpha_cumprod = scheduler.alphas_cumprod[k].to(device)
-        
-        # 严格应用逆向采样公式 (方程 7.10.6) 求取均值部分
-        mean = (1.0 / torch.sqrt(alpha)) * (
-            action - ((1.0 - alpha) / torch.sqrt(1.0 - alpha_cumprod)) * noise_pred
-        )
-        
-        # 恢复随机游走的方差：当且仅当 k > 0 时添加额外的高斯补偿
-        if k > 0:
-            noise = torch.randn_like(action)
-            sigma = torch.sqrt(1.0 - alpha) # 这里采取了简化的方差估计形式
-            action = mean + sigma * noise
-        else:
-            action = mean
-            
-    return action
+print(f"Training Loss: {train_diffusion_policy():.4f}")
 ```
 
-扩散策略将原本艰难的直接动作生成转化为了一个逐步迭代精化的平缓过程。通过这种基于去噪的条件生成框架，网络无需被迫在互斥的人类行为间做强硬的取舍（从而避免求均值），而是可以精准地拟合和再现高度复杂的、多峰分布的自然操作轨迹。
+## 2026 年具身智能开源生态深度剖析与融合
+:label:subsec_2026_ecosystem_analysis
 
-## 小结
+扩散策略虽然在数学推导和学术基准测试上展现了极高的上限，但要将其部署到真实物理世界，必须面对感知延迟、硬件碎片化以及泛化能力不足等严峻考验。2026 年标志着具身智能从“作坊式”学术实验全面转向“工业化”开源生态的一年。有几个里程碑式的开源项目不仅解决了部署难题，更为扩散策略提供了完美的土壤：
 
-* 扩散策略将机器人的动作序列生成建模为逐步去除高维空间中高斯噪声的随机动力学过程。
-* 通过动作块（Action Chunking）技术，模型能够一次性预测未来的多步完整轨迹，从而大幅提升控制过程的时间一致性与执行平滑度。
-* 传统的均方误差回归无法处理多模态分布（即布里丹之驴困境），而以 DDPM 为代表的扩散概率模型能够通过随机微分和条件生成，完美覆盖并重建复杂的演示数据分布。
-* 一维条件卷积网络通过参数化的特征线性调制（FiLM）层融合历史观测，灵活控制着动作序列在不同去噪时间步下的演化方向。
+首先，**Physical Intelligence (Pi) 探索的通用机器人大脑**模型确立了跨形态泛化的基准。Pi 的基础模型不再局限于特定机械臂的关节空间（Joint Space），而是通过学习统一的末端执行器（End-effector）六自由度动作流形（Action Manifold）。在这一框架下，扩散策略不再只是一个孤立的动作生成器，而是被集成到 Pi 的基础世界模型中。扩散过程的高维隐空间通过跨模态对齐，完美适应了 Pi 的泛化特征表征，极大地增强了复杂长视野（Long-horizon）任务的完成率。
+
+其次，硬件接口的碎片化一直是机器人算法落地的最大阻碍。**Linux Foundation 发起的 AIRSEAI 模块化框架**彻底改变了这一现状。AIRSEAI 提供了一层高度抽象的硬件抽象层（HAL），统一了不同厂商（如 Franka, UR, 甚至各类双足人形机器人）的驱动接口，并将控制频率严格对齐。这对于高度依赖时序一致性和动作组块（Action Chunking）的扩散策略而言至关重要。开发者现在可以直接使用 AIRSEAI 提供的零拷贝内存管理来传递观察状态 $o$，使得高频扩散推理的延迟降低了 40% 以上。
+
+此外，**Hugging Face 的 LeRobot 通用具身智能生态库**为跨平台的扩散模型部署提供了极佳的范式。LeRobot 作为一个高度通用的开源架构，旨在成为具身智能领域的“Transformers”库。它无缝整合了模型库、数据集和训练管道，对于扩散策略而言，传统的 DDPM 推理需要进行 100 步以上的神经网络迭代，而 LeRobot 深度集成了先进的扩散模型加速采样算法（如 DDIM 与 Consistency Models），并将一维 CNN 和 Transformer 推理过程极端优化。这不仅使得策略模型能够在异构设备上流畅运行，更打通了从仿真环境到物理硬件的端到端部署，为大规模通用机器人提供了高度统一的调度标准。
+
+最后，数据的匮乏曾是限制扩散模型发挥其概率建模优势的瓶颈。**AGIBOT WORLD 2026 开源数据集**的发布填补了这一空白。该数据集包含了数万小时、跨十余种真实家庭和工厂场景的多模态遥操作（Teleoperation）演示数据，并且由于是众包采集，同一任务常常包含极其多样的专家解决路径。这种充满多模态分布的数据正是传统 BC 算法的噩梦，但却是扩散策略展现实力的绝佳舞台。正是借助 AGIBOT WORLD 2026 提供的海量非结构化数据，扩散策略终于证明了其在解决现实物理世界多义性（Ambiguity）方面不可替代的价值。
+
+## 练习
+:label:subsec_diffusion_exercises
+
+1. **推导变分下界**：尝试手动推导从逆向概率分布匹配到 :eqref:`eq_diffusion_loss` 所述的均方误差形式。
+   *提示*：回顾重参数化技巧，并关注 KL 散度在两个高斯分布之间的计算方式。
+2. **加速推理采样**：在标准的去噪循环中，必须严格按照时间步 $T \to 0$ 逐一迭代。如果要实现跳步推理（如 DDIM），调度器的 `step` 函数应该如何修改？
+   *提示*：重新审视 $a_{t-1}$ 是如何由 $a_t$ 和预测出的 $\epsilon_\theta$ 确定性重构出来的。
+3. **生态系统结合**：如果在使用 LeRobot 框架部署扩散策略时，机械臂的控制频率出现了明显抖动，这会对 Action Chunking 产生怎样的影响？
+   *提示*：思考时间维度的张量在执行物理动作时，一旦预设的时间间隔被打破，动作之间的连续性（如速度和加速度）会发生什么变化。
+
+:begin_tab:pytorch
+[讨论](https://discuss.d2l.ai/t/1234)
+:end_tab:

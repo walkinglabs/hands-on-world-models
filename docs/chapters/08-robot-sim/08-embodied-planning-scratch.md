@@ -1,206 +1,200 @@
-# 具身规划的从零开始实现
+# 具身规划（Embodied Planning）的从零开始实现
+:label:`sec_embodied_planning_scratch`
 
-在探讨深度学习与机器人学的交叉领域时，让智能体在复杂的物理世界中进行自主决策与行动，始终是该领域的核心命题。早期的研究主要依赖于经典的运动规划算法（例如A*搜索与快速随机搜索树RRT），或是基于严密解析数学模型的模型预测控制（Model Predictive Control, MPC） `[Camacho & Alba, 2013]`。然而，当机器人走出结构化的实验室，面对充满未知与噪声的开放世界时，构建完美且精确的物理动力学方程往往变得极其困难，甚至是不可能的。
+## 历史脉络与学术背景
 
-近年来，随着深度学习的发展与“世界模型”（World Models）概念的提出，具身规划（Embodied Planning）的范式发生了深刻的变革。研究者们不再依赖人工预定义的刚体动力学规则，而是让智能体通过大量的数据交互，在神经网络内部学习出一个可微的环境动力学模型（Dynamics Model）。在这个习得的“隐式世界”中进行“想象”与规划，成为了诸如 PETS `[Chua et al., 2018]`、Dreamer `[Hafner et al., 2019]`，乃至近年来基于视觉-语言模型的具身控制（如 RT-1 `[Brohan et al., 2022]`）等经典工作的主流路径。
+在深度学习与强化学习交汇的早期，智能体的决策主要依赖于无模型的（Model-Free）策略梯度或价值迭代方法。然而，当我们试图将这些经典算法部署到物理世界中的真实机器人（即具身智能体，Embodied Agent）上时，不可避免地遭遇了严峻的现实壁垒：物理世界的数据采集不仅时间成本极其高昂，而且系统在试错过程中极易发生不可逆的硬件损坏。
 
-在本节中，我们将剥离掉复杂的视觉编码器和庞大的语言模型，回归具身规划最纯粹的数学与算法本质。我们将从高中物理中最基础的运动学出发，严密推导并从零开始实现一个基于世界模型和交叉熵方法（Cross-Entropy Method, CEM `[Rubinstein, 1997]`）的具身规划器。
+为了从根本上规避这些致命缺陷，研究者们转向了基于模型的（Model-Based）规划方法。追本溯源，这一思想滥觞于经典控制理论中的模型预测控制（Model Predictive Control, MPC）[Camacho & Bordons, 1999]。MPC 的核心哲学在于：通过内部构建对周围环境动态演化的精确刻画，在脑海中预演未来可能的多种轨迹，并据此选出当下最优的控制指令。
 
-## 场景构建与一维物理映射
+进入深度学习时代后，得益于神经网络在表征学习上的突破，我们得以构建处理极高维观测的深度世界模型。在此背景下，具身规划技术迎来了两次工程革命。其一，以 Dreamer 系列 [Hafner et al., 2019, 2023] 为代表的算法，成功将原本依赖低维物理状态方程的规划，升维至处理高维像素输入；其二，以 Google DeepMind 推出的 MuJoCo MPC (MJPC) [Howell et al., 2022] 为代表的开源系统，将并行采样规划器与高精度的接触力学模拟器深度绑定，标志着具身规划已从理论上的马尔可夫决策过程（MDP）跨越到了毫秒级实时计算的物理工程实践中。
 
-为了透彻理解具身规划的本质，我们绝对不能一开始就陷入高维张量的泥潭。让我们将复杂的机器人操作降维，回到高中物理课本中最经典的一维运动学场景。
+本节我们将从最为基础的高中运动学知识起步，严格推导具身规划的核心数学机制，并结合现代开源项目的工程理念，在 PyTorch 中从零开始构建一个具备高度张量化特征的模型预测控制器。
 
-假设我们控制着一台只能在笔直的一维轨道上移动的微型机器人。在任意时刻 $t$，机器人的状态可以由两个标量完全描述：它在轨道上的位置 $x_t$ 和当前的瞬时速度 $v_t$。机器人唯一能够做出的动作（Action），就是通过电机施加一个持续一小段时间 $\Delta t$ 的加速度 $a_t$。
+## 具身规划的物理与数学映射
 
-根据最基础的匀加速直线运动规律，如果我们在时间间隔 $\Delta t$ 内施加恒定的加速度 $a_t$，机器人在下一时刻 $t+1$ 的速度和位置将遵循以下差分方程：
+为了剥离深度学习概念的表面迷雾，我们首先将具身规划降维映射到经典的高中物理场景中。
 
-$$v_{t+1} = v_t + a_t \Delta t$$
-$$x_{t+1} = x_t + v_t \Delta t + \frac{1}{2} a_t (\Delta t)^2$$
+想象在物理课上研究抛体运动时，当你试图将一枚篮球精准抛入远处的篮筐。你的大脑实际上在无意识中执行了一套极度复杂的“具身规划”流程。你并没有随机挥动手臂，而是基于对重力加速度和空气阻力（即世界运行的物理规律）的内化理解，在脑海中虚拟出了一条抛物线（轨迹推演），并评估这条抛物线最终距离篮筐中心的偏差有多大（代价评估）。
 
-为了数学上的简洁与后续向量化的需要，我们通常会假设时间步长 $\Delta t$ 极小，从而忽略掉二次项 $\frac{1}{2} a_t (\Delta t)^2$。现在，我们定义系统的状态向量为 $\mathbf{s}_t = \begin{bmatrix} x_t \\ v_t \end{bmatrix}$，动作向量为 $\mathbf{u}_t = \begin{bmatrix} a_t \end{bmatrix}$。那么，上述标量方程可以顺理成章地重写为严谨的矩阵乘法形式：
+在严格的数学表述下，我们将智能体在时间步 $t$ 的状态记为 $\mathbf{s}_t \in \mathbb{R}^n$，它包含但不限于机器人的关节角度、角速度以及环境信息。智能体能够施加的连续动作向量（例如电机扭矩）记为 $\mathbf{a}_t \in \mathbb{R}^m$。世界模型（大脑中的物理规律）可以被抽象为一个非线性的动力学状态转移函数 $f$：
 
-$$\begin{bmatrix} x_{t+1} \\ v_{t+1} \end{bmatrix} = \begin{bmatrix} 1 & \Delta t \\ 0 & 1 \end{bmatrix} \begin{bmatrix} x_t \\ v_t \end{bmatrix} + \begin{bmatrix} 0 \\ \Delta t \end{bmatrix} a_t$$
+$$ \mathbf{s}_{t+1} = f(\mathbf{s}_t, \mathbf{a}_t) $$
+:eqlabel:`eq_dynamics_f`
 
-更一般地，对于任何线性时不变系统，我们可以将其抽象为状态转移方程：
+为了量化评价某一特定状态和动作组合的优劣，我们定义一个标量函数，即代价函数（Cost Function） $C(\mathbf{s}, \mathbf{a})$。它的物理意义在于衡量当前系统偏离期望目标（例如球偏离篮筐中心）的程度以及系统做功的能耗。
 
-$$\mathbf{s}_{t+1} = \mathbf{A} \mathbf{s}_t + \mathbf{B} \mathbf{u}_t$$
+我们的终极目标是，寻找一段未来连续的动作序列 $\mathbf{A} = [\mathbf{a}_t, \mathbf{a}_{t+1}, \dots, \mathbf{a}_{t+H-1}]$，使得在未来 $H$ 个预测时间步（即预测视界，Prediction Horizon）内的累积代价达到极小值。我们将其严谨地表述为如下的带有等式约束的离散时间最优化问题：
 
-## 泛化至非线性环境动力学模型
+$$ \min_{\mathbf{A}} \sum_{k=0}^{H-1} C(\mathbf{s}_{t+k}, \mathbf{a}_{t+k}) $$
+:eqlabel:`eq_mpc_objective`
 
-上述方程 :eqref:eq_linear_dynamics 极其优美，但遗憾的是，真实的具身环境（例如机械臂的摩擦力、流体阻力、柔性形变）几乎全是非线性的。因此，具身规划的核心突破，就是**使用深度神经网络来近似并替代这个转移矩阵**。
+在这个演化过程中，每一步的状态流转都必须被世界模型 :eqref:`eq_dynamics_f` 严格约束。在模型预测控制（MPC）的经典范式中，我们会在每个离散时间 $t$ 求解出这段长度为 $H$ 的最优动作序列，但**仅仅执行该序列中的第一个动作 $\mathbf{a}_t$**。当时间步推进到 $t+1$ 观测到真实的新状态后，再次启动新一轮的 $H$ 步预测与优化。这种“滚动视界”（Receding Horizon）的控制机制，赋予了系统极强的抗扰动和纠错能力。
 
-我们将真实世界中复杂的状态转移过程定义为一个未知的非线性函数 $\mathcal{F}$。通过收集大量机器人在环境中的历史转移数据 $\{(\mathbf{s}_t, \mathbf{u}_t, \mathbf{s}_{t+1})\}$，我们可以训练一个参数为 $\theta$ 的神经网络 $f_\theta$：
+## 交叉熵方法（CEM）推导与参数迭代
 
-$$\mathbf{s}_{t+1} = f_\theta(\mathbf{s}_t, \mathbf{u}_t)$$
+求解目标函数 :eqref:`eq_mpc_objective` 面临着巨大的挑战，因为复杂的动力学函数 $f$ 往往会导致整个代价流形呈现出极度非凸的几何特征，常规的基于梯度的优化方法极易陷入局部极小值。为了突破这一瓶颈，现代工程中（包括很多早期版本的世界模型架构）广泛采用了一种基于零阶优化的概率方法：交叉熵方法（Cross-Entropy Method, CEM）。
 
-这里的 $f_\theta$ 就是我们常说的**前向动力学模型**（Forward Dynamics Model），也是世界模型中最核心的组成部分。它赋予了智能体“预测未来”的能力：给定当前状态和我们即将采取的动作，模型能够推演出下一步的状态。
+让我们利用统计学知识严密推导 CEM 的迭代机制。假设最优的动作序列是由某种未知的概率分布生成的。作为先验，我们假定动作序列服从参数化的多元高斯分布，其均值向量为 $\boldsymbol{\mu}$，协方差矩阵为 $\boldsymbol{\Sigma}$。
 
-## 规划目标的数学表达
+首先，我们在每一次优化迭代开始时，从当前分布中独立同分布地采样出 $N$ 条候选的动作序列轨迹：
 
-拥有了预测未来的能力后，我们需要一种数学语言来描述“任务目标”。在具身规划中，目标通常被形式化为一个**代价函数**（Cost Function） $c(\mathbf{s}_t, \mathbf{u}_t)$。代价越低，说明状态越符合我们的期望。
+$$ \mathbf{A}^{(i)} \sim \mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\Sigma}), \quad i \in \{1, 2, \dots, N\} $$
+:eqlabel:`eq_cem_sample`
 
-延续一维轨道的场景，假设我们的目标是让机器人停靠在位置 $x_{goal}$ 处，并且希望它停下时不要过于剧烈地晃动（即速度 $v$ 应当接近0），同时为了节省电量，我们希望加速度（动作）越小越好。我们可以构建如下的单步代价函数：
+接着，针对每一条候选轨迹 $\mathbf{A}^{(i)}$，我们利用初始状态 $\mathbf{s}_t$ 和世界模型 :eqref:`eq_dynamics_f` 迭代展开未来的状态轨迹，并根据 :eqref:`eq_mpc_objective` 计算其对应的累积代价 $J^{(i)}$：
 
-$$c(\mathbf{s}_t, \mathbf{u}_t) = w_1 (x_t - x_{goal})^2 + w_2 v_t^2 + w_3 a_t^2$$
+$$ J^{(i)} = \sum_{k=0}^{H-1} C(\mathbf{s}_{t+k}^{(i)}, \mathbf{a}_{t+k}^{(i)}) $$
+:eqlabel:`eq_cem_cost`
 
-其中，$w_1, w_2, w_3$ 是调节各项重要性的权重常数。
+随后，我们将这 $N$ 条轨迹按照其累积代价 $J^{(i)}$ 从小到大进行严格的升序排列。为了提炼出蕴含最优解信息的样本，我们施加一个硬性截断，仅保留代价最小的前 $K$ 条轨迹（其中 $K < N$），这部分轨迹在文献中被称为精英样本（Elite Samples）。
 
-然而，具身规划不能只看眼前的一步。我们需要在一个规划视界（Planning Horizon） $H$ 内进行长远考虑。这就引出了规划的最终数学目标——寻找一条长度为 $H$ 的最优动作序列 $\mathbf{U}_{1:H}^* = \{\mathbf{u}_1, \mathbf{u}_2, \dots, \mathbf{u}_H\}$，使得累积代价 $J$ 最小化：
+最后，CEM 最核心的一步在于**分布重塑**。我们摒弃原有的参数，利用这 $K$ 个精英样本在各个维度的经验均值和经验方差，重新极大似然估计（MLE）出新的 $\boldsymbol{\mu}'$ 和 $\boldsymbol{\Sigma}'$，并将其作为下一轮迭代的采样分布。这种从发散采样到向高回报区域坍缩的自适应过程，正是其能够在高维连续动作空间中规避局部最优的关键数学机理。
 
-$$\mathbf{U}_{1:H}^* = \mathop{\arg\min}_{\mathbf{U}_{1:H}} \sum_{k=1}^{H} c(\mathbf{s}_{t+k}, \mathbf{u}_{t+k})$$
+> [!NOTE]
+> 交叉熵方法（CEM）本质上可以视作对变分推断中重要性采样的一种极端近似，它用直接的硬截断代替了平滑的似然加权，这种妥协换取了在实际非平稳环境中的鲁棒性。
 
-约束条件为未来的状态必须由动力学模型 :eqref:eq_neural_dynamics 逐步生成。
+## 现代开源项目的工程视角：MJPC 与 DreamerV3
 
-## 交叉熵方法（CEM）的严密推导
+在从零实现代码之前，审视当前最先进的开源项目是如何将上述数学模型进行工程化落地的，显得尤为重要。
 
-面对等式 :eqref:eq_trajectory_cost，如果动作空间是离散且有限的（比如只能选“左移”、“右移”、“不动”），我们可以使用广度优先搜索或A*算法穷举所有可能的序列。但是，真实的机器人控制面临的是**高维且连续的动作空间**（例如控制7个机械臂关节的力矩），搜索空间呈指数级爆炸，穷举法彻底失效。
+**Google DeepMind 的 MuJoCo MPC (MJPC)** 
+MJPC [Howell et al., 2022] 致力于为真实物理机器人提供千赫兹（kHz）级别的实时 MPC 控制能力。为了打破计算瓶颈，MJPC 在架构设计上极其强调并行张量化。它放弃了传统依赖 Python for 循环评估代价的做法，将动力学展开 :eqref:`eq_dynamics_f` 和代价计算 :eqref:`eq_cem_cost` 深度编译至底层 C++ 并在多线程甚至 GPU 上并行调度。此外，为了克服原生 CEM 在高维空间探索效率低下的问题，MJPC 广泛引入了模型预测路径积分（MPPI）以及 iLQG（基于梯度的迭代线性二次高斯优化）等算法，通过融合代价地形的局部曲率信息（如海森矩阵的近似）来引导采样方向，这代表了当前具身控制的最前沿工程范式。
 
-为了在这个非凸、高维的连续空间中找到最小化累积代价的动作序列，我们需要引入一种强大的无导数优化算法：**交叉熵方法（Cross-Entropy Method, CEM）**。
+**DreamerV3 的潜在空间规划**
+与直接依赖物理引擎进行状态展开的 MJPC 截然不同，DreamerV3 [Hafner et al., 2023] 重点攻克了直接从高维像素（如摄像头画面）进行规划的难题。其最惊艳的工程设计在于：它严厉禁止使用极其耗时的原图进行滚动预测。相反，系统预先训练了一个庞大且高度复杂的循环神经网络（RNN）和自编码器（Autoencoder），将高维像素强制压缩至一个极低维度的隐状态（Latent State）向量中。因此，在 Dreamer 架构下，公式 :eqref:`eq_dynamics_f` 中的 $\mathbf{s}_t$ 不再是物理意义上的关节坐标，而纯粹是由神经网络推断出的抽象代数向量。所有的采样、状态推演与代价计算，全部在内存中的张量隐空间（Latent Space）内以光速流转，彻底摆脱了物理渲染引擎的拖累。
 
-> **类比**：CEM 的迭代优化过程，就如同炮兵团在浓雾中对未知坐标的敌军阵地进行“火力试探与校射”。第一轮，炮兵们基于大致的方位（初始均值）和较大的散布范围（初始方差）盲目地发射一批炮弹（随机采样动作序列）。随后，前线观察哨汇报哪些炮弹落得离目标最近（评估代价并筛选精英样本）。炮兵指挥官立刻根据这些最精准的弹着点，重新计算炮管的瞄准中心（更新均值），并极大地缩小试探的散布范围（减小方差）。如此反复多轮，炮火便会以极快的速度收敛，最终精准覆盖真正的目标。
+## 具身规划的从零开始实现
 
-在严格的数学表述下，CEM 将求解最优序列的问题，转化为估计最优动作序列分布的问题。我们假设在视界 $H$ 内，每个时间步的动作服从高斯分布 $\mathcal{N}(\boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k)$。CEM 的一次迭代周期包含以下三个严密的步骤：
-
-1. **采样（Sampling）**：从当前的分布 $\mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\Sigma})$ 中，独立同分布地采样 $N$ 条完整的动作序列轨迹（即 $N$ 发“炮弹”）：
-   $$\mathbf{U}^{(i)} \sim \mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\Sigma}), \quad i \in \{1, 2, \dots, N\}$$
-
-2. **评估与排序（Evaluation & Sorting）**：利用动力学模型 $f_\theta$ 展开（Rollout）这 $N$ 条序列，计算每一条序列的累积代价 $J(\mathbf{U}^{(i)})$。随后按代价从小到大排序。
-
-3. **更新（Updating）**：选取代价最低的前 $K$ 条序列作为“精英样本”（Elites），记作 $\mathbf{U}_{elite}$。利用这 $K$ 个精英样本的经验统计量，对高斯分布的均值和方差进行极大似然更新：
-   $$\boldsymbol{\mu}_{new} = \frac{1}{K} \sum_{j=1}^K \mathbf{U}_{elite}^{(j)}$$
-   $$\boldsymbol{\Sigma}_{new} = \frac{1}{K} \sum_{j=1}^K \left( \mathbf{U}_{elite}^{(j)} - \boldsymbol{\mu}_{new} \right) \left( \mathbf{U}_{elite}^{(j)} - \boldsymbol{\mu}_{new} \right)^\top$$
-
-不断重复上述三个步骤 $M$ 次，分布的方差 $\boldsymbol{\Sigma}$ 会不断缩小，均值 $\boldsymbol{\mu}$ 会迅速逼近等式 :eqref:eq_trajectory_cost 的最优解。
-
-## 从零构建具身规划器代码
-
-现在，让我们将上述严密的数学推演转化为具体的张量计算。我们采用模型预测控制（MPC）的范式：在当前时间步，规划出未来 $H$ 步的动作序列，但**仅仅执行序列中的第一个动作**。环境进入新状态后，我们重新进行规划。这种机制能够有效地抵御动力学模型不精确带来的累积误差。
-
-(**首先，我们定义一维环境的代理动力学模型与代价函数。**)
+带着对经典理论和现代工程架构的理解，我们将利用 PyTorch 编写一个能够利用 GPU 进行张量级并行推演的模型预测控制器。我们首先构建一个模拟的非线性世界模型。
 
 ```{.python .input}
 #@tab pytorch
 import torch
 from torch import nn
 
-class SimpleDynamicsModel(nn.Module):
-    """一个极为简化的非线性动力学模型代理，替代真实的复杂物理世界"""
+class SimulatedWorldModel(nn.Module):
+    """
+    一个简化的非线性世界模型（用于替代复杂的物理引擎或深度RNN）。
+    """
     def __init__(self, state_dim, action_dim):
         super().__init__()
-        # 实际应用中，这里会是一个通过大量数据预训练的深度残差网络
-        self.net = nn.Sequential(
-            nn.Linear(state_dim + action_dim, 64),
-            nn.ReLU(),
-            nn.Linear(64, state_dim)
-        )
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        # 在这里我们采用单层神经网络来近似一个未知的物理动力学方程
+        self.dynamics = nn.Linear(state_dim + action_dim, state_dim)
         
     def forward(self, state, action):
-        # 模型的输入是状态和动作的拼接，输出是状态的变化量 (残差连接)
-        # state: [batch_size, state_dim]
-        # action: [batch_size, action_dim]
+        """
+        前向传播以计算下一个时间步的状态。
+        :param state: 形状为 (batch_size, state_dim) 的张量
+        :param action: 形状为 (batch_size, action_dim) 的张量
+        :return: 形状为 (batch_size, state_dim) 的下一个状态
+        """
+        # (**沿着最后一个维度拼接当前状态与动作张量，并通过非线性激活函数以近似真实物理世界的复杂耦合转移**)
         x = torch.cat([state, action], dim=-1)
-        state_delta = self.net(x)
-        return state + state_delta
+        next_state = torch.relu(self.dynamics(x))
+        return next_state
 
-def cost_function(states, actions, target_state):
+def cost_function(state, action, target_state):
     """
-    计算规划轨迹的累积代价。
-    states: [batch_size, horizon, state_dim]
-    actions: [batch_size, horizon, action_dim]
+    代价函数：计算当前状态与目标状态之间的欧式距离平方，并施加对控制能耗的二次惩罚。
     """
-    # 状态的L2范数惩罚：距离目标状态越远，代价越大
-    state_cost = torch.sum((states - target_state) ** 2, dim=-1) # [batch_size, horizon]
-    
-    # 动作的L2范数惩罚：约束能量消耗，鼓励平滑控制
-    action_cost = torch.sum(actions ** 2, dim=-1) # [batch_size, horizon]
-    
-    # 将时间视界 H 内的代价进行累加
-    # 最终返回形状: [batch_size]
-    total_cost = torch.sum(state_cost + 0.1 * action_cost, dim=-1)
-    return total_cost
+    # 状态的 L2 距离，衡量任务完成度
+    state_cost = torch.sum((state - target_state) ** 2, dim=-1)
+    # 动作的 L2 范数，施加正则化惩罚以避免极其暴力的控制力矩
+    action_cost = 0.1 * torch.sum(action ** 2, dim=-1)
+    return state_cost + action_cost
 ```
 
-(**接下来，我们实现最核心的交叉熵规划器 (CEM Planner)。**)
-请务必仔细阅读代码中对张量维度的详细注释。
+接下来，我们编写最核心的 CEM 规划器。在以下的实现中，请务必仔细体会我们是如何在初始状态张量的批次维度（Batch Dimension）上展开 $N$ 条轨迹的，这正是避免显式循环、实现底层硬件加速的工程秘诀。
 
 ```{.python .input}
 #@tab pytorch
 class CEMPlanner:
-    def __init__(self, dynamics_model, action_dim, horizon=15, 
-                 num_samples=200, num_elites=20, num_iterations=5):
-        self.model = dynamics_model
-        self.action_dim = action_dim
-        self.horizon = horizon          # 规划视界 H
-        self.num_samples = num_samples  # 每次采样的序列总数 N
-        self.num_elites = num_elites    # 筛选的精英样本数 K
-        self.num_iters = num_iterations # CEM的迭代次数 M
-        
-    def plan(self, initial_state, target_state):
+    def __init__(self, world_model, target_state, horizon, num_samples, num_elites, iterations):
         """
-        给定当前状态和目标，计算并返回当前最优的一步动作
-        initial_state: [state_dim]
-        target_state: [state_dim]
+        基于交叉熵方法（CEM）的模型预测控制器。
+        :param world_model: 用于预测未来状态流转的世界模型
+        :param target_state: 期望达到的目标物理状态
+        :param horizon: 预测视界 H
+        :param num_samples: 每次迭代采样的轨迹总批次数 N
+        :param num_elites: 经过代价排序后选出的精英样本数量 K
+        :param iterations: 分布拟合优化的总迭代次数
         """
-        # 初始化动作序列的高斯分布参数
-        # 均值 mu 初始化为0，形状: [horizon, action_dim]
-        action_mu = torch.zeros(self.horizon, self.action_dim)
-        # 方差 sigma 初始化为1 (标准正态分布)，形状: [horizon, action_dim]
-        action_std = torch.ones(self.horizon, self.action_dim)
+        self.model = world_model
+        self.target_state = target_state
+        self.H = horizon
+        self.N = num_samples
+        self.K = num_elites
+        self.iters = iterations
+        self.action_dim = world_model.action_dim
+
+    def plan(self, current_state):
+        """
+        给定当前系统的真实物理状态，在脑海中规划并返回最核心的最优立即执行动作。
+        """
+        # 初始状态下，动作分布为标准正态分布，即没有任何先验偏好
+        action_mean = torch.zeros(self.H, self.action_dim)
+        action_std = torch.ones(self.H, self.action_dim)
         
-        # 将输入提升为批次维度以便并行推理
-        # [state_dim] -> [num_samples, state_dim]
-        state_batch = initial_state.unsqueeze(0).repeat(self.num_samples, 1)
-        target_batch = target_state.unsqueeze(0).repeat(self.num_samples, 1)
-        
-        for i in range(self.num_iters):
-            # 步骤1：采样 N 条完整的动作轨迹
-            # sampled_actions: [num_samples, horizon, action_dim]
-            sampled_actions = action_mu.unsqueeze(0) + \
-                              action_std.unsqueeze(0) * torch.randn(
-                                  self.num_samples, self.horizon, self.action_dim)
+        for i in range(self.iters):
+            # (**步骤1：利用重参数化技巧，从当前优化得到的高斯分布中，并行且独立同分布地采样出 N 条连续的动作序列**)
+            # 张量形状：(N, H, action_dim)
+            actions = action_mean.unsqueeze(0) + action_std.unsqueeze(0) * torch.randn(self.N, self.H, self.action_dim)
             
-            # 限制动作的物理边界（如电机的最大输出）假设在 [-1, 1] 之间
-            sampled_actions = torch.clamp(sampled_actions, min=-1.0, max=1.0)
+            # 为了进行并行推演，我们需要将标量级别的当前状态复制扩张 N 份
+            # 张量形状：(N, state_dim)
+            states = current_state.unsqueeze(0).repeat(self.N, 1)
+            costs = torch.zeros(self.N)
             
-            # 用于记录模型在 H 步内预测出的所有状态
-            predicted_states = []
-            current_states = state_batch.clone()
+            # (**步骤2：利用已知的世界模型在预测视界 H 内进行自回归滚动推断，累加得到每条轨迹的整体代价**)
+            for t in range(self.H):
+                # 提取出时间步 t 时，所有 N 条轨迹对应的瞬时动作
+                # 形状：(N, action_dim)
+                a_t = actions[:, t, :]
+                states = self.model(states, a_t)
+                costs += cost_function(states, a_t, self.target_state)
             
-            # 在前向动力学模型中展开轨迹
-            for t in range(self.horizon):
-                # 取出第 t 步的所有采样动作
-                curr_actions = sampled_actions[:, t, :] # [num_samples, action_dim]
-                # 动力学模型预测下一步状态
-                next_states = self.model(current_states, curr_actions)
-                predicted_states.append(next_states.unsqueeze(1))
-                current_states = next_states
-                
-            # 拼接得到完整的状态序列预测
-            # all_predicted_states: [num_samples, horizon, state_dim]
-            all_predicted_states = torch.cat(predicted_states, dim=1)
+            # (**步骤3：计算代价序列并执行硬截断，严格筛选出代价最低的 K 个精英样本**)
+            _, elite_indices = torch.sort(costs)
+            elite_indices = elite_indices[:self.K]
+            elite_actions = actions[elite_indices] # 精英动作，形状：(K, H, action_dim)
             
-            # 步骤2：评估并排序
-            # costs: [num_samples]
-            costs = cost_function(all_predicted_states, sampled_actions, target_batch)
+            # (**步骤4：摒弃旧分布，利用精英样本的经验统计量极大似然重构新的多元高斯分布参数**)
+            action_mean = elite_actions.mean(dim=0)
+            # 添加微小的 epsilon 偏置项以防止系统在多轮迭代后方差彻底坍缩
+            action_std = elite_actions.std(dim=0) + 1e-5 
             
-            # 找到代价最小的前 K 个样本的索引
-            _, elite_indices = torch.topk(costs, self.num_elites, largest=False)
-            
-            # 提取精英样本的动作序列
-            # elite_actions: [num_elites, horizon, action_dim]
-            elite_actions = sampled_actions[elite_indices]
-            
-            # 步骤3：更新分布参数
-            # 计算新的均值和标准差 (跨 batch_size 维度求均值/方差)
-            action_mu = torch.mean(elite_actions, dim=0)   # [horizon, action_dim]
-            action_std = torch.std(elite_actions, dim=0)   # [horizon, action_dim]
-            
-            # 实际工程中，为了防止方差过早收敛导致陷入局部最优，
-            # 通常会在标准差上增加一个随时间衰减的极小噪声，此处为保持简洁省略。
-            
-        # 经过 M 轮迭代后，返回最优均值序列中的第一个动作
-        # 这正是模型预测控制（MPC）的核心思想
-        return action_mu[0]
+        # 依据 MPC 的控制逻辑：仅仅截取规划得到的最优长期序列中的第一个时间步的动作返回
+        return action_mean[0]
+
+# 实例化模拟的物理空间环境与对应的求解器进行测试验证
+state_dim = 4
+action_dim = 2
+model = SimulatedWorldModel(state_dim, action_dim)
+target = torch.ones(state_dim)
+
+# 设置采样规模 N=1000, 选拔标准 K=100
+planner = CEMPlanner(world_model=model, target_state=target, 
+                     horizon=15, num_samples=1000, num_elites=100, iterations=5)
+
+# 假设具身智能体现正处于一个纯随机的初始状态
+initial_state = torch.rand(state_dim)
+best_next_action = planner.plan(initial_state)
+print("经历 CEM 多轮迭代收敛后计算出的最优首步执行动作:", best_next_action)
 ```
 
-通过上述严密的设计，我们的机器人不再是盲目试错，而是具备了在“大脑”（世界模型）中预演无数种未来，并沿着代价最低的那条世界线坚定前行的能力。这也正是现代复杂具身智能体能够完成折叠衣服、灵巧抓取等惊艳操作的基石原理。
+## 小结
+
+在本节的探讨中，我们系统性地追溯了具身规划的学术历史，并将高度复杂的模型预测控制思想平缓地降维至经典高中抛体运动的物理直觉层面上。我们利用统计学严密推导了交叉熵方法（CEM）的参数演进法则，剖析了以 MuJoCo MPC 为代表的物理空间规划框架和以 DreamerV3 为代表的隐空间（Latent Space）预测机制的工程落差与一致性。最终，我们从底层纯粹依赖张量计算重写了一套支持大规模并行推断的 MPC 规划器。这不仅解构了具身控制算法的最深层积木，更为后续引入离线强化学习或残差控制奠定了不可或缺的数学与代码基石。
+
+## 练习
+
+1. 在当前 `CEMPlanner` 的实现逻辑中，我们针对每个新的时刻规划时，都粗暴地将 `action_mean` 初始化为绝对的 0。请查阅现代控制论文献（如关于热启动 Warm Start 的讨论），思考应当如何在时间流逝的前提下，巧妙利用上一时刻计算得到的规划结果来对当前时刻的 `action_mean` 提供具有物理连续性的先验初始化？
+2. （**提示：考虑迭代后期高斯分布的方差剧烈变化**）随着 CEM 迭代深度的增加，经验方差 `action_std` 将会以极快的速度收敛趋近于零。如果在我们面临的是具有极度非平稳噪声的真实物理实验台，这种过早收敛（Premature Convergence）会引发哪些系统性崩溃？你如何在现有代码的统计重构环节，通过引入指数滑动平均（EMA）平滑系数来抑制这种分布坍塌现象？
+3. 根据 [Howell et al., 2022] 的论述，MuJoCo MPC 底层并非完全依赖这种零阶黑盒采样，而是融入了基于动力学梯度的 iLQG 方法。如果在我们的系统中，确信 `SimulatedWorldModel` 所具备的物理转移函数是绝对可微且平滑的，尝试摒弃 CEM 的概率采样框架，直接利用 PyTorch 的反向传播引擎（如 `torch.autograd`）针对目标函数 `cost_function` 对整条连续轨迹进行端到端的梯度下降优化，并对比两种范式在计算耗时与收敛稳定性上的差异。
+
+:begin_tab:pytorch
+[讨论](https://discuss.d2l.ai/t/1234)
+:end_tab:
