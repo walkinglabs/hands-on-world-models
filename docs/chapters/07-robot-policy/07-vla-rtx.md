@@ -2,13 +2,13 @@
 
 在人类探索通用人工智能（Artificial General Intelligence, AGI）的历程中，如果说大型语言模型（Large Language Models, LLMs）赋予了机器“认知”与“推理”的大脑，视觉-语言模型（Vision-Language Models, VLMs）为机器装配了“观察”世界的双眼，那么视觉-语言-动作模型（Vision-Language-Action Models, VLA）则是迈向具身智能（Embodied AI）的关键一步——它赋予了机器在物理世界中“行动”的躯干与四肢。
 
-本节将深入探讨机器人策略（Robot Policy）学习范式的演进，特别是从传统的孤立控制算法到统一的 Transformer 架构的跨越。我们将重点剖析 Robotics Transformer 及其衍生模型（RT-1 `[Brohan et al., 2022]`, RT-2 `[Brohan et al., 2023]`, 以及跨具身的 RT-X `[Padalkar et al., 2023]`），并从最基础的数学概念出发，逐步构建起 VLA 模型的严谨理论框架与代码实现。
+本节将深入探讨机器人策略（Robot Policy）学习范式的演进，特别是从传统的孤立控制算法到统一的 Transformer 架构的跨越。我们将重点剖析 Robotics Transformer 及其衍生模型（RT-1 [[Brohan et al., 2022]](https://arxiv.org/abs/2212.06817), RT-2 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818), 以及跨具身的 RT-X [[Padalkar et al., 2023]](https://arxiv.org/abs/2310.08864)），并从最基础的数学概念出发，逐步构建起 VLA 模型的严谨理论框架与代码实现。
 
 ## 历史脉络与学术背景
 
 在深度学习全面介入机器人控制之前，机器人策略主要依赖于经典控制理论与状态机（State Machines）。研究者需要利用动力学方程，计算关节的力矩与逆运动学（Inverse Kinematics）。这种方法的局限性在于，它对环境的非结构化变化极其敏感。
 
-随后，基于卷积神经网络（CNNs）的端到端（End-to-End）行为克隆（Behavioral Cloning）开始兴起。然而，早期的模仿学习模型通常只能在单一机器人形态（Embodiment）、单一实验室环境和有限的指令集下工作。当 Transformer 架构在自然语言处理任务中展现出惊人的泛化能力 `[Vaswani et al., 2017]` 后，具身智能领域的研究者开始思考：我们能否将机器人的“感知-决策-行动”循环，抽象为一种类似语言翻译的序列建模问题？
+随后，基于卷积神经网络（CNNs）的端到端（End-to-End）行为克隆（Behavioral Cloning）开始兴起。然而，早期的模仿学习模型通常只能在单一机器人形态（Embodiment）、单一实验室环境和有限的指令集下工作。当 Transformer 架构在自然语言处理任务中展现出惊人的泛化能力 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762) 后，具身智能领域的研究者开始思考：我们能否将机器人的“感知-决策-行动”循环，抽象为一种类似语言翻译的序列建模问题？
 
 RT-1 首先证明了将图像、语言和动作统一到同一个 Transformer 架构中的可行性；而 RT-2 则进一步回答了另一个深刻的问题：基于互联网海量文本与图像训练的视觉-语言模型（VLM），其蕴含的世界知识能否直接迁移到物理世界的机器人控制中？RT-X 项目（隶属于 Open X-Embodiment）则打破了硬件壁垒，证明了在多种完全不同的机器人硬件上联合训练单一模型，不仅不会导致严重的负迁移（Negative Transfer），反而能产生正向的跨具身（Cross-Embodiment）泛化能力。
 
@@ -38,7 +38,7 @@ $$ k = \lfloor \tilde{a} \times (N - 1) \rceil $$
 
 在实际的机械臂控制中，动作不仅包括三维平移（$X, Y, Z$），还包括三维旋转（如欧拉角或四元数表示的角度变化）以及夹爪（Gripper）的开合程度。假设在时刻 $t$，机器人的完整动作是一个 $D$ 维向量 $\mathbf{a}_t = [a_{t,1}, a_{t,2}, \dots, a_{t,D}]^\top \in \mathbb{R}^D$。
 
-我们可以利用哈达玛积（Hadamard Product，即逐元素乘法）和基本的向量运算，将 :eqref:eq_action_discretize_scalar 严谨地推广到高维向量空间。设 $\mathbf{a}_{\min}$ 和 $\mathbf{a}_{\max}$ 分别为各维度的边界向量，则归一化动作向量 $\tilde{\mathbf{a}}_t$ 可以表示为：
+我们可以利用哈达玛积（Hadamard Product，即逐元素乘法）和基本的向量运算，将该公式严谨地推广到高维向量空间。设 $\mathbf{a}_{\min}$ 和 $\mathbf{a}_{\max}$ 分别为各维度的边界向量，则归一化动作向量 $\tilde{\mathbf{a}}_t$ 可以表示为：
 
 $$ \tilde{\mathbf{a}}_t = (\mathbf{a}_t - \mathbf{a}_{\min}) \oslash (\mathbf{a}_{\max} - \mathbf{a}_{\min}) $$
 
@@ -62,7 +62,7 @@ $$ P(\mathbf{k}_t \mid \mathcal{I}_t, L; \boldsymbol{\theta}) = \prod_{d=1}^{D} 
 
 $$ \mathcal{L}(\boldsymbol{\theta}) = - \sum_{t=1}^{T} \sum_{d=1}^{D} \log P(k_{t,d} \mid k_{t,<d}, \mathcal{I}_t, L; \boldsymbol{\theta}) $$
 
-通过公式 :eqref:eq_vla_loss，我们将复杂的机械臂闭环控制任务，严丝合缝地转换为了标准的自然语言处理中的“下一个词元预测”（Next-Token Prediction）任务。
+通过该公式，我们将复杂的机械臂闭环控制任务，严丝合缝地转换为了标准的自然语言处理中的“下一个词元预测”（Next-Token Prediction）任务。
 
 ## RT-1：基于 FiLM 的跨模态融合
 

@@ -8,11 +8,11 @@
 
 在智能体（Agent）研究的早期阶段，研究者们主要依赖无模型（Model-Free）的强化学习算法。这类算法通过试错直接学习策略，但其样本效率极低。为了让智能体能够像人类一样在脑海中“预演”未来，基于模型（Model-Based）的方法逐渐兴起。
 
-现代世界模型的奠基之作之一是由 Ha 和 Schmidhuber 在 2018 年提出的 *World Models* [Ha & Schmidhuber, 2018]。他们提出，智能体可以通过一个变分自编码器（VAE）压缩视觉输入，并利用循环神经网络（RNN）在隐空间中预测未来。此时，评估模型好坏的主要标准是**像素级的重构误差（Pixel-level Reconstruction Error）**。
+现代世界模型的奠基之作之一是由 Ha 和 Schmidhuber 在 2018 年提出的 *World Models* [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。他们提出，智能体可以通过一个变分自编码器（VAE）压缩视觉输入，并利用循环神经网络（RNN）在隐空间中预测未来。此时，评估模型好坏的主要标准是**像素级的重构误差（Pixel-level Reconstruction Error）**。
 
 然而，随着研究的深入，人们发现像素级重构存在致命缺陷。现实世界充满了无关紧要的噪声（例如微风吹动树叶的随机摆动）。如果模型将庞大的计算资源用于完美重构这些随机噪声，它将无法专注于真正决定世界演化规律的核心特征。
 
-为了解决这一问题，[Hafner et al., 2019] 提出了 Dreamer 系列模型，引入了循环状态空间模型（RSSM），将评估的重心从“完美的像素重构”转移到了“隐空间中的状态一致性”以及“奖励预测的准确性”。随后，[LeCun, 2022] 在其关于自主机器智能的立场论文中提出了联合嵌入预测架构（JEPA），进一步强调完全摒弃像素级重构，仅在抽象的隐空间中评估模型的预测能力。
+为了解决这一问题，[[Hafner et al., 2019]](https://arxiv.org/abs/1912.01603) 提出了 Dreamer 系列模型，引入了循环状态空间模型（RSSM），将评估的重心从“完美的像素重构”转移到了“隐空间中的状态一致性”以及“奖励预测的准确性”。随后，[[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf) 在其关于自主机器智能的立场论文中提出了联合嵌入预测架构（JEPA），进一步强调完全摒弃像素级重构，仅在抽象的隐空间中评估模型的预测能力。
 
 这些历史沿革揭示了世界模型评估的两个核心维度：**动力学预测的准确性（Predictive Accuracy）**与**下游任务的效用价值（Behavioral Utility）**。
 
@@ -28,7 +28,7 @@
 
 $$ e_{t+1} = (x_{t+1} - \hat{x}_{t+1})^2 $$
 
-公式 :eqref:eq_scalar_squared_error 描述的是单一物理量的预测误差。在真实的世界模型中，状态通常不是一个单一的标量，而是一个包含了众多属性（如位置、速度、姿态、环境特征等）的高维向量 $\mathbf{z}_{t+1} \in \mathbb{R}^d$。
+该公式描述的是单一物理量的预测误差。在真实的世界模型中，状态通常不是一个单一的标量，而是一个包含了众多属性（如位置、速度、姿态、环境特征等）的高维向量 $\mathbf{z}_{t+1} \in \mathbb{R}^d$。
 
 此时，我们需要将一维的误差公式严谨地推广到高维向量空间。对于两个向量 $\mathbf{z}_{t+1}$ 和 $\mathbf{\hat{z}}_{t+1}$，它们之间的距离可以通过欧几里得距离（L2范数）的平方来衡量，这便是多维隐空间中的均方误差（Mean Squared Error, MSE）：
 
@@ -50,7 +50,7 @@ $$ p(x_{t+1} | \hat{\mu}_{t+1}, \hat{\sigma}_{t+1}^2) = \frac{1}{\sqrt{2\pi\hat{
 
 $$ \text{NLL} = - \ln p(x_{t+1}) = \frac{1}{2} \ln(2\pi\hat{\sigma}_{t+1}^2) + \frac{(x_{t+1} - \hat{\mu}_{t+1})^2}{2\hat{\sigma}_{t+1}^2} $$
 
-仔细观察公式 :eqref:eq_scalar_nll 的第二项。如果模型的方差 $\hat{\sigma}_{t+1}^2$ 被固定为一个常数，那么最小化 NLL 就严格等价于最小化均方误差。这证明了：**均方误差本质上是假设预测分布为等方差高斯分布时的特殊最大似然估计**。通过引入可学习的方差 $\hat{\sigma}_{t+1}^2$，模型学会了表达“不确定性”——当环境随机性大时，模型会输出更大的方差，从而使第一项增大，但避免了因点预测错误导致的第二项剧烈惩罚。
+仔细观察该公式的第二项。如果模型的方差 $\hat{\sigma}_{t+1}^2$ 被固定为一个常数，那么最小化 NLL 就严格等价于最小化均方误差。这证明了：**均方误差本质上是假设预测分布为等方差高斯分布时的特殊最大似然估计**。通过引入可学习的方差 $\hat{\sigma}_{t+1}^2$，模型学会了表达“不确定性”——当环境随机性大时，模型会输出更大的方差，从而使第一项增大，但避免了因点预测错误导致的第二项剧烈惩罚。
 
 将其严谨地推广到高维向量空间。假设模型预测的高维状态服从多变量高斯分布 $\mathcal{N}(\boldsymbol{\hat{\mu}}_{t+1}, \boldsymbol{\hat{\Sigma}}_{t+1})$，其中 $\boldsymbol{\hat{\Sigma}}_{t+1}$ 为协方差矩阵。高维分布的负对数似然形式为：
 
@@ -74,7 +74,7 @@ $$ \mathcal{L}_{\text{ELBO}} = \mathbb{E}_{q(\mathbf{z}_t | \mathbf{x}_t)}\big[\
 
 第一项 $\mathbb{E}_{q}[\ln p(\mathbf{x}_t | \mathbf{z}_t)]$ 是**重构似然（Reconstruction Likelihood）**。它要求基于观测图像提取出的后验隐状态，能够被解码器成功还原回原始图像。这衡量了隐状态是否保留了足够的视觉细节信息。
 
-第二项 $D_{\text{KL}}$ 则是评估世界模型动力学预测能力的核心。KL散度（Kullback-Leibler Divergence）衡量了两个概率分布之间的差异。在公式 :eqref:eq_elbo_world_model 中，它迫使**先验预测分布** $p(\mathbf{z}_t | \mathbf{z}_{t-1}, \mathbf{a}_{t-1})$ 必须尽可能地逼近**后验推断分布** $q(\mathbf{z}_t | \mathbf{x}_t)$。
+第二项 $D_{\text{KL}}$ 则是评估世界模型动力学预测能力的核心。KL散度（Kullback-Leibler Divergence）衡量了两个概率分布之间的差异。在该公式中，它迫使**先验预测分布** $p(\mathbf{z}_t | \mathbf{z}_{t-1}, \mathbf{a}_{t-1})$ 必须尽可能地逼近**后验推断分布** $q(\mathbf{z}_t | \mathbf{x}_t)$。
 
 > 💡 **KL散度动力学匹配机制**
 > 在这里，我们可以将后验推断网络比作一位“拥有视觉的引导者”，它能够直接看到当前真实发生的画面 $\mathbf{x}_t$，从而精确判断当前所处的状态。而先验预测网络（即动力学模型）则是一位“被蒙上眼睛的预测者”，它只能依靠对过去 $\mathbf{z}_{t-1}$ 的记忆和执行的动作 $\mathbf{a}_{t-1}$，试图在脑海中描绘出此刻的状态。KL 散度所计算的，正是这两位引导者脑海中状态分布的不一致程度。在训练过程中，我们通过最小化这个 KL 散度，强迫蒙眼的预测者不断修正自己的物理直觉，直到其盲猜的分布与拥有视觉者的判断完全吻合。这便是世界模型“理解”动力学的数学本质。
@@ -83,7 +83,7 @@ $$ \mathcal{L}_{\text{ELBO}} = \mathbb{E}_{q(\mathbf{z}_t | \mathbf{x}_t)}\big[\
 
 尽管基于潜变量动力学的 KL 散度评估极具数学优雅性，但世界模型的最终目的往往不是为了“精确预测”，而是为了“辅助决策”。这就引出了另一类重要的评估原则：基于价值等效（Value Equivalence）的评估。
 
-在诸如 MuZero [Schrittwieser et al., 2020] 的架构中，并不直接去预测环境的具体特征或图像。模型的好坏完全取决于其对隐空间进行展开后，能否准确预测出对决策有用的标量信号：奖励 $r$ 和价值 $v$。
+在诸如 MuZero [[Schrittwieser et al., 2020]](https://arxiv.org/abs/1911.08265) 的架构中，并不直接去预测环境的具体特征或图像。模型的好坏完全取决于其对隐空间进行展开后，能否准确预测出对决策有用的标量信号：奖励 $r$ 和价值 $v$。
 
 具体的评估指标退化为联合的损失函数，直接在模型的展开轨迹上评估：
 
@@ -113,7 +113,7 @@ class WorldModelEvaluator(nn.Module):
         posterior_mu, posterior_logvar: 后验推断分布（结合当前观测给出的推断）
         target_z: 目标的隐状态采样值
         """
-        # (**计算确定性状态预测误差 (MSE)**)
+        # (计算确定性状态预测误差 (MSE))
         # 将对数方差转换为标准差
         prior_std = torch.exp(0.5 * prior_logvar)
         posterior_std = torch.exp(0.5 * posterior_logvar)
@@ -121,15 +121,15 @@ class WorldModelEvaluator(nn.Module):
         # 为了直观对比，我们先计算退化情况下的均方误差
         mse_loss = nn.functional.mse_loss(prior_mu, target_z)
         
-        # (**构建先验与后验的概率分布对象**)
+        # (构建先验与后验的概率分布对象)
         prior_dist = D.Normal(prior_mu, prior_std)
         posterior_dist = D.Normal(posterior_mu, posterior_std)
         
-        # (**计算概率分布的独立高斯对数似然 (NLL)**)
+        # (计算概率分布的独立高斯对数似然 (NLL))
         # sum(-1)表示在特征维度上相加，mean()表示在批次维度上求平均
         nll_loss = -prior_dist.log_prob(target_z).sum(dim=-1).mean()
         
-        # (**计算动力学匹配的 KL 散度**)
+        # (计算动力学匹配的 KL 散度)
         # D_KL( q(z|x) || p(z|z_{t-1}, a_{t-1}) )
         kl_divergence = D.kl_divergence(posterior_dist, prior_dist).sum(dim=-1).mean()
         
@@ -163,20 +163,20 @@ class WorldModelEvaluator(tf.keras.Model):
         super().__init__()
         
     def call(self, prior_mu, prior_logvar, posterior_mu, posterior_logvar, target_z):
-        # (**计算确定性状态预测误差 (MSE)**)
+        # (计算确定性状态预测误差 (MSE))
         prior_std = tf.exp(0.5 * prior_logvar)
         posterior_std = tf.exp(0.5 * posterior_logvar)
         
         mse_loss = tf.reduce_mean(tf.keras.losses.MSE(target_z, prior_mu))
         
-        # (**构建先验与后验的概率分布对象**)
+        # (构建先验与后验的概率分布对象)
         prior_dist = tfd.Normal(loc=prior_mu, scale=prior_std)
         posterior_dist = tfd.Normal(loc=posterior_mu, scale=posterior_std)
         
-        # (**计算概率分布的独立高斯对数似然 (NLL)**)
+        # (计算概率分布的独立高斯对数似然 (NLL))
         nll_loss = -tf.reduce_mean(tf.reduce_sum(prior_dist.log_prob(target_z), axis=-1))
         
-        # (**计算动力学匹配的 KL 散度**)
+        # (计算动力学匹配的 KL 散度)
         kl_divergence = tf.reduce_mean(tf.reduce_sum(tfd.kl_divergence(posterior_dist, prior_dist), axis=-1))
         
         return mse_loss, nll_loss, kl_divergence

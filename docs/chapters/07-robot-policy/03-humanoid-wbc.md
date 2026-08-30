@@ -8,7 +8,7 @@
 
 随着机器人技术的发展，研究人员开始让机器人离开固定的基座，走向现实世界。人形机器人的出现带来了两个致命的挑战：第一，高维度与冗余性，一个典型的人形机器人拥有数十个关节；第二，浮动基座与欠驱动，人形机器人的躯干（Base）悬浮在三维空间中，没有任何电机直接控制躯干的运动，躯干的移动完全依赖于脚部与地面的接触力。
 
-为了解决这些问题，Khatib 在 1987 年提出了操作空间公式（Operational Space Formulation, OSC） [Khatib, 1987]，首次将控制的目标从关节角度转移到了末端执行器在三维空间中的行为。随后，Sentis 等人进一步将其扩展为多任务的全身控制框架 [Sentis et al., 2007]。近年来，随着基于优化的控制理论成熟，基于二次规划（Quadratic Programming, QP）的优化型 WBC 成为了业界的绝对主流，并在波士顿动力等公司的先进双足机器人中得到了成功应用 [Kuindersma et al., 2016]。
+为了解决这些问题，Khatib 在 1987 年提出了操作空间公式（Operational Space Formulation, OSC） [[Khatib, 1987]](https://doi.org/10.1177/027836498700600103)，首次将控制的目标从关节角度转移到了末端执行器在三维空间中的行为。随后，Sentis 等人进一步将其扩展为多任务的全身控制框架 [[Sentis et al., 2007]](https://doi.org/10.1109/ROBOT.2007.363998)。近年来，随着基于优化的控制理论成熟，基于二次规划（Quadratic Programming, QP）的优化型 WBC 成为了业界的绝对主流，并在波士顿动力等公司的先进双足机器人中得到了成功应用 [[Kuindersma et al., 2016]](https://doi.org/10.1177/0278364915588323)。
 
 在本章中，我们将从最基础的高中物理出发，一步步严谨地推导出人形机器人全身控制的数学本质。
 
@@ -36,7 +36,7 @@ $$\mathbf{q} = \begin{bmatrix} \mathbf{q}_{base} \\ \mathbf{q}_{joint} \end{bmat
 
 $$\mathbf{M}(\mathbf{q})\ddot{\mathbf{q}} + \mathbf{C}(\mathbf{q}, \dot{\mathbf{q}})\dot{\mathbf{q}} + \mathbf{G}(\mathbf{q}) = \mathbf{S}^T \boldsymbol{\tau} + \mathbf{J}_c^T \mathbf{F}_c$$
 
-这是机器人学中最核心的公式之一。结合 :eqref:eq_newton_2nd 和 :eqref:eq_euler_rotation，让我们对 :eqref:eq_rigid_body_dynamics 中的每一个物理量进行极其严谨的维度和物理意义拆解：
+这是机器人学中最核心的公式之一。结合这两个公式，让我们对该公式中的每一个物理量进行极其严谨的维度和物理意义拆解：
 - $\mathbf{M}(\mathbf{q}) \in \mathbb{R}^{(n_b+n_j) \times (n_b+n_j)}$：质量惯性矩阵（Mass-Inertia Matrix）。它是质量 $m$ 与转动惯量 $I$ 的高维矩阵推广。这个矩阵是对称正定的，且会随着机器人的姿态 $\mathbf{q}$ 实时变化。
 - $\mathbf{C}(\mathbf{q}, \dot{\mathbf{q}}) \in \mathbb{R}^{(n_b+n_j) \times (n_b+n_j)}$：科里奥利与离心力矩阵（Coriolis and Centrifugal Matrix）。它反映了多关节高速运动时产生的非线性耦合力。
 - $\mathbf{G}(\mathbf{q}) \in \mathbb{R}^{n_b+n_j}$：重力向量（Gravity Vector）。
@@ -45,7 +45,7 @@ $$\mathbf{M}(\mathbf{q})\ddot{\mathbf{q}} + \mathbf{C}(\mathbf{q}, \dot{\mathbf{
 - $\mathbf{F}_c \in \mathbb{R}^k$：脚底与地面的接触力（Contact Force）。
 - $\mathbf{J}_c \in \mathbb{R}^{k \times (n_b+n_j)}$：接触点对应的雅可比矩阵（Jacobian Matrix）。$\mathbf{J}_c^T \mathbf{F}_c$ 即为接触力对各个自由度产生的等效力矩。
 
-如果我们把 :eqref:eq_rigid_body_dynamics 的前 6 行单独提取出来，就会发现等式右侧没有 $\boldsymbol{\tau}$ 参与。这意味着人形机器人的质心和躯干运动完全不能由自身电机直接驱动，只能通过脚蹬地产生的环境接触力 $\mathbf{F}_c$ 来间接控制。这确立了人形机器人作为一种高阶欠驱动系统的数学本质。
+如果我们把该公式的前 6 行单独提取出来，就会发现等式右侧没有 $\boldsymbol{\tau}$ 参与。这意味着人形机器人的质心和躯干运动完全不能由自身电机直接驱动，只能通过脚蹬地产生的环境接触力 $\mathbf{F}_c$ 来间接控制。这确立了人形机器人作为一种高阶欠驱动系统的数学本质。
 
 ## 雅可比矩阵：连接关节空间与任务空间的桥梁
 
@@ -67,7 +67,7 @@ $$\dot{\mathbf{x}} = \frac{\partial f(\mathbf{q})}{\partial \mathbf{q}} \dot{\ma
 
 这里，$\mathbf{J}(\mathbf{q}) \in \mathbb{R}^{m \times (n_b+n_j)}$ 即为大名鼎鼎的雅可比矩阵（Jacobian Matrix）。它是一个将高维关节空间的微小变化映射到低维任务空间变化的线性算子。
 
-进一步，对速度公式 :eqref:eq_jacobian_def 求时间微商，我们可以得到加速度层面的映射方程：
+进一步，对速度该公式求时间微商，我们可以得到加速度层面的映射方程：
 
 $$\ddot{\mathbf{x}} = \mathbf{J}(\mathbf{q}) \ddot{\mathbf{q}} + \dot{\mathbf{J}}(\mathbf{q}) \dot{\mathbf{q}}$$
 
@@ -87,11 +87,11 @@ $$\mathbf{F}_{task}^T \delta \mathbf{x} = \boldsymbol{\tau}_{task}^T \delta \mat
 
 $$\mathbf{F}_{task}^T \mathbf{J} \delta \mathbf{q} = \boldsymbol{\tau}_{task}^T \delta \mathbf{q}$$
 
-由于公式 :eqref:eq_virtual_work_sub 对于任意合法位移 $\delta \mathbf{q}$ 均必须成立，我们提取等式两边的系数，可以得到静力学力矩映射的核心公式：
+由于该公式对于任意合法位移 $\delta \mathbf{q}$ 均必须成立，我们提取等式两边的系数，可以得到静力学力矩映射的核心公式：
 
 $$\boldsymbol{\tau}_{task} = \mathbf{J}^T \mathbf{F}_{task}$$
 
-通过公式 :eqref:eq_force_to_torque，我们将抽象的三维空间追踪目标，转换为了具体每个电机需要输出的物理力矩。
+通过该公式，我们将抽象的三维空间追踪目标，转换为了具体每个电机需要输出的物理力矩。
 
 ## 零空间投影：多任务分层控制 (Null-Space Projection)
 
@@ -103,7 +103,7 @@ $$\boldsymbol{\tau}_{task} = \mathbf{J}^T \mathbf{F}_{task}$$
 
 在线性代数中，矩阵 $\mathbf{A}$ 的零空间（Null Space）是指所有满足 $\mathbf{A}\mathbf{z} = \mathbf{0}$ 的向量 $\mathbf{z}$ 的集合。对应到全身控制中，我们需要构造一个投影矩阵 $\mathbf{N}$，使得次级任务产生的动力学效应在主任务的雅可比矩阵映射下严格为零。
 
-结合动力学一致性原则 [Khatib, 1987]，投影矩阵 $\mathbf{N}$ 的推导依赖于机器人自身的惯性矩阵。我们首先定义动力学一致的伪逆（Dynamically Consistent Pseudo-inverse）矩阵 $\overline{\mathbf{J}}$：
+结合动力学一致性原则 [[Khatib, 1987]](https://doi.org/10.1177/027836498700600103)，投影矩阵 $\mathbf{N}$ 的推导依赖于机器人自身的惯性矩阵。我们首先定义动力学一致的伪逆（Dynamically Consistent Pseudo-inverse）矩阵 $\overline{\mathbf{J}}$：
 
 $$\overline{\mathbf{J}} = \mathbf{M}^{-1} \mathbf{J}^T (\mathbf{J} \mathbf{M}^{-1} \mathbf{J}^T)^{-1}$$
 
@@ -111,7 +111,7 @@ $$\overline{\mathbf{J}} = \mathbf{M}^{-1} \mathbf{J}^T (\mathbf{J} \mathbf{M}^{-
 
 $$\mathbf{N} = \mathbf{I} - \overline{\mathbf{J}} \mathbf{J}$$
 
-结合 :eqref:eq_force_to_torque 和 :eqref:eq_null_space_projector，最终的多任务全身控制力矩分配法则为：
+结合这两个公式，最终的多任务全身控制力矩分配法则为：
 
 $$\boldsymbol{\tau} = \mathbf{J}_1^T \mathbf{F}_1 + \mathbf{N}^T \boldsymbol{\tau}_2$$
 
@@ -124,7 +124,7 @@ $$\boldsymbol{\tau} = \mathbf{J}_1^T \mathbf{F}_1 + \mathbf{N}^T \boldsymbol{\ta
 第一，电机扭矩存在刚性的上下限：$\boldsymbol{\tau}_{min} \le \boldsymbol{\tau} \le \boldsymbol{\tau}_{max}$。
 第二，机器人的脚底不能打滑，接触力必须严格落在三维库仑摩擦锥（Friction Cone）内部：$\mu F_z \ge \sqrt{F_x^2 + F_y^2}$。
 
-为了将这些不等式无损地融入控制方程，现代 WBC 彻底抛弃了纯解析的矩阵投影，将问题升维转化为一类在线凸优化问题：二次规划（Quadratic Programming, QP） [Kuindersma et al., 2016]。
+为了将这些不等式无损地融入控制方程，现代 WBC 彻底抛弃了纯解析的矩阵投影，将问题升维转化为一类在线凸优化问题：二次规划（Quadratic Programming, QP） [[Kuindersma et al., 2016]](https://doi.org/10.1177/0278364915588323)。
 
 在每一个高频控制周期（例如 1000 Hz），我们需要实时求解以下的大型 QP 优化问题：
 
@@ -138,7 +138,7 @@ $$
 \end{aligned}
 $$
 
-在 :numref:sec_wbc_qp 节的框架下，通过公式 :eqref:eq_wbc_qp，所有的多任务竞争不再依赖生硬的代数投影，而是通过目标函数中的惩罚权重 $\mathbf{w}_i$ 进行软性博弈。现代 QP 求解器（如 OSQP）可以在亚毫秒级时间内计算出全局最优解，使得机器人能在极其恶劣的地形约束下维持动态平衡。
+在相关章节节的框架下，通过该公式，所有的多任务竞争不再依赖生硬的代数投影，而是通过目标函数中的惩罚权重 $\mathbf{w}_i$ 进行软性博弈。现代 QP 求解器（如 OSQP）可以在亚毫秒级时间内计算出全局最优解，使得机器人能在极其恶劣的地形约束下维持动态平衡。
 
 ## 代码实现：构建任务空间投影引擎
 
@@ -221,7 +221,7 @@ tau = controller.compute_torque(M, J1, F1, J2, F2)
 print("下发给各个关节的最终力矩指令: \n", tau)
 ```
 
-在这个实现中，我们严格遵循了公式 :eqref:eq_dynamically_consistent_inverse 和 :eqref:eq_null_space_projector。通过张量维度的逐步映射，可以清晰地看到三维世界任务力 `F1` 是如何通过极其严密的代数运算散布到所有的关节力矩指令 `tau` 中的，并确保次任务 `F2` 的引入不会在物理动力学层面对主任务造成毁灭性干扰。
+在这个实现中，我们严格遵循了这两个公式。通过张量维度的逐步映射，可以清晰地看到三维世界任务力 `F1` 是如何通过极其严密的代数运算散布到所有的关节力矩指令 `tau` 中的，并确保次任务 `F2` 的引入不会在物理动力学层面对主任务造成毁灭性干扰。
 
 ## 小结
 

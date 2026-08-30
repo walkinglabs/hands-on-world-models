@@ -148,6 +148,25 @@ function decorateChapterNumbers() {
   });
 }
 
+function scrollActiveSidebarGroup(group) {
+  if (!group || typeof document === "undefined") return;
+  const nav = document.querySelector(".VPSidebar > .nav");
+  if (!nav) return;
+
+  const navRect = nav.getBoundingClientRect();
+  const groupRect = group.getBoundingClientRect();
+  const padding = 12;
+  const isAbove = groupRect.top < navRect.top + padding;
+  const isBelow = groupRect.bottom > navRect.bottom - padding;
+
+  if (isAbove || isBelow) {
+    nav.scrollTo({
+      top: nav.scrollTop + groupRect.top - navRect.top - padding,
+      behavior: "smooth",
+    });
+  }
+}
+
 function markActiveSidebarGroup(retries = 12) {
   if (typeof document === "undefined") return;
   const current = normalizePath(route.path);
@@ -173,6 +192,7 @@ function markActiveSidebarGroup(retries = 12) {
     group.classList.toggle("ct-nav-group-active", group === activeGroup);
   });
   decorateChapterNumbers();
+  scrollActiveSidebarGroup(activeGroup);
   // 首次加载时侧边栏可能尚未渲染完成，或随后被 Vue 重新渲染抹掉类，
   // 因此在一个短窗口内持续重打标记
   if (retries > 0) {

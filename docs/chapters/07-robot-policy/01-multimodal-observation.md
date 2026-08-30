@@ -6,11 +6,11 @@
 
 ## 7.1.1 历史脉络与学术追溯
 
-具身智能的思想可以追溯到人工智能的早期。1986年，Robotics领域的先驱Rodney Brooks在论文《A robust layered control system for a mobile robot》[Brooks, 1986] 中提出了包容体系结构（Subsumption Architecture），严厉批评了当时主流的“感知-建模-规划-行动”这种自上而下的符号计算范式。他主张智能应当直接从感觉运动（Sensorimotor）的交互中涌现。
+具身智能的思想可以追溯到人工智能的早期。1986年，Robotics领域的先驱Rodney Brooks在论文《A robust layered control system for a mobile robot》[[Brooks, 1986]](https://doi.org/10.1109/JRA.1986.1087032) 中提出了包容体系结构（Subsumption Architecture），严厉批评了当时主流的“感知-建模-规划-行动”这种自上而下的符号计算范式。他主张智能应当直接从感觉运动（Sensorimotor）的交互中涌现。
 
-随着深度学习的爆发，Levine等人在2016年的经典工作《End-to-end training of deep visuomotor policies》[Levine et al., 2016] 中，首次展示了如何将卷积神经网络（CNN）与强化学习结合，直接将原始像素和机器人的关节状态映射为电机的力矩输出。这项工作打破了传统机器人学中视觉感知与控制模块割裂的局面，确立了端到端多模态策略（Visuomotor Policy）的基础。
+随着深度学习的爆发，Levine等人在2016年的经典工作《End-to-end training of deep visuomotor policies》[[Levine et al., 2016]](https://arxiv.org/abs/1504.00702) 中，首次展示了如何将卷积神经网络（CNN）与强化学习结合，直接将原始像素和机器人的关节状态映射为电机的力矩输出。这项工作打破了传统机器人学中视觉感知与控制模块割裂的局面，确立了端到端多模态策略（Visuomotor Policy）的基础。
 
-近年来，随着Transformer [Vaswani et al., 2017] 在多模态领域的成功，诸如RT-1 [Brohan et al., 2022] 和 RT-2 [Brohan et al., 2023] 等视觉-语言-动作（Vision-Language-Action, VLA）模型，进一步将多模态观测的边界扩展到了包含自然语言指令、RGB-D视觉流以及高维本体感受的大一统框架中。在这些系统中，多模态特征的对齐与融合能力，成为了决定机器人策略上限的最关键因素。
+近年来，随着Transformer [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762) 在多模态领域的成功，诸如RT-1 [[Brohan et al., 2022]](https://arxiv.org/abs/2212.06817) 和 RT-2 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818) 等视觉-语言-动作（Vision-Language-Action, VLA）模型，进一步将多模态观测的边界扩展到了包含自然语言指令、RGB-D视觉流以及高维本体感受的大一统框架中。在这些系统中，多模态特征的对齐与融合能力，成为了决定机器人策略上限的最关键因素。
 
 ## 7.1.2 物理量的降维映射：从单摆到机器人状态空间
 
@@ -243,8 +243,8 @@ print(f"融合特征的张量形状: {output.shape}")
 
 ## 7.1.7 练习
 
-1. 在公式 :eqref:`eq_prop_vector` 中，如果我们要描述一台带有6自由度机械臂（每个关节可测角度和角速度）以及一个底盘（可测平面 $x, y$ 坐标、朝向角 $\psi$ 及其对应的速度）的移动机器人，其本体观测向量 $\mathbf{o}_{\text{prop}}$ 的维度是多少？
+1. 在该公式中，如果我们要描述一台带有6自由度机械臂（每个关节可测角度和角速度）以及一个底盘（可测平面 $x, y$ 坐标、朝向角 $\psi$ 及其对应的速度）的移动机器人，其本体观测向量 $\mathbf{o}_{\text{prop}}$ 的维度是多少？
    * **提示**：分别计算机械臂和底盘的广义坐标和速度维度并求和。
 2. 仔细观察代码实现中的 `MultiModalEncoder` 类。为什么在对 `z_vis` 和 `z_prop` 提取特征的最后一步，我们都加入了一个 `LayerNorm`（层归一化）操作？如果不加，在后续的拼接与线性映射中可能会引发什么数值优化问题？
    * **提示**：思考不同模态编码器初始输出权重的方差差异，以及这种差异在 $\mathbf{W} \mathbf{z}_{\text{concat}}$ 矩阵乘法中会导致梯度如何流动。
-3. 如果我们希望将当前的**后期拼接融合**替换为 :numref:`sec_multimodal_observation` 提到的**跨模态注意力融合**，请写出将视觉卷积特征图（形状为 `[B, 64, 7, 7]`）转换为注意力键 $\mathbf{K}$ 和值 $\mathbf{V}$ 时，张量形状必须经历哪些重塑（Reshape）和转置操作？
+3. 如果我们希望将当前的**后期拼接融合**替换为相关章节提到的**跨模态注意力融合**，请写出将视觉卷积特征图（形状为 `[B, 64, 7, 7]`）转换为注意力键 $\mathbf{K}$ 和值 $\mathbf{V}$ 时，张量形状必须经历哪些重塑（Reshape）和转置操作？

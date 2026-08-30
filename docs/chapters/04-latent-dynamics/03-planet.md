@@ -6,7 +6,7 @@
 
 然而，当环境的观测是高维度的图像时，准确地预测未来图像（即在像素级别进行规划）被证明是极其困难的。图像中包含了大量与任务无关的冗余信息（例如背景的微小扰动、树叶的飘动）。让神经网络耗费算力去预测每一个像素的精确变化，不仅效率低下，而且容易累积误差。
 
-正是在这样的背景下，Hafner 等人在 2019 年提出了**深度规划网络**（Deep Planning Network，简称 PlaNet）`[Hafner et al., 2019]`。PlaNet 的核心思想是彻底摒弃在像素空间进行预测，转而学习一个紧凑的潜在动力学模型（Latent Dynamics Model），并**完全在潜在空间中进行规划**。为了实现这一目标，PlaNet 引入了一个革命性的架构——**循环状态空间模型**（Recurrent State Space Model, RSSM）。
+在这样的背景下，Hafner 等人提出了**深度规划网络**（Deep Planning Network，PlaNet）[[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551)。PlaNet 学习紧凑的潜在动力学，并在潜在空间中规划；训练阶段仍包含观测解码与重构似然，因此不能说它“彻底摒弃”了像素建模。为结合确定性记忆与随机状态，论文引入了**循环状态空间模型**（Recurrent State Space Model, RSSM）。
 
 在本节中，我们将从最基础的序列建模出发，逐步推导 RSSM 的设计逻辑，并详细剖析如何在纯粹的潜在空间中利用交叉熵方法（Cross-Entropy Method, CEM）进行高效规划。
 
@@ -84,7 +84,7 @@ PlaNet 的核心创新——**循环状态空间模型 (RSSM)**——巧妙地�
 
 $$\mathcal{J} = \sum_{t=1}^{T} \mathbb{E}_{q(s_t \mid h_t, o_t)} \left[ \ln p(o_t \mid h_t, s_t) + \ln p(r_t \mid h_t, s_t) \right] - \beta \sum_{t=1}^{T} \text{KL}\left( q(s_t \mid h_t, o_t) \| p(s_t \mid h_t) \right)$$
 
-让我们像拆解精密的机械手表一样，仔细剖析公式 :eqref:eq_planet_elbo 中的每一项：
+让我们像拆解精密的机械手表一样，仔细剖析该公式中的每一项：
 
 1. **观测重建项** $\ln p(o_t \mid h_t, s_t)$：迫使潜在状态 $h_t$ 和 $s_t$ 必须保留足够的信息以还原原始图像。通常使用均方误差（MSE）。
 2. **奖励预测项** $\ln p(r_t \mid h_t, s_t)$：迫使潜在状态必须包含与任务目标（奖励）相关的信息。这使得我们的潜在空间是任务导向的。

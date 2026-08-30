@@ -26,19 +26,71 @@ export default defineConfig({
     nav: [
       {
         text: "绪论",
-        link: "/guide/world-model-intro",
+        items: [
+          {
+            text: "绪论",
+            link: "/guide/world-model-intro",
+          },
+          {
+            text: "世界模型八十年",
+            link: "/guide/world-model-history",
+          },
+        ],
       },
       {
         text: "共同基础",
-        link: "/chapters/02-foundations/01-cnn-and-vit",
+        items: [
+          {
+            text: "为什么需要世界模型",
+            link: "/chapters/01-why-world-models/01-observation-and-state",
+          },
+          {
+            text: "深度学习与表征基础",
+            link: "/chapters/02-foundations/01-cnn-and-vit",
+          },
+          {
+            text: "数据与强化学习基础",
+            link: "/chapters/03-data-and-first-model/01-episodes-and-transitions",
+          },
+        ],
       },
       {
         text: "技术路线",
-        link: "/chapters/04-latent-dynamics/01-world-models",
+        items: [
+          {
+            text: "潜在动力学模型",
+            link: "/chapters/04-latent-dynamics/01-world-models",
+          },
+          {
+            text: "交互式视频生成",
+            link: "/chapters/05-interactive-video/01-video-prediction-svg",
+          },
+          {
+            text: "联合嵌入预测架构",
+            link: "/chapters/06-jepa/01-jepa-foundation",
+          },
+          {
+            text: "具身策略大模型",
+            link: "/chapters/07-robot-policy/01-multimodal-observation",
+          },
+          {
+            text: "具身仿真与现实迁移",
+            link: "/chapters/08-robot-sim/01-physics-mujoco",
+          },
+          {
+            text: "空间世界与自动驾驶",
+            link: "/chapters/09-spatial-worlds/01-camera-geometry",
+          },
+        ],
       },
       {
         text: "评测与研究",
-        link: "/chapters/10-evaluate-and-invent/01-evaluate-principles",
+        items: [
+          {
+            text: "评测与研究设计",
+            link: "/chapters/10-evaluate-and-invent/01-evaluate-principles",
+          },
+        ],
       },
       {
         text: "GitHub",

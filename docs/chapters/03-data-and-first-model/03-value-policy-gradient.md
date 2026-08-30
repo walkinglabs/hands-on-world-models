@@ -4,7 +4,7 @@
 
 在深度学习的早期，监督学习依赖于明确的标签（即专家的示范）来更新模型。然而，在诸如游戏、机器人控制或自动驾驶等开放环境中，获取逐帧的最优决策标签是极其昂贵甚至不可能的。强化学习（Reinforcement Learning, RL）提供了一种替代范式：智能体（Agent）通过与环境的交互，收集奖励（Reward）信号，并以此为导向优化自身的行为。
 
-在早期的表格型强化学习中，学者们通常关注如何精确估计处于某个状态的“价值”（即价值函数法）。但在连续控制或高维动作空间中，价值函数法面临“维度灾难”。直到 `[Williams, 1992]` 提出了 REINFORCE 算法，以及 `[Sutton et al., 1999]` 正式确立了策略梯度定理（Policy Gradient Theorem），直接优化策略本身（Policy-based methods）才成为现代深度强化学习的核心基石之一。本文将从最基础的概率论出发，毫无跳跃地为您推导出策略梯度定理的严密形式，并引入价值函数作为降低估计方差的关键工具。
+在早期的表格型强化学习中，学者们通常关注如何精确估计处于某个状态的“价值”（即价值函数法）。但在连续控制或高维动作空间中，价值函数法面临“维度灾难”。直到 [[Williams, 1992]](https://doi.org/10.1007/BF00992696) 提出了 REINFORCE 算法，以及 [[Sutton et al., 1999]](https://proceedings.neurips.cc/paper/1999/hash/464d828b85b0bed98e80ade0a5c43b0f-Abstract.html) 正式确立了策略梯度定理（Policy Gradient Theorem），直接优化策略本身（Policy-based methods）才成为现代深度强化学习的核心基石之一。本文将从最基础的概率论出发，毫无跳跃地为您推导出策略梯度定理的严密形式，并引入价值函数作为降低估计方差的关键工具。
 
 ## 策略与轨迹的数学描述
 
@@ -90,7 +90,7 @@ $$
 
 ### 拆解轨迹概率的对数梯度
 
-接着，我们需要计算 $\nabla_\theta \log P(\tau|\theta)$。对 :eqref:eq_traj_prob 两边取对数，乘积将变成求和：
+接着，我们需要计算 $\nabla_\theta \log P(\tau|\theta)$。对该公式两边取对数，乘积将变成求和：
 
 $$
 \log P(\tau|\theta) = \log P(s_0) + \sum_{t=0}^{T-1} \left( \log \pi_\theta(a_t|s_t) + \log P(s_{t+1}|s_t, a_t) \right)
@@ -102,7 +102,7 @@ $$
 \nabla_\theta \log P(\tau|\theta) = \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t)
 $$
 
-将 :eqref:eq_grad_log_traj_prob 代回 :eqref:eq_policy_gradient_derivation，我们得到了经典的 REINFORCE 策略梯度公式：
+将该公式代回该公式，我们得到了经典的 REINFORCE 策略梯度公式：
 
 $$
 \nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot R(\tau) \right]
@@ -113,7 +113,7 @@ $$
 
 ## 因果性与奖励截断
 
-:eqref:eq_reinforce_gradient 虽然形式严密，但在方差（Variance）上存在巨大的问题。让我们仔细观察公式中的项 $\nabla_\theta \log \pi_\theta(a_t|s_t) \cdot R(\tau)$。它表示时间步 $t$ 采取动作 $a_t$ 的对数概率梯度，乘以整条轨迹的**总回报** $R(\tau)$。
+该公式虽然形式严密，但在方差（Variance）上存在巨大的问题。让我们仔细观察公式中的项 $\nabla_\theta \log \pi_\theta(a_t|s_t) \cdot R(\tau)$。它表示时间步 $t$ 采取动作 $a_t$ 的对数概率梯度，乘以整条轨迹的**总回报** $R(\tau)$。
 
 从基本的逻辑因果律（Causality）出发：在时刻 $t$ 采取的动作 $a_t$，绝对不可能影响时刻 $t$ 之前的奖励 $r_{1}, r_{2}, \dots, r_t$。动作只能影响未来的奖励。因此，用整条轨迹的总回报来评估某个中间动作的好坏，引入了大量无意义的噪声。
 
@@ -159,7 +159,7 @@ $$
 
 ### 引入基线（Baseline）
 
-在 :eqref:eq_policy_gradient_causal 中，我们用 $G_t$ 作为评估动作好坏的权重。然而，如果环境的所有奖励都是非常大的正数（例如总是给 +100 到 +200 之间的奖励），那么所有的 $G_t$ 都会很大，策略梯度会不加区分地尝试提高所有动作的概率。
+在该公式中，我们用 $G_t$ 作为评估动作好坏的权重。然而，如果环境的所有奖励都是非常大的正数（例如总是给 +100 到 +200 之间的奖励），那么所有的 $G_t$ 都会很大，策略梯度会不加区分地尝试提高所有动作的概率。
 
 > 唯一的精炼类比：假设你是一家公司的老板（策略网络），你需要给员工（动作）发奖金来鼓励他们。如果公司整体效益很好，每个员工都发了一百万奖金（$G_t$ 很大），这并不能反映出哪个员工的贡献最突出。更好的方法是设定一个“公司平均绩效”（基线）。如果某个员工的业绩超过了平均绩效，我们才重点提拔他（提高概率），否则即使他赚了钱，只要低于平均，我们也应该削减他的奖金（相对降低概率）。
 
@@ -279,7 +279,7 @@ def reinforce_update(policy_net, optimizer, saved_log_probs, rewards):
     # optimizer.apply_gradients(zip(gradients, policy_net.trainable_variables))
 ```
 
-在上述代码中，我们定义了策略网络，并在 `reinforce_update` 中展示了 :eqref:eq_policy_gradient_causal 的实现逻辑。值得注意的是，我们将原本在 :eqref:eq_advantage_function 中由价值网络估算状态价值的严谨过程，替换为了在张量维度上直接计算所有采样的 `returns` 的均值和标准差。这是一种极简的、计算代价低廉的基线技巧，虽然不如 Actor-Critic 方法那般精准，但依然大幅提升了朴素 REINFORCE 算法的稳定性。
+在上述代码中，我们定义了策略网络，并在 `reinforce_update` 中展示了该公式的实现逻辑。值得注意的是，我们将原本在该公式中由价值网络估算状态价值的严谨过程，替换为了在张量维度上直接计算所有采样的 `returns` 的均值和标准差。这是一种极简的、计算代价低廉的基线技巧，虽然不如 Actor-Critic 方法那般精准，但依然大幅提升了朴素 REINFORCE 算法的稳定性。
 
 ## 小结
 

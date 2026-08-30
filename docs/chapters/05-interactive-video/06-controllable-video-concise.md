@@ -6,7 +6,7 @@
 
 ## 可控生成的学术脉络与概率学基础
 
-在深度学习的早期探索中，使生成模型具备可控性往往依赖于直接拼接条件变量。例如，在条件生成对抗网络（Conditional GANs）`[Mirza & Osindero, 2014]`中，研究者通过将类别标签直接拼接到生成器和判别器的输入特征中来控制输出。随着扩散模型（Diffusion Models）`[Ho et al., 2020]`的崛起，去噪扩散概率模型（DDPM）展示了极其强大的无条件生成能力。为了将这种能力扩展至可控生成，随后提出的潜在扩散模型（Latent Diffusion Models）`[Rombach et al., 2022]`和ControlNet`[Zhang & Agrawala, 2023]`，彻底奠定了现代条件注入的基础。在视频领域，如Stable Video Diffusion`[Blattmann et al., 2023]`，则将这些条件控制机制延展到了时间维度。
+在深度学习的早期探索中，使生成模型具备可控性往往依赖于直接拼接条件变量。例如，在条件生成对抗网络（Conditional GANs）[[Mirza & Osindero, 2014]](https://arxiv.org/abs/1411.1784)中，研究者通过将类别标签直接拼接到生成器和判别器的输入特征中来控制输出。随着扩散模型（Diffusion Models）[[Ho et al., 2020]](https://arxiv.org/abs/2006.11239)的崛起，去噪扩散概率模型（DDPM）展示了极其强大的无条件生成能力。为了将这种能力扩展至可控生成，随后提出的潜在扩散模型（Latent Diffusion Models）[[Rombach et al., 2022]](https://arxiv.org/abs/2112.10752)和ControlNet[[Zhang & Agrawala, 2023]](https://arxiv.org/abs/2302.05543)，彻底奠定了现代条件注入的基础。在视频领域，如Stable Video Diffusion[[Blattmann et al., 2023]](https://arxiv.org/abs/2311.15127)，则将这些条件控制机制延展到了时间维度。
 
 从纯粹的概率学视角来看，无条件视频生成旨在拟合真实视频数据的边缘概率分布 $p(\mathbf{x})$。而可控生成，本质上是将目标转化为拟合一个条件概率分布 $p(\mathbf{x} \mid \mathbf{c})$，其中 $\mathbf{c}$ 代表控制信号。在世界模型中，这个控制信号 $\mathbf{c}$ 通常是智能体在时间步 $t$ 执行的动作序列（Action Sequence）或高维条件图。
 
@@ -22,17 +22,17 @@
 
 $$y = w_x x + w_c c + b$$
 
-其中，$w_x, w_c \in \mathbb{R}$ 分别是状态特征和控制信号的权重，$b \in \mathbb{R}$ 是偏置项。公式 :eqref:eq_scalar_control 告诉我们，控制信号 $c$ 是通过**加法（Addition）**的形式直接注入到目标状态中的。在早期的神经网络中，这等价于将 $x$ 和 $c$ 进行拼接（Concatenation）后通过一个全连接层。
+其中，$w_x, w_c \in \mathbb{R}$ 分别是状态特征和控制信号的权重，$b \in \mathbb{R}$ 是偏置项。该公式告诉我们，控制信号 $c$ 是通过**加法（Addition）**的形式直接注入到目标状态中的。在早期的神经网络中，这等价于将 $x$ 和 $c$ 进行拼接（Concatenation）后通过一个全连接层。
 
 ### 向量场景：多维特征空间的映射
 
 在真实的视频生成中，图像的特征不可能只用一个标量来表示。假设我们将一帧图像压缩成了一个 $d$ 维的潜在特征向量 $\mathbf{x} \in \mathbb{R}^d$，而我们的控制动作（例如摇杆的前后左右推力）被编码为一个 $k$ 维的向量 $\mathbf{c} \in \mathbb{R}^k$。
 
-要将 $k$ 维的控制信号注入到 $d$ 维的特征中，我们需要将标量公式 :eqref:eq_scalar_control 泛化到向量空间。这要求我们引入一个变换矩阵 $\mathbf{W}_c \in \mathbb{R}^{d \times k}$，将控制向量投影到与视觉特征相同的维度空间中：
+要将 $k$ 维的控制信号注入到 $d$ 维的特征中，我们需要将标量该公式泛化到向量空间。这要求我们引入一个变换矩阵 $\mathbf{W}_c \in \mathbb{R}^{d \times k}$，将控制向量投影到与视觉特征相同的维度空间中：
 
 $$\mathbf{y} = \mathbf{W}_x \mathbf{x} + \mathbf{W}_c \mathbf{c} + \mathbf{b}$$
 
-公式 :eqref:eq_vector_control 就是经典的“特征拼接投影”（Feature Concatenation and Projection）的严格数学表达。由于矩阵乘法是线性变换，这种加性注入方式虽然简单，但存在严重的局限性：**控制信号 $\mathbf{c}$ 对输出 $\mathbf{y}$ 的影响是全局恒定的，它无法根据视觉特征 $\mathbf{x}$ 本身的内容动态地调整控制强度。**
+该公式就是经典的“特征拼接投影”（Feature Concatenation and Projection）的严格数学表达。由于矩阵乘法是线性变换，这种加性注入方式虽然简单，但存在严重的局限性：**控制信号 $\mathbf{c}$ 对输出 $\mathbf{y}$ 的影响是全局恒定的，它无法根据视觉特征 $\mathbf{x}$ 本身的内容动态地调整控制强度。**
 
 ### 张量场景：从加性注入到动态匹配（注意力机制前奏）
 
@@ -42,13 +42,13 @@ $$\mathbf{y} = \mathbf{W}_x \mathbf{x} + \mathbf{W}_c \mathbf{c} + \mathbf{b}$$
 
 $$\mathbf{y} = \mathbf{x} + \alpha (\mathbf{W}_v \mathbf{c})$$
 
-在公式 :eqref:eq_dynamic_match 中，如果视觉特征与控制信号高度匹配（内积大），控制信号就会被强烈地注入；反之则被忽略。这一由加法转向乘法（动态加权）的演进，正是现代交叉注意力机制（Cross-Attention）的核心数学基石。
+在该公式中，如果视觉特征与控制信号高度匹配（内积大），控制信号就会被强烈地注入；反之则被忽略。这一由加法转向乘法（动态加权）的演进，正是现代交叉注意力机制（Cross-Attention）的核心数学基石。
 
 ## 交叉注意力机制的严谨解构
 
 视频是一系列图像帧的序列，这就意味着我们的视觉特征实际上是一个张量。令视觉特征序列为 $\mathbf{X} \in \mathbb{R}^{N \times d}$（$N$ 是空间或时间序列的长度，$d$ 是特征维度），控制信号序列为 $\mathbf{C} \in \mathbb{R}^{M \times k}$（例如 $M$ 个文本词向量或动作序列）。
 
-我们将基于公式 :eqref:eq_dynamic_match 的内积思想，严密推导标准的交叉注意力机制。首先，我们用三个不同的参数矩阵对输入进行线性变换，分别生成查询（Query）、键（Key）和值（Value）。这里，**查询来自于视觉特征，而键和值来自于控制信号**：
+我们将基于该公式的内积思想，严密推导标准的交叉注意力机制。首先，我们用三个不同的参数矩阵对输入进行线性变换，分别生成查询（Query）、键（Key）和值（Value）。这里，**查询来自于视觉特征，而键和值来自于控制信号**：
 
 $$\mathbf{Q} = \mathbf{X} \mathbf{W}_Q, \quad \mathbf{K} = \mathbf{C} \mathbf{W}_K, \quad \mathbf{V} = \mathbf{C} \mathbf{W}_V$$
 
@@ -68,7 +68,7 @@ $$\text{CrossAttention}(\mathbf{X}, \mathbf{C}) = \mathbf{A} \mathbf{V} \in \mat
 
 ## 无分类器引导（Classifier-Free Guidance）
 
-仅仅拥有交叉注意力网络结构并不能保证模型紧密遵循控制信号。在模型训练中，由于强大的无条件先验 $p(\mathbf{x})$ 的存在，模型往往会忽略我们注入的控制条件 $c$（这一现象被称为条件坍塌）。为了解决这一问题，无分类器引导（Classifier-Free Guidance, CFG）`[Ho & Salimans, 2022]` 被提出，并成为当前所有顶级可控视频生成系统（如Sora, SVD）的标配。
+仅有交叉注意力并不能保证模型严格遵循控制信号。无分类器引导（Classifier-Free Guidance, CFG）在训练时随机丢弃条件，推理时组合条件与无条件预测，从而调节样本质量与条件一致性 [[Ho & Salimans, 2022]](https://arxiv.org/abs/2207.12598)。它被许多扩散生成系统采用，但公开资料不足以支持“所有顶级视频系统都使用 CFG”这一绝对说法。
 
 CFG的数学本质源自对条件概率的贝叶斯重写。根据贝叶斯定理，条件数据分布的对数似然梯度（即得分函数 Score Function）可以分解为：
 
@@ -78,7 +78,7 @@ $$\nabla_{\mathbf{x}} \log p(\mathbf{x} | c) = \nabla_{\mathbf{x}} \log p(\mathb
 
 $$\nabla_{\mathbf{x}} \log p_w(\mathbf{x} | c) = \nabla_{\mathbf{x}} \log p(\mathbf{x}) + (1 + w) \nabla_{\mathbf{x}} \log p(c | \mathbf{x})$$
 
-现在，我们将公式 :eqref:eq_score_bayes 中的隐式引导项 $\nabla_{\mathbf{x}} \log p(c | \mathbf{x}) = \nabla_{\mathbf{x}} \log p(\mathbf{x} | c) - \nabla_{\mathbf{x}} \log p(\mathbf{x})$ 代入到公式 :eqref:eq_score_cfg_intermediate 中，得到：
+现在，我们将该公式中的隐式引导项 $\nabla_{\mathbf{x}} \log p(c | \mathbf{x}) = \nabla_{\mathbf{x}} \log p(\mathbf{x} | c) - \nabla_{\mathbf{x}} \log p(\mathbf{x})$ 代入到该公式中，得到：
 
 $$\nabla_{\mathbf{x}} \log p_w(\mathbf{x} | c) = (1 + w) \nabla_{\mathbf{x}} \log p(\mathbf{x} | c) - w \nabla_{\mathbf{x}} \log p(\mathbf{x})$$
 
@@ -86,13 +86,13 @@ $$\nabla_{\mathbf{x}} \log p_w(\mathbf{x} | c) = (1 + w) \nabla_{\mathbf{x}} \lo
 
 $$\tilde{\epsilon}_\theta(\mathbf{x}_t, t, c) = (1 + w) \epsilon_\theta(\mathbf{x}_t, t, c) - w \epsilon_\theta(\mathbf{x}_t, t, \emptyset)$$
 
-公式 :eqref:eq_cfg_noise 优雅地告诉我们：只需要一个同时支持条件输入 $c$ 和空条件 $\emptyset$ 的单一网络，通过取条件预测与无条件预测的线性外推（Extrapolation，因为 $1+w > 1$ 且系数和为1），就能在不引入额外分类器网络的情况下，极其强劲地提升控制信号的服从度。
+该公式优雅地告诉我们：只需要一个同时支持条件输入 $c$ 和空条件 $\emptyset$ 的单一网络，通过取条件预测与无条件预测的线性外推（Extrapolation，因为 $1+w > 1$ 且系数和为1），就能在不引入额外分类器网络的情况下，极其强劲地提升控制信号的服从度。
 
 ## 简洁实现
 
 基于上述严谨的数学推导，我们现在开始用代码实现这个可控视频生成模块。我们将首先实现交叉注意力机制，然后将其集成到一个微型的条件去噪网络块中。
 
-(**我们定义交叉注意力层**)，严格按照公式 :eqref:eq_qkv_projection 和 :eqref:eq_cross_attention_final 进行矩阵运算。为了工程上的高效，我们通常使用多头注意力机制（Multi-Head Attention），即在多个子空间中独立执行交叉注意力，最后将结果拼接。
+(**我们定义交叉注意力层**)，严格按照这两个公式进行矩阵运算。为了工程上的高效，我们通常使用多头注意力机制（Multi-Head Attention），即在多个子空间中独立执行交叉注意力，最后将结果拼接。
 
 ```{.python .input}
 #@tab pytorch
@@ -195,7 +195,7 @@ class ConditionalVideoBlock(nn.Module):
         return x
 ```
 
-为了支持我们在 :numref:sec_cfg_math 中讨论的无分类器引导（CFG），(**我们在模型的前向推理逻辑中必须同时计算条件生成和无条件生成的预测值**)。
+为了支持我们在相关章节中讨论的无分类器引导（CFG），(**我们在模型的前向推理逻辑中必须同时计算条件生成和无条件生成的预测值**)。
 
 ```{.python .input}
 #@tab pytorch

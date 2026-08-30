@@ -6,7 +6,7 @@
 
 在深入技术细节之前，我们有必要回顾一下视频生成领域的学术脉络。早期的视频生成多依赖于生成对抗网络（GANs）或是自回归模型（Autoregressive Models）。然而，这些方法在处理高分辨率和长视频时，往往会遭遇“高维诅咒”（Curse of Dimensionality）。具体而言，随着时间维度 $T$ 的增加，状态空间的可能组合呈指数级爆炸。GANs 极易在此过程中产生模式崩溃（Mode Collapse）及训练不稳定的问题；而自回归模型（例如 VideoGPT）需要进行极大规模的逐像素（Raster-scan）光栅式自回归预测，在长达数万甚至数十万的序列长度（$T \times H \times W$）前，生成速度极其缓慢且容易累积误差。
 
-2020年，Ho 等人提出了去噪扩散概率模型（Denoising Diffusion Probabilistic Models, DDPM）`[Ho et al., 2020]`，利用热力学中的扩散思想，在图像生成领域取得了超越 GAN 的视觉质量。扩散模型的核心思想是通过一个马尔可夫链（Markov Chain）逐步向数据中注入高斯噪声，再训练一个神经网络来逆转这一过程。随后，Peebles 与 Xie 提出了 Diffusion Transformer (DiT) `[Peebles & Xie, 2023]`，用 Transformer 替换了传统的 U-Net 架构，证明了扩散模型同样具备良好的缩放定律（Scaling Law）。Sora 便是建立在 DiT 架构与大规模视觉补丁（Visual Patches）基础之上的集大成者，它不仅解决了高维诅咒，更首次实现了分钟级高物理保真度视频的生成。
+2020 年，Ho 等人提出去噪扩散概率模型（Denoising Diffusion Probabilistic Models, DDPM）[[Ho et al., 2020]](https://arxiv.org/abs/2006.11239)。它用一个马尔可夫链逐步向数据加入高斯噪声，再训练神经网络学习逆过程。Peebles 与 Xie 随后提出 Diffusion Transformer（DiT），用 Transformer 替代常见的 U-Net 去噪骨干，并观察到计算量增加时样本质量持续改善 [[Peebles & Xie, 2023]](https://arxiv.org/abs/2212.09748)。Sora 的技术报告把视频压缩为时空潜变量块，并用 Transformer 处理这些块；报告展示了最长一分钟的视频，但没有给出“物理保真度已被解决”的定量证明 [[OpenAI, 2024]](https://openai.com/index/video-generation-models-as-world-simulators/)。
 
 ## 5.3.2 扩散模型基础理论：从标量到时空张量
 
@@ -42,7 +42,7 @@ $$\mathbf{V}_t = \sqrt{\bar{\alpha}_t} \mathbf{V}_0 + \sqrt{1 - \bar{\alpha}_t} 
 
 直接在全分辨率的视频张量 $\mathbf{V}_0$ 上进行自注意力计算是极其昂贵且不现实的。Transformer 的核心计算复杂度随序列长度呈平方级（$O(N^2)$）增长，而在高分辨率视频中，逐像素的序列长度为 $T \times H \times W$，这是一个计算设备无法承受的天文数字。
 
-Sora 突破这一瓶颈的核心机制在于引入了时空补丁（Spacetime Patches）。这一思想在视觉领域的源起可以追溯到 Vision Transformer (ViT) `[Dosovitskiy et al., 2020]` 对 2D 图像的网格化处理，而 Sora 则将其在时间维度上进行了更为宏观的拓展。
+Sora 突破这一瓶颈的核心机制在于引入了时空补丁（Spacetime Patches）。这一思想在视觉领域的源起可以追溯到 Vision Transformer (ViT) [[Dosovitskiy et al., 2020]](https://arxiv.org/abs/2010.11929) 对 2D 图像的网格化处理，而 Sora 则将其在时间维度上进行了更为宏观的拓展。
 
 我们可以利用高中立体几何中“切分长方体”的直观思想来理解时空补丁。假设视频张量在空间（$H \times W$）上被均匀划分为尺寸为 $h_p \times w_p$ 的小块，同时在时间轴（$T$）上被切分为长度为 $t_p$ 的片段。那么，每一个剥离出来的时空补丁在本质上就是一个尺寸为 $C \times t_p \times h_p \times w_p$ 的局部长方体。
 
@@ -114,7 +114,7 @@ class SpacetimePatchEmbedding(tf.keras.layers.Layer):
 
 ## 5.3.4 联合时空自注意力机制与 DiT 架构
 
-在成功将连续的视频转化为长度为 $N$ 的离散向量序列后，接下来的核心挑战是：模型必须学习如何逆转公式 :eqref:`eq_diffusion_video_tensor`，即在每一步预测出被加入的高斯噪声 $\mathbf{E}$。
+在成功将连续的视频转化为长度为 $N$ 的离散向量序列后，接下来的核心挑战是：模型必须学习如何逆转该公式，即在每一步预测出被加入的高斯噪声 $\mathbf{E}$。
 
 传统的 2D 图像扩散模型多采用 U-Net 架构，而 Sora 全面倒向了 Transformer 架构（即 DiT，Diffusion Transformer）。对于视频而言，模型不仅需要捕捉单帧画面内部的空间纹理结构，更需要理解不同帧之间物体运动的时间轴因果演变。在这里，全联合时空自注意力（Full Joint Spatiotemporal Attention）机制发挥了至关重要的作用。
 
@@ -131,13 +131,13 @@ $$\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\fr
 
 ## 5.3.5 潜在空间的深度压缩（Video VAE）
 
-尽管理论上我们可以直接在像素空间运用上述时空补丁和扩散过程，但对于 1080p 分辨率、长达 60 秒的高清视频而言，哪怕使用了补丁切分，计算量依旧是不可承受的。因此，Sora 等现代视频大模型普遍采纳了潜在扩散（Latent Diffusion）框架 `[Rombach et al., 2022]`。
+直接在像素空间处理长视频的成本很高。潜在扩散先把图像压缩到低维潜空间，再执行扩散过程 [[Rombach et al., 2022]](https://arxiv.org/abs/2112.10752)；Sora 也使用独立训练的视频压缩网络把视频映射到低维潜空间，但公开报告没有说明其实现与 Latent Diffusion 完全相同 [[OpenAI, 2024]](https://openai.com/index/video-generation-models-as-world-simulators/)。
 
 在视频领域，这一技术表现为预先训练一个极度强大的三维视频变分自编码器（Video VAE）。对于极高维度的输入像素视频 $\mathbf{V}_{pixel}$，编码器 $\mathcal{E}$ 将其降采样映射到一个更为紧凑和密集的潜在空间（Latent Space）：
 
 $$\mathbf{Z}_0 = \mathcal{E}(\mathbf{V}_{pixel})$$
 
-例如，编码器可能在空间维度上进行 8 倍的降采样，在时间维度上进行 4 倍的降采样。这意味着原本庞大的视觉冗余信息被极大地剥离，留下了高度语义化的核心特征表示。我们在前面公式 :eqref:`eq_diffusion_video_tensor` 中描述的所有前向加噪、网络去噪过程，都完全发生在这个小尺寸的潜在张量 $\mathbf{Z}_0$ 上。
+例如，编码器可能在空间维度上进行 8 倍的降采样，在时间维度上进行 4 倍的降采样。这意味着原本庞大的视觉冗余信息被极大地剥离，留下了高度语义化的核心特征表示。我们在前面该公式中描述的所有前向加噪、网络去噪过程，都完全发生在这个小尺寸的潜在张量 $\mathbf{Z}_0$ 上。
 
 只有当扩散模型完全去噪，在潜在空间生成了清晰干净的潜在表示 $\hat{\mathbf{Z}}_0$ 后，解码器 $\mathcal{D}$ 才会出马，将其高保真地渲染回人类可见的像素长方体：
 
@@ -147,7 +147,7 @@ $$\hat{\mathbf{V}}_{pixel} = \mathcal{D}(\hat{\mathbf{Z}}_0)$$
 
 ## 5.3.6 代码实现：构建极简版 Video DiT 块
 
-在这一小节，我们将把前面推导的注意力公式 :eqref:`eq_self_attention` 落实到具体的代码逻辑中，编写一个包含层归一化（Layer Normalization）和前馈网络（MLP）的标准 Diffusion Transformer Block。
+在这一小节，我们将把前面推导的注意力该公式落实到具体的代码逻辑中，编写一个包含层归一化（Layer Normalization）和前馈网络（MLP）的标准 Diffusion Transformer Block。
 
 (**我们分别用 PyTorch 和 TensorFlow 定义一个简化的 Video DiT 块。**)
 
@@ -157,8 +157,7 @@ class VideoDiTBlock(nn.Module):
     def __init__(self, embed_dim, num_heads):
         super().__init__()
         self.norm1 = nn.LayerNorm(embed_dim)
-        # 实例化多头自注意力层，对应公式 :eqref:`eq_self_attention`
-        self.attn = nn.MultiheadAttention(
+        # 实例化多头自注意力层，对应该公式        self.attn = nn.MultiheadAttention(
             embed_dim=embed_dim, 
             num_heads=num_heads, 
             batch_first=True
@@ -197,8 +196,7 @@ class VideoDiTBlock(tf.keras.layers.Layer):
     def __init__(self, embed_dim, num_heads):
         super().__init__()
         self.norm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        # 实例化多头自注意力层，对应公式 :eqref:`eq_self_attention`
-        self.attn = tf.keras.layers.MultiHeadAttention(
+        # 实例化多头自注意力层，对应该公式        self.attn = tf.keras.layers.MultiHeadAttention(
             num_heads=num_heads, 
             key_dim=embed_dim
         )
@@ -237,9 +235,9 @@ class VideoDiTBlock(tf.keras.layers.Layer):
 
 ## 5.3.8 练习
 
-1. 请仔细回顾公式 :eqref:`eq_diffusion_closed_scalar` 的数学推导全过程。假设某个标量的初始值 $x_0 = 0.5$，前两个时间步的方差超参数设定为 $\beta_1 = 0.1, \beta_2 = 0.2$。请你纯手工计算出 $x_2$ 这个随机变量的理论均值和理论方差。
+1. 请仔细回顾该公式的数学推导全过程。假设某个标量的初始值 $x_0 = 0.5$，前两个时间步的方差超参数设定为 $\beta_1 = 0.1, \beta_2 = 0.2$。请你纯手工计算出 $x_2$ 这个随机变量的理论均值和理论方差。
     - **提示**：充分利用独立正态分布相加时均值与方差满足线性可加性的统计学规律。不要跳步，请先分布计算出 $\alpha_1, \alpha_2$ 以及累积连乘项 $\bar{\alpha}_2$。
 2. 假设给定的待处理原始视频总共有 $16$ 帧，单帧分辨率为 $256 \times 256$，颜色通道数 $C=3$。如果在补丁嵌入层将时空补丁的超参数尺寸硬编码设定为 $t_p=2, h_p=16, w_p=16$，请你计算出展平后的 Transformer 输入序列长度 $N$ 究竟是多少？
-    - **提示**：找到文章中给出的数学公式 :eqref:`eq_patch_sequence_length`，并直接代入已知数值进行除法和连乘运算。
+    - **提示**：找到文章中给出的数学该公式，并直接代入已知数值进行除法和连乘运算。
 3. 为什么在处理视频张量的扩散模型中，通常需要在自注意力层的输入阶段，强行同时注入“空间位置编码”和“时间位置编码”？如果你作为架构师，鲁莽地去掉了时间位置编码，模型在生成视频时，画面可能会出现什么极为怪异的现象？
     - **提示**：核心思考点在于标准 Transformer 中自注意力机制（Self-Attention）本身是具备排列不变性（Permutation Invariance）的。

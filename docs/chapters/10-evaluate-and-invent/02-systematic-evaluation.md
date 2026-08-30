@@ -8,11 +8,11 @@
 
 在深入具体的数学推导之前，我们有必要追溯这些评测指标诞生的历史脉络。评测标准的发展，本质上是深度学习模型能力边界不断扩张的倒影。
 
-在早期计算机视觉领域，研究者们主要关注模型在静态图像上的识别与分类能力，ImageNet 图像识别挑战赛的 Top-1 和 Top-5 准确率成为了衡量模型性能的黄金准则 `[Deng et al., 2009]`。随着生成对抗网络（GANs）`[Goodfellow et al., 2014]` 与变分自编码器（VAEs）`[Kingma & Welling, 2013]` 的崛起，模型开始具备了“从无到有”生成高维图像的能力。由于生成任务不存在绝对唯一的正确答案（Ground Truth），研究者们提出了诸如初始分数（Inception Score, IS）`[Salimans et al., 2016]` 和弗雷歇初始距离（Fréchet Inception Distance, FID）`[Heusel et al., 2017]`，通过引入预训练的神经网络提取高维特征，在特征分布层面上对生成图像的真实感和多样性进行数学度量。
+在早期计算机视觉领域，研究者们主要关注模型在静态图像上的识别与分类能力，ImageNet 图像识别挑战赛的 Top-1 和 Top-5 准确率成为了衡量模型性能的黄金准则 [[Deng et al., 2009]](https://doi.org/10.1109/CVPR.2009.5206848)。随着生成对抗网络（GANs）[[Goodfellow et al., 2014]](https://arxiv.org/abs/1406.2661) 与变分自编码器（VAEs）[[Kingma & Welling, 2013]](https://arxiv.org/abs/1312.6114) 的崛起，模型开始具备了“从无到有”生成高维图像的能力。由于生成任务不存在绝对唯一的正确答案（Ground Truth），研究者们提出了诸如初始分数（Inception Score, IS）[[Salimans et al., 2016]](https://arxiv.org/abs/1606.03498) 和弗雷歇初始距离（Fréchet Inception Distance, FID）[[Heusel et al., 2017]](https://arxiv.org/abs/1706.08500)，通过引入预训练的神经网络提取高维特征，在特征分布层面上对生成图像的真实感和多样性进行数学度量。
 
-进入视频生成与预测时代后，静态特征的分布距离被进一步延展到时空维度。通过利用 3D 卷积神经网络（如 I3D），弗雷歇视频距离（Fréchet Video Distance, FVD）被提出以衡量视频序列的时空一致性 `[Unterthiner et al., 2018]`。
+进入视频生成与预测时代后，静态特征的分布距离被进一步延展到时空维度。通过利用 3D 卷积神经网络（如 I3D），弗雷歇视频距离（Fréchet Video Distance, FVD）被提出以衡量视频序列的时空一致性 [[Unterthiner et al., 2018]](https://arxiv.org/abs/1812.01717)。
 
-直至世界模型理论被系统性地提出 `[Ha & Schmidhuber, 2018]`，人们意识到，世界模型的核心并非仅仅是“逼真的视频生成器”，它更是智能体（Agent）理解世界因果关系的大脑。正如在 Dreamer 架构 `[Hafner et al., 2019]` 中所展现的那样，评测基准必须从“观测保真度”向“动作条件下的动力学一致性”和“下游任务规划成功率”发生范式转移。本节将循序渐进地拆解这套由浅入深、层层递进的系统级评测体系。
+直至世界模型理论被系统性地提出 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)，人们意识到，世界模型的核心并非仅仅是“逼真的视频生成器”，它更是智能体（Agent）理解世界因果关系的大脑。正如在 Dreamer 架构 [[Hafner et al., 2019]](https://arxiv.org/abs/1912.01603) 中所展现的那样，评测基准必须从“观测保真度”向“动作条件下的动力学一致性”和“下游任务规划成功率”发生范式转移。本节将循序渐进地拆解这套由浅入深、层层递进的系统级评测体系。
 
 ## 10.2.2 像素与结构的低维映射：基础视觉评测
 
@@ -128,14 +128,14 @@ def calculate_psnr(img1: torch.Tensor, img2: torch.Tensor, max_val: float = 1.0)
     计算给定两批次图像的峰值信噪比(PSNR)。
     假设输入张量的取值范围已被归一化至 [0, max_val]。
     """
-    # [**计算两个图像张量之间所有对应元素的均方误差 (MSE)**]
+    # [计算两个图像张量之间所有对应元素的均方误差 (MSE)]
     mse = torch.mean((img1 - img2) ** 2)
     
     # 极值情况处理：如果两张图像完全一致，MSE为0，PSNR理论上趋于无穷大
     if mse == 0:
         return float('inf')
         
-    # [**严格依据对数能量衰减公式计算 PSNR 值**]
+    # [严格依据对数能量衰减公式计算 PSNR 值]
     psnr = 20 * math.log10(max_val / math.sqrt(mse.item()))
     return psnr
 
@@ -145,7 +145,7 @@ def calculate_ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 11
     """
     channels = img1.size(1)
     
-    # [**利用平均池化计算局部滑动窗口的均值 μ_x 和 μ_y (近似代表局部亮度)**]
+    # [利用平均池化计算局部滑动窗口的均值 μ_x 和 μ_y (近似代表局部亮度)]
     mu1 = F.avg_pool2d(img1, window_size, stride=1, padding=window_size//2)
     mu2 = F.avg_pool2d(img2, window_size, stride=1, padding=window_size//2)
     
@@ -153,7 +153,7 @@ def calculate_ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 11
     mu2_sq = mu2 ** 2
     mu1_mu2 = mu1 * mu2
     
-    # [**计算局部方差 σ_x^2, σ_y^2 以及协方差 σ_xy (代表对比度与结构相关性)**]
+    # [计算局部方差 σ_x^2, σ_y^2 以及协方差 σ_xy (代表对比度与结构相关性)]
     sigma1_sq = F.avg_pool2d(img1 ** 2, window_size, stride=1, padding=window_size//2) - mu1_sq
     sigma2_sq = F.avg_pool2d(img2 ** 2, window_size, stride=1, padding=window_size//2) - mu2_sq
     sigma12 = F.avg_pool2d(img1 * img2, window_size, stride=1, padding=window_size//2) - mu1_mu2
@@ -162,7 +162,7 @@ def calculate_ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 11
     C1 = (0.01 * max_val) ** 2
     C2 = (0.03 * max_val) ** 2
     
-    # [**严格依照原始公式，在分子和分母中组合亮度、对比度与结构三项因子**]
+    # [严格依照原始公式，在分子和分母中组合亮度、对比度与结构三项因子]
     ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / \
                ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
                
@@ -181,7 +181,7 @@ def get_inception_features(images: torch.Tensor, batch_size: int = 32) -> torch.
     """
     使用在 ImageNet 上预训练的 Inception-v3 模型提取高阶特征。
     """
-    # [**加载预训练权重，并务必设置为评估模式，防止 Batch Norm 或 Dropout 引入随机性扰动**]
+    # [加载预训练权重，并务必设置为评估模式，防止 Batch Norm 或 Dropout 引入随机性扰动]
     model = inception_v3(weights=Inception_V3_Weights.DEFAULT, transform_input=False)
     # 移除最后的分类映射全连接层，以获取更底层的连续语义特征
     model.fc = torch.nn.Identity()
@@ -191,7 +191,7 @@ def get_inception_features(images: torch.Tensor, batch_size: int = 32) -> torch.
     with torch.no_grad():
         for i in range(0, images.size(0), batch_size):
             batch = images[i:i+batch_size]
-            # [**通过双线性插值强制将图像缩放至299x299，以吻合Inception-v3初始感受野和步长的空间设计假设**]
+            # [通过双线性插值强制将图像缩放至299x299，以吻合Inception-v3初始感受野和步长的空间设计假设]
             batch = F.interpolate(batch, size=(299, 299), mode='bilinear', align_corners=False)
             features = model(batch)
             features_list.append(features)
@@ -205,10 +205,10 @@ def compute_statistics(features: torch.Tensor):
     # 将计算图脱离并将张量转移至 CPU，转化为 numpy 数组以便调用高阶代数库进行大规模矩阵运算
     features_np = features.cpu().numpy()
     
-    # [**沿样本批量维度展开，计算各维特征的算术均值向量 μ**]
+    # [沿样本批量维度展开，计算各维特征的算术均值向量 μ]
     mu = np.mean(features_np, axis=0)
     
-    # [**严格计算多维特征之间的协方差矩阵 Σ，行维度代表变量(特征)，列维度代表具体的观察值(样本)**]
+    # [严格计算多维特征之间的协方差矩阵 Σ，行维度代表变量(特征)，列维度代表具体的观察值(样本)]
     sigma = np.cov(features_np, rowvar=False)
     
     return mu, sigma

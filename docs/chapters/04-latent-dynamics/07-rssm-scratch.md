@@ -2,7 +2,7 @@
 
 在前几章中，我们探讨了如何通过自编码器将高维观测（如图像）压缩为低维的潜在表示（Latent Representation），并初步介绍了如何使用循环神经网络（RNN）在时间维度上建模这些状态的演化。然而，真实的物理世界充满了不确定性。一个纯粹确定性的动力学模型（如标准的RNN）在面对多条可能的未来分支时，往往会产生模糊的预测，或者因为微小的误差而在长程预测中彻底崩溃。
 
-为了在潜在空间中既能保持对历史信息的长期记忆，又能稳健地模拟未来的不确定性，Hafner等人在他们的经典工作“Learning Latent Dynamics for Planning from Pixels (PlaNet)” [Hafner et al., 2019] 中，提出了一种名为**循环状态空间模型**（Recurrent State Space Model, 简称RSSM）的优雅架构。RSSM 并非凭空出现，它是对隐马尔可夫模型（HMM）、卡尔曼滤波（Kalman Filter）以及变分自编码器（VAE）等早期序列生成模型在深度学习时代的集大成者。
+为了在潜在空间中既能保持对历史信息的长期记忆，又能稳健地模拟未来的不确定性，Hafner等人在他们的经典工作“Learning Latent Dynamics for Planning from Pixels (PlaNet)” [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 中，提出了一种名为**循环状态空间模型**（Recurrent State Space Model, 简称RSSM）的优雅架构。RSSM 并非凭空出现，它是对隐马尔可夫模型（HMM）、卡尔曼滤波（Kalman Filter）以及变分自编码器（VAE）等早期序列生成模型在深度学习时代的集大成者。
 
 在本节中，我们将完全从零开始，使用基本张量操作和标准神经网络层，一步步构建出完整的 RSSM。我们将从最基础的标量动力学方程出发，严格推导其多维张量形式，并最终落实到可以直接运行的代码实现上。
 
@@ -10,9 +10,9 @@
 
 在深度学习处理时间序列的早期，研究者通常依赖确定性的循环神经网络（如 LSTM 或 GRU）来预测未来的状态。以自动驾驶为例，给定过去的视频帧序列，我们希望预测接下来几秒的画面。如果是确定性模型，当路口前方面临左转或直行的可能性时，网络为了最小化预测误差（均方误差），往往会输出左转和直行的“平均图像”——也就是一团模糊的像素。
 
-为了引入随机性，变分循环神经网络（Variational RNNs） [Chung et al., 2015] 被提出，它们在每个时间步引入一个服从高斯分布的随机变量。然而，纯粹依靠随机状态跨越时间步传递信息的模型，在优化时极难保留跨越数百步的长期依赖。
+为了引入随机性，变分循环神经网络（Variational RNNs） [[Chung et al., 2015]](https://arxiv.org/abs/1506.02216) 被提出，它们在每个时间步引入一个服从高斯分布的随机变量。然而，纯粹依靠随机状态跨越时间步传递信息的模型，在优化时极难保留跨越数百步的长期依赖。
 
-Hafner 敏锐地洞察到了这一矛盾。在 [Hafner et al., 2019] 中，他提出：**状态的记忆机制应当是确定性的，而对未来的推断应当包含随机性。** 这种将状态强制解耦为“确定性部分”和“随机性部分”的思想，正是 RSSM 在众多世界模型中脱颖而出的核心基础，并在后续的 Dreamer 系列论文 [Hafner et al., 2020; 2023] 中被不断发扬光大。
+Hafner 敏锐地洞察到了这一矛盾。在 [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 中，他提出：**状态的记忆机制应当是确定性的，而对未来的推断应当包含随机性。** 这种将状态强制解耦为“确定性部分”和“随机性部分”的思想，正是 RSSM 在众多世界模型中脱颖而出的核心基础，并在后续的 Dreamer 系列论文 [[Hafner et al., 2020]](https://arxiv.org/abs/2010.02193); [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104) 中被不断发扬光大。
 
 ## 从抛物运动到分离状态空间
 
@@ -143,8 +143,7 @@ def sample_gaussian(mean, std):
         如果 obs_embed 为 None，则纯粹执行先验想象；否则计算后验分布。
         """
         # (**计算确定性状态更新**)
-        # 对应公式 :eqref:`eq_deterministic_update`
-        za_cat = torch.cat([prev_stoch, prev_action], dim=-1)
+        # 对应该公式        za_cat = torch.cat([prev_stoch, prev_action], dim=-1)
         gru_input = F.elu(self.fc_state_action(za_cat))
         
         # GRU 内部状态更新
@@ -152,16 +151,14 @@ def sample_gaussian(mean, std):
         deter_state = self.cell(gru_input, prev_deter)
         
         # (**计算先验分布**)
-        # 对应公式 :eqref:`eq_prior_dynamics`
-        prior_hidden = F.elu(self.fc_prior_hidden(deter_state))
+        # 对应该公式        prior_hidden = F.elu(self.fc_prior_hidden(deter_state))
         prior_stats = self.fc_prior_stats(prior_hidden)
         prior_mean, prior_std = extract_stats(prior_stats)
         prior_stoch = sample_gaussian(prior_mean, prior_std)
         
         # (**计算后验分布（如果有观测）**)
         if obs_embed is not None:
-            # 对应公式 :eqref:`eq_posterior_inference`
-            # 将当前确定性状态与当前观测嵌入进行拼接
+            # 对应该公式            # 将当前确定性状态与当前观测嵌入进行拼接
             h_x_cat = torch.cat([deter_state, obs_embed], dim=-1)
             post_hidden = F.elu(self.fc_posterior_hidden(h_x_cat))
             post_stats = self.fc_posterior_stats(post_hidden)
@@ -293,7 +290,7 @@ def kl_loss(prior_stats, post_stats, free_nats=3.0):
 
 1. 在 `RSSMCell` 中，为什么 `gru_input` 必须包含 $z_{t-1}$ 而不仅仅是 $a_{t-1}$？尝试用自己的话从马尔可夫性的角度进行分析。
    > **提示**：如果在上一步遇到了一阵无法预期的侧风（由 $z_{t-1}$ 捕获），这阵风带来的影响是否应当被记忆在 $h_t$ 中以指导未来的推断？
-2. `extract_stats` 中我们加上了 `min_std=0.1`。如果没有这个常数限制，KL 散度的计算中 :eqref:`eq_kl_divergence` 哪一项最可能发生数值爆炸（NaN）现象？
+2. `extract_stats` 中我们加上了 `min_std=0.1`。如果没有这个常数限制，KL 散度的计算中该公式哪一项最可能发生数值爆炸（NaN）现象？
    > **提示**：观察分母项。
 3. 在现实训练中，如果你发现 KL 散度极低，模型完美地使得先验等同于后验，但此时解码器重构出的图像却极其模糊，这说明发生了什么问题？
    > **提示**：这通常被称为“后验崩溃”（Posterior Collapse）。思考当随机状态不再携带额外信息时，模型实质上退化成了什么？

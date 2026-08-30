@@ -4,7 +4,7 @@
 
 为了直观地理解这一点，我们可以想象这样一个极其简单的物理场景：机器人正前方有一根柱子，而目标位于柱子正后方。在专家演示数据中，操作员有时会控制机器人从左侧绕过柱子，有时则从右侧绕过。如果使用传统的基于均方误差的神经网络来拟合这些数据，模型会倾向于输出左转和右转的“平均值”——即径直向前走，从而导致机器人直接撞上柱子。这种现象在学术界被称为“模式平均”（Mode Averaging）。
 
-为了打破这一困境，研究人员开始将目光投向生成式模型。在自然语言处理和计算机视觉领域大放异彩的去噪扩散概率模型（Denoising Diffusion Probabilistic Models, DDPM） [Ho et al., 2020]，以其惊人的分布建模能力引起了控制领域的关注。2023年，[Chi et al., 2023] 首次系统性地提出了扩散策略（Diffusion Policy），将视觉运动策略的动作生成过程建模为一个条件去噪扩散过程。它彻底抛弃了确定性输出的执念，转而学习如何从纯随机的噪声中，根据当前的视觉观察“雕刻”出合理的动作轨迹。在本节中，我们将从最基础的概率论出发，逐步剥开扩散策略的数学外衣，并最终实现一个完整的扩散策略模型。
+为了打破这一困境，研究人员开始将目光投向生成式模型。在自然语言处理和计算机视觉领域大放异彩的去噪扩散概率模型（Denoising Diffusion Probabilistic Models, DDPM） [[Ho et al., 2020]](https://arxiv.org/abs/2006.11239)，以其惊人的分布建模能力引起了控制领域的关注。2023年，[[Chi et al., 2023]](https://arxiv.org/abs/2303.04137) 首次系统性地提出了扩散策略（Diffusion Policy），将视觉运动策略的动作生成过程建模为一个条件去噪扩散过程。它彻底抛弃了确定性输出的执念，转而学习如何从纯随机的噪声中，根据当前的视觉观察“雕刻”出合理的动作轨迹。在本节中，我们将从最基础的概率论出发，逐步剥开扩散策略的数学外衣，并最终实现一个完整的扩散策略模型。
 
 ## 扩散过程的数学基础：从信号到噪声
 
@@ -20,7 +20,7 @@ $$q(a_k \mid a_{k-1}) = \mathcal{N}(a_k; \sqrt{\alpha_k} a_{k-1}, (1 - \alpha_k)
 
 其中，$\alpha_k$ 是一个介于 $0$ 和 $1$ 之间、且随着步数 $k$ 增加而逐渐减小的超参数（我们称由所有 $\alpha_k$ 组成的序列为方差调度计划，Variance Schedule）。
 
-根据正态分布的性质，我们可以将 :eqref:eq_diffusion_step 写成一个显式的代数等式。如果我们引入一个服从标准正态分布的随机变量 $\boldsymbol{\epsilon} \sim \mathcal{N}(0, \mathbf{I})$，那么第 $k$ 步的状态可以表示为：
+根据正态分布的性质，我们可以将该公式写成一个显式的代数等式。如果我们引入一个服从标准正态分布的随机变量 $\boldsymbol{\epsilon} \sim \mathcal{N}(0, \mathbf{I})$，那么第 $k$ 步的状态可以表示为：
 
 $$a_k = \sqrt{\alpha_k} a_{k-1} + \sqrt{1 - \alpha_k} \boldsymbol{\epsilon}_{k-1}$$
 
@@ -59,11 +59,11 @@ $$
 
 $$\tilde{\mu}_k(a_k, a_0) = \frac{\sqrt{\bar{\alpha}_{k-1}} (1 - \alpha_k)}{1 - \bar{\alpha}_k} a_0 + \frac{\sqrt{\alpha_k} (1 - \bar{\alpha}_{k-1})}{1 - \bar{\alpha}_k} a_k$$
 
-由于在实际逆向生成时我们是不可能提前知道真实动作 $a_0$ 的，我们需要通过神经网络来预测它。仔细观察公式 :eqref:eq_diffusion_marginal，我们可以将 $a_0$ 重新表达为关于 $a_k$ 和噪声 $\boldsymbol{\epsilon}$ 的函数：
+由于在实际逆向生成时我们是不可能提前知道真实动作 $a_0$ 的，我们需要通过神经网络来预测它。仔细观察该公式，我们可以将 $a_0$ 重新表达为关于 $a_k$ 和噪声 $\boldsymbol{\epsilon}$ 的函数：
 
 $$a_0 = \frac{1}{\sqrt{\bar{\alpha}_k}} \left( a_k - \sqrt{1 - \bar{\alpha}_k} \boldsymbol{\epsilon} \right)$$
 
-将 :eqref:eq_a0_reparameterized 代入 :eqref:eq_posterior_mean_raw 并进行代数化简，我们得到了一个极其优雅的均值推导表达式：
+将该公式代入该公式并进行代数化简，我们得到了一个极其优雅的均值推导表达式：
 
 $$\tilde{\mu}_k = \frac{1}{\sqrt{\alpha_k}} \left( a_k - \frac{1 - \alpha_k}{\sqrt{1 - \bar{\alpha}_k}} \boldsymbol{\epsilon} \right)$$
 

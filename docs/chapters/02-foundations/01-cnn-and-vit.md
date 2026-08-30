@@ -1,11 +1,11 @@
 # 视觉基础模型：从卷积神经网络到视觉变换器
 
 ## 引言与历史追溯
-在计算机视觉的早期阶段，研究人员主要依赖于手工设计的特征提取器（如 SIFT 和 HOG）来处理图像数据。然而，这些方法在面对复杂的现实世界场景时，往往缺乏足够的表达能力。深度学习的引入彻底改变了这一局面。从由 Yann LeCun 等人提出、主要用于手写数字识别的早期卷积神经网络（LeNet） [LeCun et al., 1989]，到 2012 年在 ImageNet 竞赛中取得突破性进展的 AlexNet [Krizhevsky et al., 2012]，卷积神经网络（Convolutional Neural Networks, CNNs）确立了其在计算机视觉领域的统治地位。
+在计算机视觉的发展中，手工特征与神经网络曾长期并行演进。LeCun 等人的早期卷积网络已能从数据中学习用于手写数字识别的特征 [[LeCun et al., 1989]](https://doi.org/10.1162/neco.1989.1.4.541)；2012 年，AlexNet 又在 ImageNet 分类任务上显著降低了错误率 [[Krizhevsky et al., 2012]](https://proceedings.neurips.cc/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html)。这两项工作分别展示了卷积网络的早期可行性与大规模视觉任务上的突破。
 
 CNN 的成功很大程度上归功于其内置的**归纳偏置**（Inductive Bias）——特别是**平移不变性**（Translation Invariance）和**局部性**（Locality）。这些偏置使得 CNN 能够在相对较少的数据集上高效学习。然而，随着数据规模的指数级增长和计算能力的提升，研究人员开始质疑这种强偏置是否限制了模型的上限。
 
-2020 年，Dosovitskiy 等人提出视觉变换器（Vision Transformer, ViT） [Dosovitskiy et al., 2020]，这一工作受到了自然语言处理中 Transformer 架构 [Vaswani et al., 2017] 的启发。ViT 摒弃了卷积操作，将图像分割为一系列的小块（Patches），并利用全局的自注意力机制来捕捉特征。尽管 ViT 缺乏 CNN 那样的局部性偏置，但在极大规模数据预训练的加持下，它展现出了超越传统 CNN 的惊人性能。
+2020 年，Dosovitskiy 等人提出视觉变换器（Vision Transformer, ViT） [[Dosovitskiy et al., 2020]](https://arxiv.org/abs/2010.11929)，这一工作受到了自然语言处理中 Transformer 架构 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762) 的启发。ViT 摒弃了卷积操作，将图像分割为一系列的小块（Patches），并利用全局的自注意力机制来捕捉特征。尽管 ViT 缺乏 CNN 那样的局部性偏置，但在极大规模数据预训练的加持下，它展现出了超越传统 CNN 的惊人性能。
 
 在本章中，我们将从最基础的数学定义出发，逐步推导并实现这两种奠定了现代视觉基础模型地位的核心架构。
 
@@ -25,7 +25,7 @@ $$
 1. **平移不变性**：在图像中，一个物体无论出现在左上角还是右下角，模型对其特征的响应机制应该是相同的。这意味着权重张量 $\mathbf{W}$ 不应该依赖于输出的绝对物理位置 $(i, j)$，而只应该依赖于输入和输出位置的相对偏移量。我们令 $k = i + a$ 和 $l = j + b$，则权重可以严格重写为 $V_{a, b} = W_{i, j, i+a, j+b}$。
 2. **局部性**：图像中的像素通常只与其周围邻近的像素有较强的物理和统计相关性。因此，我们在计算 $h_{i,j}$ 时，只需考察距离 $(i,j)$ 较近的输入像素，即限制偏移量 $a$ 和 $b$ 的范围在 $[-\Delta, \Delta]$ 之间。
 
-结合上述两个原则，公式 :eqref:eq_fc_image 可以被极大地简化为：
+结合上述两个原则，该公式可以被极大地简化为：
 
 $$
 h_{i, j} = \sum_{a=-\Delta}^{\Delta} \sum_{b=-\Delta}^{\Delta} V_{a, b} x_{i+a, j+b} + b
@@ -66,7 +66,7 @@ print(f"权重形状: {conv_layer.weight.shape}")
 
 ## 经典 CNN 架构：残差网络 (ResNet)
 
-随着网络层数的增加，梯度消失（Vanishing Gradient）和网络退化（Degradation）问题变得日益严重。He 等人在 2015 年提出了残差网络 [He et al., 2015]，巧妙地解决了极深网络的优化难题。
+随着网络层数的增加，梯度消失（Vanishing Gradient）和网络退化（Degradation）问题变得日益严重。He 等人在 2015 年提出了残差网络 [[He et al., 2015]](https://arxiv.org/abs/1512.03385)，巧妙地解决了极深网络的优化难题。
 
 ### 残差连接的数学机制
 假设我们将网络中的某个块（由若干个卷积层组成）拟合为一个非线性映射 $\mathcal{F}(\mathbf{x})$。在传统的网络设计中，该块的输出直接就是 $\mathcal{F}(\mathbf{x})$。然而，ResNet 引入了一个严格的跳跃连接（Skip Connection），要求该网络块去拟合残差映射 $\mathcal{F}(\mathbf{x}) = \mathcal{H}(\mathbf{x}) - \mathbf{x}$，因此其实际输出变为了：
@@ -81,7 +81,7 @@ $$
 \frac{\partial \mathcal{L}}{\partial \mathbf{x}} = \frac{\partial \mathcal{L}}{\partial \mathbf{y}} \frac{\partial \mathbf{y}}{\partial \mathbf{x}} = \frac{\partial \mathcal{L}}{\partial \mathbf{y}} \left( \frac{\partial \mathcal{F}(\mathbf{x})}{\partial \mathbf{x}} + \mathbf{I} \right)
 $$
 
-这里的 $\mathbf{I}$ 是单位矩阵。公式 :eqref:eq_residual_grad 揭示了残差网络为何能够避免梯度消失的核心数学机制：由于加法项 $\mathbf{I}$ 的存在，即使在极深的网络中梯度 $\frac{\partial \mathcal{F}}{\partial \mathbf{x}}$ 趋近于零（即经过多次卷积导致信号衰减），由后方传来的梯度 $\frac{\partial \mathcal{L}}{\partial \mathbf{y}}$ 也总能通过单位矩阵直接、无损地传递回上一层，保证了底层网络参数的有效更新。
+这里的 $\mathbf{I}$ 是单位矩阵。该公式揭示了残差网络为何能够避免梯度消失的核心数学机制：由于加法项 $\mathbf{I}$ 的存在，即使在极深的网络中梯度 $\frac{\partial \mathcal{F}}{\partial \mathbf{x}}$ 趋近于零（即经过多次卷积导致信号衰减），由后方传来的梯度 $\frac{\partial \mathcal{L}}{\partial \mathbf{y}}$ 也总能通过单位矩阵直接、无损地传递回上一层，保证了底层网络参数的有效更新。
 
 (**下面我们实现一个标准的残差块：**)
 

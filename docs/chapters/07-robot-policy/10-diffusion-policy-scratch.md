@@ -3,7 +3,7 @@
 
 在探讨具身智能（Embodied AI）中的动作生成时，我们常常面临一个基础性却极难克服的挑战：对于相同的环境状态，专家演示（Expert Demonstrations）可能包含多种完全合理的动作序列。传统的行为克隆（Behavior Cloning, BC）广泛依赖于均方误差（Mean Squared Error, MSE）作为损失函数，这在数学上等价于假设动作分布服从单峰高斯分布。然而，当真实专家数据呈现多模态（Multi-modal）分布时，最小化均方误差会驱使模型预测出所有可能动作的平均值，这往往会导致灾难性的失败。例如，在面对障碍物时，专家可能选择从左侧绕过或从右侧绕过，而模型预测的平均动作则是径直撞向障碍物。
 
-为了解决这一多模态动作分布问题，Chi 等人提出了扩散策略（Diffusion Policy） `[Chi et al., 2023]`。该方法将动作生成重构为一个条件去噪扩散概率过程（Conditional Denoising Diffusion Probabilistic Process）。扩散模型最初在图像生成领域取得了革命性的成功，特别是去噪扩散概率模型（DDPM） `[Ho et al., 2020]` 的提出，彻底改变了生成模型的格局。将扩散机制引入机器人连续控制与策略学习，标志着具身大脑从确定性的点估计（Point Estimation）向复杂的概率分布建模迈出了关键一步。
+为了解决这一多模态动作分布问题，Chi 等人提出了扩散策略（Diffusion Policy） [[Chi et al., 2023]](https://arxiv.org/abs/2303.04137)。该方法将动作生成重构为一个条件去噪扩散概率过程（Conditional Denoising Diffusion Probabilistic Process）。扩散模型最初在图像生成领域取得了革命性的成功，特别是去噪扩散概率模型（DDPM） [[Ho et al., 2020]](https://arxiv.org/abs/2006.11239) 的提出，彻底改变了生成模型的格局。将扩散机制引入机器人连续控制与策略学习，标志着具身大脑从确定性的点估计（Point Estimation）向复杂的概率分布建模迈出了关键一步。
 
 在本节中，我们将从最基础的统计学概念起步，逐步推导扩散策略的严密数学公式，并最终从零开始实现一个完整的扩散策略模型。
 
@@ -54,7 +54,7 @@ $$
 
 生成动作的目标是从 $a_T \sim \mathcal{N}(0, \mathbf{I})$ 出发，逐步采样逆向过程的转移概率 $p(a_{t-1} | a_t)$。由于真正的逆向分布 $q(a_{t-1} | a_t, a_0)$ 在给定 $a_0$ 时是一个高斯分布，我们可以用一个参数化的神经网络 $p_\theta(a_{t-1} | a_t, o)$ 来近似它。在扩散策略中，网络以上下文观察 $o$ 为条件。
 
-根据变分下界（Variational Lower Bound, VLB）理论及 [Ho et al., 2020] 的推导，与其直接预测均值，不如让神经网络去预测前向过程中加入的噪声 $\epsilon$。我们定义神经网络为 $\epsilon_\theta(a_t, t, o)$，其目标是最小化预测噪声与真实噪声之间的均方误差：
+根据变分下界（Variational Lower Bound, VLB）理论及 [[Ho et al., 2020]](https://arxiv.org/abs/2006.11239) 的推导，与其直接预测均值，不如让神经网络去预测前向过程中加入的噪声 $\epsilon$。我们定义神经网络为 $\epsilon_\theta(a_t, t, o)$，其目标是最小化预测噪声与真实噪声之间的均方误差：
 
 $$
 L(\theta) = \mathbb{E}_{t \sim \mathcal{U}(1,T), a_0, \epsilon \sim \mathcal{N}(0,\mathbf{I})} \left[ \| \epsilon - \epsilon_\theta(a_t, t, o) \|^2 \right]
@@ -94,7 +94,7 @@ class DDPMScheduler:
         
     def add_noise(self, original_samples, noise, timesteps):
         """
-        基于 :eqref:`eq_diffusion_reparam` 实现前向加噪
+        基于该公式实现前向加噪
         original_samples: 形状为 (B, H, D_a) 的初始动作 a_0
         noise: 从 N(0, I) 采样的同形状噪声
         timesteps: 形状为 (B,) 的整数时间步
@@ -184,7 +184,7 @@ class Conditional1DCNN(nn.Module):
         return out.transpose(1, 2) # 恢复为 (B, H, action_dim)
 ```
 
-有了调度器和网络，我们可以清晰地构建出 :eqref:`eq_diffusion_loss` 描述的训练流程。
+有了调度器和网络，我们可以清晰地构建出该公式描述的训练流程。
 
 (**实现训练循环**)
 
@@ -245,7 +245,7 @@ print(f"Training Loss: {train_diffusion_policy():.4f}")
 ## 练习
 :label:subsec_diffusion_exercises
 
-1. **推导变分下界**：尝试手动推导从逆向概率分布匹配到 :eqref:`eq_diffusion_loss` 所述的均方误差形式。
+1. **推导变分下界**：尝试手动推导从逆向概率分布匹配到该公式所述的均方误差形式。
    *提示*：回顾重参数化技巧，并关注 KL 散度在两个高斯分布之间的计算方式。
 2. **加速推理采样**：在标准的去噪循环中，必须严格按照时间步 $T \to 0$ 逐一迭代。如果要实现跳步推理（如 DDIM），调度器的 `step` 函数应该如何修改？
    *提示*：重新审视 $a_{t-1}$ 是如何由 $a_t$ 和预测出的 $\epsilon_\theta$ 确定性重构出来的。

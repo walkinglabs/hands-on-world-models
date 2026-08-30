@@ -1,6 +1,6 @@
 # 强化学习基础模块的从零开始实现
 
-在前面的章节中，我们已经探讨了监督学习和世界模型中的基础预测机制。然而，当我们的模型不仅需要被动地预测未来，还需要在环境中主动做出决策以最大化某种长期收益时，我们就踏入了强化学习（Reinforcement Learning, RL）的领域。强化学习的理论基础可以追溯到理查德·贝尔曼（Richard Bellman）在动态规划（Dynamic Programming）上的开创性工作 `[Bellman, 1957]`，以及随后由 Sutton 和 Barto 建立的现代时序差分学习框架 `[Sutton & Barto, 1998]`。在深度学习时代，将强大的神经网络与强化学习结合，催生了诸如深度Q网络（DQN） `[Mnih et al., 2013]` 和近端策略优化（PPO） `[Schulman et al., 2017]` 等突破性算法。
+在前面的章节中，我们已经探讨了监督学习和世界模型中的基础预测机制。然而，当我们的模型不仅需要被动地预测未来，还需要在环境中主动做出决策以最大化某种长期收益时，我们就踏入了强化学习（Reinforcement Learning, RL）的领域。强化学习的理论基础可以追溯到理查德·贝尔曼（Richard Bellman）在动态规划（Dynamic Programming）上的开创性工作 [[Bellman, 1957]](https://press.princeton.edu/books/paperback/9780691146683/dynamic-programming)，以及随后由 Sutton 和 Barto 建立的现代时序差分学习框架 [[Sutton & Barto, 1998]](http://incompleteideas.net/book/first/the-book.html)。在深度学习时代，将强大的神经网络与强化学习结合，催生了诸如深度Q网络（DQN） [[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602) 和近端策略优化（PPO） [[Schulman et al., 2017]](https://arxiv.org/abs/1707.06347) 等突破性算法。
 
 在深入探索复杂的深度强化学习算法之前，我们必须首先极其严谨地理解强化学习中最核心的几个数学概念：马尔可夫决策过程（MDP）、价值函数、贝尔曼方程，以及它们在代码级别是如何被实例化为基础模块的（如经验回放缓冲区和环境交互循环）。本节将坚持从最基础的标量运算起步，逐步推导至张量化的矩阵运算，并最终从零开始实现这些强化学习的基础设施。
 
@@ -69,7 +69,7 @@ $$Q^\pi(s, a) = R(s, a) + \gamma \sum_{s' \in \mathcal{S}} P(s' \mid s, a) \sum_
 
 在现代强化学习中（尤其是离策略算法如 Q-learning），智能体在环境中交互产生的数据表现出极强的时间相关性。如果我们将这些连续的样本直接送入神经网络进行梯度下降，极易导致训练发散。
 
-为此，Lin (1992) 首次提出 `[Lin, 1992]`，并在 DQN `[Mnih et al., 2013]` 中被发扬光大的核心机制是**经验回放缓冲区（Experience Replay Buffer）**。其思想十分纯粹：将每次交互的转移元组 $(s_t, a_t, r_{t+1}, s_{t+1}, \text{done})$ 存储在一个大容量的先进先出（FIFO）队列中；在训练时，从中均匀随机采样小批量（Mini-batch）数据。这一方面打破了样本间的时间相关性，另一方面使得罕见的高价值经验可以被多次复用。
+为此，Lin (1992) 首次提出 [[Lin, 1992]](https://doi.org/10.1007/BF00992699)，并在 DQN [[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602) 中被发扬光大的核心机制是**经验回放缓冲区（Experience Replay Buffer）**。其思想十分纯粹：将每次交互的转移元组 $(s_t, a_t, r_{t+1}, s_{t+1}, \text{done})$ 存储在一个大容量的先进先出（FIFO）队列中；在训练时，从中均匀随机采样小批量（Mini-batch）数据。这一方面打破了样本间的时间相关性，另一方面使得罕见的高价值经验可以被多次复用。
 
 为了保证计算效率，我们不能使用 Python 原生的列表（list）来存储百万级别的经验，而是必须在一开始就预分配一块连续的张量（Tensor）内存，通过指针循环覆盖旧数据。
 

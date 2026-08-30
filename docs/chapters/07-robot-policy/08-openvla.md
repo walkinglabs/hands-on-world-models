@@ -1,6 +1,6 @@
 # OpenVLA：开源具身大模型
 
-在探讨了RT系列模型（如RT-1与RT-2）之后，我们进入了一个由大语言模型（LLM）主导的具身智能新阶段。RT-2向我们展示了将视觉-语言大模型（Vision-Language Model, VLM）直接用于输出机器人动作的巨大潜力 `[Brohan et al., 2023]`。然而，这类模型通常依赖于闭源的大规模专有架构，其高昂的训练成本和闭门造车的生态限制了整个具身智能社区的发展。为了打破这一壁垒，OpenVLA `[Kim et al., 2024]` 应运而生。作为一个拥有70亿参数的完全开源的视觉-语言-动作（Vision-Language-Action, VLA）模型，OpenVLA不仅在多项机器人操作基准测试中展现出卓越的性能，还为研究者提供了一套基于低秩自适应（LoRA）的高效微调范式。
+在探讨了RT系列模型（如RT-1与RT-2）之后，我们进入了一个由大语言模型（LLM）主导的具身智能新阶段。RT-2向我们展示了将视觉-语言大模型（Vision-Language Model, VLM）直接用于输出机器人动作的巨大潜力 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818)。然而，这类模型通常依赖于闭源的大规模专有架构，其高昂的训练成本和闭门造车的生态限制了整个具身智能社区的发展。为了打破这一壁垒，OpenVLA [[Kim et al., 2024]](https://arxiv.org/abs/2406.09246) 应运而生。作为一个拥有70亿参数的完全开源的视觉-语言-动作（Vision-Language-Action, VLA）模型，OpenVLA不仅在多项机器人操作基准测试中展现出卓越的性能，还为研究者提供了一套基于低秩自适应（LoRA）的高效微调范式。
 
 本节我们将深入解构OpenVLA的核心设计思想。我们将从动作序列的自回归建模出发，严格推导其如何将连续的物理动作映射为语言模型的离散词表，并探讨其如何利用几何降维的思想实现高效的模型微调。
 
@@ -45,7 +45,7 @@ $$ k = \text{round}(v_{\text{norm}} \times (B-1)) $$
 
 当语言模型输出一个动作词元索引 $k$ 时，我们需要将其还原为机器人的连续执行指令。这个逆过程（Detokenization）是一个精确的代数求逆步骤，但由于我们之前使用了舍入函数，会不可避免地引入误差。
 
-通过代数变换重组 :eqref:eq_openvla_norm 和 :eqref:eq_openvla_discretize，我们可以推导出还原后的连续动作近似值 $\hat{v}$：
+通过代数变换重组这两个公式，我们可以推导出还原后的连续动作近似值 $\hat{v}$：
 
 $$ \hat{v} = \left( \frac{k}{B-1} \right) (v_{\max} - v_{\min}) + v_{\min} $$
 
@@ -70,7 +70,7 @@ OpenVLA 的架构由三个核心组件构成：视觉编码器（Vision Encoder�
 
 ## 低秩自适应（LoRA）：高效微调的几何视角
 
-拥有 70 亿参数的 OpenVLA 若直接进行全参数微调（Full Fine-Tuning），将对显存和计算资源造成极大的挑战。OpenVLA 选择采用低秩自适应（Low-Rank Adaptation, LoRA）技术 `[Hu et al., 2021]`，使得普通实验室甚至个人研究者也能在特定的机器人任务上对其进行高效微调。
+拥有 70 亿参数的 OpenVLA 若直接进行全参数微调（Full Fine-Tuning），将对显存和计算资源造成极大的挑战。OpenVLA 选择采用低秩自适应（Low-Rank Adaptation, LoRA）技术 [[Hu et al., 2021]](https://arxiv.org/abs/2106.09685)，使得普通实验室甚至个人研究者也能在特定的机器人任务上对其进行高效微调。
 
 让我们从线性变换的几何视角来严格拆解 LoRA 的原理。在大模型的前馈网络中，核心运算是矩阵乘法。设预训练的权重矩阵为 $\mathbf{W}_0 \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}$，输入向量为 $\mathbf{x} \in \mathbb{R}^{d_{\text{in}}}$，则线性投影的输出为：
 

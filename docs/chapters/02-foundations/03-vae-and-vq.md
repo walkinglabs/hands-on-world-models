@@ -2,7 +2,7 @@
 
 在深度学习的发展历程中，如何有效地学习数据的高维连续表征一直是一个核心问题。从早期的主成分分析（PCA）到深层自编码器（Autoencoder），研究者们试图将复杂的现实世界数据（如图像、音频）压缩到一个低维的潜在空间（Latent Space）中。然而，传统的自编码器往往缺乏对潜在空间的概率约束，导致生成的特征空间存在大量“空洞”，无法用于生成新样本。
 
-2013年，Kingma 和 Welling 提出了变分自编码器（Variational Autoencoder, VAE） [Kingma & Welling, 2013]，将贝叶斯推断与深度学习优雅地结合在一起。VAE 通过在潜在空间引入连续的概率分布约束，彻底改变了生成模型的格局。然而，现实世界中的许多模态在本质上是离散的（如语言、符号逻辑）。为了弥补连续表征在特定任务中的局限性，van den Oord 等人在 2017 年提出了向量量化变分自编码器（Vector Quantised-Variational AutoEncoder, VQ-VAE） [van den Oord et al., 2017]，成功地将离散的字典（Codebook）机制引入深度表征学习中。
+2013年，Kingma 和 Welling 提出了变分自编码器（Variational Autoencoder, VAE） [[Kingma & Welling, 2013]](https://arxiv.org/abs/1312.6114)，将贝叶斯推断与深度学习优雅地结合在一起。VAE 通过在潜在空间引入连续的概率分布约束，彻底改变了生成模型的格局。然而，现实世界中的许多模态在本质上是离散的（如语言、符号逻辑）。为了弥补连续表征在特定任务中的局限性，van den Oord 等人在 2017 年提出了向量量化变分自编码器（Vector Quantised-Variational AutoEncoder, VQ-VAE） [van den Oord et al., 2017]，成功地将离散的字典（Codebook）机制引入深度表征学习中。
 
 在本节中，我们将从最基础的概率法则出发，逐步推导 VAE 的数学基础，并在此基础上深入探讨 VQ-VAE 是如何实现空间离散化的。我们将剥开所有复杂的数学外衣，用高中数学的直觉来理解这些强大的生成模型。
 
@@ -100,7 +100,7 @@ class VAE(nn.Module):
 
     def encode(self, x):
         h1 = F.relu(self.fc1(x))
-        # (**返回均值和对数方差**) 
+        # (返回均值和对数方差)
         # 为了数值稳定性，神经网络通常预测对数方差而不是直接预测方差
         return self.fc21(h1), self.fc22(h1)
 
@@ -109,7 +109,7 @@ class VAE(nn.Module):
         std = torch.exp(0.5 * logvar)
         # 从标准正态分布 N(0, 1) 中采样噪声 epsilon
         eps = torch.randn_like(std)
-        # (**执行重参数化技巧**) z = mu + sigma * epsilon
+        # (执行重参数化技巧) z = mu + sigma * epsilon
         return mu + eps * std
 
     def decode(self, z):
@@ -155,7 +155,7 @@ $$ z_q(x) = e_k, \quad \text{where} \quad k = \arg\min_j \| z_e(x) - e_j \|_2 $$
 
 **梯度的直通估计器（Straight-Through Estimator, STE）**
 
-方程 :eqref:eq_vq_quantize 中的 $\arg\min$ 操作是完全不可导的。为了让网络能够端到端训练，VQ-VAE 使用了一个极其简单粗暴但在工程上非常有效的技巧：**直通估计器**（STE）。
+该公式中的 $\arg\min$ 操作是完全不可导的。为了让网络能够端到端训练，VQ-VAE 使用了一个极其简单粗暴但在工程上非常有效的技巧：**直通估计器**（STE）。
 
 在反向传播时，我们直接将解码器关于量化后向量 $z_q(x)$ 的梯度，原封不动地复制给编码器的输出 $z_e(x)$。也就是我们欺骗网络，假装前向传播时 $z_q(x)$ 就是 $z_e(x)$ 本身。
 
@@ -185,7 +185,7 @@ class VectorQuantizer(nn.Module):
         self._embedding_dim = embedding_dim
         self._num_embeddings = num_embeddings
         
-        # (**定义码本 Embedding**)
+        # (定义码本 Embedding)
         # 码本包含 num_embeddings 个条目，每个条目维度为 embedding_dim
         self._embedding = nn.Embedding(self._num_embeddings, self._embedding_dim)
         # 初始化码本权重，使用均匀分布
@@ -203,13 +203,13 @@ class VectorQuantizer(nn.Module):
         # 展平为二维矩阵 [batch_size * height * width, channels]
         flat_input = inputs.view(-1, self._embedding_dim)
         
-        # (**计算输入向量与码本中所有向量的欧氏距离的平方**)
+        # (计算输入向量与码本中所有向量的欧氏距离的平方)
         # (a-b)^2 = a^2 + b^2 - 2ab
         distances = (torch.sum(flat_input**2, dim=1, keepdim=True) 
                     + torch.sum(self._embedding.weight**2, dim=1)
                     - 2 * torch.matmul(flat_input, self._embedding.weight.t()))
             
-        # (**寻找最近邻**)
+        # (寻找最近邻)
         # 在第 1 维度（即码本维度）寻找距离最小的索引
         encoding_indices = torch.argmin(distances, dim=1).unsqueeze(1)
         
@@ -217,17 +217,17 @@ class VectorQuantizer(nn.Module):
         encodings = torch.zeros(encoding_indices.shape[0], self._num_embeddings, device=inputs.device)
         encodings.scatter_(1, encoding_indices, 1)
         
-        # (**对输入进行量化**)
+        # (对输入进行量化)
         # 根据索引从码本中提取对应的离散向量
         quantized = torch.matmul(encodings, self._embedding.weight).view(input_shape)
         
-        # (**计算损失**)
+        # (计算损失)
         # 使用 detach() 实现停止梯度 (sg) 操作
         e_latent_loss = F.mse_loss(quantized.detach(), inputs) # 承诺损失
         q_latent_loss = F.mse_loss(quantized, inputs.detach()) # 码本损失
         loss = q_latent_loss + self._commitment_cost * e_latent_loss
         
-        # (**直通估计器 (Straight-Through Estimator, STE)**)
+        # (直通估计器 (Straight-Through Estimator, STE))
         # 这是 VQ 最核心的一步技巧：
         # 前向传播时使用 quantized
         # 反向传播时，由于 inputs.detach()，梯度将直接穿过 quantized 流向 inputs

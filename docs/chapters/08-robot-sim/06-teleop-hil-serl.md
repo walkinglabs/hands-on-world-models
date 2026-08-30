@@ -2,9 +2,9 @@
 
 在探讨了强化学习的基础以及如何在仿真环境中训练智能体之后，我们面临着一个在真实机器人领域中不可回避的残酷现实：强化学习算法往往需要极其庞大的交互样本（Sample Complexity）。在纯仿真环境中，我们可以通过成千上万个并行环境加速数据的收集；然而，当策略必须在真实物理世界中训练时，环境重置的代价、硬件磨损的风险以及探索过程中的安全隐患，使得传统的试错型（Trial-and-Error）强化学习举步维艰。
 
-为了打破这一僵局，学者们回到了一个最直观的起点：向人类学习。[Argall et al., 2009] 对机器人从示范中学习（Learning from Demonstration, LfD）进行了系统性的回顾，指出引入人类先验能够极大地缩小策略搜索空间。近年来，随着高频力反馈设备的普及以及人类在环（Human-in-the-Loop, HIL）控制体系的成熟，研究者们将遥操作（Teleoperation）收集的高质量人类示范与深度强化学习深度融合，诞生了诸如 SERL（Sample-Efficient Robotic Reinforcement Learning）[Luo et al., 2024] 等一系列工程与算法相结合的先进框架。
+为了打破这一僵局，学者们回到了一个最直观的起点：向人类学习。[[Argall et al., 2009]](https://doi.org/10.1016/j.robot.2008.10.024) 对机器人从示范中学习（Learning from Demonstration, LfD）进行了系统性的回顾，指出引入人类先验能够极大地缩小策略搜索空间。近年来，随着高频力反馈设备的普及以及人类在环（Human-in-the-Loop, HIL）控制体系的成熟，研究者们将遥操作（Teleoperation）收集的高质量人类示范与深度强化学习深度融合，诞生了诸如 SERL（Sample-Efficient Robotic Reinforcement Learning）[[Luo et al., 2024]](https://arxiv.org/abs/2401.16013) 等一系列工程与算法相结合的先进框架。
 
-本节我们将从最基础的二维平面映射起步，严谨推导遥操作中的空间几何变换，随后深入分析纯模仿学习中的分布偏移（Distribution Shift）问题及其解法 DAgger [Ross et al., 2011]。最后，我们将通过严格的变分推导，揭示 SERL 等框架中结合离线示范与在线探索的核心算法——优势加权演员-评论家（Advantage Weighted Actor-Critic, AWAC）[Nair et al., 2020] 的数学本质。
+本节我们将从最基础的二维平面映射起步，严谨推导遥操作中的空间几何变换，随后深入分析纯模仿学习中的分布偏移（Distribution Shift）问题及其解法 DAgger [[Ross et al., 2011]](https://proceedings.mlr.press/v15/ross11a.html)。最后，我们将通过严格的变分推导，揭示 SERL 等框架中结合离线示范与在线探索的核心算法——优势加权演员-评论家（Advantage Weighted Actor-Critic, AWAC）[[Nair et al., 2020]](https://arxiv.org/abs/2006.09359) 的数学本质。
 
 ## 8.6.1 遥操作的几何映射：主从机器人的空间同构
 
@@ -42,7 +42,7 @@ $$
 
 虽然直观，但 BC 在机器人序列决策中面临着灾难性的分布偏移（Distribution Shift）问题。在训练阶段，策略网络 $\pi_\theta$ 仅仅在人类访问过的状态边缘分布 $p_{\text{data}}(s)$ 上进行了优化；而在部署阶段（闭环控制），机器人依据 $\pi_\theta(a|s)$ 采取动作，环境转移概率 $P(s_{t+1}|s_t, a_t)$ 会导致新的状态分布 $p_{\pi_\theta}(s)$。一旦 $p_{\pi_\theta}(s)$ 偏离了 $p_{\text{data}}(s)$，微小的动作误差就会随时间步累积，导致机器人进入一种它在训练数据中从未见过的状态，进而产生更加荒谬的动作，最终导致任务失败。
 
-为了克服这一困难，[Ross et al., 2011] 提出了数据集聚合（DAgger, Dataset Aggregation）算法，标志着人类在环（HIL）控制的范式转变。DAgger 放弃了“先收集，后训练”的静态模式，转向了一种动态的交互式学习策略。其核心数学思想是将问题转化为在线学习（Online Learning）中的无悔（No-Regret）算法。
+为了克服这一困难，[[Ross et al., 2011]](https://proceedings.mlr.press/v15/ross11a.html) 提出了数据集聚合（DAgger, Dataset Aggregation）算法，标志着人类在环（HIL）控制的范式转变。DAgger 放弃了“先收集，后训练”的静态模式，转向了一种动态的交互式学习策略。其核心数学思想是将问题转化为在线学习（Online Learning）中的无悔（No-Regret）算法。
 
 在 DAgger 的第 $k$ 次迭代中，机器人使用当前的策略 $\pi_{\theta_k}$ 在环境中运行，产生轨迹状态 $\{s_t\}_{t=1}^T$。此时，人类操作员（或专家控制器）被引入反馈循环，为这些已经发生偏离的状态提供最优动作修正 $a_t^* = \pi^*(s_t)$。新产生的数据被聚合到总数据集中 $\mathcal{D} \leftarrow \mathcal{D} \cup \{(s_t, a_t^*)\}$，随后在聚合的数据集上重新训练新的策略 $\pi_{\theta_{k+1}}$。这种方法在严格的数学意义上保证了策略能够在自己诱导的状态分布 $p_{\pi_\theta}(s)$ 下拟合专家行为，从而优雅地解决了分布偏移问题。
 
@@ -94,7 +94,7 @@ $$
 \max_\theta \mathbb{E}_{a \sim p_{\text{data}}} \left[ \frac{\pi^*(a|s)}{p_{\text{data}}(a|s)} \log \pi_\theta(a|s) \right]
 $$
 
-将 :eqref:eq_optimal_pi_advantage 代入上式（忽略常数项 $Z(s)$），我们终于推导出了 AWAC 的核心更新公式：
+将该公式代入上式（忽略常数项 $Z(s)$），我们终于推导出了 AWAC 的核心更新公式：
 
 $$
 \max_\theta \mathbb{E}_{s, a \sim \mathcal{D}} \left[ \exp \left( \frac{A(s,a)}{\lambda} \right) \log \pi_\theta(a|s) \right]
@@ -169,7 +169,7 @@ class AWACUpdate:
         return critic_loss.item(), actor_loss.item()
 ```
 
-在这段核心逻辑中，我们在计算 Actor 损失时，通过 `torch.exp(advantage / self.lambda_weight)` 精准地再现了推导出的 :eqref:eq_awac_final。并且出于工程稳定性考虑，对权重进行了 `torch.clamp` 处理。
+在这段核心逻辑中，我们在计算 Actor 损失时，通过 `torch.exp(advantage / self.lambda_weight)` 精准地再现了推导出的该公式。并且出于工程稳定性考虑，对权重进行了 `torch.clamp` 处理。
 
 ## 8.6.5 小结
 
@@ -179,11 +179,11 @@ class AWACUpdate:
 
 ## 8.6.6 练习
 
-1. 在二维平面遥操作的公式 :eqref:eq_2d_homogeneous 中，如果我们希望从动机器人的响应不仅仅包含缩放，还在末端施加一个固定的位置偏置 $\mathbf{b}$，变换矩阵应如何修改？
+1. 在二维平面遥操作的该公式中，如果我们希望从动机器人的响应不仅仅包含缩放，还在末端施加一个固定的位置偏置 $\mathbf{b}$，变换矩阵应如何修改？
     * **提示**：回忆齐次坐标系中平移向量在矩阵中的位置。
 2. 试证明在推导 DAgger 算法的分布偏移时，如果在每一步策略产生错误的概率为 $\epsilon$，那么在 $T$ 步之后产生偏离状态的总概率上界是 $O(T\epsilon)$。
     * **提示**：可以采用数学归纳法或者直接通过联合概率分解证明。
-3. 在 AWAC 算法中，如果 $\lambda \to \infty$，:eqref:eq_optimal_pi_advantage 中的最优策略 $\pi^*$ 会退化成什么？对应的 Actor 损失函数代表了哪种经典的模仿学习算法？
-    * **提示**：计算 $\lim_{\lambda \to \infty} \exp(A(s,a)/\lambda)$，并回顾 :eqref:eq_behavioral_cloning。
+3. 在 AWAC 算法中，如果 $\lambda \to \infty$，该公式中的最优策略 $\pi^*$ 会退化成什么？对应的 Actor 损失函数代表了哪种经典的模仿学习算法？
+    * **提示**：计算 $\lim_{\lambda \to \infty} \exp(A(s,a)/\lambda)$，并回顾该公式。
 4. 检查代码实现中计算基线状态价值 $V(s)$ 的方式。为何我们通过对 `sampled_actions` 求平均来逼近 $V(s)$，而不是在代码中再定义一个单独的价值网络去训练它？
     * **提示**：思考 $Q(s,a)$ 和 $V(s)$ 在定义上的数学关系：$V^\pi(s) = \mathbb{E}_{a \sim \pi}[Q^\pi(s,a)]$。

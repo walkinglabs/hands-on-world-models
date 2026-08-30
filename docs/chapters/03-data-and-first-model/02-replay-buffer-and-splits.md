@@ -2,7 +2,7 @@
 
 在强化学习与世界模型的训练中，数据并非像传统的图像分类任务那样静态地以完整的数据集形式存在。相反，智能体（Agent）在与环境的持续交互中，不断生成如流水线般的时间序列数据。这种在线数据收集方式带来了两个致命的挑战：时间相关性（Temporal Correlation）与样本效率（Sample Efficiency）。为了克服这两个挑战，经验回放（Experience Replay）机制应运而生。
 
-早在强化学习探索的早期，Lin (1992) `[Lin, 1992]` 就探讨了在连接主义模型中缓存过去经验的思想，但真正让其在深度学习时代声名大噪的，是 DeepMind 团队在处理雅达利（Atari）游戏时提出的深度Q网络（DQN）`[Mnih et al., 2013]`。通过引入经验回放缓冲区，DQN 成功地将深度神经网络与强化学习稳定地结合在一起。在本节中，我们将从最基础的统计假设出发，严谨推导经验回放缓冲区的数学机制，并将其物理实现映射到张量操作中。
+早在强化学习探索的早期，Lin (1992) [[Lin, 1992]](https://doi.org/10.1007/BF00992699) 就探讨了在连接主义模型中缓存过去经验的思想，但真正让其在深度学习时代声名大噪的，是 DeepMind 团队在处理雅达利（Atari）游戏时提出的深度Q网络（DQN）[[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602)。通过引入经验回放缓冲区，DQN 成功地将深度神经网络与强化学习稳定地结合在一起。在本节中，我们将从最基础的统计假设出发，严谨推导经验回放缓冲区的数学机制，并将其物理实现映射到张量操作中。
 
 ## 打破时间相关性：从独立同分布假设起步
 
@@ -108,7 +108,7 @@ class ReplayBuffer:
     def add(self, state: np.ndarray, action: np.ndarray, reward: float, 
             next_state: np.ndarray, done: bool):
         """
-        (**将单步经验存入环形缓冲区**)
+        (将单步经验存入环形缓冲区)
         """
         self.states[self.p] = state
         self.actions[self.p] = action
@@ -123,7 +123,7 @@ class ReplayBuffer:
 
     def sample_transitions(self, batch_size: int) -> Tuple[torch.Tensor, ...]:
         """
-        (**均匀随机采样单步经验小批量**)
+        (均匀随机采样单步经验小批量)
         """
         # 利用 numpy 随机生成索引，采用无放回采样
         indices = np.random.choice(self.size, batch_size, replace=False)
@@ -144,7 +144,7 @@ class ReplayBuffer:
 #@tab pytorch
     def sample_sequences(self, batch_size: int, seq_len: int) -> Tuple[torch.Tensor, ...]:
         """
-        (**采样具有时间连续性的经验序列**)
+        (采样具有时间连续性的经验序列)
         """
         # 防止采样到尚未被填充数据的末端，或越界情况
         valid_start_size = self.size - seq_len

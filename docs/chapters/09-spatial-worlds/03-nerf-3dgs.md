@@ -2,7 +2,7 @@
 
 如何将真实世界的连续三维空间及其光影表现，转化为计算机能够理解并高效渲染的数学表达？这是计算机图形学和三维视觉领域半个世纪以来的核心命题。传统的三维表示方法（如体素网络、点云和多边形网格）在表达复杂拓扑结构或实现高保真度的新视角合成时，往往会遭遇存储空间爆炸或几何离散化带来的失真。
 
-2020年，Mildenhall等人提出神经辐射场（Neural Radiance Fields, NeRF）[Mildenhall et al., 2020]，在三维视觉领域引发了一场深刻的范式革命。NeRF摒弃了显式的离散几何表示，转而将整个连续场景编码为一个隐式的多层感知机（MLP）权重矩阵中。然而，NeRF基于多层感知机的密集光线采样和体渲染计算成本极其高昂。为了打破这一计算瓶颈，Kerbl等人于2023年提出了3D高斯溅射（3D Gaussian Splatting, 3DGS）[Kerbl et al., 2023]，将场景重新解构为显式的非结构化三维高斯分布集合，并结合可微光栅化技术，实现了高质量且实时的场景渲染。
+2020年，Mildenhall等人提出神经辐射场（Neural Radiance Fields, NeRF）[[Mildenhall et al., 2020]](https://arxiv.org/abs/2003.08934)，在三维视觉领域引发了一场深刻的范式革命。NeRF摒弃了显式的离散几何表示，转而将整个连续场景编码为一个隐式的多层感知机（MLP）权重矩阵中。然而，NeRF基于多层感知机的密集光线采样和体渲染计算成本极其高昂。为了打破这一计算瓶颈，Kerbl等人于2023年提出了3D高斯溅射（3D Gaussian Splatting, 3DGS）[[Kerbl et al., 2023]](https://arxiv.org/abs/2308.04079)，将场景重新解构为显式的非结构化三维高斯分布集合，并结合可微光栅化技术，实现了高质量且实时的场景渲染。
 
 在本节中，我们将从最基础的直线方程和光学原理出发，严格推导连续空间中的体渲染方程，进而剖析NeRF的数学机制与代码实现，最后过渡到当前极具统治力的3D高斯溅射架构。
 
@@ -27,7 +27,7 @@ $$ \mathbf{r}(t) = \mathbf{o} + t \mathbf{d} $$
 
 $$ \frac{dT(t)}{dt} = - \sigma(t) T(t) $$
 
-对 :eqref:eq_transmittance_diff 求解，并假设在起始点 $T(t_n) = 1$，我们可以得到累积透射率的积分形式：
+对该公式求解，并假设在起始点 $T(t_n) = 1$，我们可以得到累积透射率的积分形式：
 
 $$ T(t) = \exp \left( - \int_{t_n}^{t} \sigma(s) ds \right) $$
 
@@ -35,7 +35,7 @@ $$ T(t) = \exp \left( - \int_{t_n}^{t} \sigma(s) ds \right) $$
 
 $$ C(\mathbf{r}) = \int_{t_n}^{t_f} T(t) \sigma(t) \mathbf{c}(t, \mathbf{d}) dt $$
 
-方程 :eqref:eq_volume_rendering_integral 就是经典的体渲染方程（Volume Rendering Equation）。它不仅是计算机图形学中渲染半透明材质的基础，更是神经辐射场的理论内核。
+该公式就是经典的体渲染方程（Volume Rendering Equation）。它不仅是计算机图形学中渲染半透明材质的基础，更是神经辐射场的理论内核。
 
 ### 离散化近似推导
 
@@ -45,7 +45,7 @@ $$ C(\mathbf{r}) = \int_{t_n}^{t_f} T(t) \sigma(t) \mathbf{c}(t, \mathbf{d}) dt 
 
 $$ \alpha_i = 1 - \exp(-\sigma_i \delta_i) $$
 
-此时，连续的积分方程 :eqref:eq_volume_rendering_integral 可以通过前向差分转化为离散的黎曼和：
+此时，连续的积分该公式可以通过前向差分转化为离散的黎曼和：
 
 $$ \hat{C}(\mathbf{r}) = \sum_{i=1}^N T_i \alpha_i \mathbf{c}_i $$
 
@@ -79,7 +79,7 @@ $$ \gamma(p) = \left( \sin(2^0 \pi p), \cos(2^0 \pi p), \ldots, \sin(2^{L-1} \pi
 
 ### 损失函数与优化
 
-NeRF的训练过程极致简约：我们从给定的多视角图像数据集中随机采样一组像素，根据相机参数发射射线。通过查询 MLP 得到每条射线上的颜色与密度，使用体渲染方程 :eqref:eq_discrete_volume_rendering 计算出该射线的预测颜色 $\hat{C}(\mathbf{r})$。损失函数即为预测颜色与真实像素颜色 $C(\mathbf{r})$ 之间的均方误差（MSE）：
+NeRF的训练过程极致简约：我们从给定的多视角图像数据集中随机采样一组像素，根据相机参数发射射线。通过查询 MLP 得到每条射线上的颜色与密度，使用体渲染该公式计算出该射线的预测颜色 $\hat{C}(\mathbf{r})$。损失函数即为预测颜色与真实像素颜色 $C(\mathbf{r})$ 之间的均方误差（MSE）：
 
 $$ \mathcal{L} = \sum_{\mathbf{r} \in \mathcal{R}} \left\| \hat{C}(\mathbf{r}) - C(\mathbf{r}) \right\|_2^2 $$
 

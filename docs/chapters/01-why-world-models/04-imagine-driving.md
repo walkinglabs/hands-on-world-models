@@ -8,11 +8,11 @@
 
 在早期的无模型强化学习（Model-Free RL）中，环境被严格视为一个不可微的“黑盒”：智能体输出一个动作，环境返回一个状态和标量奖励。这种方法的数学本质是对期望回报进行蒙特卡洛采样与梯度估计，虽然具有广泛的通用性，但完全抛弃了环境本身的内部物理规律。
 
-2018年，Ha和Schmidhuber发表了著名的《World Models》论文 [Ha & Schmidhuber, 2018]。他们提出，人类在面对新任务时，往往依靠大脑中对世界运行规律的内部表征（Internal Representation）来预测未来，并在脑海中“预演”不同的行动方案。基于这一认知，他们利用变分自编码器（VAE）将高维像素压缩为低维特征，并结合循环神经网络（MDN-RNN）预测未来的隐状态。智能体仅利用这个循环网络生成的“梦境”进行训练，就能在真实的赛车游戏中取得卓越表现。
+2018年，Ha和Schmidhuber发表了著名的《World Models》论文 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。他们提出，人类在面对新任务时，往往依靠大脑中对世界运行规律的内部表征（Internal Representation）来预测未来，并在脑海中“预演”不同的行动方案。基于这一认知，他们利用变分自编码器（VAE）将高维像素压缩为低维特征，并结合循环神经网络（MDN-RNN）预测未来的隐状态。智能体仅利用这个循环网络生成的“梦境”进行训练，就能在真实的赛车游戏中取得卓越表现。
 
-随后，Hafner等人在一系列名为Dreamer的工作中 [Hafner et al., 2019; 2020; 2023] 将这一思想推向了极致。Dreamer通过在完全可微的世界模型中执行隐式想象，并利用解析梯度（Analytic Gradients）直接反向传播优化策略，彻底打破了传统RL样本效率低下的瓶颈。
+随后，Dreamer、DreamerV2 与 DreamerV3 把策略学习移入潜在状态的想象轨迹中 [[Hafner et al., 2019]](https://arxiv.org/abs/1912.01603); [[Hafner et al., 2020]](https://arxiv.org/abs/2010.02193); [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104)。这些方法在论文所测试的多项基准上提高了数据效率与任务表现，但结论应限定在相应任务和实验设置内。
 
-在自动驾驶领域，真实世界交互的成本与风险促使世界模型迅速落地。诸如MILE [Hu et al., 2022] 和GAIA-1 [Hu et al., 2023] 等前沿研究证明，通过在大规模驾驶视频数据上训练生成式模型，系统不仅能够预测出高度逼真的未来街景（以视频帧的形式），还能直接在这一生成的连续隐式未来中规划行驶轨迹。
+在自动驾驶领域，真实世界交互的成本与风险推动了两类相关探索。MILE 从离线驾驶数据中学习潜在动力学与驾驶策略，并能在学到的模型中想象未来 [[Hu et al., 2022]](https://arxiv.org/abs/2203.08104)；GAIA-1 则根据视频、文本和车辆动作生成未来驾驶场景 [[Hu et al., 2023]](https://arxiv.org/abs/2309.17080)。前者包含策略学习，后者主要展示条件视频生成；不能把 GAIA-1 的生成结果直接等同于已经验证的轨迹规划器。
 
 ## 1.4.2 状态转移的物理学直觉与数学表达
 
@@ -41,7 +41,7 @@ $$
 s_{t+1} = \underbrace{\begin{bmatrix} 1 & \Delta t \\ 0 & 1 \end{bmatrix}}_{A} s_t + \underbrace{\begin{bmatrix} \frac{1}{2} \Delta t^2 \\ \Delta t \end{bmatrix}}_{B} a_t
 $$
 
-在这个简单的物理系统中，已知当前状态 $s_t$ 和未来的动作序列 $[a_t, a_{t+1}, \dots, a_{t+k}]$，我们可以通过反复应用公式 :eqref:eq_kinematics_matrix，精确无误地推演出未来任意时刻的车辆状态。这就是最基础的“世界模型”。
+在这个简单的物理系统中，已知当前状态 $s_t$ 和未来的动作序列 $[a_t, a_{t+1}, \dots, a_{t+k}]$，我们可以通过反复应用该公式，精确无误地推演出未来任意时刻的车辆状态。这就是最基础的“世界模型”。
 
 ### 推广至高维隐变量空间
 
@@ -98,7 +98,7 @@ $$
 \frac{\partial R}{\partial \phi} = \frac{\partial \text{Rew}_\theta(\hat{z}_{t+1})}{\partial \hat{z}_{t+1}} \cdot \frac{\partial \hat{z}_{t+1}}{\partial a_t} \cdot \frac{\partial a_t}{\partial \phi}
 $$
 
-仔细观察公式 :eqref:eq_chain_rule_1step 中的每一项几何意义：
+仔细观察该公式中的每一项几何意义：
 1. $\frac{\partial a_t}{\partial \phi}$：策略网络对网络参数的梯度。
 2. $\frac{\partial \hat{z}_{t+1}}{\partial a_t}$：**世界模型的雅可比矩阵 (Jacobian Matrix)**，它精确描述了输入动作的一丝微小变化将如何导致下一个隐状态在空间中的物理偏转。
 3. $\frac{\partial \text{Rew}_\theta(\hat{z}_{t+1})}{\partial \hat{z}_{t+1}}$：奖励函数对隐状态的梯度，它指明了在隐空间中朝哪个方向移动会获得更高的奖励，引导状态更新的方向。
@@ -176,7 +176,7 @@ def imagine_and_optimize(world_model, policy, initial_state, optimizer):
     total_reward = 0.0
     discount = 0.99
     
-    # [**在循环中连续展开动力学，构建横跨时间步的前向计算图**]
+    # [在循环中连续展开动力学，构建横跨时间步的前向计算图]
     for t in range(SEQ_LEN):
         # 根据当前隐状态生成控制动作
         a_t = policy(z_t)
@@ -185,7 +185,7 @@ def imagine_and_optimize(world_model, policy, initial_state, optimizer):
         # 将各时间步折现奖励累加至总期望回报中
         total_reward = total_reward + (discount ** t) * r_t
         
-    # [**由于整个演化过程完全由平滑激活的神经网络构成，我们可以直接对期望回报最大化求导**]
+    # [由于整个演化过程完全由平滑激活的神经网络构成，我们可以直接对期望回报最大化求导]
     # 注意我们需要最大化回报，因此向优化器传递的损失（Loss）是取反的期望
     loss = -total_reward.mean()
     loss.backward()
@@ -262,13 +262,13 @@ def imagine_and_optimize(world_model, policy, initial_state, optimizer):
         total_reward = 0.0
         discount = 0.99
         
-        # [**使用张量计算带自动追踪并沿时序维度连续展开计算流**]
+        # [使用张量计算带自动追踪并沿时序维度连续展开计算流]
         for t in range(SEQ_LEN):
             a_t = policy(z_t)
             z_t, r_t = world_model(z_t, a_t)
             total_reward = total_reward + (discount ** t) * r_t
             
-        # [**通过可导计算图定义期望标量，直接构建待优化的代理损失**]
+        # [通过可导计算图定义期望标量，直接构建待优化的代理损失]
         loss = -tf.reduce_mean(total_reward)
         
     # 精确推演解析梯度，并直接映射到底层神经元权重之中
@@ -298,7 +298,7 @@ for i in range(5):
 
 ## 1.4.6 练习
 
-1. 在公式 :eqref:eq_chain_rule_1step 的雅可比矩阵推导中，如果动作 $a_t$ 的微小扰动会导致隐状态偏向“碰撞”特征区域（假定碰撞区域的预测奖励值极低负数），请说明策略网络将依据怎样的数学符号法则反向调整其参数 $\phi$ 以避免碰撞？
+1. 在该公式的雅可比矩阵推导中，如果动作 $a_t$ 的微小扰动会导致隐状态偏向“碰撞”特征区域（假定碰撞区域的预测奖励值极低负数），请说明策略网络将依据怎样的数学符号法则反向调整其参数 $\phi$ 以避免碰撞？
    * 提示：根据链式法则的三项乘积，推导奖励网络输出最终随网络参数 $\phi$ 变化的偏导正负性机制。
 2. 为什么在代码实现中，我们需要为动力学网络 `self.dynamics(x)` 强制添加一个残差连接结构（即 `z_next = z + dynamics`）？它在经典物理学和数值积分法上具有怎样的数学隐喻？
    * 提示：尝试考虑位置与速度增量在时间极限下的欧拉法离散微分方程（Euler Method）。

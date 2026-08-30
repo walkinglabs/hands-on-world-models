@@ -2,7 +2,7 @@
 
 ## 引言与学术脉络
 
-在深度学习的发展历程中，自回归（Autoregressive）模型在自然语言处理领域取得了统治地位 [Vaswani et al., 2017]。然而，随着模型规模的扩大和上下文窗口的增加，推理阶段的延迟变得不可忽视。特别是在视频生成领域，由于视频数据不仅包含空间维度（高度和宽度），还包含时间维度（帧数），生成的词元（Token）数量呈指数级爆炸。为了解决这一瓶颈，研究人员将原本用于大语言模型推理加速的键值缓存（Key-Value Cache, KV Cache）技术 [Pope et al., 2022; Kwon et al., 2023] 引入到视频生成框架中，实现了从秒级到毫秒级的实时推理跨越。
+Transformer 自回归生成需要反复访问历史词元 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762)。视频把高度、宽度与时间三个维度离散化后，词元数会随三者的乘积增长，而不是“指数级爆炸”。键值缓存可以避免在每一步重复计算旧词元的键和值 [[Pope et al., 2022]](https://arxiv.org/abs/2211.05102)；PagedAttention 则主要改善服务系统中 KV 缓存的内存分配与共享 [[Kwon et al., 2023]](https://arxiv.org/abs/2309.06180)。它们能降低延迟和内存浪费，但原论文并未证明所有视频模型都能因此从秒级变为毫秒级。
 
 本节将从最基础的序列求和思想出发，严格推导自回归解码中的冗余计算，并详细解析 KV Cache 的数学机制及其在视频时空维度上的扩展。
 
@@ -44,7 +44,7 @@ $$\mathbf{s}_t = \mathbf{q}_t \mathbf{K}_t^\top = \mathbf{q}_t \begin{bmatrix} \
 应用 softmax 函数后得到注意力权重 $\mathbf{\alpha}_t = \text{softmax}\left(\frac{\mathbf{s}_t}{\sqrt{d_k}}\right)$。最终的注意力输出向量 $\mathbf{o}_t \in \mathbb{R}^{1 \times d_k}$ 为：
 $$\mathbf{o}_t = \mathbf{\alpha}_t \mathbf{V}_t = \mathbf{\alpha}_t \begin{bmatrix} \mathbf{V}_{<t} \\ \mathbf{v}_t \end{bmatrix} = \sum_{i=1}^{t} \alpha_{t,i} \mathbf{v}_i$$
 
-通过公式 :eqref:eq_k_partition 和 :eqref:eq_v_partition，我们发现 $\mathbf{K}_{<t}$ 和 $\mathbf{V}_{<t}$ 的值完全等同于在第 $t-1$ 步时计算的结果。因此，只要我们在显存中开辟一块空间，将之前计算的 $\mathbf{k}_i$ 和 $\mathbf{v}_i$ 缓存下来，在第 $t$ 步时只需计算新的 $\mathbf{q}_t$、$\mathbf{k}_t$ 和 $\mathbf{v}_t$。然后将 $\mathbf{k}_t$ 和 $\mathbf{v}_t$ 拼接到缓存中，即可完成整个自注意力计算。
+通过这两个公式，我们发现 $\mathbf{K}_{<t}$ 和 $\mathbf{V}_{<t}$ 的值完全等同于在第 $t-1$ 步时计算的结果。因此，只要我们在显存中开辟一块空间，将之前计算的 $\mathbf{k}_i$ 和 $\mathbf{v}_i$ 缓存下来，在第 $t$ 步时只需计算新的 $\mathbf{q}_t$、$\mathbf{k}_t$ 和 $\mathbf{v}_t$。然后将 $\mathbf{k}_t$ 和 $\mathbf{v}_t$ 拼接到缓存中，即可完成整个自注意力计算。
 这就是 KV Cache 的核心数学原理，它将每一步的计算复杂度从 $O(t^2)$ 严格降低到了 $O(t)$。
 
 > 唯一的精炼类比：
@@ -59,7 +59,7 @@ $$\mathbf{o}_t = \mathbf{\alpha}_t \mathbf{V}_t = \mathbf{\alpha}_t \begin{bmatr
 
 此时，KV Cache 会面临严重的**显存墙（Memory Wall）**问题。每个浮点数占用 2 个字节（FP16），一个注意力头的缓存大小不仅与隐藏维度相关，更与序列长度 $L$ 成正比。随着序列长度急剧增加，显存往往被迅速耗尽。
 
-为了解决这一问题，研究者们在长上下文视频模型中引入了**分页注意力（PagedAttention）**机制 [Kwon et al., 2023]。
+为了解决 KV 缓存的碎片化与重复存储问题，vLLM 提出了**分页注意力（PagedAttention）**机制 [[Kwon et al., 2023]](https://arxiv.org/abs/2309.06180)。这一工作针对大语言模型服务；把它迁移到长上下文视频模型，是基于相同内存问题的工程推广。
 在操作系统中，内存被划分为固定大小的页（Pages）以减少碎片；分页注意力同样将连续的键值向量划分为独立的块（Blocks）。
 设每个块能容纳 $B$ 个词元的键值对，则键缓存 $\mathbf{K}$ 可以表示为一系列非连续的张量块的集合：
 $$\mathcal{K} = \{ \mathbf{K}^{(1)}, \mathbf{K}^{(2)}, \dots, \mathbf{K}^{(M)} \}$$

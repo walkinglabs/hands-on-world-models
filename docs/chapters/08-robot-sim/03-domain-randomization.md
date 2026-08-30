@@ -6,7 +6,7 @@
 
 由于摩擦力、接触动力学（Contact Dynamics）、传感器噪声甚至柔性材质的形变，这些物理现象在数学上属于高度非线性的偏微分方程，现有的物理引擎（如MuJoCo、PyBullet、Isaac Gym）只能对其进行极简的近似。如果在单一的、确定的仿真器中训练一个神经网络控制器，它往往会过拟合于仿真器中不完美的物理法则。一旦部署到真实机器人上，策略便会瞬间失效。
 
-为了跨越这一鸿沟，Tobin等人在2017年的经典论文 `[Tobin et al., 2017]` 中提出了**域随机化**（Domain Randomization, DR）的思想。其核心学术理念极具启发性：与其耗费巨资去建立一个无限逼近真实世界的完美仿真器，不如**主动引入不确定性，将仿真环境泛化为一个包含无数个可能物理世界的分布**。只要真实世界（Real World）的参数落在我们随机生成的仿真世界分布之内，那么在整个分布上训练出来的神经网络，就能天然地对真实世界的微小偏差免疫。随后，OpenAI与Peng等人 `[Peng et al., 2018]` 进一步将这一理念从视觉拓展到动力学，使得机器灵巧手等复杂控制任务的“Sim-to-Real”无缝迁移成为现实。
+为了跨越这一鸿沟，Tobin等人在2017年的经典论文 [[Tobin et al., 2017]](https://arxiv.org/abs/1703.06907) 中提出了**域随机化**（Domain Randomization, DR）的思想。其核心学术理念极具启发性：与其耗费巨资去建立一个无限逼近真实世界的完美仿真器，不如**主动引入不确定性，将仿真环境泛化为一个包含无数个可能物理世界的分布**。只要真实世界（Real World）的参数落在我们随机生成的仿真世界分布之内，那么在整个分布上训练出来的神经网络，就能天然地对真实世界的微小偏差免疫。随后，OpenAI与Peng等人 [[Peng et al., 2018]](https://arxiv.org/abs/1808.00177) 进一步将这一理念从视觉拓展到动力学，使得机器灵巧手等复杂控制任务的“Sim-to-Real”无缝迁移成为现实。
 
 ## 从牛顿力学到参数化马尔可夫过程
 
@@ -42,7 +42,7 @@ $$
 J_{DR}(\theta) = \mathbb{E}_{\boldsymbol{\xi} \sim P_{\Xi}} \left[ \mathbb{E}_{\tau \sim \pi_\theta, \mathcal{P}_{\boldsymbol{\xi}}} \left[ \sum_{t=0}^T \gamma^t \mathcal{R}_{\boldsymbol{\xi}}(s_t, a_t) \right] \right]
 $$
 
-通过公式 :eqref:eq_dr_objective 可以清晰地看出，策略 $\pi_\theta$ 必须在**所有可能被采样出来的物理世界中**都表现良好。这在数学上等价于一种针对模型参数不确定性的鲁棒优化（Robust Optimization）。
+通过该公式可以清晰地看出，策略 $\pi_\theta$ 必须在**所有可能被采样出来的物理世界中**都表现良好。这在数学上等价于一种针对模型参数不确定性的鲁棒优化（Robust Optimization）。
 
 ## 动力学随机化与方差挑战
 
@@ -53,13 +53,13 @@ $$
 3. **驱动器属性**：电机的转矩限制、电机内部阻尼、底层PD控制器的刚度系数（Stiffness）。
 4. **延迟与噪声**：由于通信带来的动作延迟时长 $d$、传感器观测的高斯噪声协方差 $\boldsymbol{\Sigma}$。
 
-当我们在公式 :eqref:eq_dr_objective 的基础上对策略网络参数 $\theta$ 进行梯度上升时，根据策略梯度定理（Policy Gradient Theorem），其解析梯度形式为：
+当我们在该公式的基础上对策略网络参数 $\theta$ 进行梯度上升时，根据策略梯度定理（Policy Gradient Theorem），其解析梯度形式为：
 
 $$
 \nabla_\theta J_{DR}(\theta) = \mathbb{E}_{\boldsymbol{\xi} \sim P_{\Xi}} \left[ \mathbb{E}_{\tau} \left[ \sum_{t=0}^T \nabla_\theta \log \pi_\theta(a_t|s_t) \hat{A}(s_t, a_t; \boldsymbol{\xi}) \right] \right]
 $$
 
-公式 :eqref:eq_dr_gradient 深刻揭示了域随机化在工程训练中的一个核心痛点：**极高的梯度方差**。传统的强化学习梯度方差仅仅来源于策略网络本身的随机动作采样；而在域随机化中，外部物理环境参数 $\boldsymbol{\xi}$ 的随机采样强行引入了一层额外的方差。如果分布 $P_{\Xi}$ 设置得过于宽泛，导致某些环境下的轨迹完全发散，其优势函数 $\hat{A}$ 剧烈波动，整个神经网络的梯度将被噪声淹没从而无法收敛。因此，精心设计 $P_{\Xi}$ 的分布形状与上下界，是成功应用域随机化的命脉所在。
+该公式深刻揭示了域随机化在工程训练中的一个核心痛点：**极高的梯度方差**。传统的强化学习梯度方差仅仅来源于策略网络本身的随机动作采样；而在域随机化中，外部物理环境参数 $\boldsymbol{\xi}$ 的随机采样强行引入了一层额外的方差。如果分布 $P_{\Xi}$ 设置得过于宽泛，导致某些环境下的轨迹完全发散，其优势函数 $\hat{A}$ 剧烈波动，整个神经网络的梯度将被噪声淹没从而无法收敛。因此，精心设计 $P_{\Xi}$ 的分布形状与上下界，是成功应用域随机化的命脉所在。
 
 ## 视觉域随机化与特征不变性
 
@@ -134,10 +134,10 @@ class RandomizedBlockEnv:
         vel_sign = torch.sign(vel) if torch.abs(vel) > 1e-3 else torch.tensor(0.0)
         f_fric = self.friction * self.mass * 9.8 * vel_sign
         
-        # 根据公式 :eqref:eq_newton_block 计算净加速度
+        # 根据该公式计算净加速度
         acc = (action - f_fric) / self.mass
         
-        # 根据公式 :eqref:eq_euler_velocity 推进时间步
+        # 根据该公式推进时间步
         new_vel = vel + acc * self.dt
         new_pos = pos + new_vel * self.dt
         

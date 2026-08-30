@@ -4,9 +4,9 @@
 
 ## 6.3.1 学术追溯与历史背景
 
-在深度学习的早期，特别是在强化学习领域，研究者发现使用神经网络去逼近一个不断变化的“目标”是极其不稳定的。在经典论文 `[Mnih et al., 2015]` 中，DeepMind 的研究团队在提出深度 Q 网络（DQN）时，创造性地引入了**目标网络（Target Network）**。当时，如果让模型每走一步就同时更新用来预测的参数和生成目标的参数，整个训练过程就像是一只狗在追自己的尾巴，极易陷入发散。通过将目标网络的参数“冻结”并在若干步之后再做硬拷贝，DQN 成功稳定了训练。
+在深度学习的早期，特别是在强化学习领域，研究者发现使用神经网络去逼近一个不断变化的“目标”是极其不稳定的。在经典论文 [[Mnih et al., 2015]](https://doi.org/10.1038/nature14236) 中，DeepMind 的研究团队在提出深度 Q 网络（DQN）时，创造性地引入了**目标网络（Target Network）**。当时，如果让模型每走一步就同时更新用来预测的参数和生成目标的参数，整个训练过程就像是一只狗在追自己的尾巴，极易陷入发散。通过将目标网络的参数“冻结”并在若干步之后再做硬拷贝，DQN 成功稳定了训练。
 
-随后，在自监督学习（Self-Supervised Learning, SSL）的浪潮中，研究者们试图摆脱对比学习（Contrastive Learning）中对大规模负样本的依赖。在 `[He et al., 2020]` 提出的动量对比（MoCo）和 `[Grill et al., 2020]` 提出的 BYOL 中，研究人员发现可以通过让一个“在线网络（Online Network）”去预测由“动量编码器（Momentum Encoder）”生成的特征，从而完全抛弃负样本。这个动量编码器，正是目标网络的一种平滑变体。近期的掩码图像建模工作如 data2vec `[Baevski et al., 2022]` 以及我们关注的 JEPA `[Assran et al., 2023]`，均将目标网络与指数移动平均作为维持表征空间稳定、防止坍塌的核心基础设施。
+随后，动量编码器进入自监督学习。MoCo 用动量编码器维护较一致的键表示，但仍依赖队列中的负样本 [[He et al., 2020]](https://arxiv.org/abs/1911.05722)；BYOL 才展示了不使用显式负样本的在线网络—目标网络方案 [[Grill et al., 2020]](https://arxiv.org/abs/2006.07733)。data2vec [[Baevski et al., 2022]](https://arxiv.org/abs/2202.03555) 与 I-JEPA [[Assran et al., 2023]](https://arxiv.org/abs/2301.08243) 也使用停止梯度与 EMA 目标编码器来提供稳定的学习目标。
 
 ## 6.3.2 自举预测与表征坍塌的代数本质
 
@@ -33,7 +33,7 @@ $$L(\\theta) = \\| f_\\theta(x_1) - f_\\theta(x_2) \\|^2$$
 
 $$L(\\theta) = \\| f_\\theta(x_1) - \\text{sg}(f_{\\theta'}(x_2)) \\|^2$$
 
-其中 $\\text{sg}(\\cdot)$ 表示停止梯度（Stop-Gradient）操作。此时，对于在线网络 $\\theta$ 来说，$f_{\\theta'}(x_2)$ 只是一个从外部传入的常数向量，它再也无法通过将 $\\theta$ 和 $\\theta'$ 同步归零来作弊了。
+其中 $\\text{sg}(\\cdot)$ 表示停止梯度（Stop-Gradient）操作。此时，对于在线网络 $\\theta$ 来说，$f_{\\theta'}(x_2)$ 在当前一步被当作常数目标。不过，停止梯度本身并不能从理论上排除目标网络随时间一起坍塌；实际方法还依赖 EMA、预测器、归一化或其他正则与架构设计。
 
 但这就引出了一个新的问题：目标网络 $\\theta'$ 的参数从何而来？如果 $\\theta'$ 是随机初始化的且永远不更新，那么在线网络最终只能学会预测随机噪声。如果 $\\theta'$ 也是通过同样的损失函数训练的，那就回到了原本坍塌的死胡同。
 
@@ -129,12 +129,12 @@ online_network = SimpleEncoder()
 # 目标网络是完全不参与梯度计算的，我们首先深拷贝在线网络
 target_network = copy.deepcopy(online_network)
 
-# [**强制冻结目标网络的所有参数，彻底截断梯度回传**]
+# [强制冻结目标网络的所有参数，彻底截断梯度回传]
 for param in target_network.parameters():
     param.requires_grad = False
 ```
 
-接下来，我们实现 EMA 更新的核心函数。在 PyTorch 中，网络的所有参数可以通过 `.parameters()` 获取，这是一个包含多个不同维度张量（如权重矩阵为二维张量，偏置向量为一维张量）的生成器。我们的更新逻辑需要逐元素（element-wise）地对这些张量应用公式 :eqref:`eq_ema_update`。
+接下来，我们实现 EMA 更新的核心函数。在 PyTorch 中，网络的所有参数可以通过 `.parameters()` 获取，这是一个包含多个不同维度张量（如权重矩阵为二维张量，偏置向量为一维张量）的生成器。我们的更新逻辑需要逐元素（element-wise）地对这些张量应用该公式。
 
 ```{.python .input}
 #@tab pytorch
@@ -174,7 +174,7 @@ for step in range(3):
     online_pred = online_network(x1)
     
     # 2. 目标网络生成目标
-    # [**关键点：通过 torch.no_grad() 确保完全没有梯度流向 target_network**]
+    # [关键点：通过 torch.no_grad() 确保完全没有梯度流向 target_network]
     with torch.no_grad():
         target_proj = target_network(x2)
     
@@ -187,7 +187,7 @@ for step in range(3):
     loss.backward()
     optimizer.step()
     
-    # 5. [**应用 EMA 更新目标网络参数**]
+    # 5. [应用 EMA 更新目标网络参数]
     update_target_network_ema(online_network, target_network, tau)
     
     print(f"Step {step + 1}: Loss = {loss.item():.4f}")

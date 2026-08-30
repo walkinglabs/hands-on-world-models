@@ -2,7 +2,7 @@
 
 在具身智能（Embodied AI）与机器人控制的演进历程中，如何让系统不仅能“感知”当前状态，还能理解物理世界的运作规律并据此做出精准的“动作预测”，一直是学术界的核心难题。传统端到端行为克隆（Behavior Cloning）往往缺乏对环境未来动态的前瞻能力，而基于生成式模型（如扩散模型或自动编码器）的世界模型则倾向于在像素级别进行严苛的重构验证。然而，真实世界充满了高度的偶然认知不确定性（Aleatoric Uncertainty）——风吹动的树叶、水面的反光、相机镜头的噪点。将宝贵的网络容量和算力浪费在预测这些与任务本身毫无关联的视觉高频细节上，从信息论的角度看是极为低效的。
 
-2022年，Yann LeCun 在其经典文献中正式提出了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）[LeCun, 2022]，主张彻底抛弃像素级别的重构，转而在高度抽象的隐空间（Latent Space）中直接预测系统状态的未来演变。随后，V-JEPA [Bardes et al., 2024] 将这一思想成功扩展到高维的视频特征学习中。近年来，学术界将这一底层哲学无缝引入到具身控制策略中，诞生了基于 JEPA 的视觉-语言-动作模型（Vision-Language-Action JEPA, VLA-JEPA）及其变体（如 World Action Model, WAM）。
+2022年，Yann LeCun 在其经典文献中正式提出了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）[[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)，主张彻底抛弃像素级别的重构，转而在高度抽象的隐空间（Latent Space）中直接预测系统状态的未来演变。随后，V-JEPA [[Bardes et al., 2024]](https://arxiv.org/abs/2404.08471) 将这一思想成功扩展到高维的视频特征学习中。近年来，学术界将这一底层哲学无缝引入到具身控制策略中，诞生了基于 JEPA 的视觉-语言-动作模型（Vision-Language-Action JEPA, VLA-JEPA）及其变体（如 World Action Model, WAM）。
 
 本节将从经典力学中的系统状态变量建模起步，严格推导 VLA-JEPA 的数学体系与优化博弈机制，并展示如何用这一架构为机器人构建一个既严谨又极其高效的策略大脑。
 
@@ -18,11 +18,11 @@ $$
 \mathbf{p}_1 = \mathbf{p}_0 + \mathbf{v}_0 \Delta t + \frac{1}{2} \left( \mathbf{g} + \frac{\mathbf{F}}{m} \right) \Delta t^2
 $$
 
-在公式 :eqref:`eq_kinematics_vector` 中，$(\mathbf{p}_0, \mathbf{v}_0, m)$ 构成了这个物理系统的一组**完备的隐状态抽象**。在这个低维度的流形（Manifold）上，未来的演变仅仅是当前状态与外部动作的代数函数，而无需关心质点表面的微观纹理。
+在该公式中，$(\mathbf{p}_0, \mathbf{v}_0, m)$ 构成了这个物理系统的一组**完备的隐状态抽象**。在这个低维度的流形（Manifold）上，未来的演变仅仅是当前状态与外部动作的代数函数，而无需关心质点表面的微观纹理。
 
 在具身机器人的 VLA 任务中，我们面临着完全等价的拓扑映射挑战。机器人无法直接获取环境完美的物理状态向量。它只能接收到维度极高的传感器观测数据矩阵 $\mathbf{X}_t \in \mathbb{R}^{H \times W \times C}$（高度、宽度及颜色通道）。同时，其任务意图并不总是简单的力学方程，而是由高维离散的自然语言指令序列 $l$ 所定义。
 
-VLA-JEPA 的核心思想，正是利用深层神经网络作为非线性映射算子，将高维、冗余且充满噪声的观测数据 $\mathbf{X}_t$ 强行映射到一个等价于 $(\mathbf{p}_0, \mathbf{v}_0)$ 的低维语义向量空间，并在该空间内完成类似方程 :eqref:`eq_kinematics_vector` 的因果预测。
+VLA-JEPA 的核心思想，正是利用深层神经网络作为非线性映射算子，将高维、冗余且充满噪声的观测数据 $\mathbf{X}_t$ 强行映射到一个等价于 $(\mathbf{p}_0, \mathbf{v}_0)$ 的低维语义向量空间，并在该空间内完成类似该公式的因果预测。
 
 ## VLA-JEPA 的数学体系基础
 
@@ -48,7 +48,7 @@ $$
 
 ### 2. 隐空间上的预测闭环
 
-当系统获取了当前时刻的隐状态 $\mathbf{s}_t$ 后，机器人执行了特定的多维连续动作 $\mathbf{a}_t \in \mathbb{R}^{D_a}$（例如 $SE(3)$ 空间内的末端执行器位姿增量与夹爪开合度）。预测器 $P_\phi$ 则充当了公式 :eqref:`eq_kinematics_vector` 中物理方程的角色，负责在隐空间内进行时间向前的动态推演：
+当系统获取了当前时刻的隐状态 $\mathbf{s}_t$ 后，机器人执行了特定的多维连续动作 $\mathbf{a}_t \in \mathbb{R}^{D_a}$（例如 $SE(3)$ 空间内的末端执行器位姿增量与夹爪开合度）。预测器 $P_\phi$ 则充当了该公式中物理方程的角色，负责在隐空间内进行时间向前的动态推演：
 
 $$
 \hat{\mathbf{s}}_{t+1} = P_\phi(\mathbf{s}_t, \mathbf{a}_t), \quad \hat{\mathbf{s}}_{t+1} \in \mathbb{R}^{D_s}
@@ -62,7 +62,7 @@ $$
 \mathcal{L}_{MSE}(\theta, \phi) = \frac{1}{D_s} \sum_{i=1}^{D_s} \left( \hat{\mathbf{s}}_{t+1}^{(i)} - \bar{\mathbf{s}}_{t+1}^{(i)} \right)^2 = \left\| P_\phi(E_\theta(\mathbf{X}_t, \mathbf{l}), \mathbf{a}_t) - E_{\bar{\theta}}(\mathbf{X}_{t+1}, \mathbf{l}) \right\|_2^2
 $$
 
-然而，在公式 :eqref:`eq_mse_loss` 中潜藏着一个致命的优化陷阱，学术界称之为**特征坍缩（Feature Collapse）**。
+然而，在该公式中潜藏着一个致命的优化陷阱，学术界称之为**特征坍缩（Feature Collapse）**。
 
 由于 $E_\theta$, $E_{\bar{\theta}}$ 和 $P_\phi$ 都是参数化的、可自由更新的神经网络算子，如果允许网络通过梯度下降自由地最小化该损失，优化器将会迅速发现一条最省力的拓扑“捷径”：使得编码器对于任意输入的 $\mathbf{X}$ 均输出零向量（即 $\mathbf{s}_t = \mathbf{0}, \bar{\mathbf{s}}_{t+1} = \mathbf{0}$），且预测器恒等输出零向量。此时损失函数瞬间归零，但整个特征空间坍缩到了一个奇异的质点上，失去了任何表达环境演变的能力。
 
@@ -131,11 +131,11 @@ class VisionLanguageEncoder(nn.Module):
 
     def forward(self, x, l):
         # x 形状: [Batch, img_dim], l 形状: [Batch, lang_dim]
-        # [**通过 GELU 激活函数引入非线性并统一维度**]
+        # [通过 GELU 激活函数引入非线性并统一维度]
         x_feat = F.gelu(self.img_proj(x))
         l_feat = F.gelu(self.lang_proj(l))
         
-        # [**沿特征维度拼接，进入多层感知机完成联合特征嵌入**]
+        # [沿特征维度拼接，进入多层感知机完成联合特征嵌入]
         fused = torch.cat([x_feat, l_feat], dim=-1)
         s_t = self.fusion_mlp(fused) 
         # 输出形状: [Batch, latent_dim]
@@ -160,10 +160,10 @@ class ActionPredictor(nn.Module):
         )
 
     def forward(self, s_t, a_t):
-        # [**将低维物理动作投影到与视觉状态相同的高维语义空间**]
+        # [将低维物理动作投影到与视觉状态相同的高维语义空间]
         a_feat = F.gelu(self.act_proj(a_t))
         
-        # [**拼接状态与动作以进行未来状态的前向推演**]
+        # [拼接状态与动作以进行未来状态的前向推演]
         combined = torch.cat([s_t, a_feat], dim=-1)
         s_t_next_pred = self.predictor_net(combined)
         return s_t_next_pred
@@ -186,7 +186,7 @@ class VLA_JEPA(nn.Module):
         # 初始时刻采用完全一致的权重
         self.target_encoder = copy.deepcopy(self.context_encoder)
         
-        # [**在整个训练周期内冻结目标编码器的参数，强制关闭自动求导**]
+        # [在整个训练周期内冻结目标编码器的参数，强制关闭自动求导]
         for param in self.target_encoder.parameters():
             param.requires_grad = False
 
@@ -208,13 +208,13 @@ class VLA_JEPA(nn.Module):
         l: 任务语言指令
         a_t: 当前执行的动作
         """
-        # [**利用在线上下文编码器，提取当前状态的隐式表达**]
+        # [利用在线上下文编码器，提取当前状态的隐式表达]
         s_t = self.context_encoder(x_t, l)
         
-        # [**利用在线预测器推演下一时刻的预测表达**]
+        # [利用在线预测器推演下一时刻的预测表达]
         s_t_next_pred = self.predictor(s_t, a_t)
         
-        # [**开启无梯度上下文，通过历史累计网络提取真实的未来目标表达**]
+        # [开启无梯度上下文，通过历史累计网络提取真实的未来目标表达]
         with torch.no_grad():
             s_t_next_target = self.target_encoder(x_t_next, l)
             
@@ -282,7 +282,7 @@ class VLA_JEPA(models.Model):
 
     def build(self, input_shape):
         super().build(input_shape)
-        # [**将目标编码器的初始权重硬同步为与上下文编码器一致**]
+        # [将目标编码器的初始权重硬同步为与上下文编码器一致]
         self.target_encoder.set_weights(self.context_encoder.get_weights())
 
     def update_target_encoder(self):
@@ -301,7 +301,7 @@ class VLA_JEPA(models.Model):
         s_t = self.context_encoder(x_t, l)
         s_t_next_pred = self.predictor(s_t, a_t)
         
-        # [**使用 tf.stop_gradient 严格阻断由后续损失计算引起的目标网络反向传播**]
+        # [使用 tf.stop_gradient 严格阻断由后续损失计算引起的目标网络反向传播]
         s_t_next_target = tf.stop_gradient(self.target_encoder(x_t_next, l))
         
         loss = tf.reduce_mean(tf.square(s_t_next_pred - s_t_next_target))

@@ -1,12 +1,12 @@
 # Video-JEPA（V-JEPA）的简洁实现
 
-在深入探究了图像级别的联合嵌入预测架构（I-JEPA）之后，我们自然而然地会将目光投向时间维度。物理世界并不是静止的图像集合，而是连续演化的动态系统。本节，我们将详细探讨并实现 Video-JEPA（V-JEPA）[Bardes et al., 2024]，这是由 Yann LeCun 提出的联合嵌入预测架构（JEPA）在视频领域的重磅延伸。
+在深入探究了图像级别的联合嵌入预测架构（I-JEPA）之后，我们自然而然地会将目光投向时间维度。物理世界并不是静止的图像集合，而是连续演化的动态系统。本节，我们将详细探讨并实现 Video-JEPA（V-JEPA）[[Bardes et al., 2024]](https://arxiv.org/abs/2404.08471)，这是由 Yann LeCun 提出的联合嵌入预测架构（JEPA）在视频领域的重磅延伸。
 
 ## 历史脉络与学术背景
 
-在深度学习的早期，视频理解大多依赖于 3D 卷积神经网络（如 C3D）或是结合了时间序列模型（如 LSTM）的 2D 卷积网络。随着 Transformer [Vaswani et al., 2017] 在自然语言处理领域的巨大成功，研究者们迅速将其引入到视觉领域。Vision Transformer（ViT）[Dosovitskiy et al., 2020] 证明了将图像切分为块（Patch）并进行自注意力计算的有效性。
+在深度学习的早期，视频理解大多依赖于 3D 卷积神经网络（如 C3D）或是结合了时间序列模型（如 LSTM）的 2D 卷积网络。随着 Transformer [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762) 在自然语言处理领域的巨大成功，研究者们迅速将其引入到视觉领域。Vision Transformer（ViT）[[Dosovitskiy et al., 2020]](https://arxiv.org/abs/2010.11929) 证明了将图像切分为块（Patch）并进行自注意力计算的有效性。
 
-随后，在自监督学习（Self-Supervised Learning, SSL）领域，掩码自编码器（Masked Autoencoders, MAE）[He et al., 2021] 和 VideoMAE [Tong et al., 2022] 展现了通过遮挡部分数据并要求模型在**像素空间**重建它们的强大能力。然而，直接在像素空间进行预测存在一个致命的理论瓶颈：真实世界的视频包含了大量不可预测的高频噪声（例如水面的波纹、树叶的微小摆动）。迫使模型花费巨大的算力去精准重建这些毫无语义价值的随机细节，不仅效率低下，而且会阻碍模型学习到真正的高级语义和物理规律。
+随后，在自监督学习（Self-Supervised Learning, SSL）领域，掩码自编码器（Masked Autoencoders, MAE）[[He et al., 2021]](https://arxiv.org/abs/2111.06377) 和 VideoMAE [[Tong et al., 2022]](https://arxiv.org/abs/2203.12602) 展现了通过遮挡部分数据并要求模型在**像素空间**重建它们的强大能力。然而，直接在像素空间进行预测存在一个致命的理论瓶颈：真实世界的视频包含了大量不可预测的高频噪声（例如水面的波纹、树叶的微小摆动）。迫使模型花费巨大的算力去精准重建这些毫无语义价值的随机细节，不仅效率低下，而且会阻碍模型学习到真正的高级语义和物理规律。
 
 正是在这样的学术背景下，V-JEPA 应运而生。它放弃了在像素空间的逐点重建，转而要求模型在**抽象的特征表示空间**中预测缺失的视频片段。这种转变，不仅极大地提升了训练效率，更使其在特征提取上展现出了更强的泛化能力。
 
@@ -105,7 +105,7 @@ class TubeletEmbedding(nn.Module):
         )
 
     def forward(self, x):
-        # [**执行 3D 卷积映射，将像素空间转为特征空间**]
+        # [执行 3D 卷积映射，将像素空间转为特征空间]
         # 输入维度: (B, C, T, H, W) -> 输出维度: (B, embed_dim, T', H', W')
         x = self.proj(x)
         # 展平空间和时间维度，准备输入 Transformer
@@ -173,7 +173,7 @@ class VJEPAModel(nn.Module):
         
         # 4. 构建目标编码器 (导师)，其结构与上下文编码器完全一致
         self.target_encoder = copy.deepcopy(self.context_encoder)
-        # [**锁定目标编码器的梯度，防止它被优化器直接更新**]
+        # [锁定目标编码器的梯度，防止它被优化器直接更新]
         for param in self.target_encoder.parameters():
             param.requires_grad = False
             
@@ -195,7 +195,7 @@ class VJEPAModel(nn.Module):
 
     def update_target_encoder(self, momentum=0.996):
         """
-        [**利用动量机制 (EMA) 缓慢更新目标编码器的参数**]
+        [利用动量机制 (EMA) 缓慢更新目标编码器的参数]
         这是防止模型发生表征坍塌的核心技巧。
         """
         with torch.no_grad():
@@ -237,7 +237,7 @@ class VJEPAModel(nn.Module):
         num_targets = target_features.shape[1]
         mask_tokens = self.mask_token.repeat(B, num_targets, 1)
         
-        # [**为需要预测的 Mask Token 注入它们本来对应的位置编码**]
+        # [为需要预测的 Mask Token 注入它们本来对应的位置编码]
         # 这是 Predictor 能够知道“要预测哪里”的唯一途径
         target_pos_embed = self.predictor_pos_embed.repeat(B, 1, 1)[target_mask].view(B, -1, self.predictor_pos_embed.shape[-1])
         mask_tokens = mask_tokens + target_pos_embed
@@ -260,7 +260,7 @@ class VJEPAModel(nn.Module):
 
 在上述代码中，有几处为了与纯粹的数学推导对齐而设计的精密巧思值得读者反复推敲：
 1. **梯度的阻断**：目标编码器的参数必须强制设为 `requires_grad = False`。模型唯一的学习信号来自于 `F.mse_loss` 反向传播给预测器和上下文编码器的梯度。
-2. **位置编码的时机**：注意预测器的输入设计。上下文特征在进入预测器时**没有**再次加上位置编码（它们在最开始已经加过了，特征内部已隐含位置信息），而 `mask_token` **必须**加上它试图重建的时空位置编码。这完美印证了公式 :eqref:`eq_vjepa_predictor` 中 $P_{\mathcal{T}}$ 作为预测条件的核心地位。
+2. **位置编码的时机**：注意预测器的输入设计。上下文特征在进入预测器时**没有**再次加上位置编码（它们在最开始已经加过了，特征内部已隐含位置信息），而 `mask_token` **必须**加上它试图重建的时空位置编码。这完美印证了该公式中 $P_{\mathcal{T}}$ 作为预测条件的核心地位。
 
 ## 结语
 

@@ -2,7 +2,7 @@
 
 在之前的章节中，我们沉浸于构建和训练世界模型（World Models）的喜悦之中。从隐变量模型的推导，到利用庞大算力在时间序列上展开想象力，模型在许多基准测试中展现出了令人惊叹的性能。然而，正如每一项科学探索一样，当我们凝视最耀眼的成就时，也必须有勇气直视其阴影。世界模型并非无懈可击，实际上，它们在长视野推理、分布外泛化和目标对齐等维度上，存在着深刻且尚未完全解决的理论与工程局限。
 
-理解模型的局限性不仅仅是寻找“bug”。在深度学习的学术脉络中，对失败的深入分析往往是下一次范式转移的前奏。早在基于模型的强化学习（Model-Based Reinforcement Learning, MBRL）兴起之初，研究者们就发现了模型在多步推演中的脆弱性 `[Talvitie, 2014]`。随后，Ha 和 Schmidhuber 在其奠基性论文 `[Ha & Schmidhuber, 2018]` 中明确指出，当智能体在自身“梦境”（即模型生成的轨迹）中学习时，它极易学会利用模型的缺陷来“作弊”，这种现象引发了学术界对模型幻觉（Hallucinations）和复合误差（Compounding Errors）的广泛探讨。而在近年来大规模无监督序列模型的发展中，目标错配（Objective Mismatch）问题 `[Lambert et al., 2020]` 和表征坍塌（Representation Collapse） `[Alemi et al., 2018]` 更成为了限制世界模型在物理现实中落地的核心瓶颈。
+理解模型的局限性不仅仅是寻找“bug”。在深度学习的学术脉络中，对失败的深入分析往往是下一次范式转移的前奏。早在基于模型的强化学习（Model-Based Reinforcement Learning, MBRL）兴起之初，研究者们就发现了模型在多步推演中的脆弱性 [[Talvitie, 2014]](https://ojs.aaai.org/index.php/AAAI/article/view/8852)。随后，Ha 和 Schmidhuber 在其奠基性论文 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122) 中明确指出，当智能体在自身“梦境”（即模型生成的轨迹）中学习时，它极易学会利用模型的缺陷来“作弊”，这种现象引发了学术界对模型幻觉（Hallucinations）和复合误差（Compounding Errors）的广泛探讨。而在近年来大规模无监督序列模型的发展中，目标错配（Objective Mismatch）问题 [[Lambert et al., 2020]](https://arxiv.org/abs/2002.04523) 和表征坍塌（Representation Collapse） [[Alemi et al., 2018]](https://arxiv.org/abs/1711.00464) 更成为了限制世界模型在物理现实中落地的核心瓶颈。
 
 在本章中，我们将脱下“炼丹师”的外衣，换上严谨的分析学究服。我们将从高中数学中最朴素的等比数列出发，逐步揭示误差是如何在自回归生成的序列中如雪崩般放大的；随后，我们将运用微积分和变分推断的工具，严格剖析模型训练目标与最终控制目标之间的理论鸿沟；最后，我们将在代码中亲手实现针对世界模型的诊断工具。
 
@@ -39,7 +39,7 @@ $$\hat{s}_T = \lambda^T s_0 + \epsilon \sum_{i=0}^{T-1} \lambda^i$$
 第 $T$ 步的累积误差 $e_T$ 为：
 $$e_T = |\hat{s}_T - s_T| = \epsilon \sum_{i=0}^{T-1} |\lambda|^i = \epsilon \frac{|\lambda|^T - 1}{|\lambda| - 1}$$
 
-从等式 :eqref:`eq_error_accumulation_1d` 中我们可以得出一个令人不寒而栗的结论：**只要系统动力学具有放大特性（$|\lambda| > 1$），哪怕单步预测误差 $\epsilon$ 再微小，随着预测步数 $T$ 的增加，总体预测误差将呈现指数级的爆炸性增长。** 即使对于 $|\lambda| \le 1$ 的系统，误差也会随 $T$ 线性或趋于常数地上升，而绝不会消失。
+从该公式中我们可以得出一个令人不寒而栗的结论：**只要系统动力学具有放大特性（$|\lambda| > 1$），哪怕单步预测误差 $\epsilon$ 再微小，随着预测步数 $T$ 的增加，总体预测误差将呈现指数级的爆炸性增长。** 即使对于 $|\lambda| \le 1$ 的系统，误差也会随 $T$ 线性或趋于常数地上升，而绝不会消失。
 
 ### 协变量偏移（Covariate Shift）与利普希茨连续性
 
@@ -68,7 +68,7 @@ $$e_{t+1} = \| \hat{f}(\hat{s}_t) - f(\hat{s}_t) + f(\hat{s}_t) - f(s_t) \|_2$$
 
 $$e_{t+1} \le \underbrace{\| \hat{f}(\hat{s}_t) - f(\hat{s}_t) \|_2}_{\text{单步模型误差}} + \underbrace{\| f(\hat{s}_t) - f(s_t) \|_2}_{\text{动力学放大效应}}$$
 
-观察等式 :eqref:`eq_error_decomp` 的两部分。第一部分正是我们在 $\hat{s}_t$ 处的模型预测误差，根据假设 :eqref:`eq_single_step_error_bound`，它不超过 $\epsilon$。第二部分则是真实函数 $f$ 对输入偏差的放大，根据 Lipschitz 假设 :eqref:`eq_lipschitz_f`，它满足 $\| f(\hat{s}_t) - f(s_t) \|_2 \le L \| \hat{s}_t - s_t \|_2 = L e_t$。
+观察该公式的两部分。第一部分正是我们在 $\hat{s}_t$ 处的模型预测误差，根据假设该公式，它不超过 $\epsilon$。第二部分则是真实函数 $f$ 对输入偏差的放大，根据 Lipschitz 假设该公式，它满足 $\| f(\hat{s}_t) - f(s_t) \|_2 \le L \| \hat{s}_t - s_t \|_2 = L e_t$。
 
 因此，我们得到了误差的递推不等式：
 $$e_{t+1} \le \epsilon + L e_t$$
@@ -77,7 +77,7 @@ $$e_{t+1} \le \epsilon + L e_t$$
 
 $$e_T \le \epsilon \sum_{i=0}^{T-1} L^i$$
 
-这就严谨地证明了：在高维非线性系统中，预测误差同样遵循指数级的复合规律。然而，等式 :eqref:`eq_matrix_error_bound` 揭示了一个更隐蔽的致命问题，即**协变量偏移（Covariate Shift）**。
+这就严谨地证明了：在高维非线性系统中，预测误差同样遵循指数级的复合规律。然而，该公式揭示了一个更隐蔽的致命问题，即**协变量偏移（Covariate Shift）**。
 
 请注意单步模型误差项 $\| \hat{f}(\hat{s}_t) - f(\hat{s}_t) \|_2$。在训练阶段，世界模型是通过最小化由训练集（真实经验回放池）采样出的真实状态 $s_t$ 的单步预测误差来优化的，即我们极力让 $\| \hat{f}(s_t) - f(s_t) \|_2$ 变小。然而，在推演（Rollout）阶段，模型在时间步 $t$ 接收到的输入是它自己上一阶段的预测输出 $\hat{s}_t$。随着时间推移，$\hat{s}_t$ 会逐渐偏离真实的数据分布。这就意味着，模型被强迫在其**从未见过的、分布外的数据（Out-of-Distribution, OOD）** 上进行预测。一旦发生这种协变量偏移，由于深度神经网络在分布外的高方差特性，单步误差界限 $\epsilon$ 在实际中根本无法保持恒定，它本身也会随着步数急剧增大。这就是为何在长视野预测中，世界模型生成的画面或状态最终会崩溃成无意义的噪声或静态图像。
 
@@ -102,7 +102,7 @@ $$J(\pi) = \mathbb{E}_{\pi} \left[ \sum_{t=0}^{\infty} \gamma^t r(s_t, a_t) \rig
 数学上，我们可以将价值函数的误差（Value Error）界定为：
 $$| V^{\pi}(s) - \hat{V}^{\pi}(s) | \le \frac{\gamma \max_{s'} |r(s')|}{(1-\gamma)^2} \sup_{s, a} \| P(\cdot|s,a) - \hat{P}(\cdot|s,a) \|_{TV}$$
 
-其中 $\| \cdot \|_{TV}$ 表示全变差（Total Variation）距离。公式 :eqref:`eq_value_error_bound` 清楚地表明，只要转移概率模型 $\hat{P}$ 在任何一个状态上与真实模型 $P$ 有哪怕极小的偏差，这个偏差都会被系数 $\frac{1}{(1-\gamma)^2}$ 极大地放大（当折扣因子 $\gamma \to 1$ 时，放大系数趋于无穷大）。更关键的是，这个上界并未区分哪些状态维度对奖励 $r$ 至关重要，哪些是无关紧要的噪声。这就导致了在复杂环境中，模型把宝贵的拟合能力浪费在了与控制目标正交的维度上。
+其中 $\| \cdot \|_{TV}$ 表示全变差（Total Variation）距离。该公式清楚地表明，只要转移概率模型 $\hat{P}$ 在任何一个状态上与真实模型 $P$ 有哪怕极小的偏差，这个偏差都会被系数 $\frac{1}{(1-\gamma)^2}$ 极大地放大（当折扣因子 $\gamma \to 1$ 时，放大系数趋于无穷大）。更关键的是，这个上界并未区分哪些状态维度对奖励 $r$ 至关重要，哪些是无关紧要的噪声。这就导致了在复杂环境中，模型把宝贵的拟合能力浪费在了与控制目标正交的维度上。
 
 ## 变分下界与表征坍塌
 
@@ -112,7 +112,7 @@ $$| V^{\pi}(s) - \hat{V}^{\pi}(s) | \le \frac{\gamma \max_{s'} |r(s')|}{(1-\gamm
 
 $$\log p(x_{1:T}) \ge \sum_{t=1}^T \underbrace{\mathbb{E}_{q}[\log p(x_t|z_t)]}_{\text{重构项}} - \underbrace{D_{KL}(q(z_t | x_t) \| p(z_t | z_{t-1}, a_{t-1}))}_{\text{正则化/动力学项}}$$
 
-让我们仔细观察公式 :eqref:`eq_elbo_world_model`。等式的右侧由两部分组成，并且它们之间存在一个天然的对抗张力：
+让我们仔细观察该公式。等式的右侧由两部分组成，并且它们之间存在一个天然的对抗张力：
 1. **重构项（Reconstruction Term）** 迫使后验分布 $q(z_t|x_t)$（编码器）必须保留足够的信息以还原原始图像 $x_t$。
 2. **KL 散度项（KL Divergence Term）** 充当正则化器，它强迫编码器的输出分布 $q(z_t|x_t)$ 去尽可能贴近先验动力学模型的预测 $p(z_t|z_{t-1}, a_{t-1})$。
 
@@ -138,7 +138,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
-# (**定义基础的诊断工具类**)
+# (定义基础的诊断工具类)
 class WorldModelDiagnoser:
     def __init__(self, encoder, transition_model, decoder, device='cpu'):
         """
@@ -222,7 +222,7 @@ class WorldModelDiagnoser:
         return active_units
 ```
 
-上述代码深刻体现了对模型失效现象的定量捕捉。在 `evaluate_compounding_error` 中，我们严格模拟了自回归（Autoregressive）过程中的开环（Open-loop）推演。这里不存在真值的教师强制（Teacher Forcing），上一步预测的隐状态 `z_t` 被无情地直接推入下一步的 `transition_model`。我们可以预见，记录在 `mses` 列表中的数值，将会如公式 :eqref:`eq_matrix_error_bound` 所预言的那样，随着时间 $T$ 的增加呈现出加速上升的非线性抛物线趋势。
+上述代码深刻体现了对模型失效现象的定量捕捉。在 `evaluate_compounding_error` 中，我们严格模拟了自回归（Autoregressive）过程中的开环（Open-loop）推演。这里不存在真值的教师强制（Teacher Forcing），上一步预测的隐状态 `z_t` 被无情地直接推入下一步的 `transition_model`。我们可以预见，记录在 `mses` 列表中的数值，将会如该公式所预言的那样，随着时间 $T$ 的增加呈现出加速上升的非线性抛物线趋势。
 
 在 `detect_representation_collapse` 方法中，我们引入了信息论中评估变分自编码器有效性的经典指标——**活跃单元（Active Units）测试**。这一指标通过计算后验均值 $\mu$ 在不同输入样本间的方差 `var_of_mu` 来运作。倘若世界模型发生了表征坍塌，编码器将选择对输入图像视而不见。在数学上表现为，不管输入是什么图像，编码器输出的均值 $\mu$ 都恒定不变。此时 `var_of_mu` 将趋近于零。这是一种冷酷而精确的诊断工具，能让你在训练损失曲线看似平稳下降时，依然保持清醒，看穿模型是否正在走捷径。
 

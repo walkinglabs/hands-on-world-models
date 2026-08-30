@@ -1,6 +1,6 @@
 # 6.4 动作条件的 JEPA（Action-conditional JEPA）
 
-在深度学习的早期发展中，研究者们曾试图通过像素级的重构来理解世界。然而，现实世界包含了大量不可预测且往往无关紧要的细节——例如微风中树叶的随机摆动，或是背景中随机的纹理变化。在这一背景下，Yann LeCun 在其经典论文《迈向自主机器智能之路》（*A Path Towards Autonomous Machine Intelligence*, [LeCun, 2022]）中提出了联合嵌入预测架构（Joint Embedding Predictive Architecture, JEPA）。与传统的自编码器不同，JEPA 放弃了在像素空间进行重构，转而在抽象的特征（隐变量）空间中进行预测，从而强制模型学习世界的高阶语义。
+在深度学习的早期发展中，研究者们曾试图通过像素级的重构来理解世界。然而，现实世界包含了大量不可预测且往往无关紧要的细节——例如微风中树叶的随机摆动，或是背景中随机的纹理变化。在这一背景下，Yann LeCun 在其经典论文《迈向自主机器智能之路》（*A Path Towards Autonomous Machine Intelligence*, [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)）中提出了联合嵌入预测架构（Joint Embedding Predictive Architecture, JEPA）。与传统的自编码器不同，JEPA 放弃了在像素空间进行重构，转而在抽象的特征（隐变量）空间中进行预测，从而强制模型学习世界的高阶语义。
 
 然而，原始的 JEPA 更多聚焦于对静态空间特征或被动视频流的补全，它缺乏与世界交互的关键要素：**动作（Action）**。为了构建一个真正的“世界模型”（World Model），智能体必须能够回答反事实的问题：“如果我采取了动作 $A$ 而不是动作 $B$，世界将会发生怎样的改变？”。在此驱动下，动作条件的 JEPA（Action-conditional JEPA）应运而生。它不仅保留了 JEPA 在抽象空间预测的优势，更将动作变量显式地注入预测器中，使其成为智能体在复杂环境中进行规划和决策的强大引擎。
 
@@ -59,7 +59,7 @@ $$\bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta$$
 
 初学者经常会问：为什么不能让目标编码器和上下文编码器共享参数，并同时更新它们？
 
-假设我们令 $\bar{\theta} = \theta$，并在优化过程中同时对它们求梯度以最小化 :eqref:eq_jepa_loss_matrix。在这种情况下，神经网络会寻找一条“捷径”来完美地将损失降为零，即：
+假设我们令 $\bar{\theta} = \theta$，并在优化过程中同时对它们求梯度以最小化该公式。在这种情况下，神经网络会寻找一条“捷径”来完美地将损失降为零，即：
 **令所有的权重全部坍缩为零，或者映射到一个不随输入变化的常数向量。**
 
 当 $E_\theta(\mathbf{O}) = \mathbf{0}$ 且 $P_\phi(\cdot) = \mathbf{0}$ 时，无论输入什么图像和动作，预测值和目标值永远为 $\mathbf{0}$，损失函数完美等于 $0$。这就是自监督学习中臭名昭著的**表征坍塌（Representation Collapse）**。

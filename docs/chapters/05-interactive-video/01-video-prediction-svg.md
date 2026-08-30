@@ -2,11 +2,11 @@
 
 预测未来是智能体理解世界的基石。对于人类而言，当我们抛出一枚硬币时，即使硬币还在空中翻滚，我们的大脑已经能够粗略预测它下落的轨迹与最终触地的瞬间。在深度学习中，这种“预测未来”的能力往往被抽象为视频预测（Video Prediction）任务：给定一系列历史图像帧，模型需要生成未来可能出现的图像序列。
 
-在这节课中，我们将深入探讨视频预测的理论基础，并详细剖析随机视频生成网络（Stochastic Video Generation, SVG）`[Denton & Fergus, 2018]`的设计哲学。我们将从最直观的物理运动学出发，逐步推导到高维张量的概率生成模型。
+在这节课中，我们将深入探讨视频预测的理论基础，并详细剖析随机视频生成网络（Stochastic Video Generation, SVG）[[Denton & Fergus, 2018]](https://arxiv.org/abs/1802.07687)的设计哲学。我们将从最直观的物理运动学出发，逐步推导到高维张量的概率生成模型。
 
 ## 视频预测的历史脉络与挑战
 
-早期的视频预测模型大多基于确定性（Deterministic）假设。研究者们通常采用循环神经网络（RNN）及其变体，如长短期记忆网络（LSTM）`[Hochreiter & Schmidhuber, 1997]`。当图像的二维空间结构需要被保留时，卷积长短期记忆网络（ConvLSTM）`[Xingjian et al., 2015]`成为了标准的解决方案。在当时的硬件计算力限制下，确定性模型通过最小化预测帧与真实未来帧之间的均方误差（Mean Squared Error, MSE）来优化网络权重。
+早期的视频预测模型大多基于确定性（Deterministic）假设。研究者们通常采用循环神经网络（RNN）及其变体，如长短期记忆网络（LSTM）[[Hochreiter & Schmidhuber, 1997]](https://doi.org/10.1162/neco.1997.9.8.1735)。当图像的二维空间结构需要被保留时，卷积长短期记忆网络（ConvLSTM）[[Xingjian et al., 2015]](https://arxiv.org/abs/1506.04214)成为了标准的解决方案。在当时的硬件计算力限制下，确定性模型通过最小化预测帧与真实未来帧之间的均方误差（Mean Squared Error, MSE）来优化网络权重。
 
 然而，确定性模型很快遇到了一个难以逾越的瓶颈：**模糊性（Blurriness）**。真实世界充满了随机性与不可控的扰动。假设桌子上有一个正在滚动的玻璃杯，它可能向左掉落，也可能向右掉落。如果模型只能给出一个确定性的预测，为了最小化MSE，网络会倾向于输出所有可能结果的平均值——即同时向左和向右掉落的重影。这种“平均化”策略导致了生成的未来帧随着时间推移变得越来越模糊，丧失了所有的纹理细节。
 
@@ -25,7 +25,7 @@ $$s_t = s_{t-1} + v_{t-1} \cdot \Delta t$$
 
 $$\mathbf{x}_t = f_{\theta}(\mathbf{x}_{1}, \mathbf{x}_{2}, \dots, \mathbf{x}_{t-1})$$
 
-在公式 :eqref:eq_deterministic_nn 中，$\mathbf{x}_t \in \mathbb{R}^{C \times H \times W}$ 表示时刻 $t$ 的图像帧张量，包含通道数、高度和宽度。
+在该公式中，$\mathbf{x}_t \in \mathbb{R}^{C \times H \times W}$ 表示时刻 $t$ 的图像帧张量，包含通道数、高度和宽度。
 
 ### 引入随机隐变量
 如前文所述，完美的确定性是不存在的。为了模拟世界的不确定性，我们在每一个时间步 $t$ 引入一个服从标准正态分布的高斯噪声，称之为隐变量 $z_t \in \mathbb{R}^d$。这个隐变量 $z_t$ 就像是一阵随机吹来的微风，或者是不可观测的微小扰动。
@@ -34,7 +34,7 @@ $$\mathbf{x}_t = f_{\theta}(\mathbf{x}_{1}, \mathbf{x}_{2}, \dots, \mathbf{x}_{t
 
 $$\mathbf{x}_t \sim p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t)$$
 
-其中，$\mathbf{x}_{<t}$ 表示从第 $1$ 帧到第 $t-1$ 帧的所有历史观测。公式 :eqref:eq_stochastic_generation 深刻地揭示了SVG模型的核心思想：未来是由确定的历史 $\mathbf{x}_{<t}$ 与随机的扰动 $z_t$ 共同决定的。
+其中，$\mathbf{x}_{<t}$ 表示从第 $1$ 帧到第 $t-1$ 帧的所有历史观测。该公式深刻地揭示了SVG模型的核心思想：未来是由确定的历史 $\mathbf{x}_{<t}$ 与随机的扰动 $z_t$ 共同决定的。
 
 ### 时序先验与后验分布
 在视频生成中，不同时间步的随机扰动 $z_t$ 并不是完全孤立的。为了让网络学会如何合理地猜测未来的扰动，我们需要定义两个概率分布：
@@ -53,7 +53,7 @@ $$\mathbf{x}_t \sim p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t)$$
 
 $$\mathcal{L}_t = \mathbb{E}_{q_{\phi}(z_t \mid \mathbf{x}_{\leq t})} \left[ \log p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t) \right] - \beta D_{\text{KL}} \left( q_{\phi}(z_t \mid \mathbf{x}_{\leq t}) \,\|\, p_{\psi}(z_t \mid \mathbf{x}_{<t}) \right)$$
 
-让我们极其严谨地拆解公式 :eqref:eq_svg_loss_step 中的每一项：
+让我们极其严谨地拆解该公式中的每一项：
 - 第一项：**重构似然（Reconstruction Likelihood）**。后验网络 $q_{\phi}$ 基于直到当前时刻 $t$ 的所有信息提取隐特征 $z_t$，生成器 $p_{\theta}$ 用它和历史状态还原图像 $\mathbf{x}_t$。由于我们通常假设像素服从高斯分布，最大化对数似然等价于最小化均方误差（MSE）或平均绝对误差（L1 Loss）。
 - 第二项：**KL散度（Kullback-Leibler Divergence）**。它衡量了先验分布与后验分布之间的差异。$\beta$ 是一个超参数（借鉴了 $\beta$-VAE 的思想），用于调节模型在“记忆特定帧细节”与“泛化随机性”之间的平衡。
 
@@ -192,4 +192,4 @@ class SVGCell(tf.keras.layers.Layer):
         return z_t, mu_p, logvar_p, mu_q, logvar_q, next_hidden_state
 ```
 
-在这段代码中，最关键的一步是**重参数化技巧（Reparameterization Trick）**`[Kingma & Welling, 2013]`。直接从高斯分布 $\mathcal{N}(\mu, \sigma^2)$ 中采样是一个不可导的操作，这会阻断神经网络基于梯度下降的端到端反向传播。通过将其改写为可导的确定性路径与不可导的常数噪声源 $\epsilon \sim \mathcal{N}(0, 1)$ 相结合，我们精巧地绕过了这个数学障碍。
+在这段代码中，最关键的一步是**重参数化技巧（Reparameterization Trick）**[[Kingma & Welling, 2013]](https://arxiv.org/abs/1312.6114)。直接从高斯分布 $\mathcal{N}(\mu, \sigma^2)$ 中采样是一个不可导的操作，这会阻断神经网络基于梯度下降的端到端反向传播。通过将其改写为可导的确定性路径与不可导的常数噪声源 $\epsilon \sim \mathcal{N}(0, 1)$ 相结合，我们精巧地绕过了这个数学障碍。

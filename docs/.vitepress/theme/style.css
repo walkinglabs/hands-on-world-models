@@ -301,7 +301,8 @@
 }
 
 .VPNavBarTranslations .items .nav-link a,
-.VPNavBarMenu .nav-link a {
+.VPNavBarMenu .VPNavBarMenuLink,
+.VPNavBarMenu .VPFlyout .button {
   font-size: 13.5px;
   font-weight: 500;
   letter-spacing: -0.006em;
@@ -314,14 +315,16 @@
   padding: 7px 13px;
 }
 
-.VPNavBarMenu .nav-link a:hover {
+.VPNavBarMenu .VPNavBarMenuLink:hover,
+.VPNavBarMenu .VPFlyout:hover .button {
   color: rgba(29, 29, 31, 0.9);
   background: rgba(0, 0, 0, 0.035);
   transform: translateY(-0.5px);
 }
 
-.VPNavBarMenu .nav-link.active a,
-.VPNavBarMenu .nav-link a.active {
+.VPNavBarMenu .VPNavBarMenuLink.active,
+.VPNavBarMenu .VPNavBarMenuLink.active:hover,
+.VPNavBarMenu .VPNavBarMenuGroup.active .button {
   color: #25636a;
   background: rgba(37, 99, 106, 0.06);
   font-weight: 540;
@@ -355,17 +358,20 @@
 }
 
 .dark .VPNavBarTranslations .items .nav-link a,
-.dark .VPNavBarMenu .nav-link a {
+.dark .VPNavBarMenu .VPNavBarMenuLink,
+.dark .VPNavBarMenu .VPFlyout .button {
   color: rgba(245, 245, 247, 0.72);
 }
 
-.dark .VPNavBarMenu .nav-link a:hover {
+.dark .VPNavBarMenu .VPNavBarMenuLink:hover,
+.dark .VPNavBarMenu .VPFlyout:hover .button {
   color: rgba(245, 245, 247, 0.95);
   background: rgba(255, 255, 255, 0.085);
 }
 
-.dark .VPNavBarMenu .nav-link.active a,
-.dark .VPNavBarMenu .nav-link a.active {
+.dark .VPNavBarMenu .VPNavBarMenuLink.active,
+.dark .VPNavBarMenu .VPNavBarMenuLink.active:hover,
+.dark .VPNavBarMenu .VPNavBarMenuGroup.active .button {
   color: #86c3c9;
   background: rgba(134, 195, 201, 0.12);
 }
@@ -402,6 +408,19 @@
   column-gap: 4px;
 }
 
+/* 下拉导航按钮高度小于整条导航栏时，必须在菜单行内单独垂直居中。
+   否则 VitePress 会让它贴在普通链接的行盒顶部。 */
+.VPNavBarMenu {
+  align-items: center;
+  height: var(--vp-nav-height);
+}
+
+.VPNavBarMenu .VPNavBarMenuGroup {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
 .VPNavBar .translations {
   order: 20;
 }
@@ -429,7 +448,7 @@
   padding: 0 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-full);
-  color: rgba(29, 29, 31, 0.62);
+  color: rgba(29, 29, 31, 0.68);
   transition:
     background-color 0.18s ease,
     border-color 0.18s ease,
@@ -440,7 +459,7 @@
 .VPNavBar .VPFlyout .button[aria-expanded="true"] {
   border-color: rgba(0, 0, 0, 0.05);
   background: rgba(0, 0, 0, 0.04);
-  color: rgba(29, 29, 31, 0.82);
+  color: rgba(29, 29, 31, 0.9);
 }
 
 .VPNavBar .VPFlyout .text {
@@ -551,7 +570,7 @@
 
 .dark .VPNavBar .VPFlyout .button,
 .dark .VPNavBarSocialLinks .VPSocialLink {
-  color: rgba(245, 245, 247, 0.62);
+  color: rgba(245, 245, 247, 0.72);
 }
 
 .dark .VPNavBar .VPFlyout .button:hover,
@@ -559,7 +578,7 @@
 .dark .VPNavBarSocialLinks .VPSocialLink:hover {
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.08);
-  color: rgba(245, 245, 247, 0.84);
+  color: rgba(245, 245, 247, 0.95);
 }
 
 .dark .VPNavBarAppearance .VPSwitchAppearance {

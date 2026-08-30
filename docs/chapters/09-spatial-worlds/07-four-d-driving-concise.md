@@ -3,7 +3,7 @@
 
 在自动驾驶的发展历程中，对物理世界的表征经历了从二维图像面到三维鸟瞰图（Bird's-Eye-View, BEV）的演进。然而，真实的物理世界是动态的。为了在高速行驶或复杂城市路况中做出安全决策，自动驾驶系统不仅需要理解当前的静态空间结构，还必须预测未来时刻的动态演化。这种在三维空间维度 $(X, Y, Z)$ 上引入时间维度 $(T)$ 的建模方式，构成了 4D 空间世界模型（4D Spatial World Models）的核心。
 
-早期的端到端自动驾驶模型（如 [Hu et al., 2023] 提出的 UniAD）主要依赖于将时间序列的 BEV 特征在二维平面上进行简单的循环神经网络展开。然而，由于压缩了高度维度，这类方法在面对立交桥、悬垂障碍物或起伏路面时往往会丢失关键的几何信息。[Wang et al., 2023] 等人的工作进一步提出了基于三维体素（Voxel）的 4D 占位网格预测（4D Occupancy Prediction），试图直接在完整的三维空间中预测未来时间步的状态转移。
+早期的端到端自动驾驶模型（如 [[Hu et al., 2023]](https://arxiv.org/abs/2212.10156) 提出的 UniAD）主要依赖于将时间序列的 BEV 特征在二维平面上进行简单的循环神经网络展开。然而，由于压缩了高度维度，这类方法在面对立交桥、悬垂障碍物或起伏路面时往往会丢失关键的几何信息。[[Wang et al., 2023]](https://arxiv.org/abs/2311.16038) 等人的工作进一步提出了基于三维体素（Voxel）的 4D 占位网格预测（4D Occupancy Prediction），试图直接在完整的三维空间中预测未来时间步的状态转移。
 
 本节我们将摒弃复杂的工程细节，从最基础的物理运动学原理出发，严密推导出 4D 预测模型的核心数学形式，并利用深度学习框架实现一个简洁的 4D 自动驾驶世界模型。我们还将探讨在 2025 至 2026 年间，开源社区与初创企业在 4D 占位和 4D 神经辐射场（NeRF）方向上的最新突破，以及如何结合端侧大语言模型工作流（如 Ollama）实现极致的本地推理优化。
 
@@ -14,9 +14,9 @@
 $$x_{t+1} = x_t + v_t \Delta t$$
 :eqlabel:eq_kinematics_scalar
 
-在公式 :eqref:eq_kinematics_scalar 中，$x_t$ 描述了当前状态，而 $v_t \Delta t$ 描述了状态的转移量。现在，我们将这一维度的标量推广到完整的三维空间中。在自动驾驶中，世界状态不再是一个单一的位置标量，而是一个致密的三维特征张量。设 $t$ 时刻的三维空间特征为 $\mathbf{S}_t \in \mathbb{R}^{C \times Z \times H \times W}$，其中 $C$ 为特征通道数，$Z$ 为空间高度维度，$H$ 和 $W$ 分别代表空间的长度和宽度。
+在该公式中，$x_t$ 描述了当前状态，而 $v_t \Delta t$ 描述了状态的转移量。现在，我们将这一维度的标量推广到完整的三维空间中。在自动驾驶中，世界状态不再是一个单一的位置标量，而是一个致密的三维特征张量。设 $t$ 时刻的三维空间特征为 $\mathbf{S}_t \in \mathbb{R}^{C \times Z \times H \times W}$，其中 $C$ 为特征通道数，$Z$ 为空间高度维度，$H$ 和 $W$ 分别代表空间的长度和宽度。
 
-如同物理学中状态的演化受到物体内在运动和外力作用，自动驾驶场景中的三维状态演化受到动态障碍物（如其他车辆、行人）的运动律以及自车动作（Ego-action，如转向、加速）的影响。我们引入自车动作控制向量 $\mathbf{a}_t \in \mathbb{R}^{D_a}$，并将公式 :eqref:eq_kinematics_scalar 升级为由深度神经网络参数化的高度非线性状态转移算子 $\mathcal{F}_\theta$：
+如同物理学中状态的演化受到物体内在运动和外力作用，自动驾驶场景中的三维状态演化受到动态障碍物（如其他车辆、行人）的运动律以及自车动作（Ego-action，如转向、加速）的影响。我们引入自车动作控制向量 $\mathbf{a}_t \in \mathbb{R}^{D_a}$，并将该公式升级为由深度神经网络参数化的高度非线性状态转移算子 $\mathcal{F}_\theta$：
 
 $$\mathbf{S}_{t+1} = \mathcal{F}_\theta(\mathbf{S}_t, \mathbf{a}_t)$$
 :eqlabel:eq_4d_transition_tensor
@@ -41,7 +41,7 @@ $$l(z,y,x) = - \left[ o_{z,y,x} \log p_{z,y,x} + (1 - o_{z,y,x}) \log (1 - p_{z,
 $$\mathcal{L}_{occ} = -\frac{1}{B \cdot Z \cdot H \cdot W} \sum_{b=1}^{B} \sum_{z=1}^{Z} \sum_{y=1}^{H} \sum_{x=1}^{W} \left( \mathbf{O} \odot \log(\mathbf{\hat{O}}) + (1 - \mathbf{O}) \odot \log(1 - \mathbf{\hat{O}}) \right)$$
 :eqlabel:eq_bce_tensor
 
-通过最小化公式 :eqref:eq_bce_tensor，我们迫使模型在隐空间中学习到准确的几何动力学转移规律。
+通过最小化该公式，我们迫使模型在隐空间中学习到准确的几何动力学转移规律。
 
 ## 核心模型代码实现
 
@@ -193,7 +193,7 @@ class Simple4DPredictor(tf.keras.Model):
 
 ## 练习
 
-1. 推导练习：如果自车的运动不仅受到动作 $\mathbf{a}_t$ 的控制，还受到环境风阻等确定性因素的干扰，如何运用泰勒展开（Taylor Expansion）修改并在张量层面扩展公式 :eqref:eq_4d_transition_tensor？
+1. 推导练习：如果自车的运动不仅受到动作 $\mathbf{a}_t$ 的控制，还受到环境风阻等确定性因素的干扰，如何运用泰勒展开（Taylor Expansion）修改并在张量层面扩展该公式？
 2. 代码修改：在预测器中，我们将动作特征通过简单的扩展拼接（Concatenation）注入空间。**提示**：查阅关于空间变换网络（Spatial Transformer Networks）的文献，思考如何利用 $\mathbf{a}_t$ 直接生成仿射变换矩阵（Affine Matrix），对 `spatial_features` 进行基于物理意义的三维旋转和平移操作？
 3. 前沿思考：在使用 4D NeRF 替换传统的 3D 卷积解码器时，计算复杂度的瓶颈会转移到哪里？**提示**：思考可微渲染过程中沿射线的采样积分操作在硬件缓冲区的表现。
 
