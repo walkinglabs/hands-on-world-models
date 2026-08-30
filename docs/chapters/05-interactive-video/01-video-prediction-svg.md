@@ -6,7 +6,7 @@
 
 ## 视频预测的历史脉络与挑战
 
-早期的视频预测模型大多基于确定性（Deterministic）假设。研究者们通常采用循环神经网络（RNN）及其变体，如长短期记忆网络（LSTM）[[Hochreiter & Schmidhuber, 1997]](https://doi.org/10.1162/neco.1997.9.8.1735)。当图像的二维空间结构需要被保留时，卷积长短期记忆网络（ConvLSTM）[[Xingjian et al., 2015]](https://arxiv.org/abs/1506.04214)成为了标准的解决方案。在当时的硬件计算力限制下，确定性模型通过最小化预测帧与真实未来帧之间的均方误差（Mean Squared Error, MSE）来优化网络权重。
+长短期记忆网络（LSTM）用门控记忆单元改善循环网络中的长程梯度传播 [[Hochreiter & Schmidhuber, 1997]](https://doi.org/10.1162/neco.1997.9.8.1735)。ConvLSTM 又把输入到状态、状态到状态的变换改为卷积，并在降水临近预报任务上验证时空序列建模 [[Shi et al., 2015]](https://arxiv.org/abs/1506.04214)。这些结构后来被用于视频预测；但两篇原论文分别支撑循环记忆和卷积递归结构，不能单独证明某种架构是所有视频任务的“标准方案”。
 
 然而，确定性模型很快遇到了一个难以逾越的瓶颈：**模糊性（Blurriness）**。真实世界充满了随机性与不可控的扰动。假设桌子上有一个正在滚动的玻璃杯，它可能向左掉落，也可能向右掉落。如果模型只能给出一个确定性的预测，为了最小化MSE，网络会倾向于输出所有可能结果的平均值——即同时向左和向右掉落的重影。这种“平均化”策略导致了生成的未来帧随着时间推移变得越来越模糊，丧失了所有的纹理细节。
 
@@ -17,6 +17,7 @@
 为了理解SVG的数学机制，我们不妨先回到高中物理中的运动学。
 
 ### 确定性系统
+
 假设我们在时刻 $t-1$ 观察到一个小球的位置 $s_{t-1}$ 和速度 $v_{t-1}$。如果不考虑空气阻力等任何随机因素，下一时刻 $t$ 的位置可以被精确计算：
 
 $$s_t = s_{t-1} + v_{t-1} \cdot \Delta t$$
@@ -28,6 +29,7 @@ $$\mathbf{x}_t = f_{\theta}(\mathbf{x}_{1}, \mathbf{x}_{2}, \dots, \mathbf{x}_{t
 在该公式中，$\mathbf{x}_t \in \mathbb{R}^{C \times H \times W}$ 表示时刻 $t$ 的图像帧张量，包含通道数、高度和宽度。
 
 ### 引入随机隐变量
+
 如前文所述，完美的确定性是不存在的。为了模拟世界的不确定性，我们在每一个时间步 $t$ 引入一个服从标准正态分布的高斯噪声，称之为隐变量 $z_t \in \mathbb{R}^d$。这个隐变量 $z_t$ 就像是一阵随机吹来的微风，或者是不可观测的微小扰动。
 
 此时，生成时刻 $t$ 图像的过程就不再是一个固定的函数映射，而是从一个条件概率分布中进行采样：
@@ -37,6 +39,7 @@ $$\mathbf{x}_t \sim p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t)$$
 其中，$\mathbf{x}_{<t}$ 表示从第 $1$ 帧到第 $t-1$ 帧的所有历史观测。该公式深刻地揭示了SVG模型的核心思想：未来是由确定的历史 $\mathbf{x}_{<t}$ 与随机的扰动 $z_t$ 共同决定的。
 
 ### 时序先验与后验分布
+
 在视频生成中，不同时间步的随机扰动 $z_t$ 并不是完全孤立的。为了让网络学会如何合理地猜测未来的扰动，我们需要定义两个概率分布：
 
 1. **先验分布（Prior Distribution） $p_{\psi}(z_t \mid \mathbf{x}_{<t})$**：在只看到历史帧 $\mathbf{x}_{<t}$ 的情况下，网络对时刻 $t$ 的扰动所作出的预测。
@@ -54,6 +57,7 @@ $$\mathbf{x}_t \sim p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t)$$
 $$\mathcal{L}_t = \mathbb{E}_{q_{\phi}(z_t \mid \mathbf{x}_{\leq t})} \left[ \log p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t) \right] - \beta D_{\text{KL}} \left( q_{\phi}(z_t \mid \mathbf{x}_{\leq t}) \,\|\, p_{\psi}(z_t \mid \mathbf{x}_{<t}) \right)$$
 
 让我们极其严谨地拆解该公式中的每一项：
+
 - 第一项：**重构似然（Reconstruction Likelihood）**。后验网络 $q_{\phi}$ 基于直到当前时刻 $t$ 的所有信息提取隐特征 $z_t$，生成器 $p_{\theta}$ 用它和历史状态还原图像 $\mathbf{x}_t$。由于我们通常假设像素服从高斯分布，最大化对数似然等价于最小化均方误差（MSE）或平均绝对误差（L1 Loss）。
 - 第二项：**KL散度（Kullback-Leibler Divergence）**。它衡量了先验分布与后验分布之间的差异。$\beta$ 是一个超参数（借鉴了 $\beta$-VAE 的思想），用于调节模型在“记忆特定帧细节”与“泛化随机性”之间的平衡。
 
@@ -88,11 +92,11 @@ class SVGCell(nn.Module):
         """
         super(SVGCell, self).__init__()
         self.dim_z = dim_z
-        
+
         # 确定性动力学核心：LSTM
         # 输入维度为：历史特征(dim_h) + 隐变量(dim_z)
         self.lstm = nn.LSTMCell(dim_h + dim_z, dim_c)
-        
+
         # 先验网络: p(z_t | x_<t)
         # 仅依赖LSTM的历史状态输出
         self.prior_net = nn.Sequential(
@@ -100,7 +104,7 @@ class SVGCell(nn.Module):
             nn.ReLU(),
             nn.Linear(128, dim_z * 2) # 输出均值和对数方差
         )
-        
+
         # 后验网络: q(z_t | x_<=t)
         # 依赖LSTM历史状态与当前帧特征
         self.posterior_net = nn.Sequential(
@@ -108,7 +112,7 @@ class SVGCell(nn.Module):
             nn.ReLU(),
             nn.Linear(128, dim_z * 2)
         )
-        
+
     def reparameterize(self, mu, logvar):
         """
         重参数化技巧 (Reparameterization Trick)
@@ -128,24 +132,24 @@ class SVGCell(nn.Module):
         hidden_state: LSTM的隐状态元组 (h_lstm, c_lstm)
         """
         h_lstm, c_lstm = hidden_state
-        
+
         # 1. 计算先验分布参数
         prior_out = self.prior_net(h_lstm)
         mu_p, logvar_p = torch.split(prior_out, self.dim_z, dim=1)
-        
+
         # 2. 计算后验分布参数 (仅在训练阶段有意义)
         post_input = torch.cat([h_lstm, h_t], dim=1)
         post_out = self.posterior_net(post_input)
         mu_q, logvar_q = torch.split(post_out, self.dim_z, dim=1)
-        
+
         # 3. 从后验分布中采样 z_t
         z_t = self.reparameterize(mu_q, logvar_q)
-        
+
         # 4. 更新确定性状态
         # 结合上一步的图像特征与当前步的扰动送入LSTM
         lstm_input = torch.cat([h_t_minus_1, z_t], dim=1)
         next_hidden_state = self.lstm(lstm_input, hidden_state)
-        
+
         return z_t, mu_p, logvar_p, mu_q, logvar_q, next_hidden_state
 ```
 
@@ -158,12 +162,12 @@ class SVGCell(tf.keras.layers.Layer):
         super(SVGCell, self).__init__()
         self.dim_z = dim_z
         self.lstm = tf.keras.layers.LSTMCell(dim_c)
-        
+
         self.prior_net = tf.keras.Sequential([
             tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dense(dim_z * 2)
         ])
-        
+
         self.posterior_net = tf.keras.Sequential([
             tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dense(dim_z * 2)
@@ -176,20 +180,20 @@ class SVGCell(tf.keras.layers.Layer):
 
     def call(self, h_t, h_t_minus_1, hidden_state):
         h_lstm, c_lstm = hidden_state
-        
+
         prior_out = self.prior_net(h_lstm)
         mu_p, logvar_p = tf.split(prior_out, num_or_size_splits=2, axis=1)
-        
+
         post_input = tf.concat([h_lstm, h_t], axis=1)
         post_out = self.posterior_net(post_input)
         mu_q, logvar_q = tf.split(post_out, num_or_size_splits=2, axis=1)
-        
+
         z_t = self.reparameterize(mu_q, logvar_q)
-        
+
         lstm_input = tf.concat([h_t_minus_1, z_t], axis=1)
         _, next_hidden_state = self.lstm(lstm_input, states=hidden_state)
-        
+
         return z_t, mu_p, logvar_p, mu_q, logvar_q, next_hidden_state
 ```
 
-在这段代码中，最关键的一步是**重参数化技巧（Reparameterization Trick）**[[Kingma & Welling, 2013]](https://arxiv.org/abs/1312.6114)。直接从高斯分布 $\mathcal{N}(\mu, \sigma^2)$ 中采样是一个不可导的操作，这会阻断神经网络基于梯度下降的端到端反向传播。通过将其改写为可导的确定性路径与不可导的常数噪声源 $\epsilon \sim \mathcal{N}(0, 1)$ 相结合，我们精巧地绕过了这个数学障碍。
+这里使用**重参数化技巧（Reparameterization Trick）** [[Kingma & Welling, 2013]](https://arxiv.org/abs/1312.6114)。若直接把 $z\sim\mathcal{N}(\mu,\sigma^2)$ 当作随机采样节点，普通反向传播不能得到样本相对 $\mu,\sigma$ 的路径导数。把它改写为 $z=\mu+\sigma\epsilon$、$\epsilon\sim\mathcal{N}(0,1)$ 后，随机性被移到与参数无关的噪声变量上，梯度便可沿确定性计算路径传播。

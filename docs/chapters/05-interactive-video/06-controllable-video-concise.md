@@ -6,7 +6,7 @@
 
 ## 可控生成的学术脉络与概率学基础
 
-在深度学习的早期探索中，使生成模型具备可控性往往依赖于直接拼接条件变量。例如，在条件生成对抗网络（Conditional GANs）[[Mirza & Osindero, 2014]](https://arxiv.org/abs/1411.1784)中，研究者通过将类别标签直接拼接到生成器和判别器的输入特征中来控制输出。随着扩散模型（Diffusion Models）[[Ho et al., 2020]](https://arxiv.org/abs/2006.11239)的崛起，去噪扩散概率模型（DDPM）展示了极其强大的无条件生成能力。为了将这种能力扩展至可控生成，随后提出的潜在扩散模型（Latent Diffusion Models）[[Rombach et al., 2022]](https://arxiv.org/abs/2112.10752)和ControlNet[[Zhang & Agrawala, 2023]](https://arxiv.org/abs/2302.05543)，彻底奠定了现代条件注入的基础。在视频领域，如Stable Video Diffusion[[Blattmann et al., 2023]](https://arxiv.org/abs/2311.15127)，则将这些条件控制机制延展到了时间维度。
+条件生成对抗网络把类别等条件输入提供给生成器与判别器 [[Mirza & Osindero, 2014]](https://arxiv.org/abs/1411.1784)。DDPM 建立了基于逐步去噪的生成过程 [[Ho et al., 2020]](https://arxiv.org/abs/2006.11239)；潜在扩散模型进一步在潜空间中使用交叉注意力接收文本等条件 [[Rombach et al., 2022]](https://arxiv.org/abs/2112.10752)，ControlNet 则为预训练扩散模型增加边缘、深度和姿态等空间控制 [[Zhang & Agrawala, 2023]](https://arxiv.org/abs/2302.05543)。Stable Video Diffusion 研究的是图像条件潜在视频扩散及其数据、训练策略 [[Blattmann et al., 2023]](https://arxiv.org/abs/2311.15127)。这些论文分别支撑不同的条件形式，不能合并成一个笼统的“统一控制机制”。
 
 从纯粹的概率学视角来看，无条件视频生成旨在拟合真实视频数据的边缘概率分布 $p(\mathbf{x})$。而可控生成，本质上是将目标转化为拟合一个条件概率分布 $p(\mathbf{x} \mid \mathbf{c})$，其中 $\mathbf{c}$ 代表控制信号。在世界模型中，这个控制信号 $\mathbf{c}$ 通常是智能体在时间步 $t$ 执行的动作序列（Action Sequence）或高维条件图。
 
@@ -109,13 +109,13 @@ class CrossAttention(nn.Module):
         self.head_dim = head_dim
         inner_dim = num_heads * head_dim
         self.scale = head_dim ** -0.5
-        
+
         # 视觉特征生成 Query
         self.to_q = nn.Linear(visual_dim, inner_dim, bias=False)
         # 控制信号生成 Key 和 Value
         self.to_k = nn.Linear(control_dim, inner_dim, bias=False)
         self.to_v = nn.Linear(control_dim, inner_dim, bias=False)
-        
+
         # 最终的输出投影
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, visual_dim),
@@ -128,29 +128,29 @@ class CrossAttention(nn.Module):
         context: 控制信号，形状为 (batch_size, context_length, control_dim)
         """
         batch_size = x.shape[0]
-        
+
         # 计算 Q, K, V
         q = self.to_q(x)
         k = self.to_k(context)
         v = self.to_v(context)
-        
+
         # 将张量重塑为多头形式: (batch, seq_len, heads, head_dim) -> (batch, heads, seq_len, head_dim)
         q = q.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
         k = k.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
         v = v.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-        
+
         # 计算注意力权重: 公式 (4)
         # q: (B, H, N, d_h), k.transpose: (B, H, d_h, M) -> sim: (B, H, N, M)
         sim = torch.matmul(q, k.transpose(-2, -1)) * self.scale
         attn = torch.softmax(sim, dim=-1)
-        
+
         # 应用注意力矩阵提取特征: 公式 (5)
         # attn: (B, H, N, M), v: (B, H, M, d_v) -> out: (B, H, N, d_v)
         out = torch.matmul(attn, v)
-        
+
         # 还原张量形状并投影回视觉维度
         out = out.transpose(1, 2).contiguous().view(batch_size, -1, self.num_heads * self.head_dim)
-        
+
         return self.to_out(out)
 ```
 
@@ -165,11 +165,11 @@ class ConditionalVideoBlock(nn.Module):
         # 时空自注意力（简化为处理被展平的序列）
         self.self_attn = nn.MultiheadAttention(embed_dim=visual_dim, num_heads=num_heads, batch_first=True)
         self.norm1 = nn.LayerNorm(visual_dim)
-        
+
         # 交叉注意力用于注入控制条件
         self.cross_attn = CrossAttention(visual_dim=visual_dim, control_dim=control_dim, num_heads=num_heads)
         self.norm2 = nn.LayerNorm(visual_dim)
-        
+
         # 前馈神经网络
         self.ffn = nn.Sequential(
             nn.Linear(visual_dim, visual_dim * 4),
@@ -186,10 +186,10 @@ class ConditionalVideoBlock(nn.Module):
         norm_x = self.norm1(x)
         attn_out, _ = self.self_attn(norm_x, norm_x, norm_x)
         x = x + attn_out
-        
+
         # 2. 交叉注意力：注入外部控制（如动作或指令）
         x = x + self.cross_attn(self.norm2(x), context)
-        
+
         # 3. 特征映射
         x = x + self.ffn(self.norm3(x))
         return x
@@ -208,13 +208,13 @@ def classifier_free_guidance_step(model_block, x_t, context, unconditional_conte
     """
     # 获取条件预测 eps(x_t, c)
     eps_cond = model_block(x_t, context)
-    
+
     # 获取无条件预测 eps(x_t, empty)
     eps_uncond = model_block(x_t, unconditional_context)
-    
+
     # 执行无分类器引导外推公式：公式 (8)
     eps_cfg = (1 + guidance_scale) * eps_cond - guidance_scale * eps_uncond
-    
+
     return eps_cfg
 ```
 
@@ -228,7 +228,7 @@ $$ \mathcal{L} = \mathbb{E}_{\mathbf{x}_0, c, \epsilon \sim \mathcal{N}(0, \math
 
 ## 小结
 
-* 可控视频生成的核心是将无条件的边缘概率分布估计转化为条件分布估计。
-* 从简单的标量加性注入，到向量空间的拼接，再到现代基于内积度量匹配度的交叉注意力机制，条件注入的方法在数学演进上日益严密且具有表达力。
-* 交叉注意力允许特征序列的每个元素根据查询 $\mathbf{Q}$ 动态检索控制序列的键 $\mathbf{K}$ 并聚合值 $\mathbf{V}$。
-* 无分类器引导（CFG）利用贝叶斯法则，通过推断阶段的线性外推，极其有效地放大了控制信号的权重，克服了条件坍塌问题。
+- 可控视频生成的核心是将无条件的边缘概率分布估计转化为条件分布估计。
+- 从简单的标量加性注入，到向量空间的拼接，再到现代基于内积度量匹配度的交叉注意力机制，条件注入的方法在数学演进上日益严密且具有表达力。
+- 交叉注意力允许特征序列的每个元素根据查询 $\mathbf{Q}$ 动态检索控制序列的键 $\mathbf{K}$ 并聚合值 $\mathbf{V}$。
+- 无分类器引导（CFG）利用贝叶斯法则，通过推断阶段的线性外推，极其有效地放大了控制信号的权重，克服了条件坍塌问题。

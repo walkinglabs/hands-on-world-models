@@ -116,13 +116,13 @@ class ActionTokenizer:
         """
         # 将输入裁剪到合法范围内，防止越界
         actions_clipped = torch.clamp(continuous_actions, self.action_min, self.action_max)
-        
+
         # 应用等式 (7.8.2)：归一化到 [0, 1]
         norm_actions = (actions_clipped - self.action_min) / (self.action_max - self.action_min)
-        
+
         # 应用等式 (7.8.3)：缩放并就近取整
         bin_indices = torch.round(norm_actions * (self.num_bins - 1))
-        
+
         return bin_indices.long()
 
     def detokenize(self, bin_indices: torch.Tensor) -> torch.Tensor:
@@ -155,16 +155,16 @@ class SimpleOpenVLA(nn.Module):
         super().__init__()
         # 视觉特征投影层
         self.projector = VisionLanguageProjector(vis_dim=1152, llm_dim=llm_dim)
-        
+
         # 语言与动作词元共享的嵌入层
         # 总词表大小 = 文本词表大小 + 动作桶的数量
         self.total_vocab_size = vocab_size + action_bins
         self.embedding = nn.Embedding(self.total_vocab_size, llm_dim)
-        
+
         # 简化的 LLM 主干网络（此处用标准 Transformer 编码器模拟自回归主干）
         decoder_layer = nn.TransformerEncoderLayer(d_model=llm_dim, nhead=8, batch_first=True)
         self.llm_backbone = nn.TransformerEncoder(decoder_layer, num_layers=4)
-        
+
         # 输出分类头
         self.lm_head = nn.Linear(llm_dim, self.total_vocab_size, bias=False)
 
@@ -176,19 +176,19 @@ class SimpleOpenVLA(nn.Module):
         """
         # 1. 投影视觉特征到 LLM 维度
         vis_emb = self.projector(vis_features) # [batch, num_patches, llm_dim]
-        
+
         # 2. 获取文本的词嵌入
         text_emb = self.embedding(text_tokens) # [batch, seq_len, llm_dim]
-        
+
         # 3. 序列拼接：[视觉特征; 文本指令特征]
         combined_emb = torch.cat([vis_emb, text_emb], dim=1)
-        
+
         # 4. 通过大模型的处理
         hidden_states = self.llm_backbone(combined_emb)
-        
+
         # 5. 预测下一个词元的 logits分布
         logits = self.lm_head(hidden_states) # [batch, combined_seq_len, total_vocab_size]
-        
+
         return logits
 ```
 

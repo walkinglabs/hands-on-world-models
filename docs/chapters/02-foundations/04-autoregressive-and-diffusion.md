@@ -48,7 +48,7 @@ from torch.utils import data
 import matplotlib.pyplot as plt
 
 # 生成总共1000个数据点
-T = 1000  
+T = 1000
 time = torch.arange(1, T + 1, dtype=torch.float32)
 # 正弦波加上均值为0，标准差为0.2的高斯噪声
 x = torch.sin(0.01 * time) + torch.normal(0, 0.2, (T,))
@@ -87,7 +87,7 @@ def get_net():
         if isinstance(m, nn.Linear):
             nn.init.xavier_uniform_(m.weight)
     return net
-    
+
 loss = nn.MSELoss()
 net = get_net()
 optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
@@ -132,6 +132,7 @@ $$\text{Var}(\mathbf{x}_t) = (\sqrt{1 - \beta_t})^2 \text{Var}(\mathbf{x}_{t-1})
 $$\mathbf{x}_t = \sqrt{\alpha_t} \mathbf{x}_{t-1} + \sqrt{1 - \alpha_t} \boldsymbol{\epsilon}_{t-1}, \quad \text{其中} \ \boldsymbol{\epsilon}_{t-1} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$$
 
 将 $\mathbf{x}_{t-1}$ 继续展开：
+
 $$
 \begin{aligned}
 \mathbf{x}_t &= \sqrt{\alpha_t} \left( \sqrt{\alpha_{t-1}} \mathbf{x}_{t-2} + \sqrt{1 - \alpha_{t-1}} \boldsymbol{\epsilon}_{t-2} \right) + \sqrt{1 - \alpha_t} \boldsymbol{\epsilon}_{t-1} \\
@@ -207,13 +208,13 @@ def q_sample(x_0, t, noise=None):
     """
     if noise is None:
         noise = torch.randn_like(x_0)
-    
-    # 提取当前批次中每一个样本对应的 sqrt_alphas_bar_t 
+
+    # 提取当前批次中每一个样本对应的 sqrt_alphas_bar_t
     sqrt_alphas_bar_t = sqrt_alphas_bar[t].view(-1, 1, 1, 1)
-    
+
     # 提取对应的 sqrt(1 - alphas_bar_t)
     sqrt_one_minus_alphas_bar_t = sqrt_one_minus_alphas_bar[t].view(-1, 1, 1, 1)
-    
+
     # 根据重参数化公式叠加噪声
     x_t = sqrt_alphas_bar_t * x_0 + sqrt_one_minus_alphas_bar_t * noise
     return x_t
@@ -229,10 +230,10 @@ def q_sample(x_0, t, noise=None):
 
 ## 2.4.4. 小结
 
-* 自回归模型基于严格的概率链式法则进行联合分布建模，将高维生成任务转化为条件序列预测任务，在自然语言处理中占据核心地位。
-* 扩散模型从非平衡热力学汲取灵感，其前向过程通过可控方差的马尔可夫链注入噪声破坏数据，逆向过程则由神经网络学习去除噪声以从混沌中恢复结构。
-* 借助于重参数化技巧，扩散模型的前向过程可以写出闭式解该公式，使我们能够直接在任意时间步上采样以计算重建损失。
-* 两类模型各有优势。自回归注重时序推断的绝对严谨，扩散模型则在学习高维复杂连续数据的流形上表现卓越。
+- 自回归模型基于严格的概率链式法则进行联合分布建模，将高维生成任务转化为条件序列预测任务，在自然语言处理中占据核心地位。
+- 扩散模型从非平衡热力学汲取灵感，其前向过程通过可控方差的马尔可夫链注入噪声破坏数据，逆向过程则由神经网络学习去除噪声以从混沌中恢复结构。
+- 借助于重参数化技巧，扩散模型的前向过程可以写出闭式解该公式，使我们能够直接在任意时间步上采样以计算重建损失。
+- 两类模型各有优势。自回归注重时序推断的绝对严谨，扩散模型则在学习高维复杂连续数据的流形上表现卓越。
 
 ## 2.4.5. 练习
 

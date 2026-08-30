@@ -2,7 +2,7 @@
 
 在深度强化学习与世界模型的发展历程中，如何从高维的图像观测中学习到一个紧凑且能够准确预测未来的动态模型，一直是一个核心难题。在前面章节中，我们已经了解了如何使用自编码器将单帧图像压缩为低维潜变量。然而，真实世界是随时间演变的，智能体必须能够基于过去的历史预测未来的状态演化。
 
-这一问题在 PlaNet [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 及其后续的 Dreamer [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603) 系列论文中得到了突破性的解决。这些工作提出了循环状态空间模型（Recurrent State Space Model, RSSM）。RSSM 优雅地结合了确定性循环神经网络（RNN）的高效记忆能力与随机状态空间模型（SSM）对环境不确定性的建模能力。在本节中，我们将从最基础的概率法则出发，严格推导 RSSM 的数学机制，并将其一步步转化为可运行的代码。
+PlaNet 引入了循环状态空间模型（Recurrent State Space Model, RSSM）[[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551)，Dreamer 随后沿用 RSSM，并用潜在想象轨迹训练策略 [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)。RSSM 把确定性的循环状态与每一步的随机潜变量结合起来。本节将从概率法则出发推导这一结构，并把它转化为可运行的代码。
 
 ## 历史背景与经典动态模型的局限性
 
@@ -39,12 +39,14 @@ p(s_{1:T}, o_{1:T} \mid a_{1:T-1}) = p(s_1) p(o_1 \mid s_1) \prod_{t=2}^T p(s_t 
 $$
 
 上述公式看似简单，但它准确地指明了构建世界模型所需的两个核心组件：
+
 1. **转移模型（Transition Model）**：由 $p(s_t \mid s_{t-1}, a_{t-1})$ 刻画，用于预测环境的内部状态将如何演变。
 2. **观测模型（Observation Model）**：由 $p(o_t \mid s_t)$ 刻画，用于将抽象的隐状态解码还原为具体的感官像素输入。
 
 ## RSSM 的核心结构与数学拆解
 
 RSSM 对标准状态空间模型中单一的转移概率 $p(s_t \mid s_{t-1}, a_{t-1})$ 进行了深度的结构化改造。在 RSSM 中，每一时刻的系统状态被明确拆分为两个相互关联的连续张量：
+
 - **确定性状态 $h_t$**：通常是一个较高维度的向量（例如 200 维或 512 维）。它是通过 GRU（门控循环单元）更新的，负责记忆长期的历史信息。
 - **随机状态 $s_t$**：通常是一个服从高斯分布或离散分布的随机变量。它负责刻画当前时刻环境的不确定性。
 
@@ -88,6 +90,7 @@ $$
 $$
 
 让我们仔细审视这个极其优美的目标函数公式，它恰好由两部分组成，并且对应着非常明确的物理与几何意义：
+
 1. **重构损失（Reconstruction Loss）**：即 $\mathbb{E}_q[\log p(o_t \mid s_t)]$。模型必须能够从后验分布中采样的隐状态 $s_t$ 出发，通过解码器网络完美地还原出当前的原始观测图像 $o_t$。
 2. **KL 散度正则化（KL Divergence）**：即 $D_{\text{KL}}(q(s_t \mid h_t, e_t) \parallel p(s_t \mid h_t))$。其作用是强迫在没有观测参与的先验分布 $p(s_t \mid h_t)$，在参数空间中尽可能地逼近融合了当前真实观测的后验分布 $q(s_t \mid h_t, e_t)$。只有这样，在未来脱离真实环境进行闭环推理运算时，先验分布才能产生合理且不偏离真实的预测。
 
@@ -116,18 +119,18 @@ class RSSMCore(nn.Module):
         super().__init__()
         self.state_dim = state_dim
         self.rnn_hidden_dim = rnn_hidden_dim
-        
+
         # 转移模型的核心 RNN，这里我们使用单层 GRU
         # 输入是拼接后的 s_{t-1} 和 a_{t-1}
         self.rnn = nn.GRUCell(state_dim + action_dim, rnn_hidden_dim)
-        
+
         # 先验分布网络：从 h_t 映射到 s_t 的均值和对数标准差
         self.prior_net = nn.Sequential(
             nn.Linear(rnn_hidden_dim, rnn_hidden_dim),
             nn.ELU(),
             nn.Linear(rnn_hidden_dim, 2 * state_dim)
         )
-        
+
         # 后验分布网络：从 h_t 和 e_t 的拼接映射到 s_t 的均值和对数标准差
         self.posterior_net = nn.Sequential(
             nn.Linear(rnn_hidden_dim + embed_dim, rnn_hidden_dim),
@@ -155,14 +158,14 @@ class RSSMCore(nn.Module):
         rnn_input = torch.cat([s_prev, action], dim=-1)
         # 更新确定性状态 h_t
         h_t = self.rnn(rnn_input, h_prev)
-        
+
         # 计算先验分布参数
         prior_params = self.prior_net(h_t)
         prior_dist = self._build_dist(prior_params)
-        
+
         # 使用重参数化技巧进行采样
         s_t = prior_dist.rsample()
-        
+
         return h_t, s_t, prior_dist
 
     def forward_posterior(self, h_prev, s_prev, action, obs_embed):
@@ -172,15 +175,15 @@ class RSSMCore(nn.Module):
         """
         # 1. 首先计算确定性状态 h_t 与先验分布
         h_t, _, prior_dist = self.forward_prior(h_prev, s_prev, action)
-        
+
         # 2. 结合观测编码 e_t 计算后验分布
         post_input = torch.cat([h_t, obs_embed], dim=-1)
         post_params = self.posterior_net(post_input)
         post_dist = self._build_dist(post_params)
-        
+
         # 3. 从后验分布中提取重参数化采样 s_t
         s_t = post_dist.rsample()
-        
+
         return h_t, s_t, prior_dist, post_dist
 ```
 

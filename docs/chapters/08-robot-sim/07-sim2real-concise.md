@@ -1,9 +1,10 @@
 # Sim2Real 虚实迁移框架的简洁实现
+
 :label:sec_sim2real_concise
 
 在前面的章节中，我们在高度理想化的物理仿真环境中训练了机器人的运动控制策略。然而，当这些策略被直接部署到真实的物理硬件上时，往往会遭遇灾难性的失败。这种由仿真环境与真实物理世界之间的动力学差异、传感器噪声、以及通信延迟所导致的性能骤降，在学术界被称为“现实鸿沟”（Reality Gap）。为了跨越这一鸿沟，学术界和工业界发展出了从仿真到现实（Simulation-to-Reality, 简称为 Sim2Real）的迁移框架。
 
-早在具身智能爆发之前，Sim2Real 技术就已经在机器人学中占据了核心地位。例如，OpenAI 使用高度随机化的仿真环境成功训练出了灵巧手，并在现实中完成了魔方复原任务 [[Andrychowicz et al., 2020]](https://doi.org/10.1177/0278364919887447)；苏黎世联邦理工学院的研究人员则通过精确的执行器网络建模，让 ANYmal 四足机器人在未知的真实野外环境中稳健行走 [[Hwangbo et al., 2019]](https://doi.org/10.1126/scirobotics.aau5872)。本节将从最基础的动力学方程出发，严格推导并实现 Sim2Real 框架中最经典且有效的技术：域随机化（Domain Randomization, DR），并在文末深入探讨 2026 年最新的开源硬件生态是如何在系统层面重塑 Sim2Real 流程的。
+Sim2Real 已在多类机器人任务中得到验证。例如，OpenAI 使用自动域随机化训练灵巧手，并在现实中完成魔方复原 [[Akkaya et al., 2019]](https://arxiv.org/abs/1910.07113)；苏黎世联邦理工学院的研究人员利用执行器建模与强化学习，让 ANYmal 在真实环境中完成动态运动 [[Hwangbo et al., 2019]](https://doi.org/10.1126/scirobotics.aau5872)。本节将从动力学方程出发，推导并实现常见的域随机化方法。
 
 ## 系统动力学差异与现实鸿沟的数学本源
 
@@ -64,20 +65,20 @@ class RandomizedDynamics(nn.Module):
         friction: 关节摩擦系数，形状 (batch_size, 1)
         """
         theta, theta_dot = state[:, 0:1], state[:, 1:2]
-        
+
         # 为了避免除零错误，我们对 mass 加上一个极小的 epsilon
         inertia = mass * (1.0 ** 2) / 3.0 + 1e-6
-        
+
         # 计算角加速度: a = (tau - friction * v - m * g * l * sin(theta)) / I
         # 我们在这里使用纯张量运算以支持大规模并行仿真
         gravity_torque = mass * self.gravity * 0.5 * torch.sin(theta)
         friction_torque = friction * theta_dot
         theta_ddot = (action - friction_torque + gravity_torque) / inertia
-        
+
         # 半隐式欧拉积分 (Semi-implicit Euler integration)
         new_theta_dot = theta_dot + theta_ddot * self.dt
         new_theta = theta + new_theta_dot * self.dt
-        
+
         return torch.cat([new_theta, new_theta_dot], dim=1)
 ```
 
@@ -90,12 +91,12 @@ class DomainRandomizer:
     def __init__(self, batch_size, device='cpu'):
         self.batch_size = batch_size
         self.device = device
-        
+
         # 定义先验分布：质量我们采用对数正态分布以保证其恒为正
         # 摩擦力使用均匀分布
         self.mass_dist = dist.LogNormal(torch.tensor(0.0), torch.tensor(0.5))
         self.fric_dist = dist.Uniform(torch.tensor(0.0), torch.tensor(0.2))
-        
+
     def sample_parameters(self):
         """[抽取一批具备多样性的物理参数]"""
         mass = self.mass_dist.sample((self.batch_size, 1)).to(self.device)
@@ -143,16 +144,16 @@ Sim2Real 的另一个致命问题在于“控制延迟”与“扭矩指令失�
 
 ## 小结
 
-*   现实鸿沟的本质是仿真参数 $\mathbf{\Theta}_{\text{sim}}$ 与真实物理参数 $\mathbf{\Theta}_{\text{real}}$ 之间的数学分布不匹配。
-*   域随机化（Domain Randomization）通过强制策略网络在训练期间最大化参数先验分布上的期望奖励，迫使其学习到对物理扰动具有强鲁棒性的控制流形。
-*   2026 年的开源硬件生态（如 Asimov v1 的高保真 BOM 与 AIRSEAI 的标准化执行层）在工程源头上极大缩小了参数先验差异，从根本上降低了 Sim2Real 的落地门槛。
+- 现实鸿沟的本质是仿真参数 $\mathbf{\Theta}_{\text{sim}}$ 与真实物理参数 $\mathbf{\Theta}_{\text{real}}$ 之间的数学分布不匹配。
+- 域随机化（Domain Randomization）通过强制策略网络在训练期间最大化参数先验分布上的期望奖励，迫使其学习到对物理扰动具有强鲁棒性的控制流形。
+- 2026 年的开源硬件生态（如 Asimov v1 的高保真 BOM 与 AIRSEAI 的标准化执行层）在工程源头上极大缩小了参数先验差异，从根本上降低了 Sim2Real 的落地门槛。
 
 ## 练习
 
 1.  如果在该公式的训练中，将质量分布的方差设置得过大，策略网络可能会表现出何种保守的行为？
-    *提示：思考在一个质量极小和质量极大的分布中同时不摔倒，机器人会倾向于何种刚度的关节控制。*
+    _提示：思考在一个质量极小和质量极大的分布中同时不摔倒，机器人会倾向于何种刚度的关节控制。_
 2.  在我们的 PyTorch 简易实现中，我们使用了半隐式欧拉积分来更新状态。如果系统的惯量极小而阻尼极大（即方程非常“刚性”），这会导致仿真出现什么数学灾难？
-    *提示：回顾微积分中的步长 $\Delta t$ 与差分方程稳定域的关系。*
+    _提示：回顾微积分中的步长 $\Delta t$ 与差分方程稳定域的关系。_
 3.  查阅关于执行器网络（Actuator Nets）的经典文献，尝试论述：为何 2026 年 AIRSEAI 的硬件底层补偿机制，在某些要求极端柔顺控制的场景下，可能会与上层强化学习算法产生控制环路的耦合震荡？
 
 :begin_tab:pytorch

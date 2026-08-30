@@ -54,6 +54,7 @@ $$ P(e_i = e_k) = \frac{1}{|\mathcal{D}|} $$
 环形缓冲区的核心数学原理建立在基础代数中的**模运算（Modulo Arithmetic）**之上。我们预先分配一个长度为 $N$ 的连续内存数组，并维护一个写入指针 $p$ ，它代表当前最新数据应该写入的位置。初始时 $p=0$。
 
 当新来一条经验 $e_t$ 时，我们执行以下逻辑：
+
 1. 将 $e_t$ 写入数组的第 $p$ 个位置。
 2. 更新指针至下一个位置：
 
@@ -93,19 +94,19 @@ class ReplayBuffer:
         """
         self.capacity = capacity
         self.device = device
-        
+
         # 预分配连续内存数组，利用 Float32 保证浮点运算的数值精度
         self.states = np.zeros((capacity, state_dim), dtype=np.float32)
         self.actions = np.zeros((capacity, action_dim), dtype=np.float32)
         self.rewards = np.zeros((capacity, 1), dtype=np.float32)
         self.next_states = np.zeros((capacity, state_dim), dtype=np.float32)
         self.dones = np.zeros((capacity, 1), dtype=np.float32)
-        
+
         # p 为写入指针，size 记录当前实际有效存储的数据量
         self.p = 0
         self.size = 0
 
-    def add(self, state: np.ndarray, action: np.ndarray, reward: float, 
+    def add(self, state: np.ndarray, action: np.ndarray, reward: float,
             next_state: np.ndarray, done: bool):
         """
         (将单步经验存入环形缓冲区)
@@ -115,7 +116,7 @@ class ReplayBuffer:
         self.rewards[self.p] = reward
         self.next_states[self.p] = next_state
         self.dones[self.p] = float(done)
-        
+
         # 严格遵守模运算公式更新指针位置
         self.p = (self.p + 1) % self.capacity
         # 记录真实数据量，直到达到最大容量
@@ -127,14 +128,14 @@ class ReplayBuffer:
         """
         # 利用 numpy 随机生成索引，采用无放回采样
         indices = np.random.choice(self.size, batch_size, replace=False)
-        
+
         # 将底层切片数据立即转换为 PyTorch 张量并发送至指定的计算设备
         s = torch.tensor(self.states[indices], device=self.device)
         a = torch.tensor(self.actions[indices], device=self.device)
         r = torch.tensor(self.rewards[indices], device=self.device)
         s_next = torch.tensor(self.next_states[indices], device=self.device)
         d = torch.tensor(self.dones[indices], device=self.device)
-        
+
         return s, a, r, s_next, d
 ```
 
@@ -150,27 +151,27 @@ class ReplayBuffer:
         valid_start_size = self.size - seq_len
         if valid_start_size <= 0:
             raise ValueError("缓冲区当前数据量不足以采样指定长度的序列。")
-            
+
         # 注意：在完全严谨的生产环境中，这里还需要过滤掉跨越指针 p 的错位序列
         start_indices = np.random.choice(valid_start_size, batch_size, replace=False)
-        
+
         # 初始化列表，用于按时间步展开序列
         seq_s, seq_a, seq_r, seq_d = [], [], [], []
-        
+
         for i in range(seq_len):
             idx = start_indices + i
             seq_s.append(self.states[idx])
             seq_a.append(self.actions[idx])
             seq_r.append(self.rewards[idx])
             seq_d.append(self.dones[idx])
-            
+
         # 在时间轴（axis=1）上堆叠序列并转换为张量
         # 变换后的张量维度为：(Batch Size, Sequence Length, Feature Dimension)
         s = torch.tensor(np.stack(seq_s, axis=1), device=self.device)
         a = torch.tensor(np.stack(seq_a, axis=1), device=self.device)
         r = torch.tensor(np.stack(seq_r, axis=1), device=self.device)
         d = torch.tensor(np.stack(seq_d, axis=1), device=self.device)
-        
+
         return s, a, r, d
 ```
 

@@ -1,17 +1,19 @@
 # 视觉基础模型：从卷积神经网络到视觉变换器
 
 ## 引言与历史追溯
+
 在计算机视觉的发展中，手工特征与神经网络曾长期并行演进。LeCun 等人的早期卷积网络已能从数据中学习用于手写数字识别的特征 [[LeCun et al., 1989]](https://doi.org/10.1162/neco.1989.1.4.541)；2012 年，AlexNet 又在 ImageNet 分类任务上显著降低了错误率 [[Krizhevsky et al., 2012]](https://proceedings.neurips.cc/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html)。这两项工作分别展示了卷积网络的早期可行性与大规模视觉任务上的突破。
 
 CNN 的成功很大程度上归功于其内置的**归纳偏置**（Inductive Bias）——特别是**平移不变性**（Translation Invariance）和**局部性**（Locality）。这些偏置使得 CNN 能够在相对较少的数据集上高效学习。然而，随着数据规模的指数级增长和计算能力的提升，研究人员开始质疑这种强偏置是否限制了模型的上限。
 
-2020 年，Dosovitskiy 等人提出视觉变换器（Vision Transformer, ViT） [[Dosovitskiy et al., 2020]](https://arxiv.org/abs/2010.11929)，这一工作受到了自然语言处理中 Transformer 架构 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762) 的启发。ViT 摒弃了卷积操作，将图像分割为一系列的小块（Patches），并利用全局的自注意力机制来捕捉特征。尽管 ViT 缺乏 CNN 那样的局部性偏置，但在极大规模数据预训练的加持下，它展现出了超越传统 CNN 的惊人性能。
+2020 年，Dosovitskiy 等人提出视觉变换器（Vision Transformer, ViT） [[Dosovitskiy et al., 2020]](https://arxiv.org/abs/2010.11929)，这一工作沿用了自然语言 Transformer 的序列建模结构 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762)。ViT 将图像分割为一系列小块（Patches），再用自注意力聚合全局信息。原论文报告，在足够大规模的数据上预训练后，ViT 在多项图像分类基准上达到或超过当时的卷积网络基线；这项结论依赖论文中的预训练规模和评测设置。
 
 在本章中，我们将从最基础的数学定义出发，逐步推导并实现这两种奠定了现代视觉基础模型地位的核心架构。
 
 ## 卷积神经网络的数学原理
 
 ### 从全连接层到卷积
+
 要理解卷积神经网络，我们首先需要考察为什么不能直接使用多层感知机（MLP）来处理图像。假设我们有一张尺寸为 $H \times W$ 的二维黑白图像，它可以自然地表示为一个矩阵 $\mathbf{X} \in \mathbb{R}^{H \times W}$。如果使用全连接层，我们需要将图像展平为一个长度为 $H \times W$ 的一维向量 $\mathbf{x}$。
 全连接层的输出隐藏表示 $\mathbf{h}$ 同样可以被组织为 $H \times W$ 的矩阵，其对应的标量计算可以严格表示为：
 
@@ -22,6 +24,7 @@ $$
 在这里，权重 $\mathbf{W}$ 是一个四阶张量，包含 $(H \times W) \times (H \times W)$ 个参数。对于一张仅仅是 $1000 \times 1000$ 像素的图像，这个全连接层的权重参数量将达到惊人的 $10^{12}$，这不仅会耗尽任何现代计算机的内存，更会导致模型极易过拟合。
 
 为了减少参数并利用图像的内在几何结构，我们引入两个重要的原则：
+
 1. **平移不变性**：在图像中，一个物体无论出现在左上角还是右下角，模型对其特征的响应机制应该是相同的。这意味着权重张量 $\mathbf{W}$ 不应该依赖于输出的绝对物理位置 $(i, j)$，而只应该依赖于输入和输出位置的相对偏移量。我们令 $k = i + a$ 和 $l = j + b$，则权重可以严格重写为 $V_{a, b} = W_{i, j, i+a, j+b}$。
 2. **局部性**：图像中的像素通常只与其周围邻近的像素有较强的物理和统计相关性。因此，我们在计算 $h_{i,j}$ 时，只需考察距离 $(i,j)$ 较近的输入像素，即限制偏移量 $a$ 和 $b$ 的范围在 $[-\Delta, \Delta]$ 之间。
 
@@ -34,6 +37,7 @@ $$
 这就是二维**互相关**（Cross-Correlation）运算的严格数学定义。在深度学习文献中，它通常被直接称为“卷积”（尽管在纯数学定义中，卷积要求对权重进行翻转，但这并不影响其在神经网络中的参数学习）。参数张量 $\mathbf{V}$ 被称为**卷积核**（Convolutional Kernel）或**滤波器**（Filter），其大小仅为 $(2\Delta + 1) \times (2\Delta + 1)$，且在图像的所有位置严格共享。
 
 ### 多通道的张量运算
+
 在实际应用中，图像往往不仅是一个二维矩阵，而是具有颜色通道的三维张量，例如 RGB 图像表示为 $\mathbf{X} \in \mathbb{R}^{C \times H \times W}$，其中 $C=3$。为了处理多通道输入，我们需要为每个输入通道分配一个二维卷积核，并将它们的结果相加。
 
 假设输入有 $C_{in}$ 个通道，输出我们需要产生 $C_{out}$ 个通道的特征图。对于每一个输出通道 $d \in \{1, \dots, C_{out}\}$，其在位置 $(i, j)$ 的输出标量值为：
@@ -66,9 +70,10 @@ print(f"权重形状: {conv_layer.weight.shape}")
 
 ## 经典 CNN 架构：残差网络 (ResNet)
 
-随着网络层数的增加，梯度消失（Vanishing Gradient）和网络退化（Degradation）问题变得日益严重。He 等人在 2015 年提出了残差网络 [[He et al., 2015]](https://arxiv.org/abs/1512.03385)，巧妙地解决了极深网络的优化难题。
+随着网络层数增加，简单堆叠网络可能出现训练误差反而升高的退化问题。He 等人提出残差网络，并用恒等快捷连接使网络学习残差函数；原论文展示了这种结构能够训练更深的图像分类网络 [[He et al., 2015]](https://arxiv.org/abs/1512.03385)。这项引用直接支持退化问题与残差结构，不应笼统表述为解决了所有梯度消失问题。
 
 ### 残差连接的数学机制
+
 假设我们将网络中的某个块（由若干个卷积层组成）拟合为一个非线性映射 $\mathcal{F}(\mathbf{x})$。在传统的网络设计中，该块的输出直接就是 $\mathcal{F}(\mathbf{x})$。然而，ResNet 引入了一个严格的跳跃连接（Skip Connection），要求该网络块去拟合残差映射 $\mathcal{F}(\mathbf{x}) = \mathcal{H}(\mathbf{x}) - \mathbf{x}$，因此其实际输出变为了：
 
 $$
@@ -91,30 +96,30 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(ResidualBlock, self).__init__()
         # 第一个卷积层，可能改变步幅以调整空间维度
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, 
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3,
                                stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
         # 第二个卷积层
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, 
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3,
                                stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
-        
+
         # 1x1 卷积用于调整跳跃连接的通道数和分辨率，以保证能够正确相加
         self.shortcut = nn.Sequential()
         if stride != 1 or in_channels != out_channels:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, 
+                nn.Conv2d(in_channels, out_channels, kernel_size=1,
                           stride=stride, bias=False),
                 nn.BatchNorm2d(out_channels)
             )
 
     def forward(self, x):
         identity = self.shortcut(x)
-        
+
         out = self.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
-        
+
         out += identity  # 严格执行残差相加的数学映射
         out = self.relu(out)
         return out
@@ -125,6 +130,7 @@ class ResidualBlock(nn.Module):
 虽然卷积在提取局部特征上极其高效，但要捕获距离较远的两个像素之间的关联，CNN 需要堆叠非常深的层，使得其感受野（Receptive Field）能够扩大到覆盖整个图像。相比之下，视觉变换器（ViT）摒弃了局部性假设，通过自注意力机制一步到位地建立了全局依赖。
 
 ### 图像块的嵌入与序列化
+
 为了让最初为处理自然语言离散序列而设计的 Transformer 架构能够处理连续且高维的图像，ViT 首先将三维的图像张量转换成一维的词元（Token）序列。
 
 假设输入图像为 $\mathbf{X} \in \mathbb{R}^{C \times H \times W}$，我们给定一个固定大小的图像块维度 $P \times P$。我们将图像在空间维度上严格划分为不重叠的二维块。块的数量为 $N = \frac{H \times W}{P^2}$。此时，图像可以被重塑为一系列展平的二维块序列 $\mathbf{x}_p \in \mathbb{R}^{N \times (P^2 \cdot C)}$。
@@ -147,9 +153,9 @@ class PatchEmbedding(nn.Module):
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = (img_size // patch_size) ** 2
-        
+
         # 使用不重叠的卷积直接提取特征并隐式完成线性投影
-        self.proj = nn.Conv2d(in_channels, embed_dim, 
+        self.proj = nn.Conv2d(in_channels, embed_dim,
                               kernel_size=patch_size, stride=patch_size)
 
     def forward(self, x):
@@ -161,6 +167,7 @@ class PatchEmbedding(nn.Module):
 ```
 
 ### 多头自注意力机制 (Multi-Head Self-Attention)
+
 Transformer 架构的灵魂在于自注意力机制。为了建立其严谨的数学基础，我们首先考察单头自注意力的标量形式推导。
 
 给定序列中的某个词元 $\mathbf{x}_i \in \mathbb{R}^D$（为简化符号，假设它已经是投影后的向量），我们需要计算它与序列中其他所有词元 $\mathbf{x}_j$ 之间的相关性。自注意力机制将每个输入投射为三个不同的角色：查询（Query）、键（Key）和值（Value）。
@@ -204,7 +211,7 @@ class ViTBlock(nn.Module):
         self.norm1 = nn.LayerNorm(embed_dim)
         # 多头注意力层
         self.attn = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
-        
+
         self.norm2 = nn.LayerNorm(embed_dim)
         # 多层感知机 (MLP)
         hidden_dim = int(embed_dim * mlp_ratio)
@@ -219,7 +226,7 @@ class ViTBlock(nn.Module):
         x_norm = self.norm1(x)
         attn_out, _ = self.attn(x_norm, x_norm, x_norm)
         x = x + attn_out
-        
+
         # 带有残差连接的 MLP 层
         x = x + self.mlp(self.norm2(x))
         return x

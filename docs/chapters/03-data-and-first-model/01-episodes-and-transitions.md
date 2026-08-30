@@ -2,7 +2,7 @@
 
 深度学习在计算机视觉和自然语言处理等领域取得了巨大成功，这在很大程度上归功于其对静态数据集（如图像或文本语料库）的有效利用。然而，强化学习（Reinforcement Learning, RL）面临着截然不同的数据环境。在强化学习中，智能体（Agent）并非被动地接收标注好的数据，而是通过与环境（Environment）进行主动交互来收集数据。这种交互产生的数据天然具有时间维度的序列依赖性。
 
-早期的强化学习研究（如 [[Sutton & Barto, 1998]](http://incompleteideas.net/book/first/the-book.html) ）为我们建立了一套基于马尔可夫决策过程（Markov Decision Process, MDP）的数学框架。而在深度强化学习的黎明时期，[[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602) 在深度Q网络（Deep Q-Network, DQN）的开创性论文中，巧妙地引入了“经验回放”（Experience Replay）机制。这一机制打破了时间序列的强相关性，将连续的经验序列拆解为离散的“状态转移”（Transitions），并允许我们在训练深度神经网络时像处理传统监督学习那样进行小批量（Mini-batch）采样。
+强化学习通常用马尔可夫决策过程（Markov Decision Process, MDP）描述状态、动作、奖励与转移 [[Sutton & Barto, 1998]](http://incompleteideas.net/book/first/the-book.html)。Lin 较早系统研究了把过去经验保存并在后续学习中重放的机制 [[Lin, 1992]](https://doi.org/10.1007/BF00992699)；DQN 又把随机经验回放用于深度 Q 学习 [[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602)。从缓冲区随机抽取转移可以减弱相邻样本的时间相关性，并支持小批量训练，但不会使样本在统计意义上自动独立。
 
 在本节中，我们将从最基础的序列与函数映射出发，严格定义强化学习中数据的两种核心结构：微观的**状态转移**与宏观的**回合**（Episodes），并探讨如何用张量（Tensor）严谨地表达与存储这些数据。
 
@@ -35,20 +35,22 @@ e_t = (s_t, a_t, r_t, s_{t+1}, d_t)
 $$
 
 在这个五元组中，各个变量的物理含义和数据类型如下：
-* $s_t$：当前状态向量。
-* $a_t$：执行的动作向量。
-* $r_t$：标量奖励信号。
-* $s_{t+1}$：执行动作后到达的下一个状态向量。
-* $d_t$：标量终止标志，通常在实现中用浮点数 `0.0` 或 `1.0` 表示。
+
+- $s_t$：当前状态向量。
+- $a_t$：执行的动作向量。
+- $r_t$：标量奖励信号。
+- $s_{t+1}$：执行动作后到达的下一个状态向量。
+- $d_t$：标量终止标志，通常在实现中用浮点数 `0.0` 或 `1.0` 表示。
 
 状态转移是深度强化学习中最原子的数据单元。为什么需要如此定义？因为这五个元素恰好满足了更新模型参数所需的全部信息。当我们使用神经网络来近似强化学习中的核心数学量（如价值函数或策略分布）时，我们关注的是当前时刻的决定对未来的影响。五元组该公式在提供当前上下文（$s_t, a_t$）的同时，也提供了环境的即时反馈（$r_t, d_t$）和未来的起始点（$s_{t+1}$）。
 
 在实际工程实现中，为了充分利用现代硬件（如 GPU）的并行计算能力，我们极少针对单个状态转移进行计算。相反，我们会从经验回放缓冲区中随机采样出多个状态转移，将它们拼接（Stack）成一个批次（Batch）。假设我们采样了 $B$ 个状态转移，我们将原本一维或零维的独立变量沿着一个新的维度（称为批量维度，Batch dimension）进行拼接。此时，我们得到的变量张量维度将发生如下变化：
-* 状态批量张量 $\mathbf{S}_t \in \mathbb{R}^{B \times n}$
-* 动作批量张量 $\mathbf{A}_t \in \mathbb{R}^{B \times m}$
-* 奖励批量张量 $\mathbf{R}_t \in \mathbb{R}^{B \times 1}$
-* 下一状态批量张量 $\mathbf{S}_{t+1} \in \mathbb{R}^{B \times n}$
-* 终止标志批量张量 $\mathbf{D}_t \in \mathbb{R}^{B \times 1}$
+
+- 状态批量张量 $\mathbf{S}_t \in \mathbb{R}^{B \times n}$
+- 动作批量张量 $\mathbf{A}_t \in \mathbb{R}^{B \times m}$
+- 奖励批量张量 $\mathbf{R}_t \in \mathbb{R}^{B \times 1}$
+- 下一状态批量张量 $\mathbf{S}_{t+1} \in \mathbb{R}^{B \times n}$
+- 终止标志批量张量 $\mathbf{D}_t \in \mathbb{R}^{B \times 1}$
 
 这种严密的张量对齐，是确保我们在后续构建复杂损失函数（Loss functions）时避免维度广播（Broadcasting）错误的基础。
 
@@ -90,19 +92,19 @@ class TransitionBatch:
     def __init__(self, capacity, state_dim, action_dim, device="cpu"):
         self.capacity = capacity
         self.device = device
-        
+
         # 预先分配固定大小的连续张量内存
         # 状态张量形状: (capacity, state_dim)
         self.states = torch.zeros((capacity, state_dim), dtype=torch.float32, device=device)
         self.next_states = torch.zeros((capacity, state_dim), dtype=torch.float32, device=device)
-        
+
         # 动作张量形状: (capacity, action_dim)
         self.actions = torch.zeros((capacity, action_dim), dtype=torch.float32, device=device)
-        
+
         # 标量信号往往只需要一维，形状: (capacity, 1)
         self.rewards = torch.zeros((capacity, 1), dtype=torch.float32, device=device)
         self.dones = torch.zeros((capacity, 1), dtype=torch.float32, device=device)
-        
+
         # 维护一个指针用于指示当前插入的位置，以及一个计数器记录当前存储的数量
         self.pointer = 0
         self.size = 0
@@ -116,31 +118,31 @@ class TransitionBatch:
         reward_tensor = torch.tensor([reward], dtype=torch.float32, device=self.device)
         next_state_tensor = torch.tensor(next_state, dtype=torch.float32, device=self.device)
         done_tensor = torch.tensor([done], dtype=torch.float32, device=self.device)
-        
+
         # 将张量写入当前指针指向的内存行
         self.states[self.pointer] = state_tensor
         self.actions[self.pointer] = action_tensor
         self.rewards[self.pointer] = reward_tensor
         self.next_states[self.pointer] = next_state_tensor
         self.dones[self.pointer] = done_tensor
-        
+
         # 移动指针（环形缓冲区逻辑：当到达容量上限时折返到起始位置 0）
         self.pointer = (self.pointer + 1) % self.capacity
         # 更新存储数量（取当前数量与容量之间的最小值）
         self.size = min(self.size + 1, self.capacity)
-        
+
     def sample(self, batch_size):
         """随机采样指定数量的状态转移，返回一个批次（Batch）张量集合。"""
         # 利用 randint 在当前有效数据范围内生成随机索引
         indices = torch.randint(0, self.size, (batch_size,), device=self.device)
-        
+
         # 利用高级索引（Advanced indexing）并行抽取批次张量
         batch_states = self.states[indices]
         batch_actions = self.actions[indices]
         batch_rewards = self.rewards[indices]
         batch_next_states = self.next_states[indices]
         batch_dones = self.dones[indices]
-        
+
         return batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones
 ```
 
@@ -148,10 +150,10 @@ class TransitionBatch:
 
 ## 3.1.5 小结
 
-* 强化学习与监督学习的本质区别在于其数据是随时间由智能体主动交互产生的。时间序列依赖是其核心挑战之一。
-* **状态转移** $e_t = (s_t, a_t, r_t, s_{t+1}, d_t)$ 是打破强序列依赖、实施小批量模型训练的最基础数据构造单元。
-* **回合** $\tau$ 构成了多步转移的时序轨迹，决定了状态评估的长远视界（Horizon）。
-* 为了计算高效性，实现中通常通过张量在内存中预先连续分配以完成数据缓冲区的构建，从而使得经验的小批量抽取具有极低的系统延迟。
+- 强化学习与监督学习的本质区别在于其数据是随时间由智能体主动交互产生的。时间序列依赖是其核心挑战之一。
+- **状态转移** $e_t = (s_t, a_t, r_t, s_{t+1}, d_t)$ 是打破强序列依赖、实施小批量模型训练的最基础数据构造单元。
+- **回合** $\tau$ 构成了多步转移的时序轨迹，决定了状态评估的长远视界（Horizon）。
+- 为了计算高效性，实现中通常通过张量在内存中预先连续分配以完成数据缓冲区的构建，从而使得经验的小批量抽取具有极低的系统延迟。
 
 ## 3.1.6 练习
 

@@ -8,11 +8,11 @@
 
 在早期的无模型强化学习（Model-Free RL）中，环境被严格视为一个不可微的“黑盒”：智能体输出一个动作，环境返回一个状态和标量奖励。这种方法的数学本质是对期望回报进行蒙特卡洛采样与梯度估计，虽然具有广泛的通用性，但完全抛弃了环境本身的内部物理规律。
 
-2018年，Ha和Schmidhuber发表了著名的《World Models》论文 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。他们提出，人类在面对新任务时，往往依靠大脑中对世界运行规律的内部表征（Internal Representation）来预测未来，并在脑海中“预演”不同的行动方案。基于这一认知，他们利用变分自编码器（VAE）将高维像素压缩为低维特征，并结合循环神经网络（MDN-RNN）预测未来的隐状态。智能体仅利用这个循环网络生成的“梦境”进行训练，就能在真实的赛车游戏中取得卓越表现。
+2018年，Ha和Schmidhuber发表了《World Models》论文 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。他们用变分自编码器（VAE）将高维像素压缩为低维特征，再用混合密度循环网络（MDN-RNN）预测下一个潜变量。在 CarRacing 实验中，控制器利用 VAE 与 MDN-RNN 提供的特征在真实游戏环境中训练；论文另在 VizDoom 的 Take Cover 任务中演示了控制器完全在模型生成的潜在环境里训练，再迁回真实游戏。两项实验不能混为同一个“梦境赛车”结果。
 
-随后，Dreamer、DreamerV2 与 DreamerV3 把策略学习移入潜在状态的想象轨迹中 [[Hafner et al., 2019]](https://arxiv.org/abs/1912.01603); [[Hafner et al., 2020]](https://arxiv.org/abs/2010.02193); [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104)。这些方法在论文所测试的多项基准上提高了数据效率与任务表现，但结论应限定在相应任务和实验设置内。
+随后，Dreamer、DreamerV2 与 DreamerV3 把策略学习移入潜在状态的想象轨迹中 [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603); [[Hafner et al., 2021]](https://arxiv.org/abs/2010.02193); [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104)。这些方法在论文所测试的多项基准上提高了数据效率与任务表现，但结论应限定在相应任务和实验设置内。
 
-在自动驾驶领域，真实世界交互的成本与风险推动了两类相关探索。MILE 从离线驾驶数据中学习潜在动力学与驾驶策略，并能在学到的模型中想象未来 [[Hu et al., 2022]](https://arxiv.org/abs/2203.08104)；GAIA-1 则根据视频、文本和车辆动作生成未来驾驶场景 [[Hu et al., 2023]](https://arxiv.org/abs/2309.17080)。前者包含策略学习，后者主要展示条件视频生成；不能把 GAIA-1 的生成结果直接等同于已经验证的轨迹规划器。
+在自动驾驶领域，真实世界交互的成本与风险推动了两类相关探索。MILE 从离线驾驶数据中学习潜在动力学与驾驶策略，并能在学到的模型中想象未来 [[Hu et al., 2022]](https://arxiv.org/abs/2203.08104)；GAIA-1 则根据视频、文本和车辆动作生成未来驾驶场景 [[Anthony Hu et al., 2023]](https://arxiv.org/abs/2309.17080)。前者包含策略学习，后者主要展示条件视频生成；不能把 GAIA-1 的生成结果直接等同于已经验证的轨迹规划器。
 
 ## 1.4.2 状态转移的物理学直觉与数学表达
 
@@ -99,6 +99,7 @@ $$
 $$
 
 仔细观察该公式中的每一项几何意义：
+
 1. $\frac{\partial a_t}{\partial \phi}$：策略网络对网络参数的梯度。
 2. $\frac{\partial \hat{z}_{t+1}}{\partial a_t}$：**世界模型的雅可比矩阵 (Jacobian Matrix)**，它精确描述了输入动作的一丝微小变化将如何导致下一个隐状态在空间中的物理偏转。
 3. $\frac{\partial \text{Rew}_\theta(\hat{z}_{t+1})}{\partial \hat{z}_{t+1}}$：奖励函数对隐状态的梯度，它指明了在隐空间中朝哪个方向移动会获得更高的奖励，引导状态更新的方向。
@@ -107,9 +108,10 @@ $$
 
 ## 1.4.4 代码实现：构建隐空间动力学与想象学习
 
-为了将上述深奥的数学理论落实到工程实践，(**我们将利用深度学习框架实现一个具备动力学推演与解析梯度计算的极简世界模型引擎。**) 
+为了将上述深奥的数学理论落实到工程实践，(**我们将利用深度学习框架实现一个具备动力学推演与解析梯度计算的极简世界模型引擎。**)
 
 代码的核心逻辑包含：
+
 1. 定义世界模型的核心子模块：动力学转移网络（代替传统运动学矩阵）和奖励预测网络。
 2. 定义策略网络，并在隐空间中向前自回归推演，展开多步的“梦境”轨迹。
 3. 计算多步累积奖励，并直接调用自动微分（Autograd）引擎对策略网络进行BPTT反向优化。
@@ -141,12 +143,12 @@ class WorldModel(nn.Module):
             nn.ReLU(),
             nn.Linear(HIDDEN_DIM, 1)
         )
-    
+
     def step(self, z, a):
         """在隐空间中前向推演一步（物理时间的流逝在计算图中的具象化）"""
         x = torch.cat([z, a], dim=-1)
         # 引入残差连接，使其具有偏微分方程离散积分的数值特性
-        z_next = z + self.dynamics(x) 
+        z_next = z + self.dynamics(x)
         reward = self.reward_predictor(z_next)
         return z_next, reward
 
@@ -160,7 +162,7 @@ class PolicyNetwork(nn.Module):
             nn.Linear(HIDDEN_DIM, ACTION_DIM),
             nn.Tanh() # 物理限制：规范动作范围在 [-1, 1] 之间
         )
-        
+
     def forward(self, z):
         return self.net(z)
 
@@ -171,11 +173,11 @@ def imagine_and_optimize(world_model, policy, initial_state, optimizer):
     world_model.eval() # 严格冻结世界模型参数，此处仅优化控制策略
     policy.train()
     optimizer.zero_grad()
-    
+
     z_t = initial_state
     total_reward = 0.0
     discount = 0.99
-    
+
     # [在循环中连续展开动力学，构建横跨时间步的前向计算图]
     for t in range(SEQ_LEN):
         # 根据当前隐状态生成控制动作
@@ -184,12 +186,12 @@ def imagine_and_optimize(world_model, policy, initial_state, optimizer):
         z_t, r_t = world_model.step(z_t, a_t)
         # 将各时间步折现奖励累加至总期望回报中
         total_reward = total_reward + (discount ** t) * r_t
-        
+
     # [由于整个演化过程完全由平滑激活的神经网络构成，我们可以直接对期望回报最大化求导]
     # 注意我们需要最大化回报，因此向优化器传递的损失（Loss）是取反的期望
     loss = -total_reward.mean()
     loss.backward()
-    
+
     # 此时梯度已经严格依据多变量微积分法则，经由时间步反向贯穿到了策略参数层
     optimizer.step()
     return total_reward.mean().item()
@@ -232,7 +234,7 @@ class WorldModel(tf.keras.Model):
             tf.keras.layers.Dense(HIDDEN_DIM, activation='relu'),
             tf.keras.layers.Dense(1)
         ])
-    
+
     def call(self, z, a):
         """执行隐空间内的单步前向时间跃迁"""
         x = tf.concat([z, a], axis=-1)
@@ -249,7 +251,7 @@ class PolicyNetwork(tf.keras.Model):
             tf.keras.layers.Dense(HIDDEN_DIM, activation='relu'),
             tf.keras.layers.Dense(ACTION_DIM, activation='tanh')
         ])
-        
+
     def call(self, z):
         return self.net(z)
 
@@ -261,20 +263,20 @@ def imagine_and_optimize(world_model, policy, initial_state, optimizer):
         z_t = initial_state
         total_reward = 0.0
         discount = 0.99
-        
+
         # [使用张量计算带自动追踪并沿时序维度连续展开计算流]
         for t in range(SEQ_LEN):
             a_t = policy(z_t)
             z_t, r_t = world_model(z_t, a_t)
             total_reward = total_reward + (discount ** t) * r_t
-            
+
         # [通过可导计算图定义期望标量，直接构建待优化的代理损失]
         loss = -tf.reduce_mean(total_reward)
-        
+
     # 精确推演解析梯度，并直接映射到底层神经元权重之中
     grads = tape.gradient(loss, policy.trainable_variables)
     optimizer.apply_gradients(zip(grads, policy.trainable_variables))
-    
+
     return tf.reduce_mean(total_reward).numpy()
 
 # 实例化架构体系
@@ -299,7 +301,7 @@ for i in range(5):
 ## 1.4.6 练习
 
 1. 在该公式的雅可比矩阵推导中，如果动作 $a_t$ 的微小扰动会导致隐状态偏向“碰撞”特征区域（假定碰撞区域的预测奖励值极低负数），请说明策略网络将依据怎样的数学符号法则反向调整其参数 $\phi$ 以避免碰撞？
-   * 提示：根据链式法则的三项乘积，推导奖励网络输出最终随网络参数 $\phi$ 变化的偏导正负性机制。
+   - 提示：根据链式法则的三项乘积，推导奖励网络输出最终随网络参数 $\phi$ 变化的偏导正负性机制。
 2. 为什么在代码实现中，我们需要为动力学网络 `self.dynamics(x)` 强制添加一个残差连接结构（即 `z_next = z + dynamics`）？它在经典物理学和数值积分法上具有怎样的数学隐喻？
-   * 提示：尝试考虑位置与速度增量在时间极限下的欧拉法离散微分方程（Euler Method）。
+   - 提示：尝试考虑位置与速度增量在时间极限下的欧拉法离散微分方程（Euler Method）。
 3. 传统强化学习中存在难以逾越的“探索-利用困境”（Exploration-Exploitation Dilemma）。如果我们的世界模型在隐式梦境推演中，遭遇了由不成熟策略引发的、它在真实训练集中从未见识过的边缘场景状态分布（Out-of-Distribution, OOD），此时时间反向传播计算出的策略梯度将会呈现何种病态表现？

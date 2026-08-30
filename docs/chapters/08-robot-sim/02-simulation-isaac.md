@@ -6,13 +6,13 @@
 
 ## 历史溯源与强化学习仿真的通信瓶颈
 
-在早期基于深度强化学习的机器人控制研究中，学术界广泛依赖于诸如 MuJoCo [[Todorov et al., 2012]](https://doi.org/10.1109/IROS.2012.6386109)、PyBullet 等基于 CPU 的成熟物理引擎。这些引擎在单体或小规模环境中的计算精度极高，但在面对深度强化学习的扩展法则（Scaling Laws）时，暴露出不可调和的底层架构矛盾。
+MuJoCo 面向模型式控制提供快速的刚体动力学、接触求解与导数计算 [[Todorov et al., 2012]](https://doi.org/10.1109/IROS.2012.6386109)。传统机器人学习管线常在 CPU 上推进仿真，再把观测复制到 GPU 训练策略；当并行环境数量增加时，仿真吞吐和 CPU—GPU 数据传输都可能成为瓶颈。这里讨论的是计算管线差异，而不是用 MuJoCo 论文证明所有 CPU 仿真器精度更高或无法扩展。
 
 强化学习的训练循环主要包含两个核心步骤：第一步是在仿真环境中获取物理状态信息（如关节角度、速度等），第二步是将这些状态输入到神经网络中计算动作策略，最后将动作反馈给环境进行物理推演。在传统的异构计算架构中，物理仿真引擎运行在 CPU 上，而神经网络的推理和反向传播则在 GPU 上执行。这种跨设备的架构导致了灾难性的性能瓶颈。
 
 > 我们在此引入一个克制的工程系统比喻：可以将基于 CPU 物理引擎的强化学习管线视为一座跨江大桥上的通勤系统——CPU（物理计算）是江左的零件加工厂，而 GPU（神经网络推断）是江右的总装厂。如果系统的每一步推演都要求用卡车（PCIe 总线）将成千上万的微小零件（环境状态与动作指令）在这座桥上反复运送，大桥的吞吐量将立刻成为绝对瓶颈；而端到端的 GPU 仿真则是直接在江右（显存内部）建立起了物理加工流水线，数据无需过江，只需在厂区内部的超高带宽总线上流转。
 
-正是在这一背景下，Makoviychuk 等人提出了 Isaac Gym [[Makoviychuk et al., 2021]](https://arxiv.org/abs/2108.10470)，标志着首个专为强化学习设计的高度张量化、端到端 GPU 机器人仿真平台的诞生。它将物理引擎（PhysX）底层的数据流彻底迁移至 GPU，消除了 CPU 与 GPU 之间冗余的显存传输。
+在这一背景下，Makoviychuk 等人提出 Isaac Gym：一个面向机器人学习、把 PhysX 仿真与策略训练数据都保留在 GPU 上的平台 [[Makoviychuk et al., 2021]](https://arxiv.org/abs/2108.10470)。论文强调的是端到端 GPU 管线减少 CPU—GPU 数据传输并支持大量并行环境；“首个”并不是理解其贡献所必需的结论。
 
 ## 物理动力学的降维解析与系统张量化
 
@@ -59,6 +59,7 @@ M(q) \ddot{q} + C(q, \dot{q}) \dot{q} + G(q) = \tau
 $$
 
 我们对该公式中的每一项进行细致拆解：
+
 - $M(q) \ddot{q}$：惯性项。它直接对应了高中物理中的 $m a$，不同之处在于这里的质量 $M(q)$ 不再是常数，而是随着机器人各个关节角度变化而实时更新的矩阵。
 - $C(q, \dot{q}) \dot{q}$：科里奥利力与离心力项。这是由连杆之间的非线性运动耦合产生的，本质是动能项中质量矩阵随时间的导数 $\dot{M}(q)$ 引发的附加惯性力。
 - $G(q)$：重力项。由势能对坐标的梯度产生，代表为了维持机器人在当前姿态对抗重力所必须克服的静态力。
@@ -89,6 +90,7 @@ $$
 在宏观物理近似下，接触力具有极强的约束限制：地面可以托起机器人的足端（施加推力），但绝不会像胶水一样拉住足端；同时，足端绝不可能物理穿透地面。为了描述这种约束，学术界引入了线性互补问题（Linear Complementarity Problem, LCP）。
 
 考虑单个接触点，假设接触面的法向相对加速度为 $a_n$，法向接触力为 $f_n$。物理定律严格要求以下三个条件必须同时成立：
+
 1. **力的单向性**：接触必须只表现为排斥力，即 $f_n \ge 0$。
 2. **非穿透约束**：物体的相对加速度在接触时刻不能表现为相互挤压穿透，即 $a_n \ge 0$。
 3. **互斥激活条件**：如果两个表面分离（$a_n > 0$），则法向力必须为零（$f_n = 0$）；如果它们承受巨大的受力（$f_n > 0$），那么接触点彼此之间的相对加速度必须为零（$a_n = 0$）。
@@ -117,7 +119,7 @@ $$
 #@tab pytorch
 import torch
 # 导入 Isaac Gym 会隐式初始化底层的 GPU 物理引擎与通信管道
-import isaacgym  
+import isaacgym
 
 # 配置环境批次规模与物理状态空间
 num_envs = 4096
@@ -140,13 +142,13 @@ def compute_reward(dof_positions, actions):
     """
     # 假设目标姿态为全零向量，计算关节偏离惩罚
     target_pos = torch.zeros_like(dof_positions)
-    
+
     # 沿着关节维度 (dim=-1) 进行并行求和操作
     pos_error = torch.sum((dof_positions - target_pos) ** 2, dim=-1)
-    
+
     # 计算能量消耗惩罚
     action_penalty = torch.sum(actions ** 2, dim=-1)
-    
+
     # 根据线性组合返回尺寸为 (4096,) 的一维奖励张量
     rewards = -0.5 * pos_error - 0.01 * action_penalty
     return rewards
@@ -169,9 +171,9 @@ num_dofs = 12
 with tf.device('/GPU:0'):
     dof_pos = tf.zeros((num_envs, num_dofs), dtype=tf.float32)
     dof_vel = tf.zeros((num_envs, num_dofs), dtype=tf.float32)
-    
+
     actions = tf.random.normal((num_envs, num_dofs), dtype=tf.float32)
-    
+
     @tf.function
     def compute_reward_tf(dof_positions, actions):
         """
@@ -180,7 +182,7 @@ with tf.device('/GPU:0'):
         target_pos = tf.zeros_like(dof_positions)
         pos_error = tf.reduce_sum(tf.square(dof_positions - target_pos), axis=-1)
         action_penalty = tf.reduce_sum(tf.square(actions), axis=-1)
-        
+
         rewards = -0.5 * pos_error - 0.01 * action_penalty
         return rewards
 
@@ -193,8 +195,8 @@ with tf.device('/GPU:0'):
 
 ## 小结
 
-* 传统基于 CPU 的仿真架构在面对大规模强化学习需求时，受限于 PCIe 总线的带宽瓶颈，难以发挥深度学习硬件的全部潜能。
-* 多体动力学的核心可由拉格朗日力学推导而来的该公式进行严谨表述。
-* Isaac Gym 等端到端 GPU 仿真平台的本质创新在于内存驻留（Memory Residency）与状态张量化，使得成百上千个物理系统的该公式求解能够直接映射到 GPU 的批次矩阵运算硬件中。
-* 非光滑的接触与碰撞被规约为线性互补问题（LCP），利用局部并行迭代求解器进一步提升吞吐量。
-* 在实际编码中，开发者应当彻底摒弃串行的思维模式，使用张量计算图代替循环来处理环境状态反馈与奖励分配。
+- 传统基于 CPU 的仿真架构在面对大规模强化学习需求时，受限于 PCIe 总线的带宽瓶颈，难以发挥深度学习硬件的全部潜能。
+- 多体动力学的核心可由拉格朗日力学推导而来的该公式进行严谨表述。
+- Isaac Gym 等端到端 GPU 仿真平台的本质创新在于内存驻留（Memory Residency）与状态张量化，使得成百上千个物理系统的该公式求解能够直接映射到 GPU 的批次矩阵运算硬件中。
+- 非光滑的接触与碰撞被规约为线性互补问题（LCP），利用局部并行迭代求解器进一步提升吞吐量。
+- 在实际编码中，开发者应当彻底摒弃串行的思维模式，使用张量计算图代替循环来处理环境状态反馈与奖励分配。

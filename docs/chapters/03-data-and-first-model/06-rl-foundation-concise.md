@@ -1,6 +1,6 @@
 # 强化学习基础模块的简洁实现
 
-在前面几节中，我们已经探讨了如何从零开始构建强化学习的基本计算图，并深入理解了其中的梯度传播机制。然而，在实际的现代深度强化学习研究与工程实践中，我们很少会手动实现每一个底层的张量操作。随着诸如深度Q网络 (Deep Q-Network, DQN) [[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602) 与近端策略优化 (Proximal Policy Optimization, PPO) [[Schulman et al., 2017]](https://arxiv.org/abs/1707.06347) 等算法的提出，强化学习的算法范式逐渐收敛为几个标准化的核心模块：环境交互、经验回放、状态价值评估以及策略近似。
+前面几节从零构建了强化学习的基本计算图。现代实现通常把环境交互、轨迹或转移数据收集、价值估计以及策略或价值函数更新拆成模块。DQN 使用经验回放训练动作价值函数 [[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602)，而 PPO 使用新近收集的 on-policy 轨迹进行多轮小批量更新 [[Schulman et al., 2017]](https://arxiv.org/abs/1707.06347)；因此，经验回放不是所有强化学习算法共有的必要模块。
 
 强化学习的理论基础可以追溯到理查德·贝尔曼 (Richard Bellman) 在20世纪50年代提出的动态规划理论 [[Bellman, 1957]](https://press.princeton.edu/books/paperback/9780691146683/dynamic-programming)，以及理查德·萨顿 (Richard Sutton) 等人发展的时序差分学习 (Temporal-Difference Learning) [[Sutton, 1988]](https://doi.org/10.1007/BF00115009)。在当时，受限于计算力和数据规模，这些方法多用于状态空间离散且有限的表格型 (Tabular) 场景。而在深度学习框架的加持下，我们得以利用神经网络的高维非线性拟合能力，将这些经典的数学迭代过程转化为可以用梯度下降优化的目标函数。
 
@@ -78,7 +78,7 @@ class ReplayBuffer:
         transitions = random.sample(self.buffer, batch_size)
         # 解包转移元组的列表，重组为各属性的元组
         state, action, reward, next_state, done = zip(*transitions)
-        
+
         # 将数据统一转换为 PyTorch 张量，并指定严谨的数据类型
         return (torch.tensor(state, dtype=torch.float32),
                 torch.tensor(action, dtype=torch.int64),
@@ -106,7 +106,7 @@ class ReplayBuffer:
         """随机无放回采样，并直接将其转换为多维张量供网络训练"""
         transitions = random.sample(self.buffer, batch_size)
         state, action, reward, next_state, done = zip(*transitions)
-        
+
         # 将数据统一转换为 TensorFlow 张量
         return (tf.convert_to_tensor(state, dtype=tf.float32),
                 tf.convert_to_tensor(action, dtype=tf.int32),
@@ -157,7 +157,7 @@ class PolicyNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, action_dim) 
+            nn.Linear(hidden_dim, action_dim)
             # 输出 logits，后续在动作采样或计算对数概率时配合 Softmax/Categorical 分布使用
         )
 
@@ -201,6 +201,6 @@ class PolicyNetwork(keras.Model):
 
 ## 小结
 
-* 强化学习的核心是寻找能够最大化累积折扣回报的策略。我们可以通过递归的贝尔曼方程严格地在数学上定义价值函数。
-* `ReplayBuffer` 模块的引入，通过缓存历史轨迹和均匀随机采样，打破了强化学习样本间严重的时间序列相关性，从而允许我们利用传统的基于独立同分布假设的优化算法（如随机梯度下降）来训练网络。
-* 借助于深度学习框架的高级抽象容器，诸如动作价值函数 $Q(s, a)$ 和策略分布 $\pi(a|s)$ 可以被极其紧凑地建模为多层感知机。这为我们在后续章节中快速组装和实现复杂的深度强化学习算法奠定了极其稳固且简洁的基础。
+- 强化学习的核心是寻找能够最大化累积折扣回报的策略。我们可以通过递归的贝尔曼方程严格地在数学上定义价值函数。
+- `ReplayBuffer` 模块的引入，通过缓存历史轨迹和均匀随机采样，打破了强化学习样本间严重的时间序列相关性，从而允许我们利用传统的基于独立同分布假设的优化算法（如随机梯度下降）来训练网络。
+- 借助于深度学习框架的高级抽象容器，诸如动作价值函数 $Q(s, a)$ 和策略分布 $\pi(a|s)$ 可以被极其紧凑地建模为多层感知机。这为我们在后续章节中快速组装和实现复杂的深度强化学习算法奠定了极其稳固且简洁的基础。

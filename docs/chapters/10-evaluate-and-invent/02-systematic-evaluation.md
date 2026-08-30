@@ -8,11 +8,11 @@
 
 在深入具体的数学推导之前，我们有必要追溯这些评测指标诞生的历史脉络。评测标准的发展，本质上是深度学习模型能力边界不断扩张的倒影。
 
-在早期计算机视觉领域，研究者们主要关注模型在静态图像上的识别与分类能力，ImageNet 图像识别挑战赛的 Top-1 和 Top-5 准确率成为了衡量模型性能的黄金准则 [[Deng et al., 2009]](https://doi.org/10.1109/CVPR.2009.5206848)。随着生成对抗网络（GANs）[[Goodfellow et al., 2014]](https://arxiv.org/abs/1406.2661) 与变分自编码器（VAEs）[[Kingma & Welling, 2013]](https://arxiv.org/abs/1312.6114) 的崛起，模型开始具备了“从无到有”生成高维图像的能力。由于生成任务不存在绝对唯一的正确答案（Ground Truth），研究者们提出了诸如初始分数（Inception Score, IS）[[Salimans et al., 2016]](https://arxiv.org/abs/1606.03498) 和弗雷歇初始距离（Fréchet Inception Distance, FID）[[Heusel et al., 2017]](https://arxiv.org/abs/1706.08500)，通过引入预训练的神经网络提取高维特征，在特征分布层面上对生成图像的真实感和多样性进行数学度量。
+ImageNet 为大规模静态图像识别提供了数据集与评测基准 [[Deng et al., 2009]](https://doi.org/10.1109/CVPR.2009.5206848)。GAN [[Goodfellow et al., 2014]](https://arxiv.org/abs/1406.2661) 与 VAE [[Kingma & Welling, 2013]](https://arxiv.org/abs/1312.6114) 推动了高维图像生成后，研究者又提出 Inception Score（IS）[[Salimans et al., 2016]](https://arxiv.org/abs/1606.03498) 与 Fréchet Inception Distance（FID）[[Heusel et al., 2017]](https://arxiv.org/abs/1706.08500)，用预训练网络的特征来比较生成样本的质量、多样性或特征分布。这里的 Inception 是网络名称，不应译作“初始”。
 
 进入视频生成与预测时代后，静态特征的分布距离被进一步延展到时空维度。通过利用 3D 卷积神经网络（如 I3D），弗雷歇视频距离（Fréchet Video Distance, FVD）被提出以衡量视频序列的时空一致性 [[Unterthiner et al., 2018]](https://arxiv.org/abs/1812.01717)。
 
-直至世界模型理论被系统性地提出 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)，人们意识到，世界模型的核心并非仅仅是“逼真的视频生成器”，它更是智能体（Agent）理解世界因果关系的大脑。正如在 Dreamer 架构 [[Hafner et al., 2019]](https://arxiv.org/abs/1912.01603) 中所展现的那样，评测基准必须从“观测保真度”向“动作条件下的动力学一致性”和“下游任务规划成功率”发生范式转移。本节将循序渐进地拆解这套由浅入深、层层递进的系统级评测体系。
+Ha 和 Schmidhuber 的 World Models 同时报告了视觉重构、潜在动力学与控制任务回报 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)；这是一种具体的深度世界模型实现，并不是“世界模型理论到 2018 年才被提出”的证据。Dreamer 进一步以环境回报和数据效率评估潜在想象训练出的策略 [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)。这些论文说明，世界模型评测除了观测预测质量，还应覆盖动作条件动力学与下游控制效果；“必须采用某套唯一基准”则是本文的评测建议，不是论文原结论。
 
 ## 10.2.2 像素与结构的低维映射：基础视觉评测
 
@@ -41,6 +41,7 @@ $$ \text{PSNR} = 10 \cdot \log_{10} \left( \frac{\text{MAX}_I^2}{\text{MSE}} \ri
 为了弥补这一缺陷，结构相似性指数（Structural Similarity Index, SSIM）被提出。SSIM 巧妙地将图像块的比较解耦为三个独立的统计物理量：亮度（Luminance）、对比度（Contrast）和结构（Structure）。
 
 给定两个局部图像窗口 $x$ 和 $y$：
+
 1. **亮度比较**：我们用均值 $\mu_x = \frac{1}{N} \sum_{i=1}^N x_i$ 来近似局部区域的亮度。
 2. **对比度比较**：我们用方差（或标准差） $\sigma_x = \left( \frac{1}{N-1} \sum_{i=1}^N (x_i - \mu_x)^2 \right)^{1/2}$ 来近似局部区域的对比度。
 3. **结构比较**：在排除了亮度和对比度的影响后，我们利用协方差 $\sigma_{xy} = \frac{1}{N-1} \sum_{i=1}^N (x_i - \mu_x)(y_i - \mu_y)$ 来严格衡量二者结构形状的线性相关性。
@@ -71,7 +72,7 @@ $$ W_2^2(P, Q) = (\mu_1 - \mu_2)^2 + (\sigma_1 - \sigma_2)^2 = (\mu_1 - \mu_2)^2
 
 > 想像你是一个城市规划者，你需要将一堆沙子（代表模型生成的特征分布）搬运去填补一个特定形状的坑（代表真实的特征分布）。不仅沙子的总量必须对等，你还需要考虑搬运沙子所耗费的距离与精力。如果我们将这种“最小化总体搬运成本”的几何直觉用数学语言严密地表达出来，并假设这些沙堆都服从多维正态分布，那么我们计算出的最优传输成本，正是弗雷歇距离（Fréchet Distance）。
 
-### 弗雷歇初始距离 (FID) 与 时空扩展 (FVD)
+### 弗雷歇 Inception 距离（FID）与时空扩展（FVD）
 
 现在，我们将一维空间的方差延展推演至高维特征空间。此时，标量均值 $\mu$ 成为了一个多维列向量，而标量方差 $\sigma^2$ 则升级为了协方差矩阵 $\Sigma$。对于多维高斯分布，标准差的乘积项 $\sigma_1\sigma_2$ 无法直接通过简单的矩阵乘法建立对应关系。严密的黎曼流形数学推导表明，这一交叉项被矩阵乘积平方根的迹（Trace，即矩阵主对角线元素之和）所替代。
 
@@ -79,7 +80,7 @@ $$ W_2^2(P, Q) = (\mu_1 - \mu_2)^2 + (\sigma_1 - \sigma_2)^2 = (\mu_1 - \mu_2)^2
 
 $$ d^2(P, Q) = ||\mu_p - \mu_q||_2^2 + \text{Tr}\left(\Sigma_p + \Sigma_q - 2(\Sigma_p \Sigma_q)^{1/2}\right) $$
 
-在实际工程操作中，直接在原始像素空间计算协方差矩阵不仅计算复杂度极其高昂，而且像素空间的分布既不符合高斯假设，也不符合人类的语义认知。因此，**[我们引入一个在 ImageNet 上预训练的 Inception-v3 网络]** 作为特征空间映射器。我们将大量真实图像与生成图像均前向传播至该网络的深层（通常截取分类全连接层之前的 2048 维全局平均池化层），以此特征向量集合来计算统计量 $\mu$ 和 $\Sigma$。这就是广泛采用的弗雷歇初始距离（FID）。
+在实际工程操作中，直接在原始像素空间计算协方差矩阵不仅计算复杂度极其高昂，而且像素空间的分布既不符合高斯假设，也不符合人类的语义认知。因此，我们引入一个在 ImageNet 上预训练的 Inception-v3 网络作为特征空间映射器。我们将大量真实图像与生成图像均前向传播至该网络的深层（通常截取分类全连接层之前的 2048 维全局平均池化层），以此特征向量集合来计算统计量 $\mu$ 和 $\Sigma$。这就是广泛采用的弗雷歇 Inception 距离（FID）。
 
 当我们将时间轴维度纳入考量，要求世界模型不仅生成单帧静态图像，而是生成一段具有连续时空因果的视频时，我们只需将 2D 的 Inception 网络替换为 3D 的 I3D 网络（在大规模视频动作识别数据集 Kinetics 上预训练）。利用 3D 网络提取时空强耦合的深层特征，再计算多维弗雷歇距离，便自然延伸出了用于衡量视频动态一致性的弗雷歇视频距离（FVD）。
 
@@ -95,7 +96,7 @@ $$ d^2(P, Q) = ||\mu_p - \mu_q||_2^2 + \text{Tr}\left(\Sigma_p + \Sigma_q - 2(\S
 
 给定一个来自于真实环境收集的初始状态观测 $x_0$ （被编码为隐状态 $s_0$）和一段长度为 $T$ 的真实历史动作序列 $\mathcal{A} = \{a_0, a_1, \dots, a_{T-1}\}$。世界模型在此完全断开与外界真实观测的连接闭环，仅凭借初始状态 $s_0$ 和给定动作序列，在潜在向量空间中进行连续 $T$ 步的纯自回归展开（Rollout），生成一系列预测的未来状态 $\hat{s}_1, \dots, \hat{s}_T$，以及随之解码出的预测观测 $\hat{x}_1, \dots, \hat{x}_T$。
 
-我们将这串纯靠想象预测出的序列与真实记录的观测序列 $x_1, \dots, x_T$ 在各个时间步上逐一进行对比。通常，随着时间步 $t$ 的增大，微小的单步预测偏差会在动力学模型中被指数级放大。记录并在直角坐标系中绘制从 $t=1$ 到 $t=T$ 的 MSE 或 PSNR 衰减曲线，是评测世界模型长程动力学稳定性的最核心标准。
+我们将这串预测序列与真实观测序列 $x_1, \dots, x_T$ 逐步比较。随着 $t$ 增大，单步偏差可能累积、保持有界，或在不稳定动力学中被放大；是否指数增长取决于局部动力学。绘制 $t=1$ 到 $t=T$ 的 MSE 或 PSNR 曲线可以诊断长程误差，但还应同时检查感知指标、状态一致性与闭环任务表现。
 
 ### 奖励预测误差 (Reward Prediction Accuracy)
 
@@ -130,11 +131,11 @@ def calculate_psnr(img1: torch.Tensor, img2: torch.Tensor, max_val: float = 1.0)
     """
     # [计算两个图像张量之间所有对应元素的均方误差 (MSE)]
     mse = torch.mean((img1 - img2) ** 2)
-    
+
     # 极值情况处理：如果两张图像完全一致，MSE为0，PSNR理论上趋于无穷大
     if mse == 0:
         return float('inf')
-        
+
     # [严格依据对数能量衰减公式计算 PSNR 值]
     psnr = 20 * math.log10(max_val / math.sqrt(mse.item()))
     return psnr
@@ -144,28 +145,28 @@ def calculate_ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 11
     计算基于滑动窗口的结构相似性指数 (SSIM)。
     """
     channels = img1.size(1)
-    
+
     # [利用平均池化计算局部滑动窗口的均值 μ_x 和 μ_y (近似代表局部亮度)]
     mu1 = F.avg_pool2d(img1, window_size, stride=1, padding=window_size//2)
     mu2 = F.avg_pool2d(img2, window_size, stride=1, padding=window_size//2)
-    
+
     mu1_sq = mu1 ** 2
     mu2_sq = mu2 ** 2
     mu1_mu2 = mu1 * mu2
-    
+
     # [计算局部方差 σ_x^2, σ_y^2 以及协方差 σ_xy (代表对比度与结构相关性)]
     sigma1_sq = F.avg_pool2d(img1 ** 2, window_size, stride=1, padding=window_size//2) - mu1_sq
     sigma2_sq = F.avg_pool2d(img2 ** 2, window_size, stride=1, padding=window_size//2) - mu2_sq
     sigma12 = F.avg_pool2d(img1 * img2, window_size, stride=1, padding=window_size//2) - mu1_mu2
-    
+
     # 设定极小常数以确保除法运算的数值稳定性
     C1 = (0.01 * max_val) ** 2
     C2 = (0.03 * max_val) ** 2
-    
+
     # [严格依照原始公式，在分子和分母中组合亮度、对比度与结构三项因子]
     ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / \
                ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
-               
+
     # 返回整幅图像平面的平均 SSIM 标量评分
     return ssim_map.mean()
 ```
@@ -186,7 +187,7 @@ def get_inception_features(images: torch.Tensor, batch_size: int = 32) -> torch.
     # 移除最后的分类映射全连接层，以获取更底层的连续语义特征
     model.fc = torch.nn.Identity()
     model.eval()
-    
+
     features_list = []
     with torch.no_grad():
         for i in range(0, images.size(0), batch_size):
@@ -195,7 +196,7 @@ def get_inception_features(images: torch.Tensor, batch_size: int = 32) -> torch.
             batch = F.interpolate(batch, size=(299, 299), mode='bilinear', align_corners=False)
             features = model(batch)
             features_list.append(features)
-            
+
     return torch.cat(features_list, dim=0)
 
 def compute_statistics(features: torch.Tensor):
@@ -204,13 +205,13 @@ def compute_statistics(features: torch.Tensor):
     """
     # 将计算图脱离并将张量转移至 CPU，转化为 numpy 数组以便调用高阶代数库进行大规模矩阵运算
     features_np = features.cpu().numpy()
-    
+
     # [沿样本批量维度展开，计算各维特征的算术均值向量 μ]
     mu = np.mean(features_np, axis=0)
-    
+
     # [严格计算多维特征之间的协方差矩阵 Σ，行维度代表变量(特征)，列维度代表具体的观察值(样本)]
     sigma = np.cov(features_np, rowvar=False)
-    
+
     return mu, sigma
 ```
 

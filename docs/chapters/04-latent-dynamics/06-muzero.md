@@ -8,7 +8,7 @@
 
 传统的无模型（Model-free）强化学习算法（例如 DQN 或 PPO）不需要完美的模拟器，它们通过试错直接学习策略（Policy）或价值函数（Value Function），但代价是彻底放弃了前向搜索与规划的能力，导致样本效率极低。另一方面，传统的基于模型（Model-based）的强化学习则尝试从观测数据中学习一个环境的动态模型，通常的做法是致力于**在像素级别重建未来的观测画面**。然而，在高维视觉空间中重建每一个细节不仅计算成本高昂，且往往将网络容量浪费在了与决策无关的背景细节上（例如视频游戏中随风飘动的云彩）。
 
-正是为了打破这一瓶颈，MuZero [[Schrittwieser et al., 2020]](https://arxiv.org/abs/1911.08265) 提出了一种革命性的范式：**仅针对规划所需的核心要素建立世界模型**。它彻底放弃了对环境原始观测的重建，转而在隐空间（Latent Space）中学习一套动态系统，旨在极其精准地预测策略、价值和即时奖励。本节我们将通过严谨的数学语言，逐步拆解这一精妙的世界模型。
+MuZero 学习用于搜索的隐空间模型，而不要求重建原始观测 [[Schrittwieser et al., 2020]](https://arxiv.org/abs/1911.08265)。其动力学网络预测下一隐状态与奖励，预测网络输出策略和价值；这些量由搜索结果与实际轨迹构造训练目标。因而，更准确的说法是“学习规划所需的量”，而不是声称每个预测都达到没有误差的精确程度。
 
 ## 4.6.2. 隐空间动态系统的数学构建
 
@@ -59,6 +59,7 @@ $$ a = \mathop{\mathrm{argmax}}_a \left[ Q(s, a) + U(s, a) \right] $$
 $$ U(s, a) = P(s, a) \cdot \frac{\sqrt{\sum_b N(s, b)}}{1 + N(s, a)} \left( c_1 + \log\left( \frac{\sum_b N(s, b) + c_2 + 1}{c_2} \right) \right) $$
 
 这里：
+
 - $P(s, a)$ 是网络预测函数 $f$ 给出的先验策略概率。
 - $N(s, a)$ 表示在搜索树中该边被访问的次数。
 - $\frac{\sqrt{\sum_b N(s, b)}}{1 + N(s, a)}$ 构造了随着父节点访问次数增加而增大，但随着该节点自身访问次数增加而衰减的探索因子。
@@ -72,6 +73,7 @@ MuZero 的端到端训练是在自我博弈收集到的经验轨迹上进行的�
 
 在展开的第 $k$ 步（$1 \le k \le K$），网络输出预测元组 $(p_t^k, v_t^k, r_t^k)$。
 为了对其进行监督，我们从真实的轨迹中提取目标（Targets）：
+
 - 策略目标 $\pi_{t+k}$：来自时间步 $t+k$ 时 MCTS 的搜索结果（即访问次数分布）。
 - 奖励目标 $u_{t+k}$：来自时间步 $t+k$ 时环境给出的真实即时奖励。
 - 价值目标 $z_{t+k}$：可以是直到回合结束的真实折现回报，也可以是 $n$ 步自举（Bootstrapping）回报，即 $u_{t+1} + \gamma u_{t+2} + \dots + \gamma^{n-1} u_{t+n} + \gamma^n \nu_{t+n}$，其中 $\nu$ 是在 $t+n$ 时的 MCTS 价值估计。
@@ -83,10 +85,12 @@ $$ L_k = l^p(\pi_{t+k}, p_t^k) + l^v(z_{t+k}, v_t^k) + l^r(u_{t+k}, r_t^k) $$
 $$ L_t(\theta) = \sum_{k=0}^K \left( L_k \right) + c \| \theta \|^2 $$
 
 ### 分类分布支持（Categorical Support）表示
+
 在定义 $l^v$ 和 $l^r$ 时，MuZero 并没有直接使用标量的均方误差（MSE）。这是因为深度神经网络在拟合具有大方差的无界标量时极易发生梯度爆炸。
 
 相反，MuZero 巧妙地将标量值转换为了离散支撑集（Support Set）上的分类概率分布。假设我们需要预测的值的合理区间为 $[-z_{\text{max}}, z_{\text{max}}]$，并且我们采用整数支撑集。
 对于任意真实标量 $x \in [i, i+1]$（其中 $i, i+1$ 是相邻的整数支撑点），我们将其概率分配如下：
+
 - 在支撑点 $i$ 上的概率分配为：$i+1 - x$
 - 在支撑点 $i+1$ 上的概率分配为：$x - i$
 - 其余支撑点概率均为 $0$。
@@ -114,7 +118,7 @@ class RepresentationNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(256, hidden_dim)
         )
-        
+
     def forward(self, x):
         # x.shape: (batch_size, obs_dim)
         s = self.net(x)
@@ -133,7 +137,7 @@ class DynamicsNetwork(nn.Module):
         super().__init__()
         # 对离散动作进行独热编码后的维度为 num_actions
         self.fc = nn.Linear(hidden_dim + num_actions, 256)
-        
+
         self.state_head = nn.Sequential(
             nn.Linear(256, hidden_dim)
         )
@@ -141,15 +145,15 @@ class DynamicsNetwork(nn.Module):
         self.reward_head = nn.Sequential(
             nn.Linear(256, support_size * 2 + 1)
         )
-        
+
     def forward(self, hidden_state, action_one_hot):
         # 拼接张量，输入维度为 hidden_dim + num_actions
         x = torch.cat([hidden_state, action_one_hot], dim=1)
         x = F.relu(self.fc(x))
-        
+
         next_s = self.state_head(x)
         reward_logits = self.reward_head(x)
-        
+
         return F.normalize(next_s, p=2, dim=1), reward_logits
 ```
 
@@ -166,13 +170,13 @@ class PredictionNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(256, num_actions)
         )
-        
+
         self.value_head = nn.Sequential(
             nn.Linear(hidden_dim, 256),
             nn.ReLU(),
             nn.Linear(256, support_size * 2 + 1)
         )
-        
+
     def forward(self, hidden_state):
         policy_logits = self.policy_head(hidden_state)
         value_logits = self.value_head(hidden_state)
@@ -190,13 +194,13 @@ class MuZeroNetwork(nn.Module):
         self.representation = RepresentationNetwork(obs_dim, hidden_dim)
         self.dynamics = DynamicsNetwork(hidden_dim, num_actions, support_size)
         self.prediction = PredictionNetwork(hidden_dim, num_actions, support_size)
-        
+
     def initial_inference(self, obs):
         """对应推演步 k=0"""
         hidden_state = self.representation(obs)
         policy_logits, value_logits = self.prediction(hidden_state)
         return hidden_state, policy_logits, value_logits
-        
+
     def recurrent_inference(self, hidden_state, action):
         """对应推演步 k > 0"""
         # 将动作转化为独热向量

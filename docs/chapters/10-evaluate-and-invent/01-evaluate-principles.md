@@ -8,11 +8,11 @@
 
 在智能体（Agent）研究的早期阶段，研究者们主要依赖无模型（Model-Free）的强化学习算法。这类算法通过试错直接学习策略，但其样本效率极低。为了让智能体能够像人类一样在脑海中“预演”未来，基于模型（Model-Based）的方法逐渐兴起。
 
-现代世界模型的奠基之作之一是由 Ha 和 Schmidhuber 在 2018 年提出的 *World Models* [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。他们提出，智能体可以通过一个变分自编码器（VAE）压缩视觉输入，并利用循环神经网络（RNN）在隐空间中预测未来。此时，评估模型好坏的主要标准是**像素级的重构误差（Pixel-level Reconstruction Error）**。
+Ha 和 Schmidhuber 的 _World Models_ 用 VAE 压缩视觉输入，并用 MDN-RNN 预测潜变量与终止信号 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。VAE 的重构质量是组件诊断之一，但论文对完整系统的关键检验仍是控制器在 CarRacing 与 VizDoom 中取得的回报；不能把当时的评估概括为只看像素重构误差。
 
 然而，随着研究的深入，人们发现像素级重构存在致命缺陷。现实世界充满了无关紧要的噪声（例如微风吹动树叶的随机摆动）。如果模型将庞大的计算资源用于完美重构这些随机噪声，它将无法专注于真正决定世界演化规律的核心特征。
 
-为了解决这一问题，[[Hafner et al., 2019]](https://arxiv.org/abs/1912.01603) 提出了 Dreamer 系列模型，引入了循环状态空间模型（RSSM），将评估的重心从“完美的像素重构”转移到了“隐空间中的状态一致性”以及“奖励预测的准确性”。随后，[[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf) 在其关于自主机器智能的立场论文中提出了联合嵌入预测架构（JEPA），进一步强调完全摒弃像素级重构，仅在抽象的隐空间中评估模型的预测能力。
+PlaNet 首先提出 RSSM，Dreamer 随后用 RSSM 的潜在想象轨迹训练策略 [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)。Dreamer 的训练仍包含观测、奖励和折扣预测，评估则以环境回报和数据效率为主。LeCun 的立场文章进一步主张在抽象表征空间中预测，而不是为不可预测的像素细节分配容量 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)。
 
 这些历史沿革揭示了世界模型评估的两个核心维度：**动力学预测的准确性（Predictive Accuracy）**与**下游任务的效用价值（Behavioral Utility）**。
 
@@ -63,6 +63,7 @@ $$ \mathcal{L}_{\text{NLL}} = \frac{d}{2}\ln(2\pi) + \frac{1}{2}\ln|\boldsymbol{
 现代世界模型（如 RSSM）在评估时面临一个更加复杂的挑战：隐状态 $\mathbf{z}_t$ 是不可见的（Latent）。我们能观测到的只有图像序列 $\mathbf{x}_{1:T}$ 和动作序列 $\mathbf{a}_{1:T}$。
 
 这就要求模型同时具备两个能力：
+
 1. **后验推断（Posterior Inference）**：根据当前的真实观测图像 $\mathbf{x}_t$ 提取出真实的隐状态分布 $q(\mathbf{z}_t | \mathbf{x}_t, \dots)$。
 2. **先验预测（Prior Prediction）**：在不看当前图像的情况下，仅根据历史信息 $\mathbf{z}_{t-1}$ 和动作 $\mathbf{a}_{t-1}$，预测出当前的隐状态分布 $p(\mathbf{z}_t | \mathbf{z}_{t-1}, \mathbf{a}_{t-1})$。
 
@@ -83,7 +84,7 @@ $$ \mathcal{L}_{\text{ELBO}} = \mathbb{E}_{q(\mathbf{z}_t | \mathbf{x}_t)}\big[\
 
 尽管基于潜变量动力学的 KL 散度评估极具数学优雅性，但世界模型的最终目的往往不是为了“精确预测”，而是为了“辅助决策”。这就引出了另一类重要的评估原则：基于价值等效（Value Equivalence）的评估。
 
-在诸如 MuZero [[Schrittwieser et al., 2020]](https://arxiv.org/abs/1911.08265) 的架构中，并不直接去预测环境的具体特征或图像。模型的好坏完全取决于其对隐空间进行展开后，能否准确预测出对决策有用的标量信号：奖励 $r$ 和价值 $v$。
+MuZero 不要求隐空间展开重建环境图像，而是训练表示、动力学与预测网络去匹配规划所需的奖励、价值和策略目标 [[Schrittwieser et al., 2020]](https://arxiv.org/abs/1911.08265)。因此，组件诊断应同时检查奖励预测、价值预测与策略分布；完整系统仍需用环境回报和搜索性能评估，不能只看两个标量的拟合误差。
 
 具体的评估指标退化为联合的损失函数，直接在模型的展开轨迹上评估：
 
@@ -104,7 +105,7 @@ import torch.distributions as D
 class WorldModelEvaluator(nn.Module):
     def __init__(self):
         super().__init__()
-        
+
     def forward(self, prior_mu, prior_logvar, posterior_mu, posterior_logvar, target_z):
         """
         计算世界模型的预测评估指标
@@ -117,22 +118,22 @@ class WorldModelEvaluator(nn.Module):
         # 将对数方差转换为标准差
         prior_std = torch.exp(0.5 * prior_logvar)
         posterior_std = torch.exp(0.5 * posterior_logvar)
-        
+
         # 为了直观对比，我们先计算退化情况下的均方误差
         mse_loss = nn.functional.mse_loss(prior_mu, target_z)
-        
+
         # (构建先验与后验的概率分布对象)
         prior_dist = D.Normal(prior_mu, prior_std)
         posterior_dist = D.Normal(posterior_mu, posterior_std)
-        
+
         # (计算概率分布的独立高斯对数似然 (NLL))
         # sum(-1)表示在特征维度上相加，mean()表示在批次维度上求平均
         nll_loss = -prior_dist.log_prob(target_z).sum(dim=-1).mean()
-        
+
         # (计算动力学匹配的 KL 散度)
         # D_KL( q(z|x) || p(z|z_{t-1}, a_{t-1}) )
         kl_divergence = D.kl_divergence(posterior_dist, prior_dist).sum(dim=-1).mean()
-        
+
         return mse_loss, nll_loss, kl_divergence
 
 # 构造模拟数据
@@ -161,24 +162,24 @@ tfd = tfp.distributions
 class WorldModelEvaluator(tf.keras.Model):
     def __init__(self):
         super().__init__()
-        
+
     def call(self, prior_mu, prior_logvar, posterior_mu, posterior_logvar, target_z):
         # (计算确定性状态预测误差 (MSE))
         prior_std = tf.exp(0.5 * prior_logvar)
         posterior_std = tf.exp(0.5 * posterior_logvar)
-        
+
         mse_loss = tf.reduce_mean(tf.keras.losses.MSE(target_z, prior_mu))
-        
+
         # (构建先验与后验的概率分布对象)
         prior_dist = tfd.Normal(loc=prior_mu, scale=prior_std)
         posterior_dist = tfd.Normal(loc=posterior_mu, scale=posterior_std)
-        
+
         # (计算概率分布的独立高斯对数似然 (NLL))
         nll_loss = -tf.reduce_mean(tf.reduce_sum(prior_dist.log_prob(target_z), axis=-1))
-        
+
         # (计算动力学匹配的 KL 散度)
         kl_divergence = tf.reduce_mean(tf.reduce_sum(tfd.kl_divergence(posterior_dist, prior_dist), axis=-1))
-        
+
         return mse_loss, nll_loss, kl_divergence
 
 # 构造模拟数据

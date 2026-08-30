@@ -4,9 +4,9 @@
 
 强化学习（Reinforcement Learning）在过去十多年中取得了令人瞩目的成就，特别是在高维感知输入（如图像）的任务中。然而，传统的无模型（Model-Free）强化学习算法（例如 DQN、PPO 和 SAC）通常需要海量的与环境交互的经验才能收敛。这种低下的样本效率在许多现实世界的物理任务中是不可接受的，因为收集真实数据的成本极其高昂且耗时。
 
-为了解决样本效率问题，基于模型（Model-Based）的强化学习成为了学术界长期探索的方向。早期的经典工作，如 Dyna 架构 [[Sutton, 1990]](https://dl.acm.org/doi/10.5555/645530.658292)，尝试通过学习一个环境动态模型来生成模拟数据，从而辅助策略的更新。到了深度学习时代，研究者们开始使用深层神经网络来拟合环境模型。在这个发展脉络中，PlaNet（Deep Planning Network） [[Hafner et al., 2018]](https://arxiv.org/abs/1811.04551) 是一个具有里程碑意义的节点。PlaNet 提出了**循环状态空间模型**（Recurrent State Space Model, RSSM），成功地在一个紧凑的、低维的潜在空间（Latent Space）中建模了复杂的图像序列动力学。然而，PlaNet 的动作选择依赖于在线的模型预测控制（Model Predictive Control, MPC），例如交叉熵方法（Cross Entropy Method, CEM）。这意味着在每次与环境交互进行决策时，它都需要在潜在空间中实时规划成千上万条轨迹，导致推理阶段的计算代价极其高昂。
+基于模型（Model-Based）的强化学习长期研究如何用学到的模型辅助决策。Dyna 把真实经验更新与模型生成的规划更新结合起来 [[Sutton, 1990]](https://dl.acm.org/doi/10.5555/645530.658292)。PlaNet 随后提出**循环状态空间模型**（Recurrent State Space Model, RSSM），在紧凑的潜在空间中学习图像观测的动作条件动力学，并在每个环境步使用交叉熵方法（CEM）在线搜索动作序列 [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551)。这种反复采样和评估候选序列的方式，比直接执行一个参数化策略需要更多在线计算。
 
-针对这一瓶颈，Danijar Hafner 等人在 2019 年提出了 Dreamer（现常称为 DreamerV1）[[Hafner et al., 2019]](https://arxiv.org/abs/1912.01603)。Dreamer 的核心突破在于：它彻底抛弃了推理时的在线规划，转而在世界模型所创造的“想象（Imagination）”中**纯粹地**训练一个参数化的行动者-评论家（Actor-Critic）策略。一旦策略训练完成，在实际环境中推理时就只需要进行一次轻量级的前向传播，极大地提升了决策的实时性。更重要的是，因为世界模型是由神经网络构建的且全程可导，Dreamer 能够让批评家的价值评估通过整个想象的轨迹，以反向传播（Backpropagation）的方式直接流向行动者网络。这赋予了模型极高的学习效率。
+Hafner 等人随后提出 Dreamer（现常称为 DreamerV1）[[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)。Dreamer 不在部署时运行 CEM，而是在世界模型生成的潜在想象轨迹上训练参数化的 actor 与 critic。实际交互时，模型先更新潜在状态，再由 actor 输出动作。训练 actor 时，价值估计的梯度可以沿想象轨迹和学到的动力学反向传播；论文在其视觉控制基准上报告了较高的数据效率。
 
 在本节中，我们将详细剖析 DreamerV1 的理论基础和算法机制，逐步推导从潜在空间动力学到 $\lambda$-回报（$\lambda$-return）的解析梯度计算过程，并最终通过代码实现一个微型的 Dreamer 架构。
 
@@ -136,7 +136,7 @@ class DummyWorldModel(nn.Module):
         noise = torch.randn_like(next_state_mean) * 0.1
         next_state = next_state_mean + noise
         return next_state
-        
+
     def predict_reward(self, state):
         return self.reward_predictor(state)
 
@@ -148,20 +148,20 @@ class ActorNet(nn.Module):
             nn.ELU(),
             nn.Linear(64, action_dim * 2) # 输出均值和方差
         )
-        
+
     def forward(self, state):
         out = self.net(state)
         mean, log_std = torch.chunk(out, 2, dim=-1)
         # 限制方差范围以求稳定
         std = torch.exp(torch.clamp(log_std, min=-5, max=2))
         return mean, std
-        
+
     def get_action_reparameterized(self, state):
         mean, std = self.forward(state)
         # 在PyTorch中，使用 rsample 进行带重参数化技巧的采样
         dist = td.Normal(mean, std)
         # 为简单起见，不应用Tanh激活带来的分布变换修正
-        action = dist.rsample() 
+        action = dist.rsample()
         return action
 
 class CriticNet(nn.Module):
@@ -181,16 +181,16 @@ class CriticNet(nn.Module):
 ```{.python .input}
 #@tab pytorch
 def train_imagination_step(
-    world_model, actor, critic, start_states, 
+    world_model, actor, critic, start_states,
     actor_optimizer, critic_optimizer, horizon=15, gamma=0.99, lam=0.95):
-    
+
     # start_states 维度: (batch_size, state_dim)，是从重播缓冲采样后经过编码器得到的真实起点。
     batch_size, state_dim = start_states.shape
-    
+
     states = [start_states]
     actions = []
     rewards = []
-    
+
     # 1. 展开想象序列 (Rollout in Latent Space)
     # 不切断计算图，让梯度能一直流过所有时间步
     curr_state = start_states
@@ -198,57 +198,57 @@ def train_imagination_step(
         action = actor.get_action_reparameterized(curr_state)
         next_state = world_model.step(curr_state, action)
         reward = world_model.predict_reward(next_state)
-        
+
         actions.append(action)
         rewards.append(reward)
         states.append(next_state)
         curr_state = next_state
-        
+
     # 转换为张量，维度: (horizon, batch_size, ...)
     states_tensor = torch.stack(states)   # (H+1, B, D)
     rewards_tensor = torch.stack(rewards) # (H, B, 1)
-    
+
     # 2. 计算价值估计
     values = critic(states_tensor) # 形状: (H+1, B, 1)
-    
+
     # 3. 递归计算 lambda 回报
     # V^\lambda_t = r_t + \gamma * ((1 - \lambda) * v_{t+1} + \lambda * V^\lambda_{t+1})
     lambda_returns = []
-    
+
     # 从最后一个时间步向后递归
     # 对于最后一步（第 H 步），没有长远的预测，只能直接使用 critic
     last_val = values[-1]
-    
+
     for t in reversed(range(horizon)):
         # 核心递归逻辑
         # 注意: values[t+1] 是网络在 t+1 状态的预测值
         last_val = rewards_tensor[t] + gamma * ((1 - lam) * values[t+1] + lam * last_val)
         # 将结果插入列表开头以保持时间顺序
         lambda_returns.insert(0, last_val)
-        
+
     lambda_returns = torch.stack(lambda_returns).detach() # (H, B, 1) 作为评论家目标，切断梯度
-    
+
     # 4. 计算 Actor 和 Critic 损失
     # 截取对应的时间步状态（0到H-1）
-    states_to_evaluate = states_tensor[:-1] 
-    
+    states_to_evaluate = states_tensor[:-1]
+
     # 评论家损失：MSE (预测值, 目标值)
     pred_values = critic(states_to_evaluate.detach()) # 训练Critic时不对状态流进行反向传播
     critic_loss = torch.mean(0.5 * (pred_values - lambda_returns)**2)
-    
+
     # 行动者损失：最大化回报等价于最小化负回报
     # 在本实现中，我们直接将生成的状态送入critic计算平均值，因为生成这些状态已经穿过了actor。
     actor_loss = -torch.mean(critic(states_to_evaluate))
-    
+
     # 5. 反向传播更新
     actor_optimizer.zero_grad()
     actor_loss.backward(retain_graph=True)
     actor_optimizer.step()
-    
+
     critic_optimizer.zero_grad()
     critic_loss.backward()
     critic_optimizer.step()
-    
+
     return actor_loss.item(), critic_loss.item()
 ```
 

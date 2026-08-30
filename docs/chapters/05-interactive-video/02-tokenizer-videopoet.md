@@ -1,6 +1,6 @@
 # 视频 Tokenizer 与 VideoPoet 架构
 
-在前面的章节中，我们探讨了图像的离散化表示与生成模型。然而，当我们试图让静态的图像“动”起来，跨入视频生成的领域时，不仅是简单地增加了一个时间维度，更是引入了海量的时空冗余与指数级增长的计算复杂度。早期的视频生成工作大多依赖于复杂的扩散模型架构或定制化的3D卷积网络。2023年，Google团队发表的VideoPoet [[Kondratyuk et al., 2023]](https://arxiv.org/abs/2312.14125) 及其核心基础MAGVIT-v2 [[Yu et al., 2023]](https://arxiv.org/abs/2310.05737) 提出了一种颠覆性的视角：如果我们能将视频压缩为极其紧凑的离散标记（Token），那么视频生成就可以完全转化为一种类似于大语言模型（LLM）的自回归序列预测任务。本节将详细探讨这一过程中的数学基础、视频分词器（Tokenizer）的设计，以及VideoPoet的架构奥秘。
+视频比图像多出时间维度，原始数据量随帧数、分辨率与通道数的乘积增长；自注意力对词元数的开销还可能呈平方增长，但不能笼统称为“指数级”。VideoPoet 把多种视听模态表示为离散词元，并用大型自回归语言模型式架构统一生成 [[Kondratyuk et al., 2023]](https://arxiv.org/abs/2312.14125)；其视频词元来自 MAGVIT-v2 [[Yu et al., 2023]](https://arxiv.org/abs/2310.05737)。本节将讨论视频分词器与自回归生成的对应关系。
 
 ## 历史背景与维度灾难
 
@@ -125,7 +125,7 @@ class LookupFreeQuantizer(nn.Module):
         # weight = [1, 2, 4, 8, ..., 2^(d-1)]
         powers = torch.arange(codebook_dim, dtype=torch.float32)
         self.register_buffer('binary_weights', 2 ** powers)
-        
+
     def forward(self, z):
         """
         前向传播函数。
@@ -133,31 +133,31 @@ class LookupFreeQuantizer(nn.Module):
         """
         # 将输入移动通道维到最后，方便后续处理
         # z: (B, T, H, W, C) 假设此时 C 等于 codebook_dim
-        
+
         # 1. 严格的二值化量化 (Binarization)
         # 将 z 转换为 -1 或 1
         z_quantized = torch.sign(z)
-        
+
         # 处理恰好为 0 的异常值，强制其为 1
         z_quantized = z_quantized + (z_quantized == 0).float()
-        
+
         # 2. 直通估计器 (Straight-Through Estimator)
         # 在正向传播时，z_ste 的值等于 z_quantized。
         # 在反向传播时，z_quantized - z 被切断梯度，梯度直接传给原始 z。
         z_ste = z + (z_quantized - z).detach()
-        
+
         # 3. 将 -1, 1 映射为 0, 1 二进制布尔分布
         binary_indices = (z_quantized > 0).float()
-        
+
         # 4. 计算整数索引：布尔张量与权重内积
         # 最终得到的 indices 维度为 (B, T, H, W)，值域为 [0, 2^d - 1]
         indices = torch.sum(binary_indices * self.binary_weights, dim=-1).long()
-        
+
         return z_ste, indices
 
 # 模拟一个经过 3D 编码器提取出的微型连续潜在特征图
 # 维度：(Batch=2, Time=4, Height=8, Width=8, Channels=8)
-latent_features = torch.randn(2, 4, 8, 8, 8) 
+latent_features = torch.randn(2, 4, 8, 8, 8)
 quantizer = LookupFreeQuantizer(codebook_dim=8)
 
 quantized_features, token_indices = quantizer(latent_features)
@@ -183,7 +183,7 @@ class LookupFreeQuantizer(tf.keras.layers.Layer):
         # 创建一个2的幂次权重向量，用于将二进制编码转换为十进制索引
         powers = tf.range(codebook_dim, dtype=tf.float32)
         self.binary_weights = tf.pow(2.0, powers)
-        
+
     def call(self, z):
         """
         前向传播函数。
@@ -191,17 +191,17 @@ class LookupFreeQuantizer(tf.keras.layers.Layer):
         # 1. 严格的二值化量化
         z_quantized = tf.sign(z)
         z_quantized = z_quantized + tf.cast(z_quantized == 0, tf.float32)
-        
+
         # 2. 直通估计器 (Straight-Through Estimator)
         # tf.stop_gradient 阻断梯度反传
         z_ste = z + tf.stop_gradient(z_quantized - z)
-        
+
         # 3. 映射为 0, 1 二进制
         binary_indices = tf.cast(z_quantized > 0, tf.float32)
-        
+
         # 4. 计算整数索引
         indices = tf.cast(tf.reduce_sum(binary_indices * self.binary_weights, axis=-1), tf.int32)
-        
+
         return z_ste, indices
 
 # 模拟潜在特征图

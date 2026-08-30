@@ -2,7 +2,7 @@
 
 如何将真实世界的连续三维空间及其光影表现，转化为计算机能够理解并高效渲染的数学表达？这是计算机图形学和三维视觉领域半个世纪以来的核心命题。传统的三维表示方法（如体素网络、点云和多边形网格）在表达复杂拓扑结构或实现高保真度的新视角合成时，往往会遭遇存储空间爆炸或几何离散化带来的失真。
 
-2020年，Mildenhall等人提出神经辐射场（Neural Radiance Fields, NeRF）[[Mildenhall et al., 2020]](https://arxiv.org/abs/2003.08934)，在三维视觉领域引发了一场深刻的范式革命。NeRF摒弃了显式的离散几何表示，转而将整个连续场景编码为一个隐式的多层感知机（MLP）权重矩阵中。然而，NeRF基于多层感知机的密集光线采样和体渲染计算成本极其高昂。为了打破这一计算瓶颈，Kerbl等人于2023年提出了3D高斯溅射（3D Gaussian Splatting, 3DGS）[[Kerbl et al., 2023]](https://arxiv.org/abs/2308.04079)，将场景重新解构为显式的非结构化三维高斯分布集合，并结合可微光栅化技术，实现了高质量且实时的场景渲染。
+Mildenhall 等人提出神经辐射场（Neural Radiance Fields, NeRF），用一个以三维位置和观察方向为输入的 MLP 表示体密度与视角相关颜色，再通过体渲染合成新视角 [[Mildenhall et al., 2020]](https://arxiv.org/abs/2003.08934)。原始 NeRF 的网络查询和沿光线密集采样使训练与渲染较慢。Kerbl 等人提出 3D 高斯溅射（3D Gaussian Splatting, 3DGS），用显式三维高斯集合与可微分的基于瓦片的光栅化进行优化，并在论文数据集上报告实时新视角渲染 [[Kerbl et al., 2023]](https://arxiv.org/abs/2308.04079)。
 
 在本节中，我们将从最基础的直线方程和光学原理出发，严格推导连续空间中的体渲染方程，进而剖析NeRF的数学机制与代码实现，最后过渡到当前极具统治力的3D高斯溅射架构。
 
@@ -109,21 +109,21 @@ class MicroNeRF(nn.Module):
         super().__init__()
         self.L_pos = L_pos
         self.L_dir = L_dir
-        
+
         # 输入维度: 坐标(3)扩展后 + 视角(3)扩展后
         pos_dim = 3 + 3 * 2 * L_pos
         dir_dim = 3 + 3 * 2 * L_dir
-        
+
         # 共享特征提取网络
         self.pts_linears = nn.ModuleList(
-            [nn.Linear(pos_dim, W)] + 
+            [nn.Linear(pos_dim, W)] +
             [nn.Linear(W, W) if i != 4 else nn.Linear(W + pos_dim, W) for i in range(D-1)]
         )
-        
+
         # 密度输出层
         self.density_linear = nn.Linear(W, 1)
         self.feature_linear = nn.Linear(W, W)
-        
+
         # 颜色输出层 (结合方向信息)
         self.views_linears = nn.Sequential(
             nn.Linear(W + dir_dim, W // 2),
@@ -139,7 +139,7 @@ class MicroNeRF(nn.Module):
         # 1. 计算位置编码
         pts_encoded = positional_encoding(pts, self.L_pos)
         views_encoded = positional_encoding(views, self.L_dir)
-        
+
         # 2. 通过共享 MLP 提取几何特征
         h = pts_encoded
         for i, l in enumerate(self.pts_linears):
@@ -148,15 +148,15 @@ class MicroNeRF(nn.Module):
             # 在第 5 层注入残差连接
             if i == 4:
                 h = torch.cat([pts_encoded, h], -1)
-                
+
         # 3. 输出密度 (通过 Softplus 确保正值)
         density = torch.nn.functional.softplus(self.density_linear(h))
-        
+
         # 4. 结合视角特征输出颜色 (通过 Sigmoid 限制在 [0,1])
         feature = self.feature_linear(h)
         h = torch.cat([feature, views_encoded], -1)
         rgb = torch.sigmoid(self.views_linears(h))
-        
+
         return rgb, density
 
 def volume_render(rgb, density, z_vals, ray_dirs):
@@ -171,21 +171,21 @@ def volume_render(rgb, density, z_vals, ray_dirs):
     dists = z_vals[..., 1:] - z_vals[..., :-1]
     # 为最后一个点补充一个极大的距离
     dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[..., :1].shape)], -1)
-    
+
     # 考虑射线方向对距离的缩放
     dists = dists * torch.norm(ray_dirs[..., None, :], dim=-1)
-    
+
     # 公式(4): 计算 alpha_i = 1 - exp(-sigma_i * delta_i)
     alpha = 1.0 - torch.exp(-density.squeeze(-1) * dists)
-    
+
     # 公式(5): 计算累积透射率 T_i
     # 累积连乘: T_i = prod(1 - alpha_{j<i})
     # 为了数值稳定性，我们在累积前向计算中添加极小项
     T = torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)), 1. - alpha + 1e-10], -1), -1)[:, :-1]
-    
+
     # 公式(4)最终合并，计算权重 w_i = T_i * alpha_i
     weights = alpha * T
-    
+
     # 对每条光线上的颜色进行加权求和
     rgb_map = torch.sum(weights[..., None] * rgb, -2)
     return rgb_map
@@ -200,6 +200,7 @@ NeRF 带来了惊艳的效果，但也暴露出了致命缺陷。一条射线上
 ### 显式的三维高斯基元
 
 在 3DGS 中，三维场景被表示为数以百万计的“高斯基元”。每一个第 $k$ 个高斯基元由以下参数精确定义：
+
 1. **均值中心** $\boldsymbol{\mu}_k \in \mathbb{R}^3$：高斯体在三维空间中的中心位置。
 2. **协方差矩阵** $\boldsymbol{\Sigma}_k \in \mathbb{R}^{3 \times 3}$：决定了高斯椭球的大小和朝向。
 3. **不透明度** $\alpha_k \in [0, 1]$：表示该基元的不透明度。

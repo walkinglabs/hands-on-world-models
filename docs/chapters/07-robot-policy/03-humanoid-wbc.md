@@ -8,7 +8,7 @@
 
 随着机器人技术的发展，研究人员开始让机器人离开固定的基座，走向现实世界。人形机器人的出现带来了两个致命的挑战：第一，高维度与冗余性，一个典型的人形机器人拥有数十个关节；第二，浮动基座与欠驱动，人形机器人的躯干（Base）悬浮在三维空间中，没有任何电机直接控制躯干的运动，躯干的移动完全依赖于脚部与地面的接触力。
 
-为了解决这些问题，Khatib 在 1987 年提出了操作空间公式（Operational Space Formulation, OSC） [[Khatib, 1987]](https://doi.org/10.1177/027836498700600103)，首次将控制的目标从关节角度转移到了末端执行器在三维空间中的行为。随后，Sentis 等人进一步将其扩展为多任务的全身控制框架 [[Sentis et al., 2007]](https://doi.org/10.1109/ROBOT.2007.363998)。近年来，随着基于优化的控制理论成熟，基于二次规划（Quadratic Programming, QP）的优化型 WBC 成为了业界的绝对主流，并在波士顿动力等公司的先进双足机器人中得到了成功应用 [[Kuindersma et al., 2016]](https://doi.org/10.1177/0278364915588323)。
+Khatib 的操作空间公式（Operational Space Formulation, OSC）系统化了直接在任务空间描述与控制机械臂运动的方法 [[Khatib, 1987]](https://doi.org/10.1177/027836498700600103)。Sentis 等人把任务层级与接触约束纳入全身控制框架 [[Sentis et al., 2007]](https://doi.org/10.1109/ROBOT.2007.363998)。优化式全身控制可以把动力学、摩擦锥和执行器限制写入二次规划；Kuindersma 等人展示了这一路线在 Atlas 机器人上的应用 [[Kuindersma et al., 2016]](https://doi.org/10.1007/s10514-015-9479-3)，但单篇论文不足以证明它是整个业界的“绝对主流”。
 
 在本章中，我们将从最基础的高中物理出发，一步步严谨地推导出人形机器人全身控制的数学本质。
 
@@ -37,6 +37,7 @@ $$\mathbf{q} = \begin{bmatrix} \mathbf{q}_{base} \\ \mathbf{q}_{joint} \end{bmat
 $$\mathbf{M}(\mathbf{q})\ddot{\mathbf{q}} + \mathbf{C}(\mathbf{q}, \dot{\mathbf{q}})\dot{\mathbf{q}} + \mathbf{G}(\mathbf{q}) = \mathbf{S}^T \boldsymbol{\tau} + \mathbf{J}_c^T \mathbf{F}_c$$
 
 这是机器人学中最核心的公式之一。结合这两个公式，让我们对该公式中的每一个物理量进行极其严谨的维度和物理意义拆解：
+
 - $\mathbf{M}(\mathbf{q}) \in \mathbb{R}^{(n_b+n_j) \times (n_b+n_j)}$：质量惯性矩阵（Mass-Inertia Matrix）。它是质量 $m$ 与转动惯量 $I$ 的高维矩阵推广。这个矩阵是对称正定的，且会随着机器人的姿态 $\mathbf{q}$ 实时变化。
 - $\mathbf{C}(\mathbf{q}, \dot{\mathbf{q}}) \in \mathbb{R}^{(n_b+n_j) \times (n_b+n_j)}$：科里奥利与离心力矩阵（Coriolis and Centrifugal Matrix）。它反映了多关节高速运动时产生的非线性耦合力。
 - $\mathbf{G}(\mathbf{q}) \in \mathbb{R}^{n_b+n_j}$：重力向量（Gravity Vector）。
@@ -124,7 +125,7 @@ $$\boldsymbol{\tau} = \mathbf{J}_1^T \mathbf{F}_1 + \mathbf{N}^T \boldsymbol{\ta
 第一，电机扭矩存在刚性的上下限：$\boldsymbol{\tau}_{min} \le \boldsymbol{\tau} \le \boldsymbol{\tau}_{max}$。
 第二，机器人的脚底不能打滑，接触力必须严格落在三维库仑摩擦锥（Friction Cone）内部：$\mu F_z \ge \sqrt{F_x^2 + F_y^2}$。
 
-为了将这些不等式无损地融入控制方程，现代 WBC 彻底抛弃了纯解析的矩阵投影，将问题升维转化为一类在线凸优化问题：二次规划（Quadratic Programming, QP） [[Kuindersma et al., 2016]](https://doi.org/10.1177/0278364915588323)。
+为了显式处理这些不等式，许多现代 WBC 方法把控制写成在线二次规划（Quadratic Programming, QP）[[Kuindersma et al., 2016]](https://doi.org/10.1007/s10514-015-9479-3)。这并不意味着解析投影已被“彻底抛弃”；不同系统仍会组合层级投影、逆动力学与优化约束。
 
 在每一个高频控制周期（例如 1000 Hz），我们需要实时求解以下的大型 QP 优化问题：
 
@@ -158,7 +159,7 @@ class NullSpaceController:
         """
         self.n = num_dof
         # 为防止张量求逆时的数值奇异性，引入极小的对角正则化项
-        self.eps = 1e-5 
+        self.eps = 1e-5
 
     def compute_torque(self, M, J1, F1, J2, F2):
         """
@@ -172,30 +173,30 @@ class NullSpaceController:
         """
         # 1. 计算质量矩阵的逆 (M^-1)
         M_inv = torch.linalg.inv(M)
-        
+
         # 2. 计算主任务的操作空间惯性矩阵的逆: Lambda_1^-1 = J1 * M^-1 * J1^T
         lambda1_inv = J1 @ M_inv @ J1.T
-        
+
         # 为保证浮点数计算数值稳定，加上微小阻尼后求逆得到 Lambda_1
         lambda1 = torch.linalg.inv(lambda1_inv + self.eps * torch.eye(J1.shape[0]))
-        
+
         # 3. 计算动力学一致的伪逆 (J_bar_1 = M^-1 * J1^T * Lambda_1)
         # 该张量映射能够考虑系统中各刚体的质量分布，而不仅是几何学投影
         J1_bar = M_inv @ J1.T @ lambda1
-        
+
         # 4. 计算零空间投影矩阵 (N_1 = I - J_bar_1 * J1)
         I = torch.eye(self.n)
         N1 = I - J1_bar @ J1
-        
+
         # 5. 主任务力矩静力学映射
         tau_1 = J1.T @ F1
-        
+
         # 6. 次任务力矩计算并进行零空间投影压制
         # 将次任务产生的作用力首先转化为不受约束的理论力矩
         tau_2_raw = J2.T @ F2
         # 利用 N1 张量进行投影变换，将其严格压制到主任务的零空间内
         tau_2_projected = N1.T @ tau_2_raw
-        
+
         # 7. 多任务复合输出
         tau_total = tau_1 + tau_2_projected
         return tau_total
@@ -206,7 +207,7 @@ controller = NullSpaceController(num_dof=n_dof)
 
 # 伪造当前状态的系统参数 (使用正定矩阵模拟质量矩阵 M)
 A = torch.randn(n_dof, n_dof)
-M = A @ A.T + torch.eye(n_dof) 
+M = A @ A.T + torch.eye(n_dof)
 
 # 主任务参数构建（例如：维持末端3D空间坐标）
 J1 = torch.randn(3, n_dof)

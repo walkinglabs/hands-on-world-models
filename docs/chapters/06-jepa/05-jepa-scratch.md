@@ -1,8 +1,8 @@
 # JEPA 表征学习模块的从零开始实现
 
-在深度学习的早期与中期，自监督学习（Self-Supervised Learning, SSL）主要依赖于两种范式：生成式（Generative）与对比式（Contrastive）。生成式方法（如掩码自编码器 MAE [[He et al., 2021]](https://arxiv.org/abs/2111.06377)）通过在像素级别重建缺失的输入来学习表征；然而，现实世界充满了不可预测的高频噪声（例如随风摇曳的树叶细节），在像素层面进行精确重建往往会浪费大量的模型容量。对比式方法（如 SimCLR、MoCo）试图在表征空间中拉近正样本、推远负样本，这极大地依赖于手工设计的图像数据增强策略，且在面对模态转换时泛化能力受限。
+自监督学习包含多种训练目标。掩码自编码器 MAE 重构被遮挡图像块的像素 [[He et al., 2022]](https://arxiv.org/abs/2111.06377)；SimCLR、MoCo 等对比方法则在表征空间中拉近正样本、区分负样本。LeCun 的 JEPA 立场认为，对不可预测像素细节进行精确重构可能把容量花在与语义任务无关的信息上；这是 JEPA 的设计动机，不能仅由 MAE 论文反向证明。
 
-为了克服这些瓶颈，Yann LeCun 提出了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）[[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)，并随后在视觉领域由 I-JEPA [[Assran et al., 2023]](https://arxiv.org/abs/2301.08243) 证明了其有效性。JEPA 的核心洞见在于：**与其在原始输入空间中预测未知的细节，不如在抽象的表征空间中预测缺失的信息**。这种架构摒弃了像素级重建，同时也无需手工构造对比学习中的负样本。
+LeCun 提出了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）的总体设想 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)。I-JEPA 随后把它实现为图像自监督学习方法：根据上下文块的表征预测目标块表征，不重构像素，也不使用显式负样本，并在论文所报告的图像分类、低样本和迁移评测中验证表征质量 [[Assran et al., 2023]](https://arxiv.org/abs/2301.08243)。
 
 在本节中，我们将完全从零开始，使用基础的张量操作和基本的神经网络层，构建一个 JEPA 表征学习模块。我们将从其数学原理出发，逐步推导并实现其核心组件：上下文编码器（Context Encoder）、目标编码器（Target Encoder）以及预测器（Predictor）。
 
@@ -187,7 +187,7 @@ class Predictor(nn.Module):
     def forward(self, context_repr, target_position_encoding):
         # context_repr 形状: (批量大小, hidden_dim)
         # target_position_encoding 形状: (批量大小, hidden_dim)
-        
+
         # 在特征维度进行拼接
         x = torch.cat([context_repr, target_position_encoding], dim=-1)
         # 输出形状将再次回到 (批量大小, hidden_dim)
@@ -224,16 +224,16 @@ class JEPAModel(nn.Module):
     def __init__(self, input_dim, hidden_dim, mlp_dim, tau=0.996):
         super().__init__()
         self.tau = tau
-        
+
         # 1. 实例化上下文编码器 (参数 theta)
         self.context_encoder = Encoder(input_dim, hidden_dim, mlp_dim)
-        
+
         # 2. 实例化目标编码器 (参数 bar_theta)，并初始化为与 context_encoder 相同
         self.target_encoder = copy.deepcopy(self.context_encoder)
         # 冻结目标编码器的参数，使其不参与反向传播
         for param in self.target_encoder.parameters():
             param.requires_grad = False
-            
+
         # 3. 实例化预测器 (参数 phi)
         self.predictor = Predictor(hidden_dim, mlp_dim)
 
@@ -245,21 +245,21 @@ class JEPAModel(nn.Module):
         """
         # 计算上下文表征 S_c，由于是序列形式，我们池化取平均以得到单个向量
         # 在实际实现（如 I-JEPA）中，这会更加复杂（例如使用注意力机制合并信息）
-        s_c_seq = self.context_encoder(x_context) 
+        s_c_seq = self.context_encoder(x_context)
         s_c = s_c_seq.mean(dim=1) # 形状: (Batch, hidden_dim)
-        
+
         # 扩展 s_c 以匹配目标序列长度进行逐个预测
         # 形状变为 (Batch, N_y, hidden_dim)
         s_c_expanded = s_c.unsqueeze(1).expand(-1, z_target_pos.size(1), -1)
-        
+
         # 预测目标表征 \hat{S}_y
         s_y_hat = self.predictor(s_c_expanded, z_target_pos)
-        
+
         # 使用目标编码器计算真实的目标表征 S_y
         # 使用 torch.no_grad() 确保没有任何梯度流向 target_encoder
         with torch.no_grad():
             s_y = self.target_encoder(x_target)
-            
+
         return s_y_hat, s_y
 
     @torch.no_grad()
@@ -275,35 +275,35 @@ class JEPAModel(tf.keras.Model):
     def __init__(self, input_dim, hidden_dim, mlp_dim, tau=0.996):
         super().__init__()
         self.tau = tau
-        
+
         self.context_encoder = Encoder(input_dim, hidden_dim, mlp_dim)
-        
+
         # 深拷贝需要先进行一次构建
         dummy_input = tf.random.normal((1, 5, input_dim))
         _ = self.context_encoder(dummy_input)
-        
+
         self.target_encoder = Encoder(input_dim, hidden_dim, mlp_dim)
         _ = self.target_encoder(dummy_input)
         self.target_encoder.set_weights(self.context_encoder.get_weights())
         self.target_encoder.trainable = False
-        
+
         self.predictor = Predictor(hidden_dim, mlp_dim)
 
     def call(self, inputs, training=None):
         x_context, x_target, z_target_pos = inputs
-        
+
         s_c_seq = self.context_encoder(x_context)
         s_c = tf.reduce_mean(s_c_seq, axis=1) # (Batch, hidden_dim)
-        
+
         # 扩展 s_c
         N_y = tf.shape(z_target_pos)[1]
         s_c_expanded = tf.tile(tf.expand_dims(s_c, 1), [1, N_y, 1])
-        
+
         s_y_hat = self.predictor(s_c_expanded, z_target_pos)
-        
+
         # target encoder 前向
         s_y = tf.stop_gradient(self.target_encoder(x_target))
-        
+
         return s_y_hat, s_y
 
     def update_target_encoder(self):
@@ -334,7 +334,7 @@ z_target_pos = torch.randn(batch_size, N_y, hidden_dim)
 # 初始化模型与优化器
 jepa = JEPAModel(input_dim=input_dim, hidden_dim=hidden_dim, mlp_dim=256)
 optimizer = torch.optim.Adam(
-    list(jepa.context_encoder.parameters()) + list(jepa.predictor.parameters()), 
+    list(jepa.context_encoder.parameters()) + list(jepa.predictor.parameters()),
     lr=1e-4
 )
 
@@ -393,7 +393,7 @@ print(f"训练步完成，表征预测损失: {loss.numpy():.4f}")
 
 ## 小结
 
-* 传统生成式与对比式自监督方法在解决高频噪声和依赖数据增强上存在根本瓶颈。
-* JEPA 提供了一种优雅的范式转移：不再直接预测原始空间的未知信息，而是在**高度抽象的特征空间**内基于给定的位置先验去预测目标区域的表征。
-* 非对称的架构设计是保证 JEPA 不发生表征坍塌的物理基石：对预测器和上下文编码器执行梯度下降，但对目标编码器严格使用**停止梯度**（Stop-Gradient）并配合**指数移动平均**（EMA）进行平滑更新。
-* 预测器不仅接收上下文信息，必须还要接收目标的位置条件变量 $Z$ 才能进行精准推断。
+- 传统生成式与对比式自监督方法在解决高频噪声和依赖数据增强上存在根本瓶颈。
+- JEPA 提供了一种优雅的范式转移：不再直接预测原始空间的未知信息，而是在**高度抽象的特征空间**内基于给定的位置先验去预测目标区域的表征。
+- 非对称的架构设计是保证 JEPA 不发生表征坍塌的物理基石：对预测器和上下文编码器执行梯度下降，但对目标编码器严格使用**停止梯度**（Stop-Gradient）并配合**指数移动平均**（EMA）进行平滑更新。
+- 预测器不仅接收上下文信息，必须还要接收目标的位置条件变量 $Z$ 才能进行精准推断。

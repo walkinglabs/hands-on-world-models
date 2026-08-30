@@ -92,7 +92,7 @@ $$
 
 Rumelhart 等人的工作系统展示了如何用反向传播训练多层网络 [[Rumelhart et al., 1986]](https://doi.org/10.1038/323533a0)。对于 Sigmoid 函数，当输入 $x$ 的绝对值较大时，导数会迅速趋近于零；在深层网络中反复相乘后，这会造成“梯度消失”（Vanishing Gradient）。
 
-Nair 和 Hinton 在深度玻尔兹曼机中展示了修正线性单元（Rectified Linear Unit, ReLU）的效果 [[Nair & Hinton, 2010]](https://proceedings.mlr.press/v9/nair10a.html)。此后，ReLU 成为深度网络中常用的激活函数之一。它的数学定义很简单：保留正数，将负数截断为零。
+Nair 和 Hinton 在受限玻尔兹曼机中展示了修正线性单元（Rectified Linear Unit, ReLU）的效果 [[Nair & Hinton, 2010]](https://icml.cc/Conferences/2010/papers/432.pdf)。此后，ReLU 成为深度网络中常用的激活函数之一。它的数学定义很简单：保留正数，将负数截断为零。
 
 $$
 \text{ReLU}(x) = \max(x, 0)
@@ -185,6 +185,7 @@ $$
 $$
 
 这里的物理量解释极其重要：
+
 - $\leftarrow$ 表示赋值操作，即用更新后的值替换当前值。
 - $\frac{1}{n} \sum_{i=1}^n \nabla l^{(i)}$ 是当前小批量数据上计算出的**平均梯度**。使用平均梯度而不是总梯度，可以使得学习率的选择与批量大小解耦，避免在改变批量大小时需要大幅调整学习率。
 - $\eta$（读作 eta）是**学习率** (Learning Rate)，一个极其关键的超参数。它控制了我们沿着梯度反方向迈出的一步有多大。若 $\eta$ 过大，模型可能在最优解附近剧烈震荡甚至发散；若 $\eta$ 过小，模型的收敛速度将慢如蜗牛。
@@ -213,6 +214,7 @@ def sgd(params, lr, batch_size):
 现在，所有的基础零部件都已经准备就绪：我们拥有了线性模型 `linreg`、损失函数 `squared_loss` 以及优化器 `sgd`。接下来，我们需要编写一个**训练循环** (Training Loop)，将这些模块精密地咬合在一起，驱动模型开始学习。
 
 训练循环的每一次迭代 (Epoch) 通常包含以下严格的步骤：
+
 1. **数据抽取**：从小批量数据生成器中取出一批特征 $\mathbf{X}$ 和对应的标签 $\mathbf{y}$。
 2. **前向传播**：将 $\mathbf{X}$ 输入模型，计算出预测值 $\hat{\mathbf{y}}$。
 3. **计算损失**：使用损失函数计算 $\hat{\mathbf{y}}$ 与 $\mathbf{y}$ 之间的误差。

@@ -2,7 +2,7 @@
 
 在深度强化学习的发展历程中，智能体如何高效地从环境中获取经验一直是一个核心难题。早期的无模型（Model-Free）强化学习算法，虽然在特定任务上取得了超越人类的表现，但往往需要数以千万计的交互步数。这就好比一个完全不具备物理直觉的婴儿，必须通过无数次摔倒才能学会走路。为了打破这种对环境交互的极度依赖，研究者们将目光转向了基于模型的强化学习（Model-Based Reinforcement Learning）。
 
-在这个领域中，[[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 提出的 Dreamer 模型无疑是一座里程碑（其前期基础工作还包括 PlaNet [[Hafner et al., 2018]](https://arxiv.org/abs/1811.04551)）。Dreamer 的核心思想是：智能体不应该仅仅依赖于与真实世界的缓慢交互来学习策略，而是应当在内部构建一个“世界模型”（World Model），并在自身大脑的“梦境”（隐空间）中进行极其快速的推演与试错。通过在隐空间（Latent Space）中闭环地生成未来轨迹，Dreamer 极大地提高了样本效率，并在复杂的高维连续控制任务中展现了惊人的性能。
+Dreamer [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603) 建立在 PlaNet [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 的潜在动力学之上。它在学到的世界模型中生成潜在想象轨迹，并用这些轨迹训练 actor 与 critic；论文在视觉连续控制任务上报告了较高的数据效率。这里的 Dreamer 引用应指向 _Dream to Control_，不能误连到 PlaNet。
 
 在本节中，我们将剥开 Dreamer 复杂的工程外衣，从最基础的物理运动规律出发，一步步严谨地推导出循环状态空间模型（Recurrent State Space Model, RSSM）的数学本质，并最终给出 Dreamer 智能体的核心简洁实现。
 
@@ -27,6 +27,7 @@ Dreamer 的核心世界模型被称为循环状态空间模型（RSSM）。RSSM 
 首先，我们将隐状态拆分为两部分：一个确定性的状态（Deterministic State）$h_t$，和一个随机的状态（Stochastic State）$z_t$。
 
 确定性状态 $h_t$ 负责捕捉长期的历史记忆，它通过一个标准的 GRU（门控循环单元）进行更新：
+
 $$
 h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})
 $$
@@ -59,6 +60,7 @@ $$
 3. **动态 KL 散度损失 (Dynamics KL Loss)**：如前所述，我们要拉近先验分布和后验分布的距离。
 
 我们给出标量形式下最基本的 KL 散度定义：
+
 $$
 D_{\text{KL}}(q \parallel p) = \sum q(x) \log \frac{q(x)}{p(x)}
 $$
@@ -86,11 +88,13 @@ $$
 该公式是一个后向递推公式，它结合了单步的奖励预测、对下一状态的价值估计，以及对更长远未来的展望。
 
 Actor 网络 $\pi_\psi$ 的目标是最大化预期的价值：
+
 $$
 \mathcal{L}_{\text{actor}} = -\sum_{t=\tau}^{\tau+H} \mathbb{E}[V_t^\lambda]
 $$
 
 Critic 网络 $v_\xi$ 的目标是使得其预测的价值逼近 $V_t^\lambda$：
+
 $$
 \mathcal{L}_{\text{critic}} = \frac{1}{2} \sum_{t=\tau}^{\tau+H} \left( v_\xi(s_t) - V_t^\lambda \right)^2
 $$
@@ -111,13 +115,13 @@ class ReparameterizedGaussian(nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
         self.fc = nn.Linear(input_dim, output_dim * 2)
-        
+
     def forward(self, x):
         mean_std = self.fc(x)
         # 将输出分为均值和对数标准差
         mean, log_std = torch.chunk(mean_std, 2, dim=-1)
         # 限制标准差的范围以保证数值稳定性
-        std = F.softplus(log_std) + 0.1 
+        std = F.softplus(log_std) + 0.1
         # 重参数化采样
         noise = torch.randn_like(mean)
         sample = mean + noise * std
@@ -133,7 +137,7 @@ class ReparameterizedGaussian(tf.keras.Model):
     def __init__(self, output_dim):
         super().__init__()
         self.fc = layers.Dense(output_dim * 2)
-        
+
     def call(self, x):
         mean_std = self.fc(x)
         mean, log_std = tf.split(mean_std, 2, axis=-1)
@@ -152,16 +156,16 @@ class RSSM(nn.Module):
         super().__init__()
         self.deter_dim = deter_dim
         self.stoch_dim = stoch_dim
-        
+
         # 确定性状态更新，由前一个随机状态和动作输入
         self.cell = nn.GRUCell(stoch_dim + action_dim, deter_dim)
-        
+
         # 先验网络：基于确定性记忆，预测接下来的随机状态
         self.prior = ReparameterizedGaussian(deter_dim, stoch_dim)
-        
+
         # 后验网络：结合观测特征和确定性记忆，推断准确的随机状态
         self.posterior = ReparameterizedGaussian(deter_dim + obs_embed_dim, stoch_dim)
-        
+
     def forward_prior(self, prev_stoch, prev_action, prev_deter):
         # 拼接隐状态与动作
         x = torch.cat([prev_stoch, prev_action], dim=-1)
@@ -170,7 +174,7 @@ class RSSM(nn.Module):
         # 计算先验分布 p(z_t | h_t)
         mean, std, stoch = self.prior(deter)
         return deter, stoch, mean, std
-        
+
     def forward_posterior(self, deter, obs_embed):
         # 结合观测特征计算后验分布 q(z_t | h_t, o_t)
         x = torch.cat([deter, obs_embed], dim=-1)
@@ -185,17 +189,17 @@ class RSSM(tf.keras.Model):
         super().__init__()
         self.deter_dim = deter_dim
         self.stoch_dim = stoch_dim
-        
+
         self.cell = layers.GRUCell(deter_dim)
         self.prior = ReparameterizedGaussian(stoch_dim)
         self.posterior = ReparameterizedGaussian(stoch_dim)
-        
+
     def forward_prior(self, prev_stoch, prev_action, prev_deter):
         x = tf.concat([prev_stoch, prev_action], axis=-1)
         deter, _ = self.cell(x, [prev_deter])
         mean, std, stoch = self.prior(deter)
         return deter, stoch, mean, std
-        
+
     def forward_posterior(self, deter, obs_embed):
         x = tf.concat([deter, obs_embed], axis=-1)
         mean, std, stoch = self.posterior(x)
@@ -206,6 +210,6 @@ class RSSM(tf.keras.Model):
 
 ## 小结
 
-* 基于模型的强化学习通过构建世界模型（如 RSSM）来摆脱对高频环境交互的依赖。
-* RSSM 分离了确定性状态与随机状态，完美契合了记忆与未来不确定性的物理和概率特性。
-* Dreamer 通过在隐空间中计算变分下界（ELBO）来联合训练编码器、解码器和动态模型，并在“梦境”内完成了类似于 $\lambda$-return 的价值估计和策略梯度更新。
+- 基于模型的强化学习通过构建世界模型（如 RSSM）来摆脱对高频环境交互的依赖。
+- RSSM 分离了确定性状态与随机状态，完美契合了记忆与未来不确定性的物理和概率特性。
+- Dreamer 通过在隐空间中计算变分下界（ELBO）来联合训练编码器、解码器和动态模型，并在“梦境”内完成了类似于 $\lambda$-return 的价值估计和策略梯度更新。

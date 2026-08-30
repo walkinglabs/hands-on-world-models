@@ -2,7 +2,7 @@
 
 在开始构建任何智能体（Agent）或世界模型（World Model）之前，我们必须首先厘清两个在日常语言中经常被混用，但在物理学、控制论与人工智能领域有着严格数学界限的概念：**观测（Observation）** 与 **状态（State）**。
 
-20 世纪 60 年代，Kálmán 用状态变量、观测方程与递推估计系统化地处理了不可直接观测的动态状态 [[Kalman, 1960]](https://doi.org/10.1115/1.3662552)。Åström 随后研究了状态信息不完备时的马尔可夫控制问题，为 POMDP 的早期形式化奠定了基础 [[Åström, 1965]](https://doi.org/10.1016/0022-247X(65)90154-X)。现代 World Models [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122) 与 Dreamer [[Hafner et al., 2019]](https://arxiv.org/abs/1912.01603) 延续了“由观测推断内部状态，再用内部状态预测与决策”的思路；这里的状态由神经网络从高维观测中学习，而不是预先写定。
+20 世纪 60 年代，Kálmán 用状态变量、观测方程与递推估计系统化地处理了不可直接观测的动态状态 [[Kalman, 1960]](https://doi.org/10.1115/1.3662552)。Åström 随后研究了状态信息不完备时的马尔可夫控制问题，为 POMDP 的早期形式化奠定了基础 [[Åström, 1965]](https://doi.org/10.1016/0022-247X(65)90154-X)。现代 World Models [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122) 与 Dreamer [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603) 延续了“由观测推断内部状态，再用内部状态预测与决策”的思路；这里的状态由神经网络从高维观测中学习，而不是预先写定。
 
 本节我们将从高中物理中的简单运动学起步，逐步平滑过渡到高阶概率论中的贝叶斯滤波理论，以最严密的数学形式揭示这两个概念的本质区别，以及如何通过历史观测去推断系统的隐性真实状态。
 
@@ -32,7 +32,7 @@ $$ \mathbf{s}_t = \begin{bmatrix} x_t \\ v_t \end{bmatrix} \in \mathbb{R}^2 $$
 
 $$ \mathbf{s}_{t+1} = \begin{bmatrix} x_{t+1} \\ v_{t+1} \end{bmatrix} = \begin{bmatrix} 1 & \Delta t \\ 0 & 1 \end{bmatrix} \begin{bmatrix} x_t \\ v_t \end{bmatrix} = \mathbf{A} \mathbf{s}_t $$
 
-对比这两个公式，我们可以得出状态向量最为关键的物理性质：**只要给定当前的完整状态，系统未来的演化轨迹便完全独立于过去的历史。** 这种切断历史羁绊的“无记忆性”，在数学过程上拥有一个极其显赫的名字——**马尔可夫性质（Markov Property）** [[Markov, 1906]](https://www.mathnet.ru/eng/im8054)。
+对比这两个公式，我们可以得出状态向量最关键的性质：**给定当前的完整状态后，未来的条件概率分布不再依赖更早的历史。** 这就是**马尔可夫性质（Markov Property）**；其名称来自 Markov 对相关随机序列的早期研究 [[Markov, 1906]](https://www.mathnet.ru/eng/im8054)。这里说的是条件独立性，并不意味着随机系统的未来轨迹已经被唯一确定。
 
 ## 马尔可夫性质与部分可观测环境
 
@@ -45,7 +45,7 @@ $$ \mathbb{P}(S_{t+1} \mid S_t, A_t, S_{t-1}, A_{t-1}, \dots, S_0) = \mathbb{P}(
 该公式堪称是整个强化学习大厦的基石。然而，遗憾的是，在真实世界中，我们几乎永远无法直接获取系统内部那台精密仪器的完整状态 $S_t$。智能体所能捕获的，仅仅是传感器通过某层滤镜投射而来的**观测（Observation）** $O_t$。
 
 > 💡 柏拉图在《理想国》卷七中描绘了著名的“洞穴之喻”（Allegory of the Cave）：被锁链束缚在洞穴底部的囚徒无法回头，他们只能直视面前的墙壁，看着火光将背后的三维物体投射在墙上的二维阴影，并误以为这些扁平的影子就是世界的全部真相。
-> 
+>
 > 在深度强化学习和世界模型的语境中，智能体的处境与洞穴中的囚徒如出一辙。高维且包含一切物理法则的环境真实状态 $S_t$ （真实世界的三维物体）是不可见的，智能体只能接收到降维且常常充斥着环境噪声的观测 $O_t$ （墙壁上的二维影子），例如一枚摄像头捕捉到的一帧静态像素矩阵。智能体乃至世界模型的核心任务，正是从这些影子的时间序列中，反向逆推出多维物体的真实三维结构与运动轨迹。
 
 我们将这种只能获得局部、有损投影信息的框架称为**部分可观测马尔可夫决策过程（Partially Observable Markov Decision Process, POMDP）**。在 POMDP 中，虽然底层状态转移满足马尔可夫性质，但我们所能记录的观测序列 $O_t$ 却是从真实的信念分布中采样的结果，受观测概率模型支配：
@@ -88,7 +88,7 @@ $$ \mathbf{h}_t = f_\theta(\mathbf{h}_{t-1}, A_{t-1}, O_t) $$
 
 理论终须代码检验。现在，让我们从严谨的概率公式降落到具体的张量运算层面。
 
-对于在非马尔可夫观测（诸如单帧 2D 图像）中挣扎的智能体，一种在深度强化学习早期（以 DeepMind 的 DQN 算法 [[Mnih et al., 2015]](https://doi.org/10.1038/nature14236) 为代表）极其常用且极富直觉的“工程 Hack”，被称为**帧堆叠（Frame Stacking）**。它的理念非常朴素：既然一张画面无法推断速度，那我就将连续 $K$ 张画面像三明治一样叠加在一起，强行人工拼凑出一个近似的状态张量。虽然它不像 RNN 那样能在理论上涵盖无限历史，但由于它直接在通道维度（Channel dimension）保留了时间的显式演化，成为了理解历史与状态映射的最完美跳板。
+对于单帧 2D 图像这类信息不完备的观测，一种常见做法是**帧堆叠（Frame Stacking）**。DQN 就把最近四帧预处理后的图像组合为网络输入 [[Mnih et al., 2015]](https://doi.org/10.1038/nature14236)。连续 $K$ 帧能够提供有限时间窗口内的运动线索；它不能保证恢复完整状态，也不像循环模型那样可以汇总更长的历史。
 
 假设环境传回的观测 $O_t$ 是一帧单通道灰度图，张量形状为 $(H, W)$。通过堆叠过去 $K$ 帧观测，我们将构造一个形状为 $(K, H, W)$ 的三维状态张量。
 
@@ -107,7 +107,7 @@ class ObservationBuffer:
         # 初始化全零张量，形状为 (K, H, W)。
         # K 表示我们堆叠的时间帧数量，通常作为传入 CNN 的 Channel 维度。
         self.buffer = torch.zeros((k_frames, height, width), dtype=torch.float32)
-        
+
     def add_observation(self, obs):
         """
         接收一个新的观测帧，丢弃超出 K 视野的最旧一帧
@@ -118,7 +118,7 @@ class ObservationBuffer:
         self.buffer[:-1] = self.buffer[1:].clone()
         # 将最新到达的观测画面存入缓冲区的尾部（最近的时间点）
         self.buffer[-1] = obs
-        
+
     def get_state(self):
         """
         提取用于智能体决策的近似信念状态。
@@ -140,10 +140,10 @@ buffer = ObservationBuffer(k_frames=K, height=H, width=W)
 for t in range(5):
     # 此处利用正态分布随机张量模拟传感器传回的高维含噪观测数据
     current_obs = torch.randn((H, W))
-    
+
     # 将最新观测推入时间缓冲区
     buffer.add_observation(current_obs)
-    
+
     # 提取封装了过去 K 帧历史特征的最新状态张量
     current_state = buffer.get_state()
     print(f"时间步 {t+1}: 输出状态张量维度 {current_state.shape}")

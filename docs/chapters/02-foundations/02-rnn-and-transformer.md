@@ -51,10 +51,11 @@ $$
 $$
 
 其中：
-* $\mathbf{W}_{xh} \in \mathbb{R}^{d \times h}$ 是输入到隐状态的权重矩阵；
-* $\mathbf{W}_{hh} \in \mathbb{R}^{h \times h}$ 是隐状态到隐状态（即时间步之间传递记忆）的权重矩阵；
-* $\mathbf{b}_h \in \mathbb{R}^{1 \times h}$ 是偏置参数；
-* $\phi$ 是非线性激活函数，在传统 RNN 中通常采用 $\tanh$ 函数，以保证隐状态的数值范围被稳定限制在 $[-1, 1]$ 之间。
+
+- $\mathbf{W}_{xh} \in \mathbb{R}^{d \times h}$ 是输入到隐状态的权重矩阵；
+- $\mathbf{W}_{hh} \in \mathbb{R}^{h \times h}$ 是隐状态到隐状态（即时间步之间传递记忆）的权重矩阵；
+- $\mathbf{b}_h \in \mathbb{R}^{1 \times h}$ 是偏置参数；
+- $\phi$ 是非线性激活函数，在传统 RNN 中通常采用 $\tanh$ 函数，以保证隐状态的数值范围被稳定限制在 $[-1, 1]$ 之间。
 
 有了当前的隐状态 $\mathbf{H}_t$，我们就可以通过另一个线性变换来预测输出 $\mathbf{O}_t \in \mathbb{R}^{n \times q}$（例如下一个词的概率分布，其中 $q$ 是输出的词表大小）：
 
@@ -92,7 +93,7 @@ class RNNStep(nn.Module):
         self.W_xh = nn.Parameter(torch.randn(input_size, hidden_size) * 0.01)
         self.W_hh = nn.Parameter(torch.randn(hidden_size, hidden_size) * 0.01)
         self.b_h = nn.Parameter(torch.zeros(hidden_size))
-        
+
     def forward(self, X, H_prev):
         # X: (batch_size, input_size)
         # H_prev: (batch_size, hidden_size)
@@ -115,9 +116,9 @@ print(f"H_t shape: {H_t.shape}") # 预期输出: torch.Size([32, 256])
 
 ## 2.2.3 注意力机制与Transformer架构
 
-在长达几十年的时间里，为了解决传统 RNN 的长程依赖问题，研究者们提出了长短期记忆网络（LSTM, [[Hochreiter & Schmidhuber, 1997]](https://doi.org/10.1162/neco.1997.9.8.1735)）和门控循环单元（GRU, [[Cho et al., 2014]](https://arxiv.org/abs/1406.1078)）。它们通过引入复杂的“门控”机制来控制信息流，极大缓解了梯度消失问题。然而，RNN 架构依然存在一个无法逾越的本质缺陷：**时序不可并行性**。由于计算当前状态 $h_t$ 必须依赖上一步状态 $h_{t-1}$，计算只能像挤牙膏一样一步步进行，完全无法充分利用现代 GPU 海量的并行计算资源。
+为缓解传统 RNN 的长程依赖与梯度传播问题，研究者提出了长短期记忆网络（LSTM, [[Hochreiter & Schmidhuber, 1997]](https://doi.org/10.1162/neco.1997.9.8.1735)）和门控循环单元（GRU, [[Cho et al., 2014]](https://arxiv.org/abs/1406.1078)）。它们用门控机制控制信息流。不过，在标准 RNN 中，当前状态 $h_t$ 仍依赖上一步状态 $h_{t-1}$，因此训练时难以在时间维度上完全并行。
 
-2017 年，Vaswani 等人发表了题为 *Attention Is All You Need* 的论文 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762)，提出了完全抛弃 RNN，仅依赖注意力机制（Attention Mechanism）的 Transformer 架构。这一举措彻底打破了时序依赖的枷锁，成为人工智能历史上的重要转折点。
+2017 年，Vaswani 等人发表了 _Attention Is All You Need_ [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762)，提出不使用循环结构、主要依赖注意力与前馈网络的 Transformer。训练时，给定完整输入序列后，各位置的注意力计算可以并行；自回归解码时仍需按词元逐步生成，不能概括为消除了所有时序依赖。
 
 ### 自注意力（Self-Attention）的几何直觉与严密推导
 
@@ -126,6 +127,7 @@ print(f"H_t shape: {H_t.shape}") # 预期输出: torch.Size([32, 256])
 对于两个向量 $\mathbf{a}$ 和 $\mathbf{b}$，它们的内积（Dot Product）定义为 $\mathbf{a}^\top \mathbf{b} = \|\mathbf{a}\|\|\mathbf{b}\|\cos\theta$。当两个向量长度固定时，夹角 $\theta$ 越小（方向越趋于一致），内积越大。因此，**内积可以作为衡量两个高维向量之间相似度（Similarity）或相关性的严谨数学度量**。
 
 在自注意力机制中，我们将序列中的每一个元素（如词元）投影到三个不同的向量空间，分别赋予它们三种不同的身份角色：
+
 1. **查询向量（Query, $\mathbf{q}$）**：代表该元素正在寻找什么样的信息。
 2. **键向量（Key, $\mathbf{k}$）**：代表该元素包含了什么样的信息特征。
 3. **值向量（Value, $\mathbf{v}$）**：代表该元素实际提供的内容实质。
@@ -214,14 +216,14 @@ class DotProductAttention(nn.Module):
         # keys 的形状：(batch_size, num_kv_pairs, d)
         # values 的形状：(batch_size, num_kv_pairs, value_dimension)
         d = queries.shape[-1]
-        
+
         # 执行矩阵乘法 QK^T，并除以 sqrt(d) 进行稳定缩放
         # transpose(1, 2) 实现了矩阵转置，形状变为 (batch_size, num_queries, num_kv_pairs)
         scores = torch.bmm(queries, keys.transpose(1, 2)) / math.sqrt(d)
-        
+
         # 应用 softmax 获取概率分布权重
         self.attention_weights = masked_softmax(scores, valid_lens)
-        
+
         # 将概率权重与 values 矩阵相乘
         return torch.bmm(self.dropout(self.attention_weights), values)
 
@@ -246,8 +248,8 @@ Transformer 架构以一种极其激进的视角重构了序列建模范式。�
 ## 2.2.5 练习
 
 1. 回顾该公式，假设 $\mathbf{W}_{hh}$ 是一个对角矩阵，且对角线元素全部为 $0.5$。经过 $100$ 个时间步的沿时间反向传播，最初一步的梯度将衰减到原始大小的多少？这说明了 RNN 训练的什么问题？
-   * **提示**：计算 $0.5^{100}$，并结合深度学习中数值下溢的概念进行思考。
+   - **提示**：计算 $0.5^{100}$，并结合深度学习中数值下溢的概念进行思考。
 2. 在 Transformer 的缩放点积注意力该公式中，为什么我们必须除以 $\sqrt{d_k}$？
-   * **提示**：假设 $\mathbf{q}$ 和 $\mathbf{k}$ 的元素都是均值为 $0$、方差为 $1$ 的独立随机变量。利用高中统计学中独立变量乘积与求和的期望与方差公式，推导 $\mathbf{q}^\top \mathbf{k}$ 的方差变化，思考如果不除以 $\sqrt{d_k}$，随着维度增加，Softmax 函数的输入分布会发生怎样的严重偏移。
+   - **提示**：假设 $\mathbf{q}$ 和 $\mathbf{k}$ 的元素都是均值为 $0$、方差为 $1$ 的独立随机变量。利用高中统计学中独立变量乘积与求和的期望与方差公式，推导 $\mathbf{q}^\top \mathbf{k}$ 的方差变化，思考如果不除以 $\sqrt{d_k}$，随着维度增加，Softmax 函数的输入分布会发生怎样的严重偏移。
 3. 位置编码该公式采用了三角函数。请尝试用高中数学的三角函数和差公式推导：对于任意固定的偏移量 $k$，$PE_{(pos+k)}$ 能否表示为 $PE_{(pos)}$ 的线性函数？
-   * **提示**：展开 $\sin(\omega(pos+k))$ 和 $\cos(\omega(pos+k))$，寻找它们与 $\sin(\omega pos)$ 和 $\cos(\omega pos)$ 的线性关系。
+   - **提示**：展开 $\sin(\omega(pos+k))$ 和 $\cos(\omega(pos+k))$，寻找它们与 $\sin(\omega pos)$ 和 $\cos(\omega pos)$ 的线性关系。

@@ -1,9 +1,10 @@
 # 9.6 三维占据网格预测（Occupancy Prediction）的从零开始实现
+
 :label:`sec_occupancy_scratch`
 
-在我们深入探讨三维占据网格预测（3D Occupancy Prediction）的代码实现之前，有必要先回顾自动驾驶环境感知的学术演进路线。早期的视觉感知任务主要集中在二维图像平面上的目标检测与语义分割，这种表示方法在面对三维物理世界时存在固有的尺度模糊性。随后，学术界引入了基于鸟瞰图（Bird's-Eye-View, BEV）的表示方法 [[Li et al., 2022]](https://arxiv.org/abs/2203.17270)，通过在二维地平面上构建特征网格，极大地简化了下游的轨迹规划任务。
+在进入三维占据预测之前，我们先看 BEV 表示。BEVFormer 用网格状 BEV 查询与多相机图像交互，并结合历史 BEV 特征，支持三维目标检测和地图分割 [[Li et al., 2022]](https://arxiv.org/abs/2203.17270)。原论文没有评测轨迹规划，因此这里不把“简化下游规划”写成由该引用直接证明的实验结论。
 
-然而，真实的物理世界是三维的。当面对不规则物体（如悬挂的树枝、异形施工车辆）或复杂的路面拓扑（如立交桥、陡坡）时，将空间强行压缩到二维 BEV 平面上会导致高度信息的严重丢失。为了解决这一瓶颈，三维占据网格（3D Occupancy Grid）的概念应运而生。它将车辆周围的三维空间离散化为规则的体素（Voxel），并预测每个体素是否被物理实体占据以及该实体的语义类别。近年来，如 SurroundOcc [[Wei et al., 2023]](https://arxiv.org/abs/2303.09551)、OpenOccupancy [[Wang et al., 2023]](https://arxiv.org/abs/2303.03991) 和 TPVFormer [[Huang et al., 2023]](https://arxiv.org/abs/2302.07817) 等开创性工作，奠定了基于纯视觉的三维占据网格预测的理论与工程基础。
+二维 BEV 特征通常沿高度聚合信息，而三维占据表示把车辆周围空间离散为体素，并预测占用或语义类别。SurroundOcc 研究多相机图像到稠密三维占用的预测 [[Wei et al., 2023]](https://arxiv.org/abs/2303.09551)，OpenOccupancy 提供占用感知基准及多模态基线 [[Xiaofeng Wang et al., 2023b]](https://arxiv.org/abs/2303.03991)，TPVFormer 则用三视图表示进行三维语义占用预测 [[Huang et al., 2023]](https://arxiv.org/abs/2302.07817)。三篇引用分别对应方法或基准贡献，而不是共同证明一个笼统的“奠定基础”判断。
 
 在本节中，我们将从最基础的几何投影与概率论出发，逐步推导并从零开始实现一个标准的三维占据网格预测模型。同时，我们也会深入剖析这些流行开源项目在真实自动驾驶系统中的落地工程经验。
 
@@ -69,7 +70,7 @@ class VoxelQueryGenerator(nn.Module):
         # grid_size = [W, H, D]
         self.W, self.H, self.D = grid_size
         self.embed_dims = embed_dims
-        
+
         # 显式初始化三维体素查询参数
         # 维度: (1, C, D, H, W)，遵循 PyTorch 常规的 3D 卷积排列方式
         self.voxel_queries = nn.Parameter(
@@ -77,7 +78,7 @@ class VoxelQueryGenerator(nn.Module):
         )
         # 初始化权重
         nn.init.normal_(self.voxel_queries, mean=0., std=1.)
-        
+
     def forward(self, batch_size):
         # 将查询参数扩展至当前批次大小
         return self.voxel_queries.repeat(batch_size, 1, 1, 1, 1)
@@ -111,6 +112,7 @@ $$\mathbf{Q}_{x,y,z}' = \mathbf{Q}_{x,y,z} + \sum_{i \in \mathcal{V}_{x,y,z}} \t
 ### 开源项目的架构演进
 
 在这一步的工程落地上，不同开源项目采取了截然不同的优化策略：
+
 1. **SurroundOcc**：采用多尺度 3D 卷积网络来逐步上采样和精细化 3D Voxel 特征。为了显存可控，其通常采用相对较粗的初始网格分辨率。
 2. **TPVFormer**：敏锐地意识到稠密 $W \times H \times D$ 体素带来的 $O(W \cdot H \cdot D)$ 显存爆炸问题。它极其聪明地将三维空间投影到三个正交的平面（顶视图、侧视图、正视图），即 Tri-Perspective View。通过三个面积为 $W \times H$、$H \times D$、$W \times D$ 的 2D 平面特征来隐式表达 3D 空间，将复杂度降维到了 $O(W \cdot H + H \cdot D + W \cdot D)$，极大地降低了计算开销。
 3. **OpenOccupancy**：提出了一个自适应分辨率的框架，结合了密集 3D 卷积和级联的稀疏注意力机制。
@@ -126,7 +128,7 @@ class SimpleSpatialCrossAttention(nn.Module):
         # 为了演示，我们使用简单的线性映射代替复杂的 Deformable Attention
         self.value_proj = nn.Linear(embed_dims, embed_dims)
         self.output_proj = nn.Linear(embed_dims, embed_dims)
-        
+
     def forward(self, voxel_queries, image_features, proj_mats):
         """
         voxel_queries: [B, C, D, H, W]
@@ -136,15 +138,15 @@ class SimpleSpatialCrossAttention(nn.Module):
         B, C, D, H, W = voxel_queries.shape
         # 将体素展平为序列 [B, D*H*W, C]
         queries_flat = voxel_queries.view(B, C, -1).permute(0, 2, 1)
-        
+
         # [演示简化逻辑] 假设我们已经通过公式 (9.6.5) 找到了每个体素在图像上的对应特征
         # 在实际工程中，这里会调用 grid_sample 或自定义 CUDA 算子进行高效采样
         # 我们随机生成一个模拟采样后的上下文特征
-        sampled_context = torch.randn_like(queries_flat) 
-        
+        sampled_context = torch.randn_like(queries_flat)
+
         # 简单的线性融合
         updated_queries = queries_flat + self.output_proj(F.relu(self.value_proj(sampled_context)))
-        
+
         # 恢复 3D 形状
         voxel_queries = updated_queries.permute(0, 2, 1).view(B, C, D, H, W)
         return voxel_queries
@@ -171,7 +173,7 @@ class OccupancyHead(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv3d(in_channels // 2, num_classes, kernel_size=1)
         )
-        
+
     def forward(self, x):
         # 输入维度: [B, C, D, H, W]
         # 输出维度: [B, num_classes, D, H, W]
@@ -199,17 +201,17 @@ $$L_{focal} = - \alpha_c (1 - \hat{y})^\gamma y \log(\hat{y})$$
 
 ## 小结
 
-* 三维占据网格预测旨在将 2D 环视图像直接映射为 3D 体素级的语义分类，彻底解决了 2D Bounding Box 或 2D BEV 带来的空间信息丢失问题。
-* 核心操作包含了三维体素查询的初始化，以及基于相机内外参投影的空间交叉注意力特征采样。
-* 在真实世界的工程落地中，3D 高分辨率网格带来的显存开销是致命瓶颈。TPVFormer 的正交平面降维思想，以及 SurroundOcc 的多尺度层级上采样，都是极为经典的工程优化策略。
-* 针对 3D 空间中极端的“空闲-占据”类别不平衡，Focal Loss 及其变体是不可或缺的优化手段。
+- 三维占据网格预测旨在将 2D 环视图像直接映射为 3D 体素级的语义分类，彻底解决了 2D Bounding Box 或 2D BEV 带来的空间信息丢失问题。
+- 核心操作包含了三维体素查询的初始化，以及基于相机内外参投影的空间交叉注意力特征采样。
+- 在真实世界的工程落地中，3D 高分辨率网格带来的显存开销是致命瓶颈。TPVFormer 的正交平面降维思想，以及 SurroundOcc 的多尺度层级上采样，都是极为经典的工程优化策略。
+- 针对 3D 空间中极端的“空闲-占据”类别不平衡，Focal Loss 及其变体是不可或缺的优化手段。
 
 ## 练习
 
 1. 在该公式中，如果感知范围是前后各 50 米，左右各 50 米，上下从 -5 米到 3 米。网格分辨率为 0.5 米。请计算 $W, H, D$ 的精确数值，并估算在 FP32 精度下，存储该 64 维隐藏特征图需要多少显存？
-   * **提示**：先计算三个维度的网格数量，然后相乘得到总的体素个数。结合每个浮点数 4 字节（Bytes）计算总内存。
+   - **提示**：先计算三个维度的网格数量，然后相乘得到总的体素个数。结合每个浮点数 4 字节（Bytes）计算总内存。
 2. 尝试修改 `VoxelQueryGenerator`，不再使用 `nn.Parameter` 初始化全局查询向量，而是用 `torch.meshgrid` 生成网格的三维绝对坐标，并对其应用一层多层感知机（MLP）和正弦位置编码（Sine Positional Encoding）。这会对模型的收敛速度产生什么影响？
-   * **提示**：查阅 Transformer 的位置编码机制，思考显式提供空间坐标是否能帮助模型更快学习到 2D-to-3D 的映射几何关系。
+   - **提示**：查阅 Transformer 的位置编码机制，思考显式提供空间坐标是否能帮助模型更快学习到 2D-to-3D 的映射几何关系。
 3. 仔细思考 TPVFormer 将 $V \in \mathbb{R}^{W \times H \times D}$ 降维到三个二维张量的思路。这种隐式表示在表达一个中空的管状物体（如隧道）时，会出现哪些信息模糊或混叠？
 
 :begin_tab:pytorch

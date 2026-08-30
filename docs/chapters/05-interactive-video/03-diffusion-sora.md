@@ -42,7 +42,7 @@ $$\mathbf{V}_t = \sqrt{\bar{\alpha}_t} \mathbf{V}_0 + \sqrt{1 - \bar{\alpha}_t} 
 
 直接在全分辨率的视频张量 $\mathbf{V}_0$ 上进行自注意力计算是极其昂贵且不现实的。Transformer 的核心计算复杂度随序列长度呈平方级（$O(N^2)$）增长，而在高分辨率视频中，逐像素的序列长度为 $T \times H \times W$，这是一个计算设备无法承受的天文数字。
 
-Sora 突破这一瓶颈的核心机制在于引入了时空补丁（Spacetime Patches）。这一思想在视觉领域的源起可以追溯到 Vision Transformer (ViT) [[Dosovitskiy et al., 2020]](https://arxiv.org/abs/2010.11929) 对 2D 图像的网格化处理，而 Sora 则将其在时间维度上进行了更为宏观的拓展。
+Vision Transformer 把二维图像划分为补丁并作为序列处理 [[Dosovitskiy et al., 2020]](https://arxiv.org/abs/2010.11929)。Sora 的公开技术报告则把压缩后的视频潜变量切成时空补丁，并把不同分辨率、宽高比和时长的数据表示为补丁序列 [[OpenAI, 2024]](https://openai.com/index/video-generation-models-as-world-simulators/)。前一篇论文提供二维补丁化的先例，后一份报告才直接支持 Sora 的具体表示。
 
 我们可以利用高中立体几何中“切分长方体”的直观思想来理解时空补丁。假设视频张量在空间（$H \times W$）上被均匀划分为尺寸为 $h_p \times w_p$ 的小块，同时在时间轴（$T$）上被切分为长度为 $t_p$ 的片段。那么，每一个剥离出来的时空补丁在本质上就是一个尺寸为 $C \times t_p \times h_p \times w_p$ 的局部长方体。
 
@@ -68,8 +68,8 @@ class SpacetimePatchEmbedding(nn.Module):
         self.patch_size = patch_size
         # 使用非重叠的三维卷积来实现时空补丁的提取与线性映射投影
         self.proj = nn.Conv3d(
-            in_channels, embed_dim, 
-            kernel_size=patch_size, 
+            in_channels, embed_dim,
+            kernel_size=patch_size,
             stride=patch_size
         )
 
@@ -94,8 +94,8 @@ class SpacetimePatchEmbedding(tf.keras.layers.Layer):
         self.patch_size = patch_size
         # 在 TensorFlow 中使用 Conv3D 来实现时空特征提取
         self.proj = tf.keras.layers.Conv3D(
-            filters=embed_dim, 
-            kernel_size=patch_size, 
+            filters=embed_dim,
+            kernel_size=patch_size,
             strides=patch_size,
             padding='valid'
         )
@@ -158,8 +158,8 @@ class VideoDiTBlock(nn.Module):
         super().__init__()
         self.norm1 = nn.LayerNorm(embed_dim)
         # 实例化多头自注意力层，对应该公式        self.attn = nn.MultiheadAttention(
-            embed_dim=embed_dim, 
-            num_heads=num_heads, 
+            embed_dim=embed_dim,
+            num_heads=num_heads,
             batch_first=True
         )
         self.norm2 = nn.LayerNorm(embed_dim)
@@ -175,19 +175,19 @@ class VideoDiTBlock(nn.Module):
         x: 降维后的视频补丁序列，形状为 (B, N, D)
         t_emb: 当前时间步和条件特征（如文本提示）的融合嵌入，形状为 (B, D)
         """
-        # 在严谨的工业级 DiT 架构中，时间步嵌入通常被用作自适应层归一化 (AdaLN) 
+        # 在严谨的工业级 DiT 架构中，时间步嵌入通常被用作自适应层归一化 (AdaLN)
         # 的动态尺度和平移参数。在此为了降低代码复杂度并突出核心逻辑，
         # 我们做简化处理，将其通过广播机制直接加到序列变量上
         x_with_cond = x + t_emb.unsqueeze(1)
-        
+
         # 步骤 1：利用全序列联合自注意力机制进行时空维度的全局信息交互
         attn_out, _ = self.attn(
-            self.norm1(x_with_cond), 
-            self.norm1(x_with_cond), 
+            self.norm1(x_with_cond),
+            self.norm1(x_with_cond),
             self.norm1(x_with_cond)
         )
         x = x + attn_out  # 残差连接
-        
+
         # 步骤 2：通过前馈网络完成每个序列元素的独立非线性变换
         x = x + self.mlp(self.norm2(x))
         return x
@@ -197,7 +197,7 @@ class VideoDiTBlock(tf.keras.layers.Layer):
         super().__init__()
         self.norm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
         # 实例化多头自注意力层，对应该公式        self.attn = tf.keras.layers.MultiHeadAttention(
-            num_heads=num_heads, 
+            num_heads=num_heads,
             key_dim=embed_dim
         )
         self.norm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
@@ -214,16 +214,16 @@ class VideoDiTBlock(tf.keras.layers.Layer):
         """
         # 在 TensorFlow 中，unsqueeze(1) 的等价操作是 tf.expand_dims
         x_with_cond = x + tf.expand_dims(t_emb, 1)
-        
+
         # 步骤 1：利用全序列联合自注意力机制进行时空维度的全局信息交互
         normed_x = self.norm1(x_with_cond)
         attn_out = self.attn(
-            query=normed_x, 
-            value=normed_x, 
+            query=normed_x,
+            value=normed_x,
             key=normed_x
         )
         x = x + attn_out  # 残差连接
-        
+
         # 步骤 2：通过前馈网络完成每个序列元素的独立非线性变换
         x = x + self.mlp(self.norm2(x))
         return x
@@ -236,8 +236,8 @@ class VideoDiTBlock(tf.keras.layers.Layer):
 ## 5.3.8 练习
 
 1. 请仔细回顾该公式的数学推导全过程。假设某个标量的初始值 $x_0 = 0.5$，前两个时间步的方差超参数设定为 $\beta_1 = 0.1, \beta_2 = 0.2$。请你纯手工计算出 $x_2$ 这个随机变量的理论均值和理论方差。
-    - **提示**：充分利用独立正态分布相加时均值与方差满足线性可加性的统计学规律。不要跳步，请先分布计算出 $\alpha_1, \alpha_2$ 以及累积连乘项 $\bar{\alpha}_2$。
+   - **提示**：充分利用独立正态分布相加时均值与方差满足线性可加性的统计学规律。不要跳步，请先分布计算出 $\alpha_1, \alpha_2$ 以及累积连乘项 $\bar{\alpha}_2$。
 2. 假设给定的待处理原始视频总共有 $16$ 帧，单帧分辨率为 $256 \times 256$，颜色通道数 $C=3$。如果在补丁嵌入层将时空补丁的超参数尺寸硬编码设定为 $t_p=2, h_p=16, w_p=16$，请你计算出展平后的 Transformer 输入序列长度 $N$ 究竟是多少？
-    - **提示**：找到文章中给出的数学该公式，并直接代入已知数值进行除法和连乘运算。
+   - **提示**：找到文章中给出的数学该公式，并直接代入已知数值进行除法和连乘运算。
 3. 为什么在处理视频张量的扩散模型中，通常需要在自注意力层的输入阶段，强行同时注入“空间位置编码”和“时间位置编码”？如果你作为架构师，鲁莽地去掉了时间位置编码，模型在生成视频时，画面可能会出现什么极为怪异的现象？
-    - **提示**：核心思考点在于标准 Transformer 中自注意力机制（Self-Attention）本身是具备排列不变性（Permutation Invariance）的。
+   - **提示**：核心思考点在于标准 Transformer 中自注意力机制（Self-Attention）本身是具备排列不变性（Permutation Invariance）的。

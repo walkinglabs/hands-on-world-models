@@ -2,7 +2,7 @@
 
 具身智能（Embodied AI）的核心挑战在于，智能体必须在一个高度复杂、充满不确定性且代价高昂的物理世界中进行连续的感知与决策。传统的无模型强化学习（Model-Free RL）方法依赖于在真实环境中的海量试错，这在硬件磨损、安全风险以及数据采集效率等方面均存在不可逾越的瓶颈。
 
-为了打破这一僵局，学术界开始追溯认知科学中的“心智模型”假说。1943年，Kenneth Craik 首次提出，人类在采取行动之前，会在大脑中构建一个小型的、内部的现实世界模拟器。在深度学习时代，这一思想被严谨地数学化并实例化为“世界模型”（World Models）。Ha 和 Schmidhuber 在其奠基性论文 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122) 中证明了，智能体可以通过无监督学习在隐空间中构建环境动态模型，并在完全由该模型生成的“梦境”中训练出能够解决复杂任务的策略。随后，Hafner 等人通过 Dreamer 系列工作 [[Hafner et al., 2019]](https://arxiv.org/abs/1912.01603)，进一步引入了循环状态空间模型（RSSM）和隐空间中的想象规划（Latent Imagination），彻底闭环了从视觉输入到复杂具身控制的完整链路。
+Ha 和 Schmidhuber 展示了从像素数据学习潜在动力学，并在模型生成的轨迹中训练控制器的可行性 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。RSSM 最初由 PlaNet 引入；Dreamer 在此基础上使用潜在想象轨迹训练 actor 与 critic [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)。这些结果来自特定游戏与控制基准，构成了“视觉—模型—策略”闭环的实例，而不是对所有复杂具身任务的完整证明。
 
 本节我们将深入探讨世界模型是如何在具身控制中形成闭环的。我们将从最基础的物理运动学出发，逐步推导出隐空间中的状态转移概率，最终在可微的“梦境”中实现策略的精确求解。
 
@@ -48,11 +48,13 @@ $$
 RSSM 的内部动力学机制可以通过以下严谨的概率模型定义：
 
 1. **确定性序列推断（Sequence Model）**：利用循环神经网络（如 GRU），基于过去的历史信息和动作，更新确定性状态：
+
    $$
    \mathbf{h}_t = f_\theta(\mathbf{h}_{t-1}, \mathbf{z}_{t-1}, \mathbf{a}_{t-1})
    $$
 
 2. **先验动态模型（Dynamics Predictor）**：在没有接收当前真实物理观测的情况下，仅凭大脑中的历史记忆推测当前的随机状态：
+
    $$
    \hat{\mathbf{z}}_t \sim p_\theta(\hat{\mathbf{z}}_t \mid \mathbf{h}_t)
    $$
@@ -63,6 +65,7 @@ RSSM 的内部动力学机制可以通过以下严谨的概率模型定义：
    $$
 
 除此之外，具身控制还必须衡量行为的优劣，世界模型需要预测基于当前状态所能获得的奖励（Reward）：
+
 $$
 r_t \sim p_\theta(r_t \mid \mathbf{h}_t, \mathbf{z}_t)
 $$
@@ -76,6 +79,7 @@ $$
 在一个具体的时刻 $t$，智能体根据真实的视觉观测 $\mathbf{o}_t$ 计算出当前的后验状态 $\mathbf{z}_t$ 和历史特征 $\mathbf{h}_t$。从这个初始状态出发，智能体完全利用该公式和该公式在隐空间中向未来展开推演。
 
 假设我们要优化的动作策略可以表示为一个概率分布 $\mathbf{a}_\tau \sim \pi_\psi(\mathbf{a}_\tau \mid \hat{\mathbf{z}}_\tau, \mathbf{h}_\tau)$，参数为 $\psi$。在梦境中，我们将时间轴从当前真实时刻 $\tau = t$ 展开到未来截断时刻 $\tau = t + H$。此时，智能体大脑中生成的虚拟轨迹（Trajectory）为：
+
 $$
 (\mathbf{h}_t, \mathbf{z}_t), \mathbf{a}_t, r_t, (\mathbf{h}_{t+1}, \hat{\mathbf{z}}_{t+1}), \mathbf{a}_{t+1}, r_{t+1}, \dots, (\mathbf{h}_{t+H}, \hat{\mathbf{z}}_{t+H})
 $$
@@ -116,11 +120,11 @@ class RSSMCell(nn.Module):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.latent_dim = latent_dim
-        
+
         # 确定性状态更新网络 (GRU核心)
         # 输入维度: 动作空间 + 前一时刻随机隐状态
         self.gru = nn.GRUCell(action_dim + latent_dim, hidden_dim)
-        
+
         # 先验网络 (Prior / Dynamics): p(z_t | h_t)
         self.prior_mlp = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
@@ -128,7 +132,7 @@ class RSSMCell(nn.Module):
         )
         self.prior_mean = nn.Linear(hidden_dim, latent_dim)
         self.prior_std = nn.Linear(hidden_dim, latent_dim)
-        
+
         # 奖励预测网络
         self.reward_predictor = nn.Sequential(
             nn.Linear(hidden_dim + latent_dim, hidden_dim),
@@ -141,7 +145,7 @@ class RSSMCell(nn.Module):
         feat = self.prior_mlp(h_t)
         mean = self.prior_mean(feat)
         # 利用 softplus 函数强制标准差严格为正，并附加底噪避免坍缩
-        std = nn.functional.softplus(self.prior_std(feat)) + 0.1 
+        std = nn.functional.softplus(self.prior_std(feat)) + 0.1
         return mean, std
 
     def step(self, action, h_prev, z_prev):
@@ -150,19 +154,19 @@ class RSSMCell(nn.Module):
         # z_prev 维度: (batch, latent_dim)
         gru_input = torch.cat([action, z_prev], dim=-1)
         h_t = self.gru(gru_input, h_prev)
-        
+
         # [步骤2: 利用先验网络预测微观随机状态 z_t]
         mean, std = self.forward_prior(h_t)
-        
+
         # 采用重参数化技巧 (Reparameterization Trick) 采样 z_t
         # 保证在采样操作切断计算图后，依然能向 mean 和 std 回传梯度
         dist = Normal(mean, std)
         z_t = dist.rsample()
-        
+
         # [步骤3: 预测智能体在当前世界格局下获得的奖赏]
         state_feature = torch.cat([h_t, z_t], dim=-1)
         reward_pred = self.reward_predictor(state_feature)
-        
+
         return h_t, z_t, reward_pred
 
 
@@ -176,7 +180,7 @@ class Actor(nn.Module):
             nn.Linear(200, action_dim),
             nn.Tanh() # 强制动作空间约束在 [-1, 1] 物理有效范围内
         )
-        
+
     def forward(self, state_feature):
         # 依赖完整的状态特征 (h_t 与 z_t 的拼接) 做出动作决策
         return self.net(state_feature)
@@ -202,13 +206,13 @@ total_predicted_reward = 0
 # 在循环内部，智能体切断传感器，完全靠神经网络在时间轴上向未来延展梦境
 for t in range(horizon):
     state_feature = torch.cat([h_t, z_t], dim=-1)
-    
+
     # 策略网络给出一个连续动作 (注意：此处前向传播维持了完整的微分轨迹)
     action = actor(state_feature)
-    
+
     # 世界引擎承接动作，演化出下一步的时空状态和奖励
     h_t, z_t, reward = rssm.step(action, h_t, z_t)
-    
+
     total_predicted_reward = total_predicted_reward + reward
 
 # 计算策略目标，我们期望最大化梦境中的总期望奖励
@@ -228,6 +232,6 @@ print("梦境推演与策略反向传播完成！")
 
 ## 小结
 
-* 具身控制的世界模型闭环完整涵盖了观测降维、序列动态预测以及隐空间内的极速策略规划三个步骤。
-* 循环状态空间模型（RSSM）通过结构上解耦确定性历史状态传递与随机状态建模，完美契合了复杂物理系统的动态时序规律。
-* 将环境转移严格建模为可微分的网络架构的最大红利在于，在策略求解阶段，算法脱离了方差巨大的采样估算，实现了微积分层面的“解析梯度”反向传播，极大提升了训练样本效率。
+- 具身控制的世界模型闭环完整涵盖了观测降维、序列动态预测以及隐空间内的极速策略规划三个步骤。
+- 循环状态空间模型（RSSM）通过结构上解耦确定性历史状态传递与随机状态建模，完美契合了复杂物理系统的动态时序规律。
+- 将环境转移严格建模为可微分的网络架构的最大红利在于，在策略求解阶段，算法脱离了方差巨大的采样估算，实现了微积分层面的“解析梯度”反向传播，极大提升了训练样本效率。

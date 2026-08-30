@@ -4,7 +4,7 @@
 
 为了打破这一僵局，学者们回到了一个最直观的起点：向人类学习。[[Argall et al., 2009]](https://doi.org/10.1016/j.robot.2008.10.024) 对机器人从示范中学习（Learning from Demonstration, LfD）进行了系统性的回顾，指出引入人类先验能够极大地缩小策略搜索空间。近年来，随着高频力反馈设备的普及以及人类在环（Human-in-the-Loop, HIL）控制体系的成熟，研究者们将遥操作（Teleoperation）收集的高质量人类示范与深度强化学习深度融合，诞生了诸如 SERL（Sample-Efficient Robotic Reinforcement Learning）[[Luo et al., 2024]](https://arxiv.org/abs/2401.16013) 等一系列工程与算法相结合的先进框架。
 
-本节我们将从最基础的二维平面映射起步，严谨推导遥操作中的空间几何变换，随后深入分析纯模仿学习中的分布偏移（Distribution Shift）问题及其解法 DAgger [[Ross et al., 2011]](https://proceedings.mlr.press/v15/ross11a.html)。最后，我们将通过严格的变分推导，揭示 SERL 等框架中结合离线示范与在线探索的核心算法——优势加权演员-评论家（Advantage Weighted Actor-Critic, AWAC）[[Nair et al., 2020]](https://arxiv.org/abs/2006.09359) 的数学本质。
+本节先讨论遥操作中的空间映射，再分析 DAgger 如何通过在线聚合数据缓解模仿学习的分布偏移 [[Ross et al., 2011]](https://proceedings.mlr.press/v15/ross11a.html)。随后以 AWAC 为例，说明如何用优势加权把离线数据与在线强化学习结合 [[Nair et al., 2020]](https://arxiv.org/abs/2006.09359)。SERL 是软件与训练流程框架，并不等同于 AWAC；它的公开实现主要围绕示范增强的 off-policy 强化学习 [[Luo et al., 2024]](https://arxiv.org/abs/2401.16013)。
 
 ## 8.6.1 遥操作的几何映射：主从机器人的空间同构
 
@@ -42,7 +42,7 @@ $$
 
 虽然直观，但 BC 在机器人序列决策中面临着灾难性的分布偏移（Distribution Shift）问题。在训练阶段，策略网络 $\pi_\theta$ 仅仅在人类访问过的状态边缘分布 $p_{\text{data}}(s)$ 上进行了优化；而在部署阶段（闭环控制），机器人依据 $\pi_\theta(a|s)$ 采取动作，环境转移概率 $P(s_{t+1}|s_t, a_t)$ 会导致新的状态分布 $p_{\pi_\theta}(s)$。一旦 $p_{\pi_\theta}(s)$ 偏离了 $p_{\text{data}}(s)$，微小的动作误差就会随时间步累积，导致机器人进入一种它在训练数据中从未见过的状态，进而产生更加荒谬的动作，最终导致任务失败。
 
-为了克服这一困难，[[Ross et al., 2011]](https://proceedings.mlr.press/v15/ross11a.html) 提出了数据集聚合（DAgger, Dataset Aggregation）算法，标志着人类在环（HIL）控制的范式转变。DAgger 放弃了“先收集，后训练”的静态模式，转向了一种动态的交互式学习策略。其核心数学思想是将问题转化为在线学习（Online Learning）中的无悔（No-Regret）算法。
+Ross 等人提出数据集聚合（DAgger, Dataset Aggregation）算法 [[Ross et al., 2011]](https://proceedings.mlr.press/v15/ross11a.html)。DAgger 反复让当前策略访问状态、由专家给这些状态标注动作，再把新样本聚合进训练集；论文用在线学习中的无悔分析说明其性能界。它属于交互式模仿学习，但不等同于所有形式的人类在环控制。
 
 在 DAgger 的第 $k$ 次迭代中，机器人使用当前的策略 $\pi_{\theta_k}$ 在环境中运行，产生轨迹状态 $\{s_t\}_{t=1}^T$。此时，人类操作员（或专家控制器）被引入反馈循环，为这些已经发生偏离的状态提供最优动作修正 $a_t^* = \pi^*(s_t)$。新产生的数据被聚合到总数据集中 $\mathcal{D} \leftarrow \mathcal{D} \cup \{(s_t, a_t^*)\}$，随后在聚合的数据集上重新训练新的策略 $\pi_{\theta_{k+1}}$。这种方法在严格的数学意义上保证了策略能够在自己诱导的状态分布 $p_{\pi_\theta}(s)$ 下拟合专家行为，从而优雅地解决了分布偏移问题。
 
@@ -100,7 +100,7 @@ $$
 \max_\theta \mathbb{E}_{s, a \sim \mathcal{D}} \left[ \exp \left( \frac{A(s,a)}{\lambda} \right) \log \pi_\theta(a|s) \right]
 $$
 
-这证明了在混合人类数据与在线交互的经验池中，我们只需要像行为克隆一样最大化对数似然，但需要通过指数化的优势函数 $\exp(A/\lambda)$ 对每条样本进行动态加权。做得比平均水平好的动作（$A > 0$）会被赋予更高的学习权重，而差的动作则被指数级地抑制。这种极其严密的数学推导，构成了当今大批机器人样本高效学习框架（如 SERL）的算法基石。
+在 AWAC 的推导与近似下，策略更新可写成带有 $\exp(A/\lambda)$ 权重的最大似然：优势更高的动作获得更大权重。这解释了 AWAC 如何复用离线数据，但不应据此断言所有机器人样本高效学习框架（包括 SERL）都以 AWAC 为算法基石。
 
 ## 8.6.4 代码实现
 
@@ -133,10 +133,10 @@ class AWACUpdate:
             # 采样下一个动作并计算目标 Q 值
             next_actions = self.actor(next_states).sample()
             target_q = rewards + (1 - dones) * 0.99 * self.critic(next_states, next_actions)
-        
+
         current_q = self.critic(states, actions)
         critic_loss = F.mse_loss(current_q, target_q)
-        
+
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
@@ -149,23 +149,23 @@ class AWACUpdate:
             # 计算多个采样动作的 Q 值并取平均作为基线 V(s)
             q_values = torch.stack([self.critic(states, a) for a in sampled_actions], dim=0)
             v_s = q_values.mean(dim=0)
-            
+
             # 计算优势函数 A(s,a) = Q(s,a) - V(s)
             advantage = current_q - v_s
-            
+
             # 计算加权系数 exp(A/lambda) 并截断以防数值爆炸
             weights = torch.clamp(torch.exp(advantage / self.lambda_weight), max=100.0)
 
         # 获取当前策略对数据集动作的对数概率
         log_probs = self.actor(states).log_prob(actions)
-        
+
         # 乘以常数权重，实现加权的最大似然估计 (等价于最小化加权负对数似然)
         actor_loss = - (weights * log_probs).mean()
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
-        
+
         return critic_loss.item(), actor_loss.item()
 ```
 
@@ -173,17 +173,17 @@ class AWACUpdate:
 
 ## 8.6.5 小结
 
-* 遥操作（Teleoperation）提供了解决强化学习样本效率低下的关键人类先验，其核心依赖于严格的空间 $SE(3)$ 群几何变换与运动学映射。
-* 传统的行为克隆由于忽视了环境转移带来的分布偏移（Distribution Shift）问题，容易在长时间控制中失效。人类在环的 DAgger 算法通过在线学习机制为其提供了强力的理论支撑。
-* 现代的样本高效机器人框架（如 SERL）将离线人类示范与在线强化学习有机结合。其底层的 AWAC 算法通过带有 KL 散度约束的拉格朗日变分推导，证明了只需通过指数化优势函数加权的对数似然，即可在“模仿”与“探索”之间取得最优平衡。
+- 遥操作（Teleoperation）提供了解决强化学习样本效率低下的关键人类先验，其核心依赖于严格的空间 $SE(3)$ 群几何变换与运动学映射。
+- 传统的行为克隆由于忽视了环境转移带来的分布偏移（Distribution Shift）问题，容易在长时间控制中失效。人类在环的 DAgger 算法通过在线学习机制为其提供了强力的理论支撑。
+- 现代的样本高效机器人框架（如 SERL）将离线人类示范与在线强化学习有机结合。其底层的 AWAC 算法通过带有 KL 散度约束的拉格朗日变分推导，证明了只需通过指数化优势函数加权的对数似然，即可在“模仿”与“探索”之间取得最优平衡。
 
 ## 8.6.6 练习
 
 1. 在二维平面遥操作的该公式中，如果我们希望从动机器人的响应不仅仅包含缩放，还在末端施加一个固定的位置偏置 $\mathbf{b}$，变换矩阵应如何修改？
-    * **提示**：回忆齐次坐标系中平移向量在矩阵中的位置。
+   - **提示**：回忆齐次坐标系中平移向量在矩阵中的位置。
 2. 试证明在推导 DAgger 算法的分布偏移时，如果在每一步策略产生错误的概率为 $\epsilon$，那么在 $T$ 步之后产生偏离状态的总概率上界是 $O(T\epsilon)$。
-    * **提示**：可以采用数学归纳法或者直接通过联合概率分解证明。
+   - **提示**：可以采用数学归纳法或者直接通过联合概率分解证明。
 3. 在 AWAC 算法中，如果 $\lambda \to \infty$，该公式中的最优策略 $\pi^*$ 会退化成什么？对应的 Actor 损失函数代表了哪种经典的模仿学习算法？
-    * **提示**：计算 $\lim_{\lambda \to \infty} \exp(A(s,a)/\lambda)$，并回顾该公式。
+   - **提示**：计算 $\lim_{\lambda \to \infty} \exp(A(s,a)/\lambda)$，并回顾该公式。
 4. 检查代码实现中计算基线状态价值 $V(s)$ 的方式。为何我们通过对 `sampled_actions` 求平均来逼近 $V(s)$，而不是在代码中再定义一个单独的价值网络去训练它？
-    * **提示**：思考 $Q(s,a)$ 和 $V(s)$ 在定义上的数学关系：$V^\pi(s) = \mathbb{E}_{a \sim \pi}[Q^\pi(s,a)]$。
+   - **提示**：思考 $Q(s,a)$ 和 $V(s)$ 在定义上的数学关系：$V^\pi(s) = \mathbb{E}_{a \sim \pi}[Q^\pi(s,a)]$。

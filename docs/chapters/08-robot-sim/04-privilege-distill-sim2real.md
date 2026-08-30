@@ -2,9 +2,9 @@
 
 在前面的章节中，我们已经探讨了如何在高度理想化的物理仿真环境中训练智能体。然而，当我们将这些在仿真器中表现优异的策略直接部署到真实的物理机器人（如四足机器狗或灵巧手）上时，往往会遭遇灾难性的失败。这种仿真与现实之间的巨大鸿沟，被称为“虚实迁移（Sim2Real）”问题。
 
-早在深度强化学习应用于机器人控制的初期，研究者们就意识到，无论仿真器设计得多么精妙，都无法完美复制真实世界的全部物理规律。真实的电机存在延迟与死区，地面摩擦力是非均匀且随时间变化的，机器人的连杆质量也会因为组装公差而偏离设计图纸。最初解决这一问题的方法是域随机化（Domain Randomization）[[Tobin et al., 2017]](https://arxiv.org/abs/1703.06907)，即在仿真中大规模随机化物理参数，迫使策略学习到对参数变化鲁棒的行为。然而，纯粹的参数随机化往往导致策略变得过于保守，无法在不同环境中展现出最优的灵活性。
+仿真器不能完整复制真实系统中的执行器延迟、摩擦变化和装配误差。Tobin 等人的域随机化工作在视觉 Sim-to-Real 中随机改变纹理、光照、相机和物体属性，使真实图像有机会落入训练分布 [[Tobin et al., 2017]](https://arxiv.org/abs/1703.06907)。这篇论文主要讨论视觉随机化，不能单独支撑“物理参数随机化必然使策略保守”的普遍结论。
 
-随后，研究者们提出了一种更为优雅且强大的范式：特权信息蒸馏（Privilege Information Distillation）或不对称演员-评论家（Asymmetric Actor-Critic）架构 [[Pinto et al., 2017]](https://arxiv.org/abs/1710.06542)[[Lee et al., 2020]](https://arxiv.org/abs/2010.11251)[[Kumar et al., 2021]](https://arxiv.org/abs/2107.04034)。这种方法巧妙地利用了仿真器的主场优势——在仿真中，我们可以毫无代价地获取任何隐藏的物理属性（如精确的摩擦系数、接触力、甚至是未来几步的地面高程），这些被称为“特权信息”。因此，我们首先在仿真中训练一个能够完美利用特权信息的“教师（Teacher）”策略；随后，我们通过监督学习，将教师的智慧“蒸馏”给一个只能观察到真实世界可行传感器数据（如关节角度历史和相机图像）的“学生（Student）”策略。
+仿真训练可以使用部署时不可得的**特权信息**，但不同论文使用它的方式并不相同。Pinto 等人的不对称 actor–critic 让 critic 读取仿真完整状态，而 actor 只读取可部署的 RGB-D 观测 [[Pinto et al., 2017]](https://arxiv.org/abs/1710.06542)。Lee 等人的四足运动控制器用特权学习构造训练目标，部署策略则根据本体感受历史行动 [[Lee et al., 2020]](https://arxiv.org/abs/2010.11251)。RMA 由基础策略与适应模块组成，训练时利用环境参数，部署时由近期状态—动作历史推断环境表征 [[Kumar et al., 2021]](https://arxiv.org/abs/2107.04034)。因此，“critic 使用特权状态”“教师—学生蒸馏”和“在线适应模块”应当分别表述。
 
 本节我们将从基础物理概念出发，严谨地推导这一框架背后的数学逻辑，并深入探讨其张量维度的代码实现细节。
 
@@ -135,11 +135,11 @@ class AdaptationNetwork(nn.Module):
             nn.Conv1d(in_channels=32, out_channels=32, kernel_size=3, stride=1),
             nn.ELU()
         )
-        
+
         # 严谨计算经过两次核大小为 3，步长为 1 且无填充的卷积后，序列长度的变化
         # 每次卷积导致序列长度减 2，因此最终长度为 hist_len - 4
         flat_size = 32 * (hist_len - 4)
-        
+
         self.linear_net = nn.Sequential(
             nn.Linear(flat_size, 128),
             nn.ELU(),
@@ -152,7 +152,7 @@ class AdaptationNetwork(nn.Module):
         x = h_t.transpose(1, 2)
         x = self.conv_net(x)
         # 将局部时序特征展平，形状变为: (batch_size, flat_size)
-        x = x.view(x.size(0), -1) 
+        x = x.view(x.size(0), -1)
         # 输出预测隐变量 z_hat_t，形状为: (batch_size, z_dim)
         return self.linear_net(x)
 ```
@@ -181,7 +181,7 @@ teacher_policy.eval()
 # 从重放缓冲区（Replay Buffer）中随机采样一个批次的轨迹状态
 o_t = torch.randn(batch_size, o_dim)
 e_t = torch.randn(batch_size, e_dim)
-h_t = torch.randn(batch_size, hist_len, o_dim) 
+h_t = torch.randn(batch_size, hist_len, o_dim)
 
 # 定义针对适应网络的优化器
 optimizer = torch.optim.Adam(adaptation_net.parameters(), lr=1e-3)
@@ -214,5 +214,5 @@ print(f"Predicted z_hat_t shape: {z_hat_t.shape}")
 特权信息蒸馏架构为跨越虚实鸿沟提供了一条数学上极为严谨的解耦路径。通过将原先高度非平稳的 POMDP 求解拆解为两个具有明确物理意义的子问题，我们不仅在第一阶段（通过完全可观测的特权 MDP）极大地加速了强化学习的收敛，更在第二阶段获得了在真实物理世界中对未知扰动极强的在线推断与自适应能力。
 
 > [!NOTE]
-> 
+>
 > 这种两阶段范式本质上展示了隐式表示学习（Implicit Representation Learning）的强大力量：我们摒弃了直接从观测端到端映射到动作的黑盒做法，而是强制神经网络在一个低维的流形空间（隐变量空间）内，将复杂的动力学方程与物理定律进行纯粹的数学抽象。这一架构至今仍是目前最先进的灵巧手操作与多足机器人跨地形行走研究中的核心基石。

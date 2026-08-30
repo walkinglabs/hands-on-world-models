@@ -2,7 +2,7 @@
 
 在人类探索通用人工智能（Artificial General Intelligence, AGI）的历程中，如果说大型语言模型（Large Language Models, LLMs）赋予了机器“认知”与“推理”的大脑，视觉-语言模型（Vision-Language Models, VLMs）为机器装配了“观察”世界的双眼，那么视觉-语言-动作模型（Vision-Language-Action Models, VLA）则是迈向具身智能（Embodied AI）的关键一步——它赋予了机器在物理世界中“行动”的躯干与四肢。
 
-本节将深入探讨机器人策略（Robot Policy）学习范式的演进，特别是从传统的孤立控制算法到统一的 Transformer 架构的跨越。我们将重点剖析 Robotics Transformer 及其衍生模型（RT-1 [[Brohan et al., 2022]](https://arxiv.org/abs/2212.06817), RT-2 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818), 以及跨具身的 RT-X [[Padalkar et al., 2023]](https://arxiv.org/abs/2310.08864)），并从最基础的数学概念出发，逐步构建起 VLA 模型的严谨理论框架与代码实现。
+本节将深入探讨机器人策略（Robot Policy）学习范式的演进，特别是从传统的孤立控制算法到统一的 Transformer 架构的跨越。我们将重点剖析 Robotics Transformer 及其衍生模型（RT-1 [[Brohan et al., 2022]](https://arxiv.org/abs/2212.06817), RT-2 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818), 以及跨具身的 RT-X [[Open X-Embodiment Collaboration, 2023]](https://arxiv.org/abs/2310.08864)），并从最基础的数学概念出发，逐步构建起 VLA 模型的严谨理论框架与代码实现。
 
 ## 历史脉络与学术背景
 
@@ -85,6 +85,7 @@ $$ \mathbf{F}'_{c, h, w} = \gamma_c \cdot \mathbf{F}_{c, h, w} + \beta_c $$
 ## 代码实现：从零构建微型 VLA 模型
 
 为了更深入地理解，我们将用代码实现一个简化的 VLA 架构。由于完整的 RT 模型涉及数十亿参数，我们在此构建一个极简版本，包含：
+
 1. 动作离散化器（Action Tokenizer）
 2. 简化的图像-语言特征融合模块
 3. 基于 Transformer 的自回归策略解码器
@@ -117,12 +118,12 @@ class ActionTokenizer:
         # 确保 action 和 min/max 在同一设备上
         self.action_min = self.action_min.to(action.device)
         self.action_max = self.action_max.to(action.device)
-        
+
         # 归一化到 [0, 1] 之间
         normalized_action = (action - self.action_min) / (self.action_max - self.action_min)
         # 裁剪以防越界
         normalized_action = torch.clamp(normalized_action, 0.0, 1.0)
-        
+
         # 离散化为整数标签
         tokenized = torch.round(normalized_action * (self.vocab_size - 1)).long()
         return tokenized
@@ -133,7 +134,7 @@ class ActionTokenizer:
         """
         self.action_min = self.action_min.to(tokenized.device)
         self.action_max = self.action_max.to(tokenized.device)
-        
+
         normalized_action = tokenized.float() / (self.vocab_size - 1)
         action = normalized_action * (self.action_max - self.action_min) + self.action_min
         return action
@@ -149,7 +150,7 @@ class FiLMLayer(nn.Module):
         # 语言特征映射到 γ 和 β
         self.fc_gamma = nn.Linear(lang_dim, channels)
         self.fc_beta = nn.Linear(lang_dim, channels)
-        
+
     def forward(self, x, lang_emb):
         """
         x: 视觉特征图 [batch_size, channels, H, W]
@@ -158,7 +159,7 @@ class FiLMLayer(nn.Module):
         # 计算缩放和偏置系数，形状变为 [batch_size, channels, 1, 1]
         gamma = self.fc_gamma(lang_emb).unsqueeze(-1).unsqueeze(-1)
         beta = self.fc_beta(lang_emb).unsqueeze(-1).unsqueeze(-1)
-        
+
         # 仿射调制
         return gamma * x + beta
 ```
@@ -172,22 +173,22 @@ class TinyVLAModel(nn.Module):
         super(TinyVLAModel, self).__init__()
         self.action_dim = action_dim
         self.vocab_size = vocab_size
-        
+
         # 视觉前端（使用卷积层模拟）
         self.vision_conv = nn.Conv2d(3, img_channels, kernel_size=3, stride=2, padding=1)
         self.film = FiLMLayer(lang_dim, img_channels)
         self.vision_proj = nn.Linear(img_channels, d_model)
-        
+
         # 动作嵌入
         self.action_emb = nn.Embedding(vocab_size, d_model)
-        
+
         # Transformer 解码器
         decoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=d_model*4, batch_first=True)
         self.transformer = nn.TransformerEncoder(decoder_layer, num_layers=num_layers)
-        
+
         # 动作预测头
         self.action_head = nn.Linear(d_model, vocab_size)
-        
+
     def forward(self, image, lang_emb, action_tokens=None):
         """
         image: [batch_size, 3, H, W]
@@ -195,15 +196,15 @@ class TinyVLAModel(nn.Module):
         action_tokens: [batch_size, action_len] (训练时使用真实标签，推理时自回归生成)
         """
         batch_size = image.size(0)
-        
+
         # 1. 视觉-语言特征融合
         v_feat = F.relu(self.vision_conv(image)) # [B, C, H', W']
         v_feat = self.film(v_feat, lang_emb)
-        
+
         # 展平为序列 [B, H'*W', C]
         v_seq = v_feat.flatten(2).transpose(1, 2)
         v_seq = self.vision_proj(v_seq) # [B, seq_len, d_model]
-        
+
         # 2. 拼接序列
         if action_tokens is not None:
             a_seq = self.action_emb(action_tokens) # [B, action_len, d_model]
@@ -211,10 +212,10 @@ class TinyVLAModel(nn.Module):
             transformer_input = torch.cat([v_seq, a_seq], dim=1)
         else:
             transformer_input = v_seq
-            
+
         # 3. Transformer 处理 (此处简化，未加入因果掩码，仅用于示意特征流动)
         output = self.transformer(transformer_input)
-        
+
         # 4. 预测下一个动作词元的概率分布
         # 取对应于动作位置的输出特征
         action_logits = self.action_head(output)
@@ -231,7 +232,7 @@ class TinyVLAModel(nn.Module):
 
 ## 小结
 
-* 视觉-语言-动作模型（VLA）通过将连续的控制信号离散化，成功将具身智能领域的规划与控制任务转化为自然语言处理中的自回归序列生成问题。
-* 动作序列的交叉熵损失，相较于均方误差，能够更好地建模具有多模态特性的动作分布。
-* FiLM 机制提供了一种轻量级且有效的跨模态特征调制方法，使得语言指令能够在视觉特征提取的早期介入。
-* 跨具身（Cross-Embodiment）学习通过统一坐标系下的逆运动学变换，打破了硬件壁垒，使得在千万级不同机器人轨迹上的联合训练成为可能。
+- 视觉-语言-动作模型（VLA）通过将连续的控制信号离散化，成功将具身智能领域的规划与控制任务转化为自然语言处理中的自回归序列生成问题。
+- 动作序列的交叉熵损失，相较于均方误差，能够更好地建模具有多模态特性的动作分布。
+- FiLM 机制提供了一种轻量级且有效的跨模态特征调制方法，使得语言指令能够在视觉特征提取的早期介入。
+- 跨具身（Cross-Embodiment）学习通过统一坐标系下的逆运动学变换，打破了硬件壁垒，使得在千万级不同机器人轨迹上的联合训练成为可能。

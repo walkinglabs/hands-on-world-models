@@ -1,6 +1,6 @@
 # 联合嵌入预测架构（JEPA）基础理论
 
-自监督学习（Self-Supervised Learning, SSL）在深度学习的黄金十年中占据了举足轻重的地位。然而，当我们试图让机器像人类一样理解世界时，传统的学习范式暴露出了深层的局限性。2022年，Yann LeCun 在其具有里程碑意义的论文 *A Path Towards Autonomous Machine Intelligence* [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf) 中正式提出了联合嵌入预测架构（Joint Embedding Predictive Architecture, JEPA）。这一架构试图回答一个基础且深刻的问题：机器应该在哪个空间中预测未来或补全缺失的信息？
+自监督学习（Self-Supervised Learning, SSL）在深度学习的黄金十年中占据了举足轻重的地位。然而，当我们试图让机器像人类一样理解世界时，传统的学习范式暴露出了深层的局限性。2022年，Yann LeCun 在其具有里程碑意义的论文 _A Path Towards Autonomous Machine Intelligence_ [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf) 中正式提出了联合嵌入预测架构（Joint Embedding Predictive Architecture, JEPA）。这一架构试图回答一个基础且深刻的问题：机器应该在哪个空间中预测未来或补全缺失的信息？
 
 在本节中，我们将从自监督学习的演进脉络出发，逐步剖析 JEPA 的物理直觉与数学基础，并最终在代码层面构建这一架构的核心组件。
 
@@ -8,7 +8,7 @@
 
 在 JEPA 诞生之前，主流的自监督学习大致可以分为两类：生成式架构（Generative Architectures）和联合嵌入架构（Joint Embedding Architectures）。
 
-生成式架构（例如掩码自编码器 MAE [[He et al., 2022]](https://arxiv.org/abs/2111.06377) 或自回归语言模型）通过在输入空间（如像素或词元）中预测缺失的部分来进行学习。这种方法的优势在于其通用性和简单的优化目标，但其致命弱点在于：物理世界中充满了不可预测的细枝末节（例如风中飘动的树叶的精确轨迹）。强迫模型在像素级别重构这些不可预测的噪声，不仅浪费了巨大的计算资源，也阻碍了模型学习更高层级的抽象语义。
+掩码自编码器 MAE 通过重构被遮挡图像块的像素学习表征 [[He et al., 2022]](https://arxiv.org/abs/2111.06377)。LeCun 的 JEPA 立场则认为，物理世界包含许多难以预测且未必与任务相关的像素细节，因此更适合在抽象表征空间预测 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)。前一句是 MAE 的方法，后一句是 JEPA 的设计主张，不能都归到 MAE 论文名下。
 
 另一方面，联合嵌入架构直接约束不同视角的表征。若只最小化正样本之间的距离，模型确实可能把所有输入映射为同一常数；SimCLR 则使用批内负样本和对比损失来排除这种平凡解 [[Chen et al., 2020]](https://arxiv.org/abs/2002.05709)。因此，表示坍塌是联合嵌入方法需要解决的问题，而不是 SimCLR “引入”的问题。
 
@@ -33,6 +33,7 @@ JEPA 的核心思想在于，我们不应该试图预测观测值 $x_{t+1}$。�
 现在，我们将上述直觉推广到高维向量空间与深度神经网络。
 
 在 JEPA 框架中，存在三个核心的神经网络模块：
+
 1. **上下文编码器（Context Encoder）** $E_\theta$：接收部分可观测的上下文信号 $x$，并输出其表示 $s_x = E_\theta(x)$。
 2. **目标编码器（Target Encoder）** $E_\phi$：接收目标信号 $y$（这通常是 $x$ 的空间或时间延伸，或者同一实体的另一视角），并输出其表示 $s_y = E_\phi(y)$。
 3. **预测器（Predictor）** $P_\psi$：接收上下文表示 $s_x$ 和一个隐变量（或条件变量） $z$，试图预测目标表示：$\hat{s}_y = P_\psi(s_x, z)$。
@@ -139,22 +140,22 @@ class JEPA(nn.Module):
     def __init__(self, input_dim, embed_dim, z_dim, ema_tau=0.99):
         super().__init__()
         self.ema_tau = ema_tau
-        
+
         # 上下文编码器 (可训练)
         self.context_encoder = Encoder(input_dim, embed_dim)
-        
+
         # 目标编码器 (不通过反向传播训练)
         self.target_encoder = copy.deepcopy(self.context_encoder)
         for param in self.target_encoder.parameters():
             param.requires_grad = False
-            
+
         # 预测器 (可训练)
         self.predictor = Predictor(embed_dim, z_dim)
 
     def update_target_encoder(self):
         """执行目标编码器参数的指数移动平均更新。"""
         with torch.no_grad():
-            for param_q, param_k in zip(self.context_encoder.parameters(), 
+            for param_q, param_k in zip(self.context_encoder.parameters(),
                                         self.target_encoder.parameters()):
                 param_k.data.mul_(self.ema_tau).add_(param_q.data, alpha=1.0 - self.ema_tau)
 
@@ -166,14 +167,14 @@ class JEPA(nn.Module):
         """
         # 1. 计算上下文表示
         s_x = self.context_encoder(x)
-        
+
         # 2. 计算目标表示 (注意使用 no_grad，防止梯度回传)
         with torch.no_grad():
             s_y = self.target_encoder(y)
-            
+
         # 3. 在潜空间中进行预测
         s_y_hat = self.predictor(s_x, z)
-        
+
         return s_y_hat, s_y
 ```
 

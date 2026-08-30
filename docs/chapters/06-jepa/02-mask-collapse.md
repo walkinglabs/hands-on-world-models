@@ -1,12 +1,12 @@
 # 掩码预测与表征坍塌（Representation Collapse）问题
 
-在深度学习的发展历程中，自监督学习（Self-Supervised Learning, SSL）逐渐成为从未标注数据中提取通用表征的核心范式。自监督学习的精髓在于“从数据中挖掘监督信号”，即利用输入数据自身的一部分去预测另一部分。早期的经典工作，如自然语言处理领域的 BERT [[Devlin et al., 2018]](https://arxiv.org/abs/1810.04805) 以及计算机视觉领域的掩码自编码器（Masked Autoencoders, MAE）[[He et al., 2021]](https://arxiv.org/abs/2111.06377)，均在原始输入空间（如词元或像素空间）中进行掩码预测，并取得了举世瞩目的成功。
+自监督学习（Self-Supervised Learning, SSL）利用数据自身构造训练目标。例如，BERT 根据未遮挡的上下文预测被遮挡的词元 [[Devlin et al., 2018]](https://arxiv.org/abs/1810.04805)，掩码自编码器（Masked Autoencoders, MAE）则重构被遮挡图像块的像素 [[He et al., 2022]](https://arxiv.org/abs/2111.06377)。这两篇论文分别支撑词元空间与像素空间中的掩码预测。
 
 然而，随着我们对人工智能的期望逐渐从“模式识别”升级为“理解复杂物理规律”的世界模型（World Models），原始像素空间的局限性开始暴露无遗。在原始高维像素空间中进行精确重建，不仅计算代价极其高昂，而且会迫使模型将庞大的网络容量浪费在预测高频但缺乏语义价值的纹理细节（如微风吹过的草地纹理、随机的背景噪声）上。
 
-为了引导模型关注高阶的抽象语义，研究者们提出跳过像素解码，直接在抽象的潜在空间（Latent Space）中进行预测。诸如联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）[[Baevski et al., 2022]](https://arxiv.org/abs/2202.03555); [[Assran et al., 2023]](https://arxiv.org/abs/2301.08243) 的提出，正是这一理念的巅峰体现。但是，当我们放弃了由原始像素提供的绝对真实标签（Ground Truth），转而让模型去预测自己动态生成的潜在特征时，一个致命的优化陷阱便悄然浮现——**表征坍塌（Representation Collapse）**。
+为了减少对像素解码的依赖，data2vec 使用教师网络产生的潜在表征作为预测目标 [[Baevski et al., 2022]](https://arxiv.org/abs/2202.03555)，I-JEPA 则在图像块的表征空间中进行掩码预测 [[Assran et al., 2023]](https://arxiv.org/abs/2301.08243)。data2vec 与 I-JEPA 属于相关的潜在目标预测方法，但前者并未以 JEPA 命名。只预测动态生成的表征时，需要专门设计训练机制来避免**表征坍塌（Representation Collapse）**。
 
-本节我们将从最基础的代数与几何视角，极其严谨地剖析表征坍塌的数学本质。我们将探讨为什么基于梯度的优化器会不可避免地滑向这个陷阱，并详细推导现代自监督学习如何通过非对称架构与动量编码器（如 BYOL [[Grill et al., 2020]](https://arxiv.org/abs/2006.07733) 中提出的核心技术）来优雅而彻底地规避这一问题。
+本节从代数与几何视角分析常数表示为何是一个平凡解，并讨论 BYOL 等方法使用的非对称架构、停止梯度与动量编码器 [[Grill et al., 2020]](https://arxiv.org/abs/2006.07733)。这些设计在实验中避免了坍塌，但不能概括为所有基于梯度的优化器都“不可避免”坍塌，或某个单一组件能彻底消除风险。
 
 ## 潜在空间预测与优化的“惰性”
 
@@ -71,6 +71,7 @@ $$L_{InfoNCE} = - \log \frac{\exp(\mathbf{h}_1^\top \mathbf{h}_2 / \tau)}{\exp(\
 世界模型（如 JEPA）与 BYOL 吸取了前人的教训，采用了一种极具工程美感且数学上极为精妙的设计：**引入不对称的前向预测通路，并通过动量指数移动平均（EMA）构建停止梯度（Stop-Gradient）的目标网络。**
 
 具体而言，网络被物理隔离为两个并行的分支：
+
 1. **在线网络（Online Network）**：负责实际的特征提取与预测，参数记为 $\theta$。优化器根据损失函数的梯度专门更新该网络的参数。
 2. **目标网络（Target Network）**：负责为在线网络提供优化的“目标靶点”，参数记为 $\xi$。我们**禁止**目标网络通过反向传播获取梯度，即施加停止梯度（Stop-Gradient）操作。
 
@@ -121,7 +122,7 @@ class SimpleEncoder(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, output_dim)
         )
-        
+
     def forward(self, x):
         return self.net(x)
 ```
@@ -149,29 +150,29 @@ def generate_views(batch_size, input_dim, noise_std=0.1):
 def train_naive_predictor(steps=500):
     encoder = SimpleEncoder()
     optimizer = optim.Adam(encoder.parameters(), lr=1e-3)
-    
+
     variances = []
     losses = []
-    
+
     for step in range(steps):
         v1, v2 = generate_views(batch_size=256, input_dim=128)
-        
+
         # 提取特征
         h1 = encoder(v1)
         h2 = encoder(v2)
-        
+
         # 计算均方误差损失
         loss = F.mse_loss(h1, h2)
-        
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        
+
         # 记录特征在批次维度上的方差平均值
         var = h1.var(dim=0).mean().item()
         variances.append(var)
         losses.append(loss.item())
-        
+
     return losses, variances
 
 naive_losses, naive_vars = train_naive_predictor()
@@ -196,42 +197,42 @@ def train_ema_predictor(steps=500, tau=0.99):
     online_encoder = SimpleEncoder()
     # 目标网络是独立存在的，初始权重与在线网络相同
     target_encoder = copy.deepcopy(online_encoder)
-    
+
     # 停止目标网络的梯度计算
     for param in target_encoder.parameters():
         param.requires_grad = False
-        
+
     # 优化器只负责更新在线网络
     optimizer = optim.Adam(online_encoder.parameters(), lr=1e-3)
-    
+
     variances = []
     losses = []
-    
+
     for step in range(steps):
         v1, v2 = generate_views(batch_size=256, input_dim=128)
-        
+
         # 在线网络前向传播
         h_online = online_encoder(v1)
-        
+
         # 目标网络前向传播（不计算梯度）
         with torch.no_grad():
             h_target = target_encoder(v2)
-        
+
         # 计算非对称的均方误差损失
         loss = F.mse_loss(h_online, h_target)
-        
+
         # 反向传播，仅更新在线网络参数
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        
+
         # 手动 EMA 更新目标网络参数
         update_ema_variables(online_encoder, target_encoder, tau)
-        
+
         var = h_online.var(dim=0).mean().item()
         variances.append(var)
         losses.append(loss.item())
-        
+
     return losses, variances
 
 ema_losses, ema_vars = train_ema_predictor()
@@ -242,7 +243,7 @@ print(f"EMA模型最终特征方差: {ema_vars[-1]:.6f} (保持健康分布)")
 
 ## 小结
 
-* 在未标注的高维潜在空间进行直接回归预测时，基于梯度下降的优化过程天然倾向于让网络输出常数以走捷径，此现象即为表征坍塌（Representation Collapse）。
-* 从高维矩阵的视角，如果没有显式约束，损失函数矩阵迹项的半正定性必定使得全零矩阵权重成为优化过程中的全局最优点。
-* 早期的自监督方法（如 SimCLR）依赖于庞大的负样本构建 InfoNCE 空间排斥力来抵抗坍塌，但受限于计算资源瓶颈。
-* 现代预测架构（如 JEPA、BYOL）利用非对称的计算图流：在线网络通过梯度下降进行剧烈学习，而目标网络施加停止梯度（Stop-Gradient）并使用指数移动平均（EMA）提供缓慢漂移的标量锚点，从根本上打破了坍塌的数学对称性条件。
+- 在未标注的高维潜在空间进行直接回归预测时，基于梯度下降的优化过程天然倾向于让网络输出常数以走捷径，此现象即为表征坍塌（Representation Collapse）。
+- 从高维矩阵的视角，如果没有显式约束，损失函数矩阵迹项的半正定性必定使得全零矩阵权重成为优化过程中的全局最优点。
+- 早期的自监督方法（如 SimCLR）依赖于庞大的负样本构建 InfoNCE 空间排斥力来抵抗坍塌，但受限于计算资源瓶颈。
+- 现代预测架构（如 JEPA、BYOL）利用非对称的计算图流：在线网络通过梯度下降进行剧烈学习，而目标网络施加停止梯度（Stop-Gradient）并使用指数移动平均（EMA）提供缓慢漂移的标量锚点，从根本上打破了坍塌的数学对称性条件。

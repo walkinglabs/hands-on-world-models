@@ -4,7 +4,7 @@
 
 在深度学习的早期，监督学习依赖于明确的标签（即专家的示范）来更新模型。然而，在诸如游戏、机器人控制或自动驾驶等开放环境中，获取逐帧的最优决策标签是极其昂贵甚至不可能的。强化学习（Reinforcement Learning, RL）提供了一种替代范式：智能体（Agent）通过与环境的交互，收集奖励（Reward）信号，并以此为导向优化自身的行为。
 
-在早期的表格型强化学习中，学者们通常关注如何精确估计处于某个状态的“价值”（即价值函数法）。但在连续控制或高维动作空间中，价值函数法面临“维度灾难”。直到 [[Williams, 1992]](https://doi.org/10.1007/BF00992696) 提出了 REINFORCE 算法，以及 [[Sutton et al., 1999]](https://proceedings.neurips.cc/paper/1999/hash/464d828b85b0bed98e80ade0a5c43b0f-Abstract.html) 正式确立了策略梯度定理（Policy Gradient Theorem），直接优化策略本身（Policy-based methods）才成为现代深度强化学习的核心基石之一。本文将从最基础的概率论出发，毫无跳跃地为您推导出策略梯度定理的严密形式，并引入价值函数作为降低估计方差的关键工具。
+Williams 给出了用采样回报更新随机策略参数的 REINFORCE 算法 [[Williams, 1992]](https://doi.org/10.1007/BF00992696)。Sutton 等人随后给出策略梯度定理，并讨论结合函数近似价值函数的 actor–critic 形式 [[Sutton et al., 1999]](https://proceedings.neurips.cc/paper/1999/hash/464d828b85b0bed98e80ade0a5c43b0f-Abstract.html)。本节从概率论推导策略梯度，并说明价值基线如何降低梯度估计方差；这两篇引用分别对应算法估计器与定理。
 
 ## 策略与轨迹的数学描述
 
@@ -218,7 +218,7 @@ def compute_returns(rewards, gamma=0.99):
 def reinforce_update(policy_net, optimizer, saved_log_probs, rewards):
     # 计算带有标准化基线的 G_t
     returns = compute_returns(rewards)
-    
+
     policy_loss = []
     # 遍历轨迹中的每一步，计算对数梯度与回报的乘积
     for log_prob, G in zip(saved_log_probs, returns):
@@ -226,10 +226,10 @@ def reinforce_update(policy_net, optimizer, saved_log_probs, rewards):
         # 由于 PyTorch 的优化器执行的是梯度下降（Gradient Descent）
         # 因此我们在前向附加一个负号
         policy_loss.append(-log_prob * G)
-        
+
     # 对时间步求和，反向传播
     policy_loss = torch.stack(policy_loss).sum()
-    
+
     optimizer.zero_grad()
     policy_loss.backward()
     optimizer.step()
@@ -263,13 +263,13 @@ def compute_returns(rewards, gamma=0.99):
 
 def reinforce_update(policy_net, optimizer, saved_log_probs, rewards):
     returns = compute_returns(rewards)
-    
+
     policy_loss = []
     for log_prob, G in zip(saved_log_probs, returns):
         policy_loss.append(-log_prob * G)
-        
+
     policy_loss = tf.reduce_sum(policy_loss)
-    
+
     with tf.GradientTape() as tape:
         # 这里为了演示对齐 PyTorch 逻辑，实际在 TF 中 log_prob 是通过 tape 计算的
         # 在实际实现中，通常会将前向采样和 loss 计算一同放在 tape 内部
@@ -284,6 +284,7 @@ def reinforce_update(policy_net, optimizer, saved_log_probs, rewards):
 ## 小结
 
 在本节中，我们详细拆解了强化学习中的策略梯度定理：
+
 1. 从马尔可夫决策过程的轨迹分布出发，我们定义了由策略网络参数化的目标期望函数。
 2. 通过引入复合函数求导中经典的**对数导数技巧**，我们将目标函数的梯度转化为可以从环境中采样的期望形式，克服了无法获知环境状态转移概率分布的难题。
 3. 遵循严格的因果时间序律，我们使用未来累积回报取代了轨迹总回报。

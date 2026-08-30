@@ -2,7 +2,7 @@
 
 在探讨了通用的空间与视频生成模型之后，我们自然而然地会将目光投向当前具身智能（Embodied AI）最具挑战性、也是商业化落地最迫切的领域——自动驾驶。传统自动驾驶系统通常被拆解为感知（Perception）、预测（Prediction）、规划（Planning）和控制（Control）等多个独立模块。尽管这种模块化设计在工程上便于调试，但由于信息在模块间传递时的不可避免的丢失与误差累积，系统往往难以应对长尾（Long-tail）的复杂边缘场景（Corner Cases）。
 
-近年来，以 GAIA-1 [[Hu et al., 2023]](https://arxiv.org/abs/2309.17080) 和 DriveDreamer [[Wang et al., 2023]](https://arxiv.org/abs/2309.09777) 为代表的“自动驾驶世界模型”提出了一种全新的范式：如果我们能训练一个模型，使其能够根据当前状态和自身动作，完美预测出未来的视觉画面与物理状态，那么这个模型本质上就“理解”了驾驶世界的物理规律与交互逻辑。
+GAIA-1 根据视频、文本与车辆动作生成驾驶场景 [[Anthony Hu et al., 2023]](https://arxiv.org/abs/2309.17080)，DriveDreamer 则用结构化交通条件控制驾驶视频生成 [[Xiaofeng Wang et al., 2023a]](https://arxiv.org/abs/2309.09777)。这类模型可以检验对动作条件和场景演化的统计建模能力，但视觉预测逼真并不等同于“理解”全部物理规律；还需要几何、反事实与闭环驾驶评测。
 
 在本节中，我们将从最基础的物理运动学出发，逐步推导自动驾驶世界模型的概率生成框架，并深入解析其背后的核心机制——如何将多模态数据（视频、文本、动作）统一映射至隐空间（Latent Space），以及如何通过自回归（Autoregressive）或扩散（Diffusion）过程在时间维度上进行演化。
 
@@ -106,11 +106,11 @@ class CausalSelfAttention(nn.Module):
 
     def forward(self, x):
         B, T, C = x.size() # Batch size, Sequence Length, Embedding Dimension
-        
+
         # 计算 Q, K, V
         qkv = self.c_attn(x)
         q, k, v = qkv.split(self.d_model, dim=2)
-        
+
         # 形状变换以支持多头注意力: (B, T, n_heads, C // n_heads) -> (B, n_heads, T, C // n_heads)
         q = q.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)
         k = k.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)
@@ -119,7 +119,7 @@ class CausalSelfAttention(nn.Module):
         # 核心：使用 PyTorch 内置的缩放点积注意力（自动处理因果掩码）
         # 等价于我们在该公式中的数学推导
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
-        
+
         # 将多头拼接回去
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         return self.c_proj(y)
@@ -151,15 +151,15 @@ class SimpleActionConditionedWorldModel(nn.Module):
     def __init__(self, vocab_size, d_model, max_seq_len, n_layers=4, n_heads=4):
         super().__init__()
         self.d_model = d_model
-        
+
         # 视觉 Token 嵌入字典
         self.token_emb = nn.Embedding(vocab_size, d_model)
         # 绝对位置编码
         self.pos_emb = nn.Parameter(torch.zeros(1, max_seq_len, d_model))
-        
+
         # 动作投影：将连续动作（如转向角、油门，通常为低维向量）映射到隐空间
         self.action_proj = nn.Linear(2, d_model) # 假设动作维度为 2
-        
+
         self.blocks = nn.Sequential(*[DrivingWorldModelBlock(d_model, n_heads) for _ in range(n_layers)])
         self.ln_f = nn.LayerNorm(d_model)
         # 最终输出头，映射回词表概率
@@ -171,22 +171,22 @@ class SimpleActionConditionedWorldModel(nn.Module):
         actions: 历史及当前动作序列，形状 (B, T, 2)
         """
         B, T = idx.size()
-        
+
         # 获取 Token 嵌入与位置嵌入
         tok_embeddings = self.token_emb(idx) # (B, T, d_model)
         pos_embeddings = self.pos_emb[:, :T, :] # (1, T, d_model)
-        
+
         # 动作特征映射
         act_embeddings = self.action_proj(actions) # (B, T, d_model)
-        
+
         # 将视觉状态与对应的动作特征在隐空间相加（代表在对应状态下施加了该动作）
         # 这是一种将条件注入模型的标准多模态融合方式
         x = tok_embeddings + act_embeddings + pos_embeddings
-        
+
         # 通过 Transformer 块进行时序演化
         x = self.blocks(x)
         x = self.ln_f(x)
-        
+
         # 预测下一时刻的 Token 对数概率 (Logits)
         logits = self.lm_head(x) # (B, T, vocab_size)
         return logits
@@ -237,7 +237,7 @@ print("Logits shape:", logits.shape)
 ## 9.5.7 练习
 
 1. 在该公式中，为什么我们需要引入停止梯度操作 `sg()`？如果你将其移除，会对反向传播的过程产生什么数学上的致命影响？
-   *提示：思考损失函数第一项，重构误差试图直接拉近原图与解码器输出。如果没有 `sg()`，编码本的更新可能会陷入一种怎样的平庸解（Trivial Solution）？*
+   _提示：思考损失函数第一项，重构误差试图直接拉近原图与解码器输出。如果没有 `sg()`，编码本的更新可能会陷入一种怎样的平庸解（Trivial Solution）？_
 2. 我们在代码中使用加法（`tok_embeddings + act_embeddings`）来融合状态和动作。除此之外，还有哪些将额外条件注入 Transformer 的数学方法？
-   *提示：可以回顾我们在之前的章节中提到的 Cross-Attention 机制（如在扩散模型中被广泛应用），或者考虑特征的通道拼接（Concatenation）。*
+   _提示：可以回顾我们在之前的章节中提到的 Cross-Attention 机制（如在扩散模型中被广泛应用），或者考虑特征的通道拼接（Concatenation）。_
 3. 假设我们要用该世界模型评估当前驾驶策略的安全性，你会如何利用它输出的对数概率分布来计算某个危险动作引发碰撞的“风险期望”？

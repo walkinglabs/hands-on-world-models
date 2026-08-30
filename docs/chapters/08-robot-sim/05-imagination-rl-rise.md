@@ -8,9 +8,9 @@
 
 基于模型（Model-Based）的强化学习思想可以追溯到上世纪90年代Richard Sutton提出的Dyna架构 [[Sutton, 1990]](https://dl.acm.org/doi/10.5555/645530.658292)。Dyna的核心思想是利用智能体与真实环境交互收集的数据来训练一个环境动力学模型，随后智能体不仅在真实环境中学习，也在环境模型生成的模拟数据中学习。然而，早期的环境模型主要针对低维、离散的状态空间，难以处理高维的图像输入。
 
-进入深度学习时代，Ha与Schmidhuber在经典论文《World Models》 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122) 中，首次展示了如何利用变分自编码器（VAE）和混合密度网络结合循环神经网络（MDN-RNN），从高维视觉输入中学习一个紧凑的隐空间动力学模型。更重要的是，他们证明了智能体可以完全在这个隐式世界模型的“梦境”（Dream）中训练，并在真实环境中取得优异表现。
+Ha 与 Schmidhuber 在《World Models》中用变分自编码器（VAE）压缩图像，再用混合密度循环网络（MDN-RNN）学习动作条件潜在动力学 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。CarRacing 的控制器在真实环境中优化；完全在模型“梦境”中训练并迁回真实环境的实验对应 VizDoom Take Cover。这个结果证明了特定任务上的可行性，不是对任意视觉控制任务的保证。
 
-随后，Hafner等人在一系列里程碑式的工作中进一步完善了这一范式。在《Dream to Control》 [[Hafner et al., 2019]](https://arxiv.org/abs/1912.01603) 中，他们提出了循环状态空间模型（Recurrent State Space Model, RSSM），解决了长视野序列生成的误差累积问题。在其后的Dreamer系列算法 [[Hafner et al., 2020]](https://arxiv.org/abs/2010.02193); [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104) 中，他们更是通过在隐空间中利用重参数化技巧（Reparameterization Trick）直接计算策略梯度，彻底释放了世界模型的潜力，使得基于模型的算法在样本效率和渐进性能上首次全面超越了顶尖的无模型算法。
+Hafner 等人在 PlaNet 中提出 RSSM，Dreamer 随后用这一模型生成潜在想象轨迹，并通过价值估计与动力学梯度训练策略 [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)。DreamerV2 与 DreamerV3 又扩展到离散潜变量和跨领域统一超参数 [[Hafner et al., 2021]](https://arxiv.org/abs/2010.02193); [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104)。这些论文在各自报告的基准上与强无模型方法比较，但不能概括为在样本效率和最终性能上“首次全面超越”所有无模型算法。
 
 ## 动力学系统与隐空间映射
 
@@ -47,6 +47,7 @@ $$p(o_{1:T}, r_{1:T}, z_{1:T} \mid a_{1:T}) = \prod_{t=1}^T p(o_t \mid h_t, z_t)
 $$h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})$$
 
 在该公式的连乘项中，定义了系统核心的基础测度：
+
 1. **先验转移模型（Prior Dynamics）**：$p_\theta(z_t \mid h_t)$，负责在缺少当前观测信息的情况下，沿着时间轴预测随机变量分布的演化。
 2. **观测重构模型（Observation Model）**：$p_\theta(o_t \mid h_t, z_t)$，定义从低维隐流形到高维观测流形的映射。
 3. **奖励反馈模型（Reward Model）**：$p_\theta(r_t \mid h_t, z_t)$，提供单步标量反馈预测。
@@ -69,6 +70,7 @@ $$
 $$
 
 该公式从信息论和统计力学双重维度锁定了RSSM的优化流形：
+
 1. **重构对数似然**强制隐空间 $z_t$ 必须保留足以映射回原始输入度规的信息容量。
 2. **反馈对数似然**确保表示空间严格包含与长期回报最大化直接相关的价值表征。
 3. **KL散度项**（Kullback-Leibler Divergence）是一个强正则化算子，它约束开环预测的先验动力学必须紧紧跟随具有闭环观测修正的后验动力学。只有散度收敛，智能体在未来断开真实环境、进行纯粹“做梦”时的序列展开分布才具有拓扑一致性。
@@ -110,24 +112,24 @@ class RSSMCell(nn.Module):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.latent_dim = latent_dim
-        
+
         # 确定性动力学方程: h_t = f(h_{t-1}, z_{t-1}, a_{t-1})
         self.gru = nn.GRUCell(hidden_dim + latent_dim + action_dim, hidden_dim)
-        
+
         # 先验预测算子: p(z_t | h_t)
         self.prior_mlp = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.ELU(),
             nn.Linear(hidden_dim, 2 * latent_dim)
         )
-        
+
         # 后验推断算子: q(z_t | h_t, o_t) (约定o_t已被视觉流形编码器映射为向量e_t)
         self.posterior_mlp = nn.Sequential(
             nn.Linear(hidden_dim + hidden_dim, hidden_dim),
             nn.ELU(),
             nn.Linear(hidden_dim, 2 * latent_dim)
         )
-        
+
     def _split_dist(self, params):
         # [解构对角高斯分布参数矩阵]
         mean, log_std = torch.chunk(params, 2, dim=-1)
@@ -144,23 +146,23 @@ class RSSMCell(nn.Module):
         # [沿时间轴递归展开非线性门控算子]
         rnn_input = torch.cat([h_prev, z_prev, a_prev], dim=-1)
         h_t = self.gru(rnn_input, h_prev)
-        
+
         # [前向推导先验测度流形]
         prior_params = self.prior_mlp(h_t)
         prior_dist = self._split_dist(prior_params)
-        
+
         post_dist = None
         # 遵循重参数化公理执行可导采样
-        z_t = prior_dist.rsample() 
-        
+        z_t = prior_dist.rsample()
+
         if obs_embed is not None:
             # [后验分布矫正过程仅激活于包含真实数据的训练回环]
             post_input = torch.cat([h_t, obs_embed], dim=-1)
             post_params = self.posterior_mlp(post_input)
             post_dist = self._split_dist(post_params)
             # 在拟合阶段，状态张量强制修正为后验信息源
-            z_t = post_dist.rsample() 
-            
+            z_t = post_dist.rsample()
+
         return h_t, z_t, prior_dist, post_dist
 ```
 
@@ -175,26 +177,26 @@ class ActorCriticInDream(nn.Module):
         self.actor = actor
         self.critic = critic
         self.horizon = horizon
-        
+
     def forward(self, init_h, init_z):
         h, z = init_h, init_z
-        
+
         states = []
-        
+
         # [在纯运算图中进行固定视界的自回归想象展演]
         for t in range(self.horizon):
             state_feature = torch.cat([h, z], dim=-1)
             states.append(state_feature)
-            
+
             # [注入随机策略分布并应用重参数化技术抽取动作张量]
             action = self.actor(state_feature)
-            
+
             # 驱使动力学模型执行纯先验状态转移
             h, z, _, _ = self.rssm(h, z, action, obs_embed=None)
-            
+
             # 此处省略奖励模型的单步评估算子
             # reward = self.reward_model(torch.cat([h, z], dim=-1))
-            
+
         # 最终阶段利用广义优势及截断递归累加算出目标价值标量
         # 解析梯度则由张量引擎中的 .backward() 指令隐式穿越整个时序拓扑结构
         pass

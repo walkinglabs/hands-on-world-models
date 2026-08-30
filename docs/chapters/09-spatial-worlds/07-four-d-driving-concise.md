@@ -1,9 +1,10 @@
 # 4D 自动驾驶预测模型的简洁实现
+
 :label:sec_4d_driving_concise
 
 在自动驾驶的发展历程中，对物理世界的表征经历了从二维图像面到三维鸟瞰图（Bird's-Eye-View, BEV）的演进。然而，真实的物理世界是动态的。为了在高速行驶或复杂城市路况中做出安全决策，自动驾驶系统不仅需要理解当前的静态空间结构，还必须预测未来时刻的动态演化。这种在三维空间维度 $(X, Y, Z)$ 上引入时间维度 $(T)$ 的建模方式，构成了 4D 空间世界模型（4D Spatial World Models）的核心。
 
-早期的端到端自动驾驶模型（如 [[Hu et al., 2023]](https://arxiv.org/abs/2212.10156) 提出的 UniAD）主要依赖于将时间序列的 BEV 特征在二维平面上进行简单的循环神经网络展开。然而，由于压缩了高度维度，这类方法在面对立交桥、悬垂障碍物或起伏路面时往往会丢失关键的几何信息。[[Wang et al., 2023]](https://arxiv.org/abs/2311.16038) 等人的工作进一步提出了基于三维体素（Voxel）的 4D 占位网格预测（4D Occupancy Prediction），试图直接在完整的三维空间中预测未来时间步的状态转移。
+UniAD 把检测、跟踪、地图、运动预测与规划统一到基于查询的 Transformer 框架中，并在 BEV 表征上完成多任务交互 [[Yihan Hu et al., 2023]](https://arxiv.org/abs/2212.10156)；它不是“简单的循环神经网络展开”。二维 BEV 的柱状表示会压缩高度信息，而 OccWorld 等工作进一步使用三维占用表示预测未来场景演化 [[Zheng et al., 2023]](https://arxiv.org/abs/2311.16038)。
 
 本节我们将摒弃复杂的工程细节，从最基础的物理运动学原理出发，严密推导出 4D 预测模型的核心数学形式，并利用深度学习框架实现一个简洁的 4D 自动驾驶世界模型。我们还将探讨在 2025 至 2026 年间，开源社区与初创企业在 4D 占位和 4D 神经辐射场（NeRF）方向上的最新突破，以及如何结合端侧大语言模型工作流（如 Ollama）实现极致的本地推理优化。
 
@@ -91,22 +92,22 @@ class Simple4DPredictor(nn.Module):
         action_t: 当前自车动作 (B, action_dim) 包含转向和加速度
         """
         B, C, Z, H, W = state_t.shape
-        
+
         # 1. 编码空间几何
         spatial_features = self.spatial_encoder(state_t)
-        
+
         # 2. 处理并广播动作特征到完整的三维空间维度
         act_feat = self.action_mlp(action_t) # (B, C)
         act_feat_broadcast = act_feat.view(B, C, 1, 1, 1).expand(B, C, Z, H, W)
-        
+
         # 3. 状态转移算子 F_theta: 融合当前状态与动作
         fused_state = torch.cat([spatial_features, act_feat_broadcast], dim=1) # (B, 2C, Z, H, W)
         state_next = self.transition_net(fused_state) # (B, C, Z, H, W)
-        
+
         # 4. 解码为概率分布 O_hat
         occupancy_logits = self.occupancy_decoder(state_next) # (B, 1, Z, H, W)
         occupancy_prob = self.sigmoid(occupancy_logits)
-        
+
         return state_next, occupancy_prob
 ```
 
@@ -153,23 +154,23 @@ class Simple4DPredictor(tf.keras.Model):
         H = tf.shape(state_t)[2]
         W = tf.shape(state_t)[3]
         C = tf.shape(state_t)[4]
-        
+
         # 1. 编码空间几何
         spatial_features = self.spatial_encoder(state_t)
-        
+
         # 2. 处理并广播动作特征
         act_feat = self.action_mlp(action_t) # (B, C)
         act_feat_broadcast = tf.reshape(act_feat, [B, 1, 1, 1, C])
         act_feat_broadcast = tf.tile(act_feat_broadcast, [1, Z, H, W, 1])
-        
+
         # 3. 状态转移融合
         fused_state = tf.concat([spatial_features, act_feat_broadcast], axis=-1)
         state_next = self.transition_net(fused_state)
-        
+
         # 4. 解码为概率分布
         occupancy_logits = self.occupancy_decoder(state_next)
         occupancy_prob = self.sigmoid(occupancy_logits)
-        
+
         return state_next, occupancy_prob
 ```
 
@@ -180,12 +181,15 @@ class Simple4DPredictor(tf.keras.Model):
 随着 2025 至 2026 年算力和算法的进一步下放，4D 世界模型的研究已从学术界巨头逐渐平民化。在开源社区（如 GitHub 的自动驾驶专区），涌现了大量初创团队的工作，极大地推动了 4D 占位预测和新型辐射场的工程落地。
 
 ### 1. 动态 4D 占位与 4D NeRF 的融合
+
 传统的 4D 占位模型往往受限于网格分辨率（例如只能做到 $0.5\mathrm{m}$ 的体素精度）。2025年下半年，几个知名的开源项目（如 `Open4D-Occ` 和 `OccNeRF-lite`）突破了这一瓶颈。它们通过引入轻量级的 4D 神经辐射场（4D Neural Radiance Fields）和 3D Gaussian Splatting 的时间扩展版，将占位网格的显式离散表征与 NeRF 的隐式连续表征进行了优雅的结合。
 这种架构允许模型在粗糙的体素网格中进行宏观动力学预测（即我们上文实现的 4D 预测器逻辑），而在关键障碍物的表面边界使用可微渲染引擎进行亚像素级别的几何重建。这一创新极大降低了高分辨率三维卷积带来的显存消耗，使得在消费级显卡上训练 4D 世界模型成为可能。
 
 ### 2. 端侧推理优化与基于 Ollama 的局部闭环
+
 到 2026 年初，边缘计算（Edge Computing）成为了自动驾驶系统的核心考量之一。要在车端计算平台以极低的延迟（$< 50\mathrm{ms}$）运行 4D 世界模型，传统的云端部署已无法满足要求。
 开源初创社区开始将 4D 推理流程与 Ollama 等成熟的端侧大模型工作流深度整合（Local Inference Workflow）。其核心工程优化包括：
+
 - **量化与算子融合 (Quantization & Fusion)**：将 3D 卷积核与时间注意力模块进行 INT8 甚至 INT4 量化。利用 Ollama 社区提供的低比特底层计算加速库（如针对 NPU 的特定优化），使得内存带宽占用减少了近 $70\%$。
 - **认知与物理模型的协同解耦**：在 Ollama 框架内并置运行两个线程，一个用于运行极小参数量（如 1.5B）的多模态视觉-语言推理模型，专门负责高维语义认知（例如判断“前方行人意图过马路”）；另一个线程运行本文所述的 4D 物理状态演化算子。认知模型输出粗粒度的高级动作意图，转化为我们的 $\mathbf{a}_t$，直接馈入 4D 世界模型的转移函数中，从而在端侧形成高效的局部闭环决策链。
 

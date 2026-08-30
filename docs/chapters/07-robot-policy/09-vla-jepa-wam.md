@@ -2,7 +2,7 @@
 
 在具身智能（Embodied AI）与机器人控制的演进历程中，如何让系统不仅能“感知”当前状态，还能理解物理世界的运作规律并据此做出精准的“动作预测”，一直是学术界的核心难题。传统端到端行为克隆（Behavior Cloning）往往缺乏对环境未来动态的前瞻能力，而基于生成式模型（如扩散模型或自动编码器）的世界模型则倾向于在像素级别进行严苛的重构验证。然而，真实世界充满了高度的偶然认知不确定性（Aleatoric Uncertainty）——风吹动的树叶、水面的反光、相机镜头的噪点。将宝贵的网络容量和算力浪费在预测这些与任务本身毫无关联的视觉高频细节上，从信息论的角度看是极为低效的。
 
-2022年，Yann LeCun 在其经典文献中正式提出了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）[[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)，主张彻底抛弃像素级别的重构，转而在高度抽象的隐空间（Latent Space）中直接预测系统状态的未来演变。随后，V-JEPA [[Bardes et al., 2024]](https://arxiv.org/abs/2404.08471) 将这一思想成功扩展到高维的视频特征学习中。近年来，学术界将这一底层哲学无缝引入到具身控制策略中，诞生了基于 JEPA 的视觉-语言-动作模型（Vision-Language-Action JEPA, VLA-JEPA）及其变体（如 World Action Model, WAM）。
+2022 年，Yann LeCun 系统阐述了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）[[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)，主张在表征空间中预测与任务有关的信息。V-JEPA 随后把这一思路用于视频表征学习 [[Bardes et al., 2024]](https://arxiv.org/abs/2404.08471)。把预测状态与生成动作结合的机器人模型仍是快速演进中的研究范式；“World Action Model（WAM）”是对多种相关架构的统称，而不是 V-JEPA 论文定义的单一标准模型 [[Wang et al., 2026]](https://arxiv.org/abs/2605.12090)。本节中的“VLA-JEPA”因此表示一种教学性的组合设计，不声称复现某篇同名论文。
 
 本节将从经典力学中的系统状态变量建模起步，严格推导 VLA-JEPA 的数学体系与优化博弈机制，并展示如何用这一架构为机器人构建一个既严谨又极其高效的策略大脑。
 
@@ -22,7 +22,7 @@ $$
 
 在具身机器人的 VLA 任务中，我们面临着完全等价的拓扑映射挑战。机器人无法直接获取环境完美的物理状态向量。它只能接收到维度极高的传感器观测数据矩阵 $\mathbf{X}_t \in \mathbb{R}^{H \times W \times C}$（高度、宽度及颜色通道）。同时，其任务意图并不总是简单的力学方程，而是由高维离散的自然语言指令序列 $l$ 所定义。
 
-VLA-JEPA 的核心思想，正是利用深层神经网络作为非线性映射算子，将高维、冗余且充满噪声的观测数据 $\mathbf{X}_t$ 强行映射到一个等价于 $(\mathbf{p}_0, \mathbf{v}_0)$ 的低维语义向量空间，并在该空间内完成类似该公式的因果预测。
+本节构造的教学模型使用深层神经网络把观测 $\mathbf{X}_t$ 映射到低维向量，并在该空间内做动作条件预测。这个向量是否真的等价于完整物理状态，必须通过探针、下游控制与反事实实验验证，不能由网络结构本身保证。
 
 ## VLA-JEPA 的数学体系基础
 
@@ -70,7 +70,7 @@ $$
 >
 > 我们可以将这种架构看作一场师生间的知识博弈。如果教师（目标编码器）和学生（上下文编码器与预测器）同时看着同一本无字的答案书，并且都被允许修改答案书的内容来证明“我们达成了一致”，那么最快达成一致的方法就是双双把书撕掉（坍缩为零）。为了防止这种情况，必须强制要求“教师的知识必须是过去历史中稳定积累的，且在此刻不可被随意篡改”。
 
-为了在纯粹的数学层面上阻断这一退化路径，VLA-JEPA 引入了不对称的参数更新法则。**上下文编码器 $\theta$ 与预测器 $\phi$ 通过正常的梯度反向传播进行更新：**
+为降低退化到平凡解的风险，本节采用 I-JEPA 风格的不对称参数更新。**上下文编码器 $\theta$ 与预测器 $\phi$ 通过梯度反向传播更新：**
 
 $$
 \theta \leftarrow \theta - \eta \nabla_\theta \mathcal{L}_{MSE}, \quad \phi \leftarrow \phi - \eta \nabla_\phi \mathcal{L}_{MSE}
@@ -82,7 +82,7 @@ $$
 \bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta
 $$
 
-其中衰减率参数 $\tau \in [0.99, 1)$。由于 $\bar{\theta}$ 提供了随时间缓慢变化且不可通过即时捷径篡改的目标锚点（Anchor），它在数学上有效对抗了特征坍缩。这也是 JEPA 家族能摆脱传统对比学习（Contrastive Learning，需要构建海量负样本）的重要基石。
+其中衰减率参数 $\tau \in [0.99, 1)$。$\bar{\theta}$ 提供随时间缓慢变化的目标，经验上有助于稳定训练。它与停止梯度、预测器和数据掩码共同降低坍塌风险，但不能单独给出“不发生坍塌”的数学保证。
 
 ## 基于 Transformer 的架构映射
 
@@ -120,7 +120,7 @@ class VisionLanguageEncoder(nn.Module):
         # 将不同模态的特征映射到统一的语义维度
         self.img_proj = nn.Linear(img_dim, latent_dim)
         self.lang_proj = nn.Linear(lang_dim, latent_dim)
-        
+
         # 融合网络，等价于注意力机制中的特征深度非线性混合
         self.fusion_mlp = nn.Sequential(
             nn.Linear(latent_dim * 2, latent_dim * 2),
@@ -134,10 +134,10 @@ class VisionLanguageEncoder(nn.Module):
         # [通过 GELU 激活函数引入非线性并统一维度]
         x_feat = F.gelu(self.img_proj(x))
         l_feat = F.gelu(self.lang_proj(l))
-        
+
         # [沿特征维度拼接，进入多层感知机完成联合特征嵌入]
         fused = torch.cat([x_feat, l_feat], dim=-1)
-        s_t = self.fusion_mlp(fused) 
+        s_t = self.fusion_mlp(fused)
         # 输出形状: [Batch, latent_dim]
         return s_t
 
@@ -150,7 +150,7 @@ class ActionPredictor(nn.Module):
         super().__init__()
         # 动作向量投影
         self.act_proj = nn.Linear(act_dim, latent_dim)
-        
+
         # 深层前馈预测网络
         self.predictor_net = nn.Sequential(
             nn.Linear(latent_dim * 2, latent_dim * 2),
@@ -162,7 +162,7 @@ class ActionPredictor(nn.Module):
     def forward(self, s_t, a_t):
         # [将低维物理动作投影到与视觉状态相同的高维语义空间]
         a_feat = F.gelu(self.act_proj(a_t))
-        
+
         # [拼接状态与动作以进行未来状态的前向推演]
         combined = torch.cat([s_t, a_feat], dim=-1)
         s_t_next_pred = self.predictor_net(combined)
@@ -175,17 +175,17 @@ class VLA_JEPA(nn.Module):
     def __init__(self, img_dim=1024, lang_dim=512, act_dim=64, latent_dim=256, ema_tau=0.996):
         super().__init__()
         self.ema_tau = ema_tau
-        
+
         # 1. 初始化上下文编码器 \theta (在线网络，接受梯度)
         self.context_encoder = VisionLanguageEncoder(img_dim, lang_dim, latent_dim)
-        
+
         # 2. 初始化预测器 \phi (在线网络，接受梯度)
         self.predictor = ActionPredictor(latent_dim, act_dim)
-        
+
         # 3. 初始化目标编码器 \bar{\theta} (目标网络，脱离计算图)
         # 初始时刻采用完全一致的权重
         self.target_encoder = copy.deepcopy(self.context_encoder)
-        
+
         # [在整个训练周期内冻结目标编码器的参数，强制关闭自动求导]
         for param in self.target_encoder.parameters():
             param.requires_grad = False
@@ -210,17 +210,17 @@ class VLA_JEPA(nn.Module):
         """
         # [利用在线上下文编码器，提取当前状态的隐式表达]
         s_t = self.context_encoder(x_t, l)
-        
+
         # [利用在线预测器推演下一时刻的预测表达]
         s_t_next_pred = self.predictor(s_t, a_t)
-        
+
         # [开启无梯度上下文，通过历史累计网络提取真实的未来目标表达]
         with torch.no_grad():
             s_t_next_target = self.target_encoder(x_t_next, l)
-            
+
         # 计算在 D_s 维度上的均方误差
         loss = F.mse_loss(s_t_next_pred, s_t_next_target)
-        
+
         return loss, s_t_next_pred, s_t_next_target
 ```
 
@@ -235,7 +235,7 @@ class VisionLanguageEncoder(layers.Layer):
         super().__init__(**kwargs)
         self.img_proj = layers.Dense(latent_dim, activation='gelu')
         self.lang_proj = layers.Dense(latent_dim, activation='gelu')
-        
+
         self.fusion_mlp = models.Sequential([
             layers.Dense(latent_dim * 2),
             layers.LayerNormalization(),
@@ -254,7 +254,7 @@ class ActionPredictor(layers.Layer):
     def __init__(self, latent_dim=256, **kwargs):
         super().__init__(**kwargs)
         self.act_proj = layers.Dense(latent_dim, activation='gelu')
-        
+
         self.predictor_net = models.Sequential([
             layers.Dense(latent_dim * 2),
             layers.LayerNormalization(),
@@ -272,11 +272,11 @@ class VLA_JEPA(models.Model):
     def __init__(self, img_dim=1024, lang_dim=512, act_dim=64, latent_dim=256, ema_tau=0.996, **kwargs):
         super().__init__(**kwargs)
         self.ema_tau = ema_tau
-        
+
         self.context_encoder = VisionLanguageEncoder(latent_dim)
         self.predictor = ActionPredictor(latent_dim)
         self.target_encoder = VisionLanguageEncoder(latent_dim)
-        
+
         # 在 TensorFlow 中设置网络不参与训练梯度更新
         self.target_encoder.trainable = False
 
@@ -289,9 +289,9 @@ class VLA_JEPA(models.Model):
         """利用张量代数执行 EMA 权重更新"""
         ctx_weights = self.context_encoder.get_weights()
         tgt_weights = self.target_encoder.get_weights()
-        
+
         new_weights = [
-            self.ema_tau * tgt_w + (1 - self.ema_tau) * ctx_w 
+            self.ema_tau * tgt_w + (1 - self.ema_tau) * ctx_w
             for ctx_w, tgt_w in zip(ctx_weights, tgt_weights)
         ]
         self.target_encoder.set_weights(new_weights)
@@ -300,13 +300,13 @@ class VLA_JEPA(models.Model):
         x_t, x_t_next, l, a_t = inputs
         s_t = self.context_encoder(x_t, l)
         s_t_next_pred = self.predictor(s_t, a_t)
-        
+
         # [使用 tf.stop_gradient 严格阻断由后续损失计算引起的目标网络反向传播]
         s_t_next_target = tf.stop_gradient(self.target_encoder(x_t_next, l))
-        
+
         loss = tf.reduce_mean(tf.square(s_t_next_pred - s_t_next_target))
         self.add_loss(loss)
-        
+
         return s_t_next_pred, s_t_next_target
 ```
 

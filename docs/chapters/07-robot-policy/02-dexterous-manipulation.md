@@ -6,7 +6,7 @@
 
 早期的机器人抓取往往局限于结构化环境下的工业夹爪。研究者们很快意识到，要让机器人进入人类生活并操作为人类手部设计的工具，必须赋予其接近人类的解剖学结构。1982年，[Salisbury和Craig提出了一种具有3个手指、9个自由度的灵巧手设计](https://doi.org/10.1177/027836498200100102)，奠定了现代多指灵巧手的运动学基础。随后，诸如Shadow Hand等具备高度仿生特性的商业灵巧手相继问世，其自由度往往高达20至24个。
 
-然而，硬件的进步并没有立刻带来灵巧操作的普及。由于灵巧手系统呈现出高度非线性、维度灾难以及接触状态极其频繁切换的特点，传统的基于模型的控制理论（如最优控制和轨迹优化）在应对此类问题时往往举步维艰。直到深度强化学习（Deep Reinforcement Learning）的崛起，这一僵局才被彻底打破。Rajeswaran等人在2017年证明了可以使用深度强化学习让多指灵巧手学会复杂的物理操作 [[Rajeswaran et al., 2017]](https://arxiv.org/abs/1709.10087)。2019年，OpenAI展示了利用强化学习结合域随机化（Domain Randomization）训练的Shadow Hand，甚至能够在现实世界中单手解魔方 [[Akkaya et al., 2019]](https://arxiv.org/abs/1910.07113)。这一里程碑式的工作向世界宣告：学习范式（Learning Paradigm）已经成为解决高难度灵巧操作的核心途径。
+灵巧手具有高维动作空间、频繁接触切换和复杂动力学，因此控制与数据收集都很困难。Rajeswaran 等人展示了用无模型深度强化学习训练多指手完成转笔、开门和锤击等任务 [[Rajeswaran et al., 2017]](https://arxiv.org/abs/1709.10087)。OpenAI 随后结合强化学习与自动域随机化，让 Shadow Hand 在真实系统上完成魔方复原 [[Akkaya et al., 2019]](https://arxiv.org/abs/1910.07113)。这些结果证明了学习方法在论文所测试任务中的可行性，但并不意味着传统模型式控制已被完全取代。
 
 ## 物理基础：从滑动摩擦到多点接触
 
@@ -71,7 +71,7 @@ class DexterousPolicy(nn.Module):
         假定输入为 64x64 的 RGB 图像和 num_joints 维度的关节状态。
         """
         super().__init__()
-        
+
         # 视觉编码器：经典的简单卷积网络架构
         # 输入维度：(Batch, 3, 64, 64)
         self.visual_encoder = nn.Sequential(
@@ -85,7 +85,7 @@ class DexterousPolicy(nn.Module):
             nn.Linear(64 * 4 * 4, visual_feature_dim),
             nn.ReLU()
         )
-        
+
         # 本觉感知编码器：简单的MLP
         # 输入维度：(Batch, num_joints)
         self.proprio_encoder = nn.Sequential(
@@ -94,7 +94,7 @@ class DexterousPolicy(nn.Module):
             nn.Linear(64, 64),
             nn.ReLU()
         )
-        
+
         # 融合与输出层
         # 输入维度：视觉特征和本体特征拼接 (visual_feature_dim + 64)
         self.action_head = nn.Sequential(
@@ -112,16 +112,16 @@ class DexterousPolicy(nn.Module):
         """
         # 提取视觉特征，维度 (B, visual_feature_dim)
         vis_feat = self.visual_encoder(image)
-        
+
         # 提取本体特征，维度 (B, 64)
         prop_feat = self.proprio_encoder(proprioception)
-        
+
         # 在特征维度进行拼接，维度 (B, visual_feature_dim + 64)
         fused_feat = torch.cat([vis_feat, prop_feat], dim=1)
-        
+
         # 输出动作，维度 (B, action_dim)
         action = self.action_head(fused_feat)
-        
+
         return action
 ```
 
@@ -132,7 +132,7 @@ import tensorflow as tf
 class DexterousPolicy(tf.keras.Model):
     def __init__(self, num_joints=24, action_dim=24, visual_feature_dim=128):
         super().__init__()
-        
+
         # 视觉编码器：经典的简单卷积网络架构
         self.visual_encoder = tf.keras.Sequential([
             tf.keras.layers.Conv2D(32, kernel_size=8, strides=4, activation='relu'),
@@ -141,13 +141,13 @@ class DexterousPolicy(tf.keras.Model):
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(visual_feature_dim, activation='relu')
         ])
-        
+
         # 本觉感知编码器
         self.proprio_encoder = tf.keras.Sequential([
             tf.keras.layers.Dense(64, activation='relu'),
             tf.keras.layers.Dense(64, activation='relu')
         ])
-        
+
         # 融合与输出层
         self.action_head = tf.keras.Sequential([
             tf.keras.layers.Dense(256, activation='relu'),
@@ -156,15 +156,15 @@ class DexterousPolicy(tf.keras.Model):
 
     def call(self, inputs):
         image, proprioception = inputs
-        
+
         vis_feat = self.visual_encoder(image)
         prop_feat = self.proprio_encoder(proprioception)
-        
+
         # 拼接特征
         fused_feat = tf.concat([vis_feat, prop_feat], axis=1)
-        
+
         action = self.action_head(fused_feat)
-        
+
         return action
 ```
 

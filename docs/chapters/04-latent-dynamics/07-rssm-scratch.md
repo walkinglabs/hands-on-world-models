@@ -12,7 +12,7 @@
 
 为了引入随机性，变分循环神经网络（Variational RNNs） [[Chung et al., 2015]](https://arxiv.org/abs/1506.02216) 被提出，它们在每个时间步引入一个服从高斯分布的随机变量。然而，纯粹依靠随机状态跨越时间步传递信息的模型，在优化时极难保留跨越数百步的长期依赖。
 
-Hafner 敏锐地洞察到了这一矛盾。在 [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 中，他提出：**状态的记忆机制应当是确定性的，而对未来的推断应当包含随机性。** 这种将状态强制解耦为“确定性部分”和“随机性部分”的思想，正是 RSSM 在众多世界模型中脱颖而出的核心基础，并在后续的 Dreamer 系列论文 [[Hafner et al., 2020]](https://arxiv.org/abs/2010.02193); [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104) 中被不断发扬光大。
+PlaNet 的 RSSM 在每个时间步同时维护确定性的循环状态与随机状态 [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551)：前者汇总历史，后者表达当前潜变量及其不确定性。DreamerV2 延续这一分解并把随机状态改为离散变量，DreamerV3 继续使用离散 RSSM [[Hafner et al., 2021]](https://arxiv.org/abs/2010.02193); [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104)。
 
 ## 从抛物运动到分离状态空间
 
@@ -24,6 +24,7 @@ Hafner 敏锐地洞察到了这一矛盾。在 [[Hafner et al., 2019]](https://a
 $$v_t = v_{t-1} + a \cdot \Delta t + \epsilon_t$$
 
 其中，$a$ 是你施加的加速度，$\epsilon_t$ 则是代表阵风影响的随机噪声。我们可以敏锐地发现，等式的右边由两部分组成：
+
 1. **确定性部分**（$v_{t-1} + a \cdot \Delta t$）：它精确记录了系统在此前的状态以及受控输入，这部分是完全可以被物理法则（或网络权重）确定的。
 2. **随机性部分**（$\epsilon_t$）：这是系统不可预知的外部扰动，或者说是一种内在的不确定性。
 
@@ -62,6 +63,7 @@ $$q_\phi(z_t \mid h_t, x_t) = \mathcal{N}(\mu_\phi(h_t, x_t), \Sigma_\phi(h_t, x
 3. **动作维度（Action Dimension）**：$D_a$。
 
 在单步推进中：
+
 - 提取的历史特征：$h_{t-1} \in \mathbb{R}^{B \times D_h}$
 - 历史随机特征：$z_{t-1} \in \mathbb{R}^{B \times D_z}$
 - 当前动作：$a_{t-1} \in \mathbb{R}^{B \times D_a}$
@@ -83,26 +85,30 @@ class RSSMCell(nn.Module):
         super().__init__()
         self.deter_dim = deter_dim
         self.stoch_dim = stoch_dim
-        
+
         # 1. 确定性状态更新相关网络
         # 作用：处理 (z_{t-1}, a_{t-1}) 作为 GRU 的输入
         self.fc_state_action = nn.Linear(stoch_dim + action_dim, hidden_dim)
         self.cell = nn.GRUCell(hidden_dim, deter_dim)
-        
+
         # 2. 先验动力学网络 (Prior Dynamics)
         # 作用：基于 h_t 预测先验的 z_t 的均值和方差
         self.fc_prior_hidden = nn.Linear(deter_dim, hidden_dim)
         self.fc_prior_stats = nn.Linear(hidden_dim, 2 * stoch_dim)
-        
+
         # 3. 后验推断网络 (Posterior Inference)
         # 作用：基于 h_t 和 观测特征 x_t 提取后验的 z_t 的均值和方差
         self.fc_posterior_hidden = nn.Linear(deter_dim + hidden_dim, hidden_dim)
         self.fc_posterior_stats = nn.Linear(hidden_dim, 2 * stoch_dim)
 ```
+
 #@tab tensorflow
+
 # 在 TensorFlow 对应实现中，通常使用 tf.keras.layers.Dense 和 tf.keras.layers.GRUCell。
+
 # 由于核心张量逻辑完全一致，此处主要关注其严格的数学推导在代码中的映射。
-```
+
+````
 
 我们需要几个辅助函数来帮助我们处理高斯分布的参数计算和重参数化技巧（Reparameterization Trick）。为了保证训练的数值稳定性，方差往往不直接被预测，而是预测标准的对数方差（Log-Variance），或者使用 Softplus 激活函数加上一个极小的偏移量。
 
@@ -124,11 +130,12 @@ def sample_gaussian(mean, std):
     """
     noise = torch.randn_like(mean)
     return mean + std * noise
-```
+````
 
 ### 实现单步前向传播（Step）
 
 在前向传播时，RSSM 会区分两种情况：
+
 1. **环境交互/想象阶段（Prior/Imagination）**：没有真实的观测 $x_t$，模型完全依赖先验网络向未来滚动。
 2. **状态推断阶段（Observation/Inference）**：有真实的观测 $x_t$，模型利用后验网络校正状态，这主要用于训练阶段和真实环境中的信念状态（Belief State）更新。
 
@@ -145,17 +152,17 @@ def sample_gaussian(mean, std):
         # (**计算确定性状态更新**)
         # 对应该公式        za_cat = torch.cat([prev_stoch, prev_action], dim=-1)
         gru_input = F.elu(self.fc_state_action(za_cat))
-        
+
         # GRU 内部状态更新
         # h_t = GRU(input_t, h_{t-1})
         deter_state = self.cell(gru_input, prev_deter)
-        
+
         # (**计算先验分布**)
         # 对应该公式        prior_hidden = F.elu(self.fc_prior_hidden(deter_state))
         prior_stats = self.fc_prior_stats(prior_hidden)
         prior_mean, prior_std = extract_stats(prior_stats)
         prior_stoch = sample_gaussian(prior_mean, prior_std)
-        
+
         # (**计算后验分布（如果有观测）**)
         if obs_embed is not None:
             # 对应该公式            # 将当前确定性状态与当前观测嵌入进行拼接
@@ -167,7 +174,7 @@ def sample_gaussian(mean, std):
         else:
             post_mean, post_std = prior_mean, prior_std
             post_stoch = prior_stoch
-            
+
         return deter_state, prior_stoch, prior_mean, prior_std, post_stoch, post_mean, post_std
 ```
 
@@ -176,6 +183,7 @@ def sample_gaussian(mean, std):
 单步的 `RSSMCell` 完成了，但训练世界模型需要对整个时间序列进行展开（Rollout）。在训练阶段，给定过去一个回合（Episode）的完整观测序列 $x_{1:T}$ 和动作序列 $a_{1:T}$，我们需要推断出整个轨迹的状态分布，并计算损失。
 
 这里的损失函数源自变分下界（Variational Lower Bound，通常称为 ELBO）。我们将极大化对数似然转化为最小化以下两项之和：
+
 1. **重构损失（Reconstruction Loss）**：利用后验推断出的状态 $(h_t, z_t)$ 必须能够解码还原出当前的图像 $x_t$ 和对应的奖励 $r_t$。
 2. **动态 KL 散度（Dynamics KL Divergence）**：在每一个时间步 $t$，先验预测的分布 $p_\theta(z_t \mid h_t)$ 与后验计算的分布 $q_\phi(z_t \mid h_t, x_t)$ 应该尽可能接近。这确保了模型在没有观测时依然能做出现实合理的想象。
 
@@ -188,41 +196,41 @@ class RSSM(nn.Module):
     def __init__(self, action_dim, deter_dim=200, stoch_dim=30, hidden_dim=200):
         super().__init__()
         self.cell = RSSMCell(action_dim, deter_dim, stoch_dim, hidden_dim)
-        
+
     def rollout_observation(self, obs_embeds, actions, init_deter=None, init_stoch=None):
         """
         在给定真实观测序列的情况下展开后验推断（主要用于模型训练）。
-        
+
         参数:
         obs_embeds: 形状为 (T, B, hidden_dim) 的张量
         actions: 形状为 (T, B, action_dim) 的张量，注意这里的 action 应该是前一步的动作 a_{t-1}
         """
         seq_len, batch_size, _ = obs_embeds.shape
-        
+
         # 初始化张量容器用于记录每一步的结果
         deter_states = []
         prior_means, prior_stds = [], []
         post_stochs, post_means, post_stds = [], [], []
-        
+
         # 若未提供初始状态，则全零初始化
         if init_deter is None:
             prev_deter = torch.zeros(batch_size, self.cell.deter_dim, device=obs_embeds.device)
         else:
             prev_deter = init_deter
-            
+
         if init_stoch is None:
             prev_stoch = torch.zeros(batch_size, self.cell.stoch_dim, device=obs_embeds.device)
         else:
             prev_stoch = init_stoch
-            
+
         # 沿时间维度展开
         for t in range(seq_len):
             # [**调用核心单元执行单步前向推断**]
-            (prev_deter, prior_stoch, prior_mean, prior_std, 
+            (prev_deter, prior_stoch, prior_mean, prior_std,
              prev_stoch, post_mean, post_std) = self.cell.forward_step(
                  prev_deter, prev_stoch, actions[t], obs_embeds[t]
              )
-            
+
             # 记录数据
             deter_states.append(prev_deter)
             prior_means.append(prior_mean)
@@ -230,11 +238,11 @@ class RSSM(nn.Module):
             post_stochs.append(prev_stoch)
             post_means.append(post_mean)
             post_stds.append(post_std)
-            
+
         # 将列表堆叠为形状为 (T, B, Dimension) 的张量
         return (
-            torch.stack(deter_states), 
-            torch.stack(post_stochs), 
+            torch.stack(deter_states),
+            torch.stack(post_stochs),
             (torch.stack(prior_means), torch.stack(prior_stds)),
             (torch.stack(post_means), torch.stack(post_stds))
         )
@@ -258,18 +266,18 @@ def kl_loss(prior_stats, post_stats, free_nats=3.0):
     """
     prior_mean, prior_std = prior_stats
     post_mean, post_std = post_stats
-    
+
     # 构造分布对象
     prior_dist = torch.distributions.Normal(prior_mean, prior_std)
     post_dist = torch.distributions.Normal(post_mean, post_std)
-    
+
     # 计算 KL 散度，并在潜变量维度求和
     kl = torch.distributions.kl.kl_divergence(post_dist, prior_dist).sum(dim=-1)
-    
+
     # 应用 Free Nats（最小限度信息约束）
     free_nats_tensor = torch.full_like(kl, free_nats)
     kl_constrained = torch.max(kl, free_nats_tensor)
-    
+
     # 在时间轴和批次轴上求平均
     return kl_constrained.mean()
 ```

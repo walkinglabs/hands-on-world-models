@@ -6,7 +6,7 @@
 
 模型预测控制的工程发展可以追溯到 20 世纪 70 年代后期的工业过程控制 [[Richalet et al., 1978]](https://doi.org/10.1016/0005-1098(78)90001-8)。MPC 在线求解有限时域控制问题，并只执行当前最优序列的第一个动作，再在下一时刻重新优化；Garcia 等人的综述系统总结了这一类方法的理论与工业实践 [[Garcia et al., 1989]](https://doi.org/10.1016/0005-1098(89)90002-2)。
 
-随着深度学习的发展，研究人员开始用神经网络拟合复杂的非线性动力学。对这类模型进行动作优化时，可以采用不依赖模型梯度的采样方法。Rubinstein 提出的交叉熵方法（CEM）源于稀有事件模拟与优化 [[Rubinstein, 1997]](https://doi.org/10.1016/S0377-2217(96)00385-2)，后续文献系统整理了它在连续与组合优化中的形式 [[Botev et al., 2013]](https://doi.org/10.1016/B978-0-444-53659-6.00003-5)。PETS [[Chua et al., 2018]](https://arxiv.org/abs/1805.12114) 与 PlaNet [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 都把采样规划与学习到的动力学模型结合起来。
+随着深度学习的发展，研究人员开始用神经网络拟合复杂的非线性动力学。对这类模型进行动作优化时，可以采用不依赖模型梯度的采样方法。Rubinstein 提出的交叉熵方法（CEM）源于稀有事件模拟与优化 [[Rubinstein, 1997]](https://doi.org/10.1016/S0377-2217(96)00385-2)，后续文献系统整理了它在连续与组合优化中的形式 [[Botev et al., 2013]](https://doi.org/10.1016/B978-0-444-53859-8.00003-5)。PETS [[Chua et al., 2018]](https://arxiv.org/abs/1805.12114) 与 PlaNet [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 都把采样规划与学习到的动力学模型结合起来。
 
 ## 模型预测控制（MPC）的数学基础
 
@@ -45,6 +45,7 @@ $$\text{subject to } s_{\tau+1} = f(s_\tau, a_\tau), \quad s_t \text{ given}$$
 在理想世界中，答案是肯定的。但现实世界中，我们的动力学模型 $f$ 往往是不完美的（存在建模误差），且环境可能存在随机扰动。如果盲目执行长序列，微小的误差会随着时间推移呈指数级累积。
 
 为了克服这个问题，MPC采取了**滚动时域（Receding Horizon）**的策略：
+
 1. 在时间步 $t$，基于当前真实状态 $s_t$，求解优化问题该公式，得到未来 $H$ 步的最优动作序列 $\mathbf{a}^*_{t:t+H-1}$。
 2. **只执行该序列的第一个动作** $a_t = a^*_t$，并观察环境返回的真实下一个状态 $s_{t+1}$。
 3. 时间步推移到 $t+1$，将预测视窗向前滚动一步，重复步骤1。
@@ -133,14 +134,14 @@ class SimpleDynamicsModel(nn.Module):
         """
         pos = state[:, 0:1]
         vel = state[:, 1:2]
-        
+
         # 物理公式: a = F/m
         acc = action / self.mass
-        
+
         # 欧拉积分更新速度和位置
         next_vel = vel + acc * self.dt
         next_pos = pos + vel * self.dt + 0.5 * acc * (self.dt ** 2)
-        
+
         return torch.cat([next_pos, next_vel], dim=-1)
 
 def cost_function(state, action, target_pos=5.0):
@@ -173,21 +174,21 @@ class CEMPlanner:
         # 形状: (horizon, action_dim)
         mu = torch.zeros((self.horizon, self.action_dim))
         sigma = torch.ones((self.horizon, self.action_dim))
-        
+
         for _ in range(self.num_iters):
             # 1. 采样: (num_samples, horizon, action_dim)
             # 使用重参数化技巧从当前高斯分布中采样
             epsilon = torch.randn((self.num_samples, self.horizon, self.action_dim))
             actions = mu.unsqueeze(0) + sigma.unsqueeze(0) * epsilon
-            
+
             # 将动作限制在 [-5, 5] 范围内，保证物理可行性
             actions = torch.clamp(actions, min=-5.0, max=5.0)
-            
+
             # 2. 前向展开与代价评估
             # 拓展初始状态以匹配样本数量: (num_samples, state_dim)
             current_state = initial_state.unsqueeze(0).repeat(self.num_samples, 1)
             total_costs = torch.zeros(self.num_samples)
-            
+
             # 逐步预测未来 H 步
             for t in range(self.horizon):
                 current_action = actions[:, t, :]
@@ -196,23 +197,23 @@ class CEMPlanner:
                 # 累加当前步代价
                 step_cost = self.cost_fn(current_state, current_action).squeeze(-1)
                 total_costs += step_cost
-                
+
             # 3. 排序与精英选择
             # 获取代价最低的 num_elites 个样本的索引
             _, elite_indices = torch.sort(total_costs)
             elite_indices = elite_indices[:self.num_elites]
-            
+
             # 提取精英动作序列: (num_elites, horizon, action_dim)
             elite_actions = actions[elite_indices]
-            
+
             # 4. 更新分布参数
             # 沿着样本维度(dim=0)计算新的经验均值和方差
             mu = elite_actions.mean(dim=0)
             sigma = elite_actions.std(dim=0, unbiased=False)
-            
+
             # 加上极小值防止方差坍缩为0导致无法继续探索
             sigma = torch.clamp(sigma, min=1e-3)
-            
+
         # 最终返回均值序列的第一个动作作为MPC的当前输出
         return mu[0]
 ```

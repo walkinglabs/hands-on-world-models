@@ -8,9 +8,9 @@
 
 具身智能的思想可以追溯到人工智能的早期。1986年，Robotics领域的先驱Rodney Brooks在论文《A robust layered control system for a mobile robot》[[Brooks, 1986]](https://doi.org/10.1109/JRA.1986.1087032) 中提出了包容体系结构（Subsumption Architecture），严厉批评了当时主流的“感知-建模-规划-行动”这种自上而下的符号计算范式。他主张智能应当直接从感觉运动（Sensorimotor）的交互中涌现。
 
-随着深度学习的爆发，Levine等人在2016年的经典工作《End-to-end training of deep visuomotor policies》[[Levine et al., 2016]](https://arxiv.org/abs/1504.00702) 中，首次展示了如何将卷积神经网络（CNN）与强化学习结合，直接将原始像素和机器人的关节状态映射为电机的力矩输出。这项工作打破了传统机器人学中视觉感知与控制模块割裂的局面，确立了端到端多模态策略（Visuomotor Policy）的基础。
+Levine 等人用引导策略搜索训练深度视觉运动策略，使卷积网络根据相机图像与机器人构型输出电机转矩 [[Levine et al., 2016]](https://arxiv.org/abs/1504.00702)。这项工作直接展示了端到端视觉运动策略在多项机器人操作任务上的训练与执行；论文不需要承担“最早把 CNN 与强化学习结合”这一优先权判断。
 
-近年来，随着Transformer [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762) 在多模态领域的成功，诸如RT-1 [[Brohan et al., 2022]](https://arxiv.org/abs/2212.06817) 和 RT-2 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818) 等视觉-语言-动作（Vision-Language-Action, VLA）模型，进一步将多模态观测的边界扩展到了包含自然语言指令、RGB-D视觉流以及高维本体感受的大一统框架中。在这些系统中，多模态特征的对齐与融合能力，成为了决定机器人策略上限的最关键因素。
+Transformer 为序列中的跨位置信息交互提供了通用结构 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762)。RT-1 根据相机图像序列与自然语言任务描述预测离散化机器人动作 [[Brohan et al., 2022]](https://arxiv.org/abs/2212.06817)；RT-2 又把机器人动作表示为文本词元，并联合利用互联网视觉—语言数据与机器人轨迹训练视觉—语言—动作模型 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818)。这两篇论文不能用来证明系统输入包含 RGB-D 或任意高维本体感受，因此这里只列出原文明确使用的模态。
 
 ## 7.1.2 物理量的降维映射：从单摆到机器人状态空间
 
@@ -112,7 +112,7 @@ import torch
 from torch import nn
 
 class MultiModalEncoder(nn.Module):
-    def __init__(self, img_channels=3, prop_dim=14, vis_embed_dim=256, 
+    def __init__(self, img_channels=3, prop_dim=14, vis_embed_dim=256,
                  prop_embed_dim=64, fused_dim=128):
         """
         参数:
@@ -123,7 +123,7 @@ class MultiModalEncoder(nn.Module):
             fused_dim (int): 最终融合后的联合表示维度
         """
         super().__init__()
-        
+
         # 1. 视觉编码器：使用一个简单的浅层CNN代替ResNet以简化演示
         self.vis_encoder = nn.Sequential(
             nn.Conv2d(img_channels, 32, kernel_size=8, stride=4),
@@ -136,7 +136,7 @@ class MultiModalEncoder(nn.Module):
             nn.LazyLinear(vis_embed_dim),
             nn.LayerNorm(vis_embed_dim)
         )
-        
+
         # 2. 本体编码器：使用两层MLP
         self.prop_encoder = nn.Sequential(
             nn.Linear(prop_dim, 128),
@@ -144,7 +144,7 @@ class MultiModalEncoder(nn.Module):
             nn.Linear(128, prop_embed_dim),
             nn.LayerNorm(prop_embed_dim)
         )
-        
+
         # 3. 融合层：拼接后通过MLP映射到目标维度
         self.fusion_mlp = nn.Sequential(
             nn.Linear(vis_embed_dim + prop_embed_dim, 256),
@@ -164,13 +164,13 @@ class MultiModalEncoder(nn.Module):
         z_vis = self.vis_encoder(img_obs)
         # 提取本体特征
         z_prop = self.prop_encoder(prop_obs)
-        
+
         # 在特征维度(dim=1)进行拼接 [B, vis_embed_dim + prop_embed_dim]
         z_concat = torch.cat([z_vis, z_prop], dim=1)
-        
+
         # 线性投影与非线性激活
         fused_feature = self.fusion_mlp(z_concat)
-        
+
         return fused_feature
 
 # 测试前向传播
@@ -186,10 +186,10 @@ print(f"融合特征的张量形状: {output.shape}")
 import tensorflow as tf
 
 class MultiModalEncoder(tf.keras.Model):
-    def __init__(self, prop_dim=14, vis_embed_dim=256, 
+    def __init__(self, prop_dim=14, vis_embed_dim=256,
                  prop_embed_dim=64, fused_dim=128):
         super().__init__()
-        
+
         # 1. 视觉编码器
         self.vis_encoder = tf.keras.Sequential([
             tf.keras.layers.Conv2D(32, kernel_size=8, strides=4, activation='relu'),
@@ -199,14 +199,14 @@ class MultiModalEncoder(tf.keras.Model):
             tf.keras.layers.Dense(vis_embed_dim),
             tf.keras.layers.LayerNormalization(epsilon=1e-5)
         ])
-        
+
         # 2. 本体编码器
         self.prop_encoder = tf.keras.Sequential([
             tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dense(prop_embed_dim),
             tf.keras.layers.LayerNormalization(epsilon=1e-5)
         ])
-        
+
         # 3. 融合层
         self.fusion_mlp = tf.keras.Sequential([
             tf.keras.layers.Dense(256, activation='relu'),
@@ -218,10 +218,10 @@ class MultiModalEncoder(tf.keras.Model):
         z_vis = self.vis_encoder(img_obs)
         # 提取本体特征
         z_prop = self.prop_encoder(prop_obs)
-        
+
         # 拼接特征
         z_concat = tf.concat([z_vis, z_prop], axis=1)
-        
+
         # 通过融合MLP
         fused_feature = self.fusion_mlp(z_concat)
         return fused_feature
@@ -229,7 +229,7 @@ class MultiModalEncoder(tf.keras.Model):
 # 测试前向传播
 encoder = MultiModalEncoder()
 # TensorFlow通常使用NHWC格式，此处假设输入图像维度为84x84x3
-dummy_img = tf.random.normal((4, 84, 84, 3)) 
+dummy_img = tf.random.normal((4, 84, 84, 3))
 dummy_prop = tf.random.normal((4, 14))
 output = encoder(dummy_img, dummy_prop)
 print(f"融合特征的张量形状: {output.shape}")
@@ -237,14 +237,14 @@ print(f"融合特征的张量形状: {output.shape}")
 
 ## 7.1.6 小结
 
-* 具身智能要求智能体处理与其躯体及环境物理交互相关的数据。多模态观测（主要是视觉外感受与关节本体感受）是构建具身策略网络的基础。
-* 对于跨越维度和语义鸿沟的多源数据，我们必须通过各自专用的编码网络将其投影到统一的潜空间中。
-* 简单的拼接融合（Late Fusion）实现简单但缺乏动态交互能力；跨模态注意力机制（Cross-Modal Attention）允许神经网络基于本体状态动态地对空间视觉特征进行加权选择。
+- 具身智能要求智能体处理与其躯体及环境物理交互相关的数据。多模态观测（主要是视觉外感受与关节本体感受）是构建具身策略网络的基础。
+- 对于跨越维度和语义鸿沟的多源数据，我们必须通过各自专用的编码网络将其投影到统一的潜空间中。
+- 简单的拼接融合（Late Fusion）实现简单但缺乏动态交互能力；跨模态注意力机制（Cross-Modal Attention）允许神经网络基于本体状态动态地对空间视觉特征进行加权选择。
 
 ## 7.1.7 练习
 
 1. 在该公式中，如果我们要描述一台带有6自由度机械臂（每个关节可测角度和角速度）以及一个底盘（可测平面 $x, y$ 坐标、朝向角 $\psi$ 及其对应的速度）的移动机器人，其本体观测向量 $\mathbf{o}_{\text{prop}}$ 的维度是多少？
-   * **提示**：分别计算机械臂和底盘的广义坐标和速度维度并求和。
+   - **提示**：分别计算机械臂和底盘的广义坐标和速度维度并求和。
 2. 仔细观察代码实现中的 `MultiModalEncoder` 类。为什么在对 `z_vis` 和 `z_prop` 提取特征的最后一步，我们都加入了一个 `LayerNorm`（层归一化）操作？如果不加，在后续的拼接与线性映射中可能会引发什么数值优化问题？
-   * **提示**：思考不同模态编码器初始输出权重的方差差异，以及这种差异在 $\mathbf{W} \mathbf{z}_{\text{concat}}$ 矩阵乘法中会导致梯度如何流动。
+   - **提示**：思考不同模态编码器初始输出权重的方差差异，以及这种差异在 $\mathbf{W} \mathbf{z}_{\text{concat}}$ 矩阵乘法中会导致梯度如何流动。
 3. 如果我们希望将当前的**后期拼接融合**替换为相关章节提到的**跨模态注意力融合**，请写出将视觉卷积特征图（形状为 `[B, 64, 7, 7]`）转换为注意力键 $\mathbf{K}$ 和值 $\mathbf{V}$ 时，张量形状必须经历哪些重塑（Reshape）和转置操作？

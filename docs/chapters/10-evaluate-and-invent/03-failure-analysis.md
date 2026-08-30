@@ -2,7 +2,7 @@
 
 在之前的章节中，我们沉浸于构建和训练世界模型（World Models）的喜悦之中。从隐变量模型的推导，到利用庞大算力在时间序列上展开想象力，模型在许多基准测试中展现出了令人惊叹的性能。然而，正如每一项科学探索一样，当我们凝视最耀眼的成就时，也必须有勇气直视其阴影。世界模型并非无懈可击，实际上，它们在长视野推理、分布外泛化和目标对齐等维度上，存在着深刻且尚未完全解决的理论与工程局限。
 
-理解模型的局限性不仅仅是寻找“bug”。在深度学习的学术脉络中，对失败的深入分析往往是下一次范式转移的前奏。早在基于模型的强化学习（Model-Based Reinforcement Learning, MBRL）兴起之初，研究者们就发现了模型在多步推演中的脆弱性 [[Talvitie, 2014]](https://ojs.aaai.org/index.php/AAAI/article/view/8852)。随后，Ha 和 Schmidhuber 在其奠基性论文 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122) 中明确指出，当智能体在自身“梦境”（即模型生成的轨迹）中学习时，它极易学会利用模型的缺陷来“作弊”，这种现象引发了学术界对模型幻觉（Hallucinations）和复合误差（Compounding Errors）的广泛探讨。而在近年来大规模无监督序列模型的发展中，目标错配（Objective Mismatch）问题 [[Lambert et al., 2020]](https://arxiv.org/abs/2002.04523) 和表征坍塌（Representation Collapse） [[Alemi et al., 2018]](https://arxiv.org/abs/1711.00464) 更成为了限制世界模型在物理现实中落地的核心瓶颈。
+多步模型展开可能因分布偏移而失真 [[Talvitie, 2014]](https://ojs.aaai.org/index.php/AAAI/article/view/8852)，在学到的“梦境”中优化控制器也可能利用模型误差 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。此外，一步预测似然与下游控制效果可能并不一致，这就是模型式强化学习中的目标错配 [[Lambert et al., 2020]](https://arxiv.org/abs/2002.04523)。Alemi 等人讨论的则是 VAE 中 ELBO、互信息与潜变量失活等问题 [[Alemi et al., 2018]](https://arxiv.org/abs/1711.00464)，更接近“后验坍塌”，不应直接当作一般联合嵌入方法的“表征坍塌”证据。
 
 在本章中，我们将脱下“炼丹师”的外衣，换上严谨的分析学究服。我们将从高中数学中最朴素的等比数列出发，逐步揭示误差是如何在自回归生成的序列中如雪崩般放大的；随后，我们将运用微积分和变分推断的工具，严格剖析模型训练目标与最终控制目标之间的理论鸿沟；最后，我们将在代码中亲手实现针对世界模型的诊断工具。
 
@@ -113,6 +113,7 @@ $$| V^{\pi}(s) - \hat{V}^{\pi}(s) | \le \frac{\gamma \max_{s'} |r(s')|}{(1-\gamm
 $$\log p(x_{1:T}) \ge \sum_{t=1}^T \underbrace{\mathbb{E}_{q}[\log p(x_t|z_t)]}_{\text{重构项}} - \underbrace{D_{KL}(q(z_t | x_t) \| p(z_t | z_{t-1}, a_{t-1}))}_{\text{正则化/动力学项}}$$
 
 让我们仔细观察该公式。等式的右侧由两部分组成，并且它们之间存在一个天然的对抗张力：
+
 1. **重构项（Reconstruction Term）** 迫使后验分布 $q(z_t|x_t)$（编码器）必须保留足够的信息以还原原始图像 $x_t$。
 2. **KL 散度项（KL Divergence Term）** 充当正则化器，它强迫编码器的输出分布 $q(z_t|x_t)$ 去尽可能贴近先验动力学模型的预测 $p(z_t|z_{t-1}, a_{t-1})$。
 
@@ -143,7 +144,7 @@ class WorldModelDiagnoser:
     def __init__(self, encoder, transition_model, decoder, device='cpu'):
         """
         初始化诊断器，需要传入世界模型的三个核心组件：
-        encoder: q(z_t | x_t) 
+        encoder: q(z_t | x_t)
         transition_model: p(z_t | z_{t-1}, a_{t-1})
         decoder: p(x_t | z_t)
         """
@@ -151,7 +152,7 @@ class WorldModelDiagnoser:
         self.transition_model = transition_model
         self.decoder = decoder
         self.device = device
-        
+
         # 确保所有组件处于评估模式，关闭 Dropout 和 BatchNorm 的变动
         self.encoder.eval()
         self.transition_model.eval()
@@ -168,25 +169,25 @@ class WorldModelDiagnoser:
         """
         T = actions.size(0)
         mses = []
-        
+
         # 1. 初始化第一步隐状态
         # 为了严谨，这里我们获取后验分布的均值作为确定性的状态表示
         z_t = self.encoder(initial_obs.to(self.device)).mean
-        
+
         for t in range(T):
             # 2. 动力学模型前向推演一步 (先验预测)
             # z_t = f(z_{t-1}, a_{t-1})
             a_t = actions[t].unsqueeze(0).to(self.device)
             z_t = self.transition_model(z_t, a_t)
-            
+
             # 3. 解码出预测的图像帧
             pred_obs = self.decoder(z_t)
-            
+
             # 4. 计算与真实轨迹的像素级 MSE
             true_obs = true_trajectory[t].unsqueeze(0).to(self.device)
             mse = F.mse_loss(pred_obs, true_obs).item()
             mses.append(mse)
-            
+
         return mses
 
     @torch.no_grad()
@@ -198,27 +199,27 @@ class WorldModelDiagnoser:
         obs_batch: 批次观测，形状 (B, C, H, W)
         """
         obs_batch = obs_batch.to(self.device)
-        
+
         # 获取后验分布的均值和对数方差
         posterior = self.encoder(obs_batch)
         mu = posterior.mean
         log_var = posterior.logvar
-        
+
         # 计算均值的批次内方差，即 "Active Units" 的检测标准 (Burda et al., 2015)
         # 衡量该隐变量维度是否对不同的输入做出了响应
         var_of_mu = torch.var(mu, dim=0)
-        
+
         # 计算平均对数方差，看其是否趋近于0 (即方差趋近于1的常数)
         avg_log_var = torch.mean(log_var, dim=0)
-        
+
         # 如果 var_of_mu 非常小 (例如 < 0.01)，说明该维度的均值完全不随数据变化而改变，属于失活 (Dead) 状态。
         active_units = torch.sum(var_of_mu > 0.01).item()
         total_units = mu.size(1)
-        
+
         print(f"活跃隐变量维度 (Active Units): {active_units} / {total_units}")
         print(f"均值跨批次的平均方差: {torch.mean(var_of_mu):.4f}")
         print(f"隐变量自身的平均指数方差: {torch.exp(avg_log_var).mean():.4f}")
-        
+
         return active_units
 ```
 

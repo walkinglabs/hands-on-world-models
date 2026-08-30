@@ -1,6 +1,6 @@
 # 行为克隆基础
 
-在强化学习与自动驾驶的早期探索中，如何让机器掌握复杂的物理操作一直是一个核心难题。早在 1989 年，Pomerleau 提出了 ALVINN（Autonomous Land Vehicle In a Neural Network）[[Pomerleau, 1989]](https://proceedings.neurips.cc/paper/1988/hash/812b4ba287f5ee0bc9d43bbf5bbe87fb-Abstract.html)，通过直接映射摄像头的图像输入到方向盘的转向角度，成功让一辆改装的军用车辆在公路上实现了自动驾驶。这一开创性的工作不仅展示了神经网络在端到端控制中的巨大潜力，也奠定了**模仿学习**（Imitation Learning）中最为基础且直接的分支——**行为克隆**（Behavior Cloning, BC）的范式。
+Pomerleau 的 ALVINN 用人类驾驶样本训练神经网络，把摄像头与激光测距输入映射为道路方向输出，并在改装车辆上进行道路测试 [[Pomerleau, 1989]](https://proceedings.neurips.cc/paper/1988/hash/812b4ba287f5ee0bc9d43bbf5bbe87fb-Abstract.html)。它是早期端到端学习驾驶的实例。所谓**行为克隆**（Behavior Cloning, BC），就是把专家观测—动作对当作监督学习数据；ALVINN 可以作为这一思路的历史案例，但单篇论文不足以承担整个模仿学习范式的起源判断。
 
 为了理解行为克隆的本质，我们可以暂时抛开深度学习中繁杂的专有名词，回到高中数学中最基础的函数拟合问题。假设我们在进行一项物理实验，记录了弹簧的形变量 $x$ 和对应的弹力 $y$。我们的目标是寻找一个映射函数 $f$，使得 $y = f(x)$。当我们收集了大量实验数据对 $(x_i, y_i)$ 后，我们会尝试拟合出一条直线或曲线。
 
@@ -52,7 +52,7 @@ $$ \mathbb{E}_{\mathbf{s} \sim P_{\text{expert}}} \left[ \|\pi_\theta(\mathbf{s}
 
 然而，在部署与测试阶段，当策略模型 $\pi_\theta$ 开始自主控制环境状态流转时，一旦在某一个时间步 $t$ 产生了极其微小的预测误差 $\epsilon$，这个微小的动作偏差就会通过动力学系统导致下一步的状态 $\mathbf{s}_{t+1}$ 偏离专家原本的轨迹流形（Manifold）。因为模型是在一种其从未见过的偏离状态下继续进行非线性外推预测，误差会随着时间的推移不断累积。
 
-通过严格的理论推导 [[Ross & Bagnell, 2010]](https://proceedings.mlr.press/v9/ross10a.html)，如果在任意单步状态下期望的动作误差为 $\epsilon$，那么在长度为 $T$ 的闭环决策轨迹中，纯行为克隆策略所产生的总误差上界将随着 $T$ 成平方级数（$\mathcal{O}(T^2)$）剧烈增长，而不是我们直觉上的线性增长（$\mathcal{O}(T)$）。这种误差的级联放大效应（Cascading Errors）正是行为克隆在面对长时域预测和复杂物理交互任务时，表现出极度脆弱性的根本数学原因。
+Ross 和 Bagnell 分析了监督式模仿学习中的分布偏移：若学习策略在专家状态分布上的单步错误率为 $\epsilon$，有限时域 $T$ 下的期望代价差在一般情形可达到 $\mathcal{O}(T^2\epsilon)$ [[Ross & Bagnell, 2010]](https://proceedings.mlr.press/v9/ross10a.html)。这里的平方项描述的是代价差界，而不是说每一种任务中的“动作错误数量”都必然按平方增长。
 
 ## 代码实现
 
@@ -111,7 +111,7 @@ class BehavioralCloningPolicy(nn.Module):
             nn.ReLU(),
             nn.Linear(32, output_dim)
         )
-        
+
     def forward(self, x):
         # 执行前向传播运算
         return self.net(x)
@@ -143,21 +143,21 @@ for epoch in range(num_epochs):
     for batch_states, batch_actions in dataloader:
         # 步骤 1: 策略网络前向传播计算预测动作张量
         pred_actions = policy_net(batch_states)
-        
+
         # 步骤 2: 计算预测张量与专家动作张量之间的 L2 范数均方误差
         loss = loss_fn(pred_actions, batch_actions)
-        
+
         # 步骤 3: 清空上一步残留的梯度，执行反向传播计算新梯度，并更新网络权重
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        
+
         epoch_loss += loss.item() * batch_states.size(0)
-    
+
     # 记录并计算当前 epoch 在全体数据集上的平均损失
     epoch_loss /= num_samples
     loss_history.append(epoch_loss)
-    
+
     if (epoch + 1) % 10 == 0:
         print(f"Epoch {epoch+1:03d}/{num_epochs}, 经验风险 MSE Loss: {epoch_loss:.6f}")
 ```
@@ -165,5 +165,6 @@ for epoch in range(num_epochs):
 如上述抽象出来的基础代码所示，行为克隆的工程实现极为简练，其核心计算流图仅仅是状态空间到动作空间的高维非线性回归。在实验室标准测试集的开环验证中，只要专家数据的统计分布足够充分，且神经网络参数容量足够大，策略网络往往能在训练集上迅速收敛，实现惊人的重构精度。
 
 ## 小结
+
 - 行为克隆（Behavior Cloning, BC）是将复杂的模仿学习转化为标准深度监督学习的最基础、最直接的数学范式，其优化目标是最小化策略网络的预测动作与专家展示动作之间的几何差异。
 - 虽然行为克隆在处理短时域开环预测时表现出了极佳的收敛效率，但由于协变量偏移（Covariate Shift）引起的级联误差现象，其在长周期的闭环环境交互中存在着极其严峻的鲁棒性与稳定性隐患。

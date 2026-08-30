@@ -87,13 +87,13 @@ class KVCacheSelfAttention(nn.Module):
         self.d_model = d_model
         self.num_heads = num_heads
         self.d_k = d_model // num_heads
-        
+
         # 线性投影层
         self.W_q = nn.Linear(d_model, d_model)
         self.W_k = nn.Linear(d_model, d_model)
         self.W_v = nn.Linear(d_model, d_model)
         self.W_o = nn.Linear(d_model, d_model)
-        
+
     def forward(self, x, kv_cache=None):
         """
         x: 当前输入的张量，形状为 (batch_size, seq_len, d_model)
@@ -103,14 +103,14 @@ class KVCacheSelfAttention(nn.Module):
                   它们各自的形状通常为 (batch_size, num_heads, past_seq_len, d_k)
         """
         batch_size, seq_len, _ = x.shape
-        
+
         # 1. 计算当前步骤的 Q, K, V
         # 形状变为 (batch_size, seq_len, num_heads, d_k)，然后转置以利用多头并行
         q = self.W_q(x).view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
         k = self.W_k(x).view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
         v = self.W_v(x).view(batch_size, seq_len, self.num_heads, self.d_k).transpose(1, 2)
         # 此时 q, k, v 的形状: (batch_size, num_heads, seq_len, d_k)
-        
+
         # 2. KV 缓存的管理
         if kv_cache is not None:
             k_cache, v_cache = kv_cache
@@ -118,16 +118,16 @@ class KVCacheSelfAttention(nn.Module):
             k = torch.cat([k_cache, k], dim=2)
             v = torch.cat([v_cache, v], dim=2)
             # 拼接后 k, v 形状: (batch_size, num_heads, past_seq_len + seq_len, d_k)
-            
+
         # 更新当前的缓存以供下一步使用
         new_kv_cache = (k, v)
-        
+
         # 3. 计算注意力得分
         # q 的最后两个维度: (seq_len, d_k)
         # k 转置后的最后两个维度: (d_k, past_seq_len + seq_len)
         # 矩阵乘法后 scores 形状: (batch_size, num_heads, seq_len, past_seq_len + seq_len)
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
-        
+
         # 因果掩码 (如果是自回归生成阶段且 seq_len=1，掩码是不必要的)
         # 这里为了完整性，在 seq_len > 1 (如 Prefill 阶段) 时加上掩码
         if seq_len > 1:
@@ -136,19 +136,19 @@ class KVCacheSelfAttention(nn.Module):
             mask = torch.tril(torch.ones(seq_len, total_seq_len)).unsqueeze(0).unsqueeze(0).to(x.device)
             # 将下三角外的位置设为负无穷
             scores = scores.masked_fill(mask == 0, float('-inf'))
-            
+
         attn_weights = F.softmax(scores, dim=-1)
-        
+
         # 4. 聚合值向量
         # attn_weights 形状: (batch_size, num_heads, seq_len, past_seq_len + seq_len)
         # v 形状: (batch_size, num_heads, past_seq_len + seq_len, d_k)
         # output 形状: (batch_size, num_heads, seq_len, d_k)
         out = torch.matmul(attn_weights, v)
-        
+
         # 重塑并经过输出线性层
         out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, self.d_model)
         out = self.W_o(out)
-        
+
         return out, new_kv_cache
 ```
 
@@ -164,36 +164,36 @@ class KVCacheSelfAttention(tf.keras.layers.Layer):
         self.d_model = d_model
         self.num_heads = num_heads
         self.d_k = d_model // num_heads
-        
+
         self.W_q = tf.keras.layers.Dense(d_model)
         self.W_k = tf.keras.layers.Dense(d_model)
         self.W_v = tf.keras.layers.Dense(d_model)
         self.W_o = tf.keras.layers.Dense(d_model)
-        
+
     def call(self, x, kv_cache=None):
         batch_size = tf.shape(x)[0]
         seq_len = tf.shape(x)[1]
-        
+
         # 计算当前步骤的 Q, K, V
         q = tf.reshape(self.W_q(x), (batch_size, seq_len, self.num_heads, self.d_k))
         k = tf.reshape(self.W_k(x), (batch_size, seq_len, self.num_heads, self.d_k))
         v = tf.reshape(self.W_v(x), (batch_size, seq_len, self.num_heads, self.d_k))
-        
+
         q = tf.transpose(q, perm=[0, 2, 1, 3])
         k = tf.transpose(k, perm=[0, 2, 1, 3])
         v = tf.transpose(v, perm=[0, 2, 1, 3])
-        
+
         # KV 缓存的管理
         if kv_cache is not None:
             k_cache, v_cache = kv_cache
             k = tf.concat([k_cache, k], axis=2)
             v = tf.concat([v_cache, v], axis=2)
-            
+
         new_kv_cache = (k, v)
-        
+
         # 计算注意力得分
         scores = tf.matmul(q, k, transpose_b=True) / math.sqrt(float(self.d_k))
-        
+
         if seq_len is not None and seq_len > 1:
             total_seq_len = tf.shape(k)[2]
             # 动态生成下三角矩阵以做因果掩码
@@ -201,19 +201,20 @@ class KVCacheSelfAttention(tf.keras.layers.Layer):
             mask = tf.reshape(mask, (1, 1, seq_len, total_seq_len))
             # 将 0 的位置填充大负数
             scores = tf.where(tf.equal(mask, 1), scores, tf.fill(tf.shape(scores), -1e9))
-            
+
         attn_weights = tf.nn.softmax(scores, axis=-1)
-        
+
         # 聚合值向量
         out = tf.matmul(attn_weights, v)
         out = tf.transpose(out, perm=[0, 2, 1, 3])
         out = tf.reshape(out, (batch_size, seq_len, self.d_model))
-        
+
         out = self.W_o(out)
         return out, new_kv_cache
 ```
 
 在推理阶段，我们通常将计算过程严谨地划分为两部分：
+
 1. **预填充阶段（Prefill Stage）**：一次性将初始条件或上下文提示（Prompt）完整输入模型，利用大矩阵乘法并行计算出最初始的、完整的历史 KV Cache。
 2. **解码阶段（Decoding Stage）**：处于真正的自回归循环中，此时 `seq_len=1`，模型仅利用最新生成的一个时空词元作为输入。借助已经构建好的缓存，模型将矩阵乘法退化为极速的矩阵-向量乘法，从而高速产出下一词元。
 

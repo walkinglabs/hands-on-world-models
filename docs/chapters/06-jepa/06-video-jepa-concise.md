@@ -6,7 +6,7 @@
 
 在深度学习的早期，视频理解大多依赖于 3D 卷积神经网络（如 C3D）或是结合了时间序列模型（如 LSTM）的 2D 卷积网络。随着 Transformer [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762) 在自然语言处理领域的巨大成功，研究者们迅速将其引入到视觉领域。Vision Transformer（ViT）[[Dosovitskiy et al., 2020]](https://arxiv.org/abs/2010.11929) 证明了将图像切分为块（Patch）并进行自注意力计算的有效性。
 
-随后，在自监督学习（Self-Supervised Learning, SSL）领域，掩码自编码器（Masked Autoencoders, MAE）[[He et al., 2021]](https://arxiv.org/abs/2111.06377) 和 VideoMAE [[Tong et al., 2022]](https://arxiv.org/abs/2203.12602) 展现了通过遮挡部分数据并要求模型在**像素空间**重建它们的强大能力。然而，直接在像素空间进行预测存在一个致命的理论瓶颈：真实世界的视频包含了大量不可预测的高频噪声（例如水面的波纹、树叶的微小摆动）。迫使模型花费巨大的算力去精准重建这些毫无语义价值的随机细节，不仅效率低下，而且会阻碍模型学习到真正的高级语义和物理规律。
+在自监督学习中，掩码自编码器（Masked Autoencoders, MAE）重构被遮挡图像块的像素 [[He et al., 2022]](https://arxiv.org/abs/2111.06377)，VideoMAE 把高比例时空遮挡用于视频表征学习 [[Tong et al., 2022]](https://arxiv.org/abs/2203.12602)。V-JEPA 采用另一种取舍：不重构像素，而是预测目标编码器产生的特征。对水面波纹或树叶细节是否“无语义价值”取决于任务，因此这里把它作为设计动机，而不是由 MAE 或 VideoMAE 实验普遍证明的结论。
 
 正是在这样的学术背景下，V-JEPA 应运而生。它放弃了在像素空间的逐点重建，转而要求模型在**抽象的特征表示空间**中预测缺失的视频片段。这种转变，不仅极大地提升了训练效率，更使其在特征提取上展现出了更强的泛化能力。
 
@@ -42,11 +42,13 @@ V-JEPA 的核心思想是：给定视频的一个部分上下文（Context），
 
 我们首先考察一个最简单的标量情形。假设输入只是单一的变量 $x_c$ 和 $x_t$，编码器仅仅是一个标量函数。上下文特征就是 $h_c = f_{\theta_c}(x_c)$，目标特征就是 $h_t = f_{\theta_t}(x_t)$。
 顺理成章地，推广到矩阵和序列的形式，我们将上下文序列 $X_{\mathcal{C}}$ 输入上下文编码器，得到隐状态表示：
+
 $$
-H_{\mathcal{C}} = f_{\theta_c}(X_{\mathcal{C}}) 
+H_{\mathcal{C}} = f_{\theta_c}(X_{\mathcal{C}})
 $$
 
 同理，我们将目标序列 $X_{\mathcal{T}}$ 输入目标编码器，得到它在隐空间的目标真实值（Ground Truth）：
+
 $$
 H_{\mathcal{T}} = f_{\theta_t}(X_{\mathcal{T}})
 $$
@@ -135,53 +137,53 @@ V-JEPA 的主体由上下文编码器（学生）、目标编码器（导师）�
 ```{.python .input}
 #@tab pytorch
 class VJEPAModel(nn.Module):
-    def __init__(self, 
-                 img_size=224, 
-                 patch_size=16, 
-                 num_frames=16, 
+    def __init__(self,
+                 img_size=224,
+                 patch_size=16,
+                 num_frames=16,
                  tubelet_size=2,
-                 embed_dim=768, 
-                 depth=12, 
+                 embed_dim=768,
+                 depth=12,
                  num_heads=12,
                  predictor_embed_dim=384,
                  predictor_depth=6):
         super().__init__()
-        
+
         # 1. 初始化时空嵌入层
         self.patch_embed = TubeletEmbedding(
-            in_channels=3, 
-            embed_dim=embed_dim, 
+            in_channels=3,
+            embed_dim=embed_dim,
             tubelet_size=(tubelet_size, patch_size, patch_size)
         )
-        
+
         # 计算序列总长度 N = (T / t) * (H / p) * (W / p)
         self.num_patches = (num_frames // tubelet_size) * ((img_size // patch_size) ** 2)
-        
+
         # 2. 声明可学习的 3D 位置编码
         self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, embed_dim), requires_grad=True)
-        
+
         # 3. 构建上下文编码器 (学生)
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=embed_dim, 
-            nhead=num_heads, 
-            dim_feedforward=embed_dim * 4, 
+            d_model=embed_dim,
+            nhead=num_heads,
+            dim_feedforward=embed_dim * 4,
             batch_first=True,
             activation="gelu",
             norm_first=True
         )
         self.context_encoder = nn.TransformerEncoder(encoder_layer, num_layers=depth)
-        
+
         # 4. 构建目标编码器 (导师)，其结构与上下文编码器完全一致
         self.target_encoder = copy.deepcopy(self.context_encoder)
         # [锁定目标编码器的梯度，防止它被优化器直接更新]
         for param in self.target_encoder.parameters():
             param.requires_grad = False
-            
+
         # 5. 构建预测器
         self.predictor_embed = nn.Linear(embed_dim, predictor_embed_dim)
         self.mask_token = nn.Parameter(torch.zeros(1, 1, predictor_embed_dim))
         self.predictor_pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, predictor_embed_dim))
-        
+
         predictor_layer = nn.TransformerEncoderLayer(
             d_model=predictor_embed_dim,
             nhead=num_heads // 2,
@@ -211,10 +213,10 @@ class VJEPAModel(nn.Module):
             target_mask: 目标部分的布尔掩码 (B, N)
         """
         B = x.shape[0]
-        
+
         # 1. 时空块嵌入并加上位置编码
         x_embed = self.patch_embed(x) + self.pos_embed
-        
+
         # 2. 目标特征提取 (仅用于产生 Ground Truth，不需要计算梯度)
         with torch.no_grad():
             # 获取完整的目标特征
@@ -223,42 +225,43 @@ class VJEPAModel(nn.Module):
             # 为了简洁，这里假设掩码后每个 batch 的有效序列长度相同，实际实现中需要复杂的 gather 操作
             # 这里仅展示语义层面的张量操作
             target_features = target_full_features[target_mask].view(B, -1, target_full_features.shape[-1])
-            
+
         # 3. 上下文特征提取
         # 仅将未被遮挡的上下文送入编码器，这极大地节省了计算量
         context_x = x_embed[context_mask].view(B, -1, x_embed.shape[-1])
         context_features = self.context_encoder(context_x)
-        
+
         # 4. 预测阶段
         # 降维以减少预测器的计算开销
         context_features = self.predictor_embed(context_features)
-        
+
         # 构造预测器的输入：上下文特征 + 遮挡标志 (Mask Tokens)
         num_targets = target_features.shape[1]
         mask_tokens = self.mask_token.repeat(B, num_targets, 1)
-        
+
         # [为需要预测的 Mask Token 注入它们本来对应的位置编码]
         # 这是 Predictor 能够知道“要预测哪里”的唯一途径
         target_pos_embed = self.predictor_pos_embed.repeat(B, 1, 1)[target_mask].view(B, -1, self.predictor_pos_embed.shape[-1])
         mask_tokens = mask_tokens + target_pos_embed
-        
+
         # 拼接上下文与掩码，送入预测器
         predictor_input = torch.cat([context_features, mask_tokens], dim=1)
         predicted_features = self.predictor(predictor_input)
-        
+
         # 提取对应于掩码部分的输出，并映射回原始维度
         predicted_target_features = predicted_features[:, -num_targets:]
         predicted_target_features = self.predictor_proj(predicted_target_features)
-        
+
         # 5. 计算损失 (均方误差)
         loss = F.mse_loss(predicted_target_features, target_features)
-        
+
         return loss
 ```
 
 ### 代码推导的严谨性注记
 
 在上述代码中，有几处为了与纯粹的数学推导对齐而设计的精密巧思值得读者反复推敲：
+
 1. **梯度的阻断**：目标编码器的参数必须强制设为 `requires_grad = False`。模型唯一的学习信号来自于 `F.mse_loss` 反向传播给预测器和上下文编码器的梯度。
 2. **位置编码的时机**：注意预测器的输入设计。上下文特征在进入预测器时**没有**再次加上位置编码（它们在最开始已经加过了，特征内部已隐含位置信息），而 `mask_token` **必须**加上它试图重建的时空位置编码。这完美印证了该公式中 $P_{\mathcal{T}}$ 作为预测条件的核心地位。
 

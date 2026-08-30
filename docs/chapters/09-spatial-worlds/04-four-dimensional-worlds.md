@@ -1,8 +1,8 @@
 # 4D 时空世界模型
 
-在深度学习的早期探索中，无论是卷积神经网络（CNN）还是循环神经网络（RNN），我们往往倾向于对低维或者被严重投影降维后的数据进行建模。例如，将丰富的三维物理世界压缩为二维图像的序列，或是将动作与状态映射到一维的隐向量中。然而，这种处理方式在具身智能（Embodied AI）、自动驾驶以及复杂物理环境模拟等任务中，暴露出巨大的局限性。最初提出“世界模型”概念的经典文献 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122) 在二维像素隐空间中取得了巨大成功，但当智能体面临快速的视角切换、严重的三维几何遮挡以及复杂的动态交互时，基于 2D 隐空间的模型常常会预测出违反基础物理法则的“幻觉”。
+Ha 和 Schmidhuber 的 World Models 从二维游戏画面学习每帧潜变量与时间动力学 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。该论文在 CarRacing 与 VizDoom 上验证控制，却没有显式维护相机几何、三维占用或可跨视角查询的场景表示。因此，它适合作为视觉潜在动力学的例子，不能直接用来证明二维潜变量在所有三维场景中必然产生物理错误。本节研究的 4D 表示，是在这一区别上进一步加入三维空间与时间结构。
 
-为突破这一瓶颈，研究者们将空间维度的三维表征（如神经辐射场 NeRF、3D 高斯溅射点云 Gaussian Splatting、体素网格 Voxel Grids）与时间维度的序列动力学结合，提出了 **4D 时空世界模型** [[Hu et al., 2023]](https://arxiv.org/abs/2309.17080); [[Blattmann et al., 2023]](https://arxiv.org/abs/2311.15127)。这类模型强制要求神经网络不仅要掌握“场景在当前时刻的三维几何结构是什么样的”，更要学会“在物理定律和动作的驱动下，这组三维结构在未来时刻将如何演化与形变”。
+生成式驾驶与视频模型开始显式处理时间和控制条件。例如，GAIA-1 根据驾驶视频、文本与动作生成未来画面 [[Anthony Hu et al., 2023]](https://arxiv.org/abs/2309.17080)，Stable Video Diffusion 在潜在视频生成上研究了训练与数据策略 [[Blattmann et al., 2023]](https://arxiv.org/abs/2311.15127)。但这两篇论文并没有显式维护 NeRF、3D 高斯或体素形式的三维几何，因此它们只能作为时序生成背景，不能作为“显式 4D 几何世界模型”已经成立的证据。本节随后构造的 4D 表示是一种教学性抽象。
 
 ## 从运动学场到四维张量表征
 
@@ -34,6 +34,7 @@ $$\log P(\mathbf{o}_{1:T} \mid \mathbf{a}_{1:T}) = \log \int P(\mathbf{o}_{1:T} 
 $$ \log P(\mathbf{o}_{1:T} \mid \mathbf{a}_{1:T}) \geq \mathbb{E}_{Q} \left[ \sum_{t=1}^T \log P(\mathbf{o}_t \mid \mathbf{s}_t) \right] - \sum_{t=1}^T \mathbb{E}_{Q} \left[ D_{\text{KL}} \left( Q(\mathbf{s}_t \mid \mathbf{s}_{t-1}, \mathbf{o}_{\leq t}, \mathbf{a}_{< t}) \| P(\mathbf{s}_t \mid \mathbf{s}_{t-1}, \mathbf{a}_{t-1}) \right) \right] $$
 
 让我们温柔地拆解该公式中蕴含的物理意义：
+
 1. **三维空间渲染项（左侧期望项）**：$\log P(\mathbf{o}_t \mid \mathbf{s}_t)$ 描述了给定当前的 4D 特征体积 $\mathbf{s}_t$，系统将其解码并渲染回多视角二维观测 $\mathbf{o}_t$ 的能力。这一项强制模型在隐空间中维持极其严谨的**三维多视图几何一致性**（Multi-view Geometric Consistency）。如果 $\mathbf{s}_t$ 不能代表一个客观存在的 3D 结构，该似然项将急剧下降。
 2. **时间动力学正则项（右侧 KL 散度项）**：该项惩罚了两个分布之间的差异。一个是利用上帝视角（当前及历史的所有 2D 观测与动作）推断得出的后验分布 $Q$；另一个是仅依据前一时刻状态 $\mathbf{s}_{t-1}$ 通过先验动力学网络预测得出的先验分布 $P$。KL 散度的最小化过程，本质上就是在“教导”模型的动力学推演网络学习真实世界中不可见的物理守恒与运动演变规律。
 
@@ -71,26 +72,26 @@ class SpatialTemporalBlock(nn.Module):
         输出 s_next: 预测并更新后的下一层状态序列，形状不变
         """
         B, T, C, D, H, W = s_t.shape
-        
+
         # 1. 空间特征提取
         # 将时间和批量维度折叠，强迫网络专注于独立的 3D 体积
         s_spatial = s_t.view(B * T, C, D, H, W)
         s_spatial_conv = self.spatial_conv3d(s_spatial)
         # 恢复原有形状，并应用残差连接以防止梯度消失
         s_spatial = s_spatial_conv.view(B, T, C, D, H, W) + s_t
-        
+
         # 2. 时间特征演化
         # 为应用时间维度的注意力，我们将空间坐标视作独立的序列元素
         # 形状调整为 (B * D * H * W, T, C)
         s_temporal = s_spatial.permute(0, 3, 4, 5, 1, 2).reshape(-1, T, C)
         s_temporal = self.layer_norm1(s_temporal)
-        
+
         # 时间自注意力计算：让同一空间坐标轴上的历史特征相互作用
         # 实际训练中通常需要提供 causal_mask 来防止未来信息的泄露
         attn_out, _ = self.temporal_attn(s_temporal, s_temporal, s_temporal)
         s_temporal = s_temporal + attn_out
         s_temporal = self.layer_norm2(s_temporal)
-        
+
         # 将形状严密地逆向映射回 4D 张量格式 (B, T, C, D, H, W)
         s_next = s_temporal.view(B, D, H, W, T, C).permute(0, 4, 5, 1, 2, 3)
         return s_next
@@ -125,33 +126,33 @@ class SpatialTemporalBlock(tf.keras.layers.Layer):
         B, T = input_shape[0], input_shape[1]
         D, H, W = input_shape[2], input_shape[3], input_shape[4]
         C = input_shape[5]
-        
+
         # 1. 空间特征提取
         # 将时间和批量维度折叠，进行完全并行的 3D 卷积
         s_spatial = tf.reshape(s_t, [B * T, D, H, W, C])
         s_spatial_conv = self.spatial_conv3d(s_spatial)
         # 恢复形状并施加残差连接
         s_spatial = tf.reshape(s_spatial_conv, [B, T, D, H, W, C]) + s_t
-        
+
         # 2. 时间特征演化
         # 将空间坐标全部压平，以 T 作为序列维度供注意力模型处理
         # 转换至形状: (B * D * H * W, T, C)
         s_temporal = tf.transpose(s_spatial, perm=[0, 2, 3, 4, 1, 5])
         s_temporal = tf.reshape(s_temporal, [-1, T, C])
         s_temporal = self.layer_norm1(s_temporal)
-        
+
         # 执行时序信息交融
         attn_out = self.temporal_attn(s_temporal, s_temporal, s_temporal)
         s_temporal = s_temporal + attn_out
         s_temporal = self.layer_norm2(s_temporal)
-        
+
         # 还原回高维张量形式 (B, T, D, H, W, C)
         s_next = tf.reshape(s_temporal, [B, D, H, W, T, C])
         s_next = tf.transpose(s_next, perm=[0, 4, 1, 2, 3, 5])
-        
+
         return s_next
 ```
 
 ## 总结
 
-4D 时空世界模型代表着人工智能向理解真实物理世界迈出的坚实一步。通过强制在隐空间中维持显式或半显式的三维结构（该公式中的空间渲染项），并运用变分推断约束其在时间轴上的演化（时间动力学正则项），这类模型成功地抑制了因过度降维而引发的物理规律破坏。在自动驾驶和泛化机器人控制等对安全性与几何精准度要求极高的领域，4D 架构正在逐渐确立其核心范式的地位。
+显式或半显式的三维结构可以为遮挡、视角变化和空间查询提供更合适的归纳偏置；时间动力学则把静态重建扩展为未来预测。不过，这种表示并不会自动保证物理正确，也尚不能据此断言它已成为自动驾驶和机器人控制的统一核心范式。是否有效仍需用几何误差、多步预测、反事实一致性和闭环控制结果分别验证。

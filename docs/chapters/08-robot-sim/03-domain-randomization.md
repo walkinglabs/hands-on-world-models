@@ -6,7 +6,7 @@
 
 由于摩擦力、接触动力学（Contact Dynamics）、传感器噪声甚至柔性材质的形变，这些物理现象在数学上属于高度非线性的偏微分方程，现有的物理引擎（如MuJoCo、PyBullet、Isaac Gym）只能对其进行极简的近似。如果在单一的、确定的仿真器中训练一个神经网络控制器，它往往会过拟合于仿真器中不完美的物理法则。一旦部署到真实机器人上，策略便会瞬间失效。
 
-为了跨越这一鸿沟，Tobin等人在2017年的经典论文 [[Tobin et al., 2017]](https://arxiv.org/abs/1703.06907) 中提出了**域随机化**（Domain Randomization, DR）的思想。其核心学术理念极具启发性：与其耗费巨资去建立一个无限逼近真实世界的完美仿真器，不如**主动引入不确定性，将仿真环境泛化为一个包含无数个可能物理世界的分布**。只要真实世界（Real World）的参数落在我们随机生成的仿真世界分布之内，那么在整个分布上训练出来的神经网络，就能天然地对真实世界的微小偏差免疫。随后，OpenAI与Peng等人 [[Peng et al., 2018]](https://arxiv.org/abs/1808.00177) 进一步将这一理念从视觉拓展到动力学，使得机器灵巧手等复杂控制任务的“Sim-to-Real”无缝迁移成为现实。
+Tobin 等人把**域随机化**系统用于视觉 Sim-to-Real：训练时随机改变纹理、光照、相机与物体属性，让真实图像有机会落入训练分布 [[Tobin et al., 2017]](https://arxiv.org/abs/1703.06907)。这是一种提高鲁棒性的经验策略，并不能保证只要真实参数“落在范围内”就天然免疫所有偏差。Peng 等人进一步随机化质量、摩擦、阻尼等动力学参数，并在推、开门等机器人任务上验证迁移 [[Peng et al., 2018]](https://arxiv.org/abs/1808.00177)；该论文并未报告灵巧手任务，也没有证明“无缝迁移”。
 
 ## 从牛顿力学到参数化马尔可夫过程
 
@@ -120,7 +120,7 @@ class RandomizedBlockEnv:
         # 核心机制：环境重置时，从分布中随机采样物理参数
         self.mass = Uniform(self.mass_range[0], self.mass_range[1]).sample().item()
         self.friction = Uniform(self.friction_range[0], self.friction_range[1]).sample().item()
-        
+
         # 将位置和速度初始化为 0.0
         self.state = torch.zeros(2)
         return self.state
@@ -128,25 +128,25 @@ class RandomizedBlockEnv:
     def step(self, action):
         # action: 在1D方向上施加的外力 F
         pos, vel = self.state[0], self.state[1]
-        
+
         # 计算滑动摩擦力，方向与速度严格相反
         # 引入微小阈值 1e-3 以保证数值计算稳定性，防止在原点产生无穷震荡
         vel_sign = torch.sign(vel) if torch.abs(vel) > 1e-3 else torch.tensor(0.0)
         f_fric = self.friction * self.mass * 9.8 * vel_sign
-        
+
         # 根据该公式计算净加速度
         acc = (action - f_fric) / self.mass
-        
+
         # 根据该公式推进时间步
         new_vel = vel + acc * self.dt
         new_pos = pos + new_vel * self.dt
-        
+
         # 更新系统的内在状态张量
         self.state = torch.tensor([new_pos, new_vel])
-        
+
         # 定义一个二次型的简单奖励函数：趋向于让位置到达10.0并维持静止
         reward = -((new_pos - 10.0)**2 + 0.1 * new_vel**2)
-        
+
         return self.state, reward, False
 ```
 
@@ -168,7 +168,7 @@ class RandomizedBlockEnv:
         # 核心机制：环境重置时，从分布中随机采样物理参数
         self.mass = tf.random.uniform([], self.mass_range[0], self.mass_range[1]).numpy()
         self.friction = tf.random.uniform([], self.friction_range[0], self.friction_range[1]).numpy()
-        
+
         # 将位置和速度初始化为 0.0
         self.state = tf.zeros([2], dtype=tf.float32)
         return self.state
@@ -177,29 +177,29 @@ class RandomizedBlockEnv:
         # action: 在1D方向上施加的外力 F
         pos = self.state[0]
         vel = self.state[1]
-        
+
         # 计算滑动摩擦力，方向与速度严格相反
         # 引入微小阈值 1e-3 以保证数值计算稳定性
         vel_sign = tf.sign(vel) if tf.abs(vel) > 1e-3 else tf.constant(0.0, dtype=tf.float32)
         f_fric = self.friction * self.mass * 9.8 * vel_sign
-        
+
         # 根据牛顿第二定律计算净加速度
         acc = (action - f_fric) / self.mass
-        
+
         # 采用欧拉积分法推进时间步
         new_vel = vel + acc * self.dt
         new_pos = pos + new_vel * self.dt
-        
+
         # 更新系统的内在状态张量
         self.state = tf.stack([new_pos, new_vel])
-        
+
         # 定义二次型简单奖励函数
         reward = -((new_pos - 10.0)**2 + 0.1 * new_vel**2)
-        
+
         return self.state, reward, False
 ```
 
-[**下面，我们向环境连续施加相同大小的力，以验证不同的物理参数对相同动作序列究竟会产生多大的状态轨迹偏移。**] 
+[**下面，我们向环境连续施加相同大小的力，以验证不同的物理参数对相同动作序列究竟会产生多大的状态轨迹偏移。**]
 
 ```{.python .input}
 #@tab pytorch
@@ -214,7 +214,7 @@ def simulate_trajectory(env, action_seq):
     mass = env.mass
     friction = env.friction
     positions = []
-    
+
     # 将动作逐帧作用于环境，并记录其一维位移轨迹
     for a in action_seq:
         state, _, _ = env.step(a)
@@ -241,7 +241,7 @@ def simulate_trajectory(env, action_seq):
     mass = env.mass
     friction = env.friction
     positions = []
-    
+
     # 将动作逐帧作用于环境并记录位移
     for a in action_seq:
         state, _, _ = env.step(a)
@@ -260,7 +260,7 @@ print(f"宇宙B (质量={m2:.2f}, 摩擦={f2:.2f}) 20步后的最终位移: {pos
 
 ## 小结
 
-* **域随机化（Domain Randomization）** 是一种通过向仿真器引入宏观随机性，使得在其中训练的强化学习策略能够零样本（Zero-shot）跨越“现实鸿沟”迁移至真实机器人的核心技术。
-* 从数学角度看，域随机化将标准的马尔可夫决策过程拓展为了**参数化马尔可夫决策过程**，迫使策略网络必须在物理参数分布 $\boldsymbol{\xi} \sim P_{\Xi}$ 的双重期望下最大化累积回报。
-* **视觉随机化**从分布上抹除了不相关的干扰渲染参数，强制卷积神经网络学习纯粹的几何特征；而**动力学随机化**确保控制器不会过拟合到某一套脆弱的动力学方程中。
-* 为了避免前馈网络的性能受制于“保守策略”陷阱，算法实现中往往搭配循环神经网络，通过记忆历史序列来进行**隐式的系统辨识**（Implicit System Identification），赋予了模型在毫秒级自适应真实物理世界的能力。
+- **域随机化（Domain Randomization）** 是一种通过向仿真器引入宏观随机性，使得在其中训练的强化学习策略能够零样本（Zero-shot）跨越“现实鸿沟”迁移至真实机器人的核心技术。
+- 从数学角度看，域随机化将标准的马尔可夫决策过程拓展为了**参数化马尔可夫决策过程**，迫使策略网络必须在物理参数分布 $\boldsymbol{\xi} \sim P_{\Xi}$ 的双重期望下最大化累积回报。
+- **视觉随机化**从分布上抹除了不相关的干扰渲染参数，强制卷积神经网络学习纯粹的几何特征；而**动力学随机化**确保控制器不会过拟合到某一套脆弱的动力学方程中。
+- 为了避免前馈网络的性能受制于“保守策略”陷阱，算法实现中往往搭配循环神经网络，通过记忆历史序列来进行**隐式的系统辨识**（Implicit System Identification），赋予了模型在毫秒级自适应真实物理世界的能力。

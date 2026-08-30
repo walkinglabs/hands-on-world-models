@@ -2,7 +2,7 @@
 
 深度强化学习的早期突破主要来自无模型方法。例如，DQN 通过拟合动作价值函数，直接从 Atari 像素与游戏得分学习控制策略 [[Mnih et al., 2015]](https://doi.org/10.1038/nature14236)。这项结果针对离散动作的 Atari 游戏，并不覆盖连续控制；它同时也说明了一个工程问题：仅靠真实或仿真的环境交互往往需要大量样本。
 
-在这样的背景下，Ha 和 Schmidhuber 给出了由视觉模型、记忆模型与控制器组成的 **World Models** 框架 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。它把表征学习、动态建模与策略优化拆成可以分别训练的组件，并在 CarRacing 与 VizDoom 上展示了在潜在动力学模型中训练控制器的可行性。论文并未证明它在任意复杂任务上都只需“极少量”交互，因此这里不把实验结果外推到未测试环境。
+在这样的背景下，Ha 和 Schmidhuber 给出了由视觉模型、记忆模型与控制器组成的 **World Models** 框架 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。它把表征学习、动力学建模与控制器优化拆成可以分别训练的组件。CarRacing 实验在真实环境中优化控制器，并使用世界模型提供的潜在特征；VizDoom 实验才把控制器完全放到学到的潜在环境中训练，再迁回真实游戏。论文没有证明该方法能以极少交互适用于任意复杂任务。
 
 本章我们将从最基础的物理规律出发，严谨推演世界模型的数学结构，并剖析其为何必须依赖潜空间（Latent Space）与序列生成模型。
 
@@ -17,6 +17,7 @@ x_{t+1} = x_t + v_t \Delta t
 $$
 
 在该公式中，我们实际上构建了一个极简的**环境模型**。它包含三个核心要素：
+
 1. $x_t$：当前状态（State），在这里退化为一个标量。
 2. $v_t$：智能体在 $t$ 时刻采取的动作（Action）。
 3. $x_{t+1}$：动作施加于当前状态后，环境反馈出的未来状态。
@@ -137,12 +138,12 @@ class MDNRNN(nn.Module):
         self.action_dim = action_dim
         self.hidden_dim = hidden_dim
         self.num_gaussians = num_gaussians
-        
+
         # RNN 核心组件：接收拼接后的 (z_t, a_t) 向量
-        self.rnn = nn.LSTM(input_size=latent_dim + action_dim, 
-                           hidden_size=hidden_dim, 
+        self.rnn = nn.LSTM(input_size=latent_dim + action_dim,
+                           hidden_size=hidden_dim,
                            batch_first=True)
-                           
+
         # MDN 输出层映射：将 hidden_dim 映射到 GMM 所需的所有参数
         # 需要输出每个维度的 mu, sigma，以及每一个高斯簇的概率权重 pi
         self.fc_pi = nn.Linear(hidden_dim, num_gaussians)
@@ -158,26 +159,26 @@ class MDNRNN(nn.Module):
             hidden: (h_0, c_0) - RNN 的初始隐状态，默认全零
         """
         batch_size, seq_len, _ = z.size()
-        
+
         # 将潜状态与动作在特征维度拼接：[batch_size, seq_len, latent_dim + action_dim]
         rnn_input = torch.cat([z, action], dim=-1)
-        
+
         # rnn_out 的形状为 [batch_size, seq_len, hidden_dim]
         rnn_out, hidden = self.rnn(rnn_input, hidden)
-        
+
         # 计算 pi: [batch_size, seq_len, num_gaussians]
         # 使用 softmax 保证各个高斯分量权重总和严格为 1
         pi = F.softmax(self.fc_pi(rnn_out), dim=-1)
-        
+
         # 计算 mu: [batch_size, seq_len, num_gaussians, latent_dim]
         mu = self.fc_mu(rnn_out)
         mu = mu.view(batch_size, seq_len, self.num_gaussians, self.latent_dim)
-        
+
         # 计算 sigma: [batch_size, seq_len, num_gaussians, latent_dim]
         # 使用 exp（或 softplus）保证方差参数严格大于 0，并具备良好的数值稳定性
         sigma = torch.exp(self.fc_sigma(rnn_out))
         sigma = sigma.view(batch_size, seq_len, self.num_gaussians, self.latent_dim)
-        
+
         return pi, mu, sigma, hidden
 ```
 
@@ -197,36 +198,36 @@ def mdn_loss(pi, mu, sigma, target_z):
         target_z: [batch_size, seq_len, latent_dim] - 目标分布，即 z_{t+1}
     """
     batch_size, seq_len, num_gaussians, latent_dim = mu.size()
-    
+
     # 扩展 target_z 以匹配 mu 和 sigma 的多模态高斯簇维度
     # 形状变为：[batch_size, seq_len, num_gaussians, latent_dim]
     target_z = target_z.unsqueeze(2).expand_as(mu)
-    
+
     # 利用 PyTorch 内置的 Normal 分布对象获取对数概率密度
     normal_dist = Normal(loc=mu, scale=sigma)
-    
+
     # 计算在每个高斯分布下的 log P(z|mu, sigma)
     # 形状为 [batch_size, seq_len, num_gaussians, latent_dim]
     log_prob_per_dim = normal_dist.log_prob(target_z)
-    
+
     # 因为假设各个特征维度(latent_dim)之间条件独立，概率连乘等价于 log 域的求和
     # 形状变为 [batch_size, seq_len, num_gaussians]
     log_prob_per_gaussian = torch.sum(log_prob_per_dim, dim=-1)
-    
+
     # 将 pi 转换为对数空间以保证数值稳定：log(pi)
     log_pi = torch.log(pi + 1e-8)  # 加上极小量防止 log(0)
-    
+
     # 计算 log(pi * N) = log(pi) + log(N)
     log_pi_times_prob = log_pi + log_prob_per_gaussian
-    
+
     # 核心数学推导的最后一步：使用 logsumexp 技巧合并所有的高斯分量
     # 相当于 log(\sum_k pi_k * P_k(z))
     # 形状变为 [batch_size, seq_len]
     log_prob_final = torch.logsumexp(log_pi_times_prob, dim=-1)
-    
+
     # 负对数似然 (NLL) 需要取反并对所有时间步和批次求均值
     nll_loss = -torch.mean(log_prob_final)
-    
+
     return nll_loss
 ```
 

@@ -6,7 +6,7 @@
 
 动作条件视频预测与模型式规划密切相关。Oh 等人在 Atari 上展示了根据动作预测未来画面的方法 [[Oh et al., 2015]](https://arxiv.org/abs/1507.08750)；这些画面仍是高维像素，只是场景和动作空间相对受限。Finn 等人把动作条件预测用于真实机器人交互视频 [[Finn et al., 2016]](https://arxiv.org/abs/1605.07157)，Babaeizadeh 等人则显式引入随机潜变量来表达同一过去对应多种未来的情形 [[Babaeizadeh et al., 2017]](https://arxiv.org/abs/1710.11252)。
 
-近年来，潜在动力学出现了不同实现路线。Dreamer 在连续或离散的潜在状态中学习动作条件动力学，用于想象训练 [[Hafner et al., 2019]](https://arxiv.org/abs/1912.01603)；它并不是基于离散视频词元的 Transformer。Genie 则从无动作标签的视频中学习潜在动作，并在离散视频词元上生成可交互轨迹 [[Bruce et al., 2024]](https://arxiv.org/abs/2402.15391)。因此，本节采用“视觉词元 + 因果注意力”时，主要借鉴的是后一类自回归交互视频模型。
+近年来，潜在动力学出现了不同实现路线。Dreamer 在连续或离散的潜在状态中学习动作条件动力学，用于想象训练 [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)；它并不是基于离散视频词元的 Transformer。Genie 则从无动作标签的视频中学习潜在动作，并在离散视频词元上生成可交互轨迹 [[Bruce et al., 2024]](https://arxiv.org/abs/2402.15391)。因此，本节采用“视觉词元 + 因果注意力”时，主要借鉴的是后一类自回归交互视频模型。
 
 ## 交互式生成的数学构型
 
@@ -45,9 +45,9 @@ $$\mathbf{Q} = \mathbf{H} \mathbf{W}_Q, \quad \mathbf{K} = \mathbf{H} \mathbf{W}
 标准自注意力机制计算 $\mathbf{Q}$ 与 $\mathbf{K}$ 的点积来衡量相似度。然而，对于预测任务，我们必须施加严格的因果性：第 $i$ 个位置只能观察到位置 $j \le i$ 的信息。为此，我们引入一个下三角掩码矩阵 $\mathbf{M} \in \mathbb{R}^{N \times N}$，其定义如下：
 
 $$
-\mathbf{M}_{i,j} = \begin{cases} 
+\mathbf{M}_{i,j} = \begin{cases}
 0 & \text{if } j \le i \\
--\infty & \text{if } j > i 
+-\infty & \text{if } j > i
 \end{cases}
 $$
 
@@ -79,38 +79,38 @@ class CausalSelfAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout=0.1):
         super().__init__()
         assert embed_dim % num_heads == 0, "嵌入维度必须能被注意力头数整除"
-        
+
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
-        
+
         # 将 Q, K, V 的线性映射合并为一个权重矩阵以提升计算效率
         self.c_attn = nn.Linear(embed_dim, 3 * embed_dim, bias=True)
         self.c_proj = nn.Linear(embed_dim, embed_dim, bias=True)
-        
+
         self.attn_dropout = nn.Dropout(dropout)
         self.resid_dropout = nn.Dropout(dropout)
-        
+
     def forward(self, x):
         # x 形状: (批量大小 B, 序列长度 N, 嵌入维度 D)
         B, N, D = x.size()
-        
+
         # 线性映射并分离为 Q, K, V
         # 形状变化: (B, N, 3D) -> (B, N, 3, num_heads, head_dim) -> 转置为 (3, B, num_heads, N, head_dim)
         qkv = self.c_attn(x).view(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2] # 每一个的形状: (B, num_heads, N, head_dim)
-        
+
         # 计算缩放点积注意力，并动态生成因果掩码 (利用 PyTorch 的 is_causal 标志)
         # 这里等价于数学公式中的加上下三角矩阵 M
         y = F.scaled_dot_product_attention(
-            q, k, v, 
-            dropout_p=self.attn_dropout.p if self.training else 0.0, 
+            q, k, v,
+            dropout_p=self.attn_dropout.p if self.training else 0.0,
             is_causal=True
         ) # y 形状: (B, num_heads, N, head_dim)
-        
+
         # 将多个头拼接回去
         y = y.transpose(1, 2).contiguous().view(B, N, D)
-        
+
         # 输出线性投影与残差丢弃
         return self.resid_dropout(self.c_proj(y))
 ```
@@ -124,43 +124,43 @@ class CausalSelfAttention(tf.keras.layers.Layer):
     def __init__(self, embed_dim, num_heads, dropout=0.1, **kwargs):
         super().__init__(**kwargs)
         assert embed_dim % num_heads == 0, "嵌入维度必须能被注意力头数整除"
-        
+
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
-        
+
         self.c_attn = tf.keras.layers.Dense(3 * embed_dim)
         self.c_proj = tf.keras.layers.Dense(embed_dim)
-        
+
         self.attn_dropout = tf.keras.layers.Dropout(dropout)
         self.resid_dropout = tf.keras.layers.Dropout(dropout)
-        
+
     def call(self, x, training=False):
         B = tf.shape(x)[0]
         N = tf.shape(x)[1]
         D = self.embed_dim
-        
+
         qkv = self.c_attn(x) # (B, N, 3*D)
         qkv = tf.reshape(qkv, (B, N, 3, self.num_heads, self.head_dim))
         qkv = tf.transpose(qkv, perm=[2, 0, 3, 1, 4]) # (3, B, num_heads, N, head_dim)
         q, k, v = qkv[0], qkv[1], qkv[2]
-        
+
         # 缩放点积
         scores = tf.matmul(q, k, transpose_b=True) / tf.math.sqrt(tf.cast(self.head_dim, tf.float32))
-        
+
         # 生成并应用因果掩码
         mask = tf.linalg.band_part(tf.ones((N, N)), -1, 0)
         mask = 1.0 - mask
         scores -= mask * 1e9
-        
+
         attn = tf.nn.softmax(scores, axis=-1)
         if training:
             attn = self.attn_dropout(attn, training=training)
-            
+
         y = tf.matmul(attn, v) # (B, num_heads, N, head_dim)
         y = tf.transpose(y, perm=[0, 2, 1, 3])
         y = tf.reshape(y, (B, N, D))
-        
+
         return self.resid_dropout(self.c_proj(y), training=training)
 ```
 
@@ -183,7 +183,7 @@ class TransformerBlock(nn.Module):
             nn.Linear(4 * embed_dim, embed_dim),
             nn.Dropout(dropout)
         )
-        
+
     def forward(self, x):
         # 遵循 Pre-LayerNorm 架构设计
         x = x + self.attn(self.ln_1(x))
@@ -205,7 +205,7 @@ class TransformerBlock(tf.keras.layers.Layer):
             tf.keras.layers.Dense(embed_dim),
             tf.keras.layers.Dropout(dropout)
         ])
-        
+
     def call(self, x, training=False):
         x = x + self.attn(self.ln_1(x), training=training)
         x = x + self.mlp(self.ln_2(x), training=training)
@@ -222,37 +222,37 @@ class TransformerBlock(tf.keras.layers.Layer):
 #@tab pytorch
 class InteractiveVideoGenerator(nn.Module):
     """交互式视频生成器的核心模块"""
-    def __init__(self, vocab_size, action_dim, embed_dim, num_layers, num_heads, 
+    def __init__(self, vocab_size, action_dim, embed_dim, num_layers, num_heads,
                  tokens_per_frame, max_frames, dropout=0.1):
         super().__init__()
         self.vocab_size = vocab_size
         self.tokens_per_frame = tokens_per_frame
-        
+
         # 视觉标记的词表嵌入层
         self.tok_emb = nn.Embedding(vocab_size, embed_dim)
-        
+
         # 动作输入的线性映射层（假设动作为连续向量）
         self.action_proj = nn.Linear(action_dim, embed_dim)
-        
+
         # 空间位置编码 (0 到 tokens_per_frame - 1)
         self.spatial_pos_emb = nn.Parameter(torch.zeros(1, tokens_per_frame, embed_dim))
         # 时间位置编码 (0 到 max_frames - 1)
         self.temporal_pos_emb = nn.Parameter(torch.zeros(1, max_frames, embed_dim))
         # 为动作分配一种特殊的位置/类型标识向量
         self.action_type_emb = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        
+
         self.dropout = nn.Dropout(dropout)
-        
+
         # 堆叠 Transformer 块
         self.blocks = nn.ModuleList([
-            TransformerBlock(embed_dim, num_heads, dropout) 
+            TransformerBlock(embed_dim, num_heads, dropout)
             for _ in range(num_layers)
         ])
-        
+
         self.ln_f = nn.LayerNorm(embed_dim)
         # 最终预测视觉标记词表的线性头
         self.lm_head = nn.Linear(embed_dim, vocab_size, bias=False)
-        
+
         # 权重初始化
         self._init_weights()
 
@@ -267,18 +267,18 @@ class InteractiveVideoGenerator(nn.Module):
         actions: 形状 (B, T-1, action_dim) 包含帧间的动作输入
         """
         B, T, S = visual_tokens.size()
-        
+
         # 1. 提取视觉嵌入并加入时空位置编码
         # token_embeddings 形状: (B, T, S, D)
         token_embeddings = self.tok_emb(visual_tokens)
-        
+
         # 添加空间与时间位置编码，利用广播机制
         # (1, T, 1, D) + (1, 1, S, D) -> (1, T, S, D)
         spatial_emb = self.spatial_pos_emb.unsqueeze(1).expand(-1, T, -1, -1)
         temporal_emb = self.temporal_pos_emb[:, :T, :].unsqueeze(2).expand(-1, -1, S, -1)
-        
+
         visual_repr = token_embeddings + spatial_emb + temporal_emb
-        
+
         # 2. 处理动作嵌入
         # action_repr 形状: (B, T-1, 1, D)
         if T > 1:
@@ -287,7 +287,7 @@ class InteractiveVideoGenerator(nn.Module):
             # 动作用自身的时间编码加上动作专属类别标识
             action_repr = action_embeddings + action_temporal_emb + self.action_type_emb
             action_repr = action_repr.unsqueeze(2) # 变为 (B, T-1, 1, D)
-        
+
         # 3. 交错重组序列
         # 我们需要将序列排布为: [Z_1, a_1, Z_2, a_2, ..., Z_T]
         sequence = []
@@ -295,19 +295,19 @@ class InteractiveVideoGenerator(nn.Module):
             sequence.append(visual_repr[:, t, :, :]) # (B, S, D)
             if t < T - 1:
                 sequence.append(action_repr[:, t, :, :]) # (B, 1, D)
-                
+
         # 沿序列维度拼接
         # 总长度 N = T * S + (T - 1)
-        h = torch.cat(sequence, dim=1) 
+        h = torch.cat(sequence, dim=1)
         h = self.dropout(h)
-        
+
         # 4. 通过自回归 Transformer
         for block in self.blocks:
             h = block(h)
-            
+
         h = self.ln_f(h)
         logits = self.lm_head(h) # (B, N, vocab_size)
-        
+
         return logits
 ```
 
@@ -315,21 +315,21 @@ class InteractiveVideoGenerator(nn.Module):
 #@tab tensorflow
 class InteractiveVideoGenerator(tf.keras.Model):
     """交互式视频生成器的核心模块 (TensorFlow实现)"""
-    def __init__(self, vocab_size, action_dim, embed_dim, num_layers, num_heads, 
+    def __init__(self, vocab_size, action_dim, embed_dim, num_layers, num_heads,
                  tokens_per_frame, max_frames, dropout=0.1, **kwargs):
         super().__init__(**kwargs)
         self.vocab_size = vocab_size
         self.tokens_per_frame = tokens_per_frame
-        
+
         self.tok_emb = tf.keras.layers.Embedding(vocab_size, embed_dim)
         self.action_proj = tf.keras.layers.Dense(embed_dim)
-        
+
         self.spatial_pos_emb = self.add_weight(shape=(1, tokens_per_frame, embed_dim), initializer='random_normal', trainable=True)
         self.temporal_pos_emb = self.add_weight(shape=(1, max_frames, embed_dim), initializer='random_normal', trainable=True)
         self.action_type_emb = self.add_weight(shape=(1, 1, embed_dim), initializer='random_normal', trainable=True)
-        
+
         self.dropout = tf.keras.layers.Dropout(dropout)
-        
+
         self.blocks = [TransformerBlock(embed_dim, num_heads, dropout) for _ in range(num_layers)]
         self.ln_f = tf.keras.layers.LayerNormalization(epsilon=1e-5)
         self.lm_head = tf.keras.layers.Dense(vocab_size, use_bias=False)
@@ -338,14 +338,14 @@ class InteractiveVideoGenerator(tf.keras.Model):
         B = tf.shape(visual_tokens)[0]
         T = tf.shape(visual_tokens)[1]
         S = tf.shape(visual_tokens)[2]
-        
+
         token_embeddings = self.tok_emb(visual_tokens)
-        
+
         spatial_emb = tf.broadcast_to(tf.expand_dims(self.spatial_pos_emb, 1), [1, T, S, self.spatial_pos_emb.shape[-1]])
         temporal_emb = tf.broadcast_to(tf.expand_dims(self.temporal_pos_emb[:, :T, :], 2), [1, T, S, self.temporal_pos_emb.shape[-1]])
-        
+
         visual_repr = token_embeddings + spatial_emb + temporal_emb
-        
+
         sequence = []
         for t in range(visual_tokens.shape[1]):
             sequence.append(visual_repr[:, t, :, :])
@@ -355,16 +355,16 @@ class InteractiveVideoGenerator(tf.keras.Model):
                 act_temp = self.temporal_pos_emb[:, t:t+1, :]
                 act_repr = act_emb + act_temp + self.action_type_emb
                 sequence.append(act_repr)
-                
+
         h = tf.concat(sequence, axis=1)
         h = self.dropout(h, training=training)
-        
+
         for block in self.blocks:
             h = block(h, training=training)
-            
+
         h = self.ln_f(h)
         logits = self.lm_head(h)
-        
+
         return logits
 ```
 
@@ -389,18 +389,18 @@ def calculate_loss(logits, visual_tokens, tokens_per_frame):
     visual_tokens: (B, T, S) 目标的真实视觉标记
     """
     B, T, S = visual_tokens.size()
-    
+
     # 构造目标序列，将 visual_tokens 展平，并将预测目标向左偏移一位 (Shift left)
     # 对于位置 i，预测目标是位置 i+1 的输入
-    
+
     # 我们先在序列维度找到对应的目标索引
     target_indices = []
     # 第一个帧不需要预测（或者说它通常用作初始条件），损失计算从帧内的转移及后续帧开始
     # 为简单起见，我们对所有后续有效的视觉标记计算预测损失
-    
+
     logits_for_loss = []
     targets_for_loss = []
-    
+
     current_idx = 0
     for t in range(T):
         if t < T - 1:
@@ -408,12 +408,12 @@ def calculate_loss(logits, visual_tokens, tokens_per_frame):
             # 最后一个 token 预测动作 (我们不计算动作预测损失)
             logits_for_loss.append(logits[:, current_idx : current_idx + S - 1, :])
             targets_for_loss.append(visual_tokens[:, t, 1:S])
-            
+
             # 动作 token 处的预测，目标是帧 t+1 的第一个视觉 token
             current_idx += S # 跳过帧视觉特征，到达动作 token
             logits_for_loss.append(logits[:, current_idx : current_idx + 1, :])
             targets_for_loss.append(visual_tokens[:, t+1, 0:1])
-            
+
             current_idx += 1 # 跳过动作 token
         else:
             # 最后一帧内的预测
@@ -423,7 +423,7 @@ def calculate_loss(logits, visual_tokens, tokens_per_frame):
     # 拼接所有的预测和目标
     logits_flat = torch.cat(logits_for_loss, dim=1).reshape(-1, logits.size(-1))
     targets_flat = torch.cat(targets_for_loss, dim=1).reshape(-1)
-    
+
     # 标准交叉熵损失
     loss = F.cross_entropy(logits_flat, targets_flat)
     return loss

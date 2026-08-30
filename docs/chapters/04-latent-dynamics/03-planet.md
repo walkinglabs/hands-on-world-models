@@ -113,18 +113,18 @@ class RSSMCell(nn.Module):
         super().__init__()
         self.state_dim = state_dim
         self.rnn_hidden_dim = rnn_hidden_dim
-        
+
         # 确定性 RNN 更新: h_t = f(h_{t-1}, s_{t-1}, a_{t-1})
         # 我们使用一个 GRU 单元
         self.gru = nn.GRUCell(state_dim + action_dim, rnn_hidden_dim)
-        
+
         # 先验模型: p(s_t | h_t)
         self.prior_mlp = nn.Sequential(
             nn.Linear(rnn_hidden_dim, 256),
             nn.ELU(),
             nn.Linear(256, 2 * state_dim) # 输出均值和方差对数
         )
-        
+
         # 后验模型: q(s_t | h_t, e_t) (假设 e_t 是观测 o_t 的特征编码)
         self.posterior_mlp = nn.Sequential(
             nn.Linear(rnn_hidden_dim + 256, 256), # 假设观测特征维度为256
@@ -136,7 +136,7 @@ class RSSMCell(nn.Module):
         """将输出切割为均值和标准差"""
         mean, log_std = torch.chunk(x, 2, dim=-1)
         # 使用 softplus 保证标准差为正，并加上极小值防止数值不稳定
-        std = nn.functional.softplus(log_std) + 0.1 
+        std = nn.functional.softplus(log_std) + 0.1
         return mean, std
 
     def step_prior(self, prev_state, prev_action, prev_rnn_hidden):
@@ -148,11 +148,11 @@ class RSSMCell(nn.Module):
         # 3. 计算先验分布 p(s_t | h_t)
         prior_stats = self.prior_mlp(rnn_hidden)
         prior_mean, prior_std = self._split_and_transform(prior_stats)
-        
+
         # 重参数化采样
         prior_dist = Normal(prior_mean, prior_std)
         state = prior_dist.rsample()
-        
+
         return state, rnn_hidden, prior_dist
 
     def step_posterior(self, prev_state, prev_action, prev_rnn_hidden, obs_embed):
@@ -160,21 +160,21 @@ class RSSMCell(nn.Module):
         # 1. 同样需要先计算确定性状态 h_t
         gru_input = torch.cat([prev_state, prev_action], dim=-1)
         rnn_hidden = self.gru(gru_input, prev_rnn_hidden)
-        
+
         # 2. 计算先验分布（计算 KL 损失时需要）
         prior_stats = self.prior_mlp(rnn_hidden)
         prior_mean, prior_std = self._split_and_transform(prior_stats)
         prior_dist = Normal(prior_mean, prior_std)
-        
+
         # 3. 计算后验分布 q(s_t | h_t, o_t)
         post_input = torch.cat([rnn_hidden, obs_embed], dim=-1)
         post_stats = self.posterior_mlp(post_input)
         post_mean, post_std = self._split_and_transform(post_stats)
         post_dist = Normal(post_mean, post_std)
-        
+
         # 从后验中重参数化采样得到实际使用的 s_t
         state = post_dist.rsample()
-        
+
         return state, rnn_hidden, prior_dist, post_dist
 ```
 
@@ -201,7 +201,7 @@ PlaNet 采用了一种名为**交叉熵方法**（Cross-Entropy Method, CEM）�
 
 ```{.python .input}
 #@tab pytorch
-def cem_planning(current_state, current_rnn_hidden, rssm, reward_model, 
+def cem_planning(current_state, current_rnn_hidden, rssm, reward_model,
                  plan_horizon=12, num_samples=1000, num_elites=100, iterations=10, action_dim=6):
     """
     基于 CEM 的潜在空间规划器
@@ -209,19 +209,19 @@ def cem_planning(current_state, current_rnn_hidden, rssm, reward_model,
     # 初始化动作序列分布 (plan_horizon, action_dim)
     action_mean = torch.zeros(plan_horizon, action_dim)
     action_std = torch.ones(plan_horizon, action_dim)
-    
+
     for opt_step in range(iterations):
         # 1. 采样 N 条动作序列 (num_samples, plan_horizon, action_dim)
         actions = Normal(action_mean, action_std).sample((num_samples,))
-        
+
         # 约束动作到合法范围，例如 [-1, 1]
         actions = torch.clamp(actions, -1.0, 1.0)
-        
+
         # 2. 在潜在空间中模拟推演
         returns = torch.zeros(num_samples)
         state = current_state.expand(num_samples, -1)
         rnn_hidden = current_rnn_hidden.expand(num_samples, -1)
-        
+
         # 沿规划视界滚动
         for t in range(plan_horizon):
             action_t = actions[:, t, :]
@@ -230,18 +230,18 @@ def cem_planning(current_state, current_rnn_hidden, rssm, reward_model,
             # 预测奖励
             reward_t = reward_model(torch.cat([state, rnn_hidden], dim=-1)).squeeze(-1)
             returns += reward_t
-            
+
         # 3. 筛选精英并更新分布
         # 获取 top-K 轨迹的索引
         _, elite_indices = torch.topk(returns, num_elites)
-        
+
         # 提取精英动作序列 (num_elites, plan_horizon, action_dim)
         elite_actions = actions[elite_indices]
-        
+
         # 更新均值和标准差以用于下一轮迭代
         action_mean = elite_actions.mean(dim=0)
         action_std = elite_actions.std(dim=0)
-        
+
     # 返回规划出的最优序列的第一步动作
     return action_mean[0]
 ```

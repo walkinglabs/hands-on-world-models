@@ -4,7 +4,7 @@
 
 为了直观地理解这一点，我们可以想象这样一个极其简单的物理场景：机器人正前方有一根柱子，而目标位于柱子正后方。在专家演示数据中，操作员有时会控制机器人从左侧绕过柱子，有时则从右侧绕过。如果使用传统的基于均方误差的神经网络来拟合这些数据，模型会倾向于输出左转和右转的“平均值”——即径直向前走，从而导致机器人直接撞上柱子。这种现象在学术界被称为“模式平均”（Mode Averaging）。
 
-为了打破这一困境，研究人员开始将目光投向生成式模型。在自然语言处理和计算机视觉领域大放异彩的去噪扩散概率模型（Denoising Diffusion Probabilistic Models, DDPM） [[Ho et al., 2020]](https://arxiv.org/abs/2006.11239)，以其惊人的分布建模能力引起了控制领域的关注。2023年，[[Chi et al., 2023]](https://arxiv.org/abs/2303.04137) 首次系统性地提出了扩散策略（Diffusion Policy），将视觉运动策略的动作生成过程建模为一个条件去噪扩散过程。它彻底抛弃了确定性输出的执念，转而学习如何从纯随机的噪声中，根据当前的视觉观察“雕刻”出合理的动作轨迹。在本节中，我们将从最基础的概率论出发，逐步剥开扩散策略的数学外衣，并最终实现一个完整的扩散策略模型。
+DDPM 通过学习逆转逐步加噪过程来生成样本 [[Ho et al., 2020]](https://arxiv.org/abs/2006.11239)。Diffusion Policy 把这一思想用于机器人模仿学习，把动作序列建模为以视觉或状态观测为条件的去噪过程 [[Chi et al., 2023]](https://arxiv.org/abs/2303.04137)。它可以表达多模态动作分布，但并不要求所有控制问题都放弃确定性策略。本节据此推导一个简化的条件动作扩散模型。
 
 ## 扩散过程的数学基础：从信号到噪声
 
@@ -27,6 +27,7 @@ $$a_k = \sqrt{\alpha_k} a_{k-1} + \sqrt{1 - \alpha_k} \boldsymbol{\epsilon}_{k-1
 从表面上看，如果要计算任意步 $a_k$，我们需要一步步从 $a_0$ 迭代计算过来。但这在实际训练中是极其低效的。令人惊叹的是，由于高斯分布的加法性质（两个独立的正态分布变量之和仍然是正态分布，其均值为零，方差等于两者方差之和），我们可以直接写出从初始状态 $a_0$ 到任意状态 $a_k$ 的一步转移公式。
 
 让我们展开前向过程的前两步看看：
+
 $$
 \begin{aligned}
 a_2 &= \sqrt{\alpha_2} a_1 + \sqrt{1 - \alpha_2} \boldsymbol{\epsilon}_1 \\
@@ -102,7 +103,7 @@ import torch.nn.functional as F
 class DDPMScheduler:
     def __init__(self, num_train_timesteps=100):
         self.num_train_timesteps = num_train_timesteps
-        
+
         # 严格计算余弦调度计划 (Cosine Variance Schedule)
         steps = num_train_timesteps + 1
         x = torch.linspace(0, num_train_timesteps, steps)
@@ -110,7 +111,7 @@ class DDPMScheduler:
         alphas_cumprod = torch.cos(((x / num_train_timesteps) + 0.008) / 1.008 * math.pi * 0.5) ** 2
         alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
         betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
-        
+
         # 将 beta 裁剪到安全范围内，保证严格的数值稳定性
         self.betas = torch.clip(betas, 0.0001, 0.999)
         self.alphas = 1.0 - self.betas
@@ -123,7 +124,7 @@ class DDPMScheduler:
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
-            
+
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
         while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
@@ -144,10 +145,10 @@ class ConditionalResidualBlock1D(nn.Module):
         self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1)
         self.conv2 = nn.Conv1d(out_channels, out_channels, kernel_size=3, padding=1)
         self.activation = nn.Mish()
-        
+
         # FiLM 机制映射层：将多模态条件维度投影为缩放(scale)和偏移(shift)调制因子
         self.cond_encoder = nn.Linear(cond_dim, out_channels * 2)
-        
+
         # 确保通道维度匹配的残差连接桥梁
         self.residual_conv = nn.Conv1d(in_channels, out_channels, 1) \
             if in_channels != out_channels else nn.Identity()
@@ -155,20 +156,20 @@ class ConditionalResidualBlock1D(nn.Module):
     def forward(self, x, cond):
         # x 形状: (Batch, in_channels, sequence_length)
         # cond 形状: (Batch, cond_dim)
-        
+
         out = self.activation(self.conv1(x))
-        
+
         # 计算特征维度上的 FiLM 调制因子
         cond_emb = self.cond_encoder(cond)  # (Batch, out_channels * 2)
         scale, shift = cond_emb.chunk(2, dim=-1)
-        
+
         # 调整张量形状以严格匹配时间序列上的每一帧维度
         scale = scale.unsqueeze(-1)
         shift = shift.unsqueeze(-1)
-        
+
         # 注入条件：仿射变换调制
         out = out * (scale + 1.0) + shift
-        
+
         out = self.conv2(self.activation(out))
         return out + self.residual_conv(x)
 
@@ -176,23 +177,23 @@ class SimpleConditionalUnet1D(nn.Module):
     def __init__(self, action_dim, obs_dim, hidden_dim=128):
         super().__init__()
         self.action_dim = action_dim
-        
+
         # 扩散时间步的正弦编码与感知机注入层
         self.time_mlp = nn.Sequential(
             nn.Linear(1, hidden_dim),
             nn.Mish(),
             nn.Linear(hidden_dim, hidden_dim)
         )
-        
+
         # 环境视觉/本体感受状态特征的降维流形层
         self.obs_mlp = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
             nn.Mish(),
             nn.Linear(hidden_dim, hidden_dim)
         )
-        
+
         cond_dim = hidden_dim * 2
-        
+
         # 高度浓缩的一维残差网络拓扑
         self.block1 = ConditionalResidualBlock1D(action_dim, hidden_dim, cond_dim)
         self.block2 = ConditionalResidualBlock1D(hidden_dim, hidden_dim, cond_dim)
@@ -202,21 +203,21 @@ class SimpleConditionalUnet1D(nn.Module):
         # noisy_action_sequence 形状预期为: (Batch, sequence_length, action_dim)
         # PyTorch 的 Conv1d 要求通道维度置前，因此我们先执行转置操作
         x = noisy_action_sequence.transpose(1, 2)
-        
+
         # 独立编码环境观察先验与时间步特征
         t_emb = self.time_mlp(timestep.unsqueeze(-1).float())
         o_emb = self.obs_mlp(observation)
         cond = torch.cat([t_emb, o_emb], dim=-1)
-        
+
         x = self.block1(x, cond)
         x = self.block2(x, cond)
         x = self.block3(x, cond)
-        
+
         # 恢复时间序列维度输出
         return x.transpose(1, 2)
 ```
 
-[**最后，我们将所有数学模块严丝合缝地组装为一个极简版本的端到端训练与逆向生成采样的闭环流程。**] 
+[**最后，我们将所有数学模块严丝合缝地组装为一个极简版本的端到端训练与逆向生成采样的闭环流程。**]
 
 ```{.python .input}
 #@tab pytorch
@@ -262,18 +263,18 @@ with torch.no_grad():
     current_action_state = torch.randn(1, action_sequence_length, action_dim)
     # 获取当下的实时真实物理世界观察结果
     single_observation = torch.randn(1, obs_dim)
-    
+
     # 严格遵循逆向马尔可夫链分布，逐步剥离冗余的噪声分量 (对应方程 7.5.7)
     for t in reversed(range(scheduler.num_train_timesteps)):
         t_tensor = torch.tensor([t])
-        
+
         # 网络预测剥离量
         pred_noise = model(current_action_state, t_tensor, single_observation)
-        
+
         # 提取当前时间步在调度计划中对应的衰减权重系数
         alpha = scheduler.alphas[t]
         alpha_cumprod = scheduler.alphas_cumprod[t]
-        
+
         # 当未抵达链条末端时，必须遵循理论加入适度的退火随机游走噪声
         if t > 0:
             noise = torch.randn_like(current_action_state)
@@ -281,7 +282,7 @@ with torch.no_grad():
         else:
             noise = torch.zeros_like(current_action_state)
             sigma = 0.0
-            
+
         # 根据我们严谨推导出的逆向重参数化转移公式，代数计算出上一步更具物理意义的动作序列
         current_action_state = (1 / alpha**0.5) * (
             current_action_state - ((1 - alpha) / (1 - alpha_cumprod)**0.5) * pred_noise
@@ -294,7 +295,7 @@ with torch.no_grad():
 
 ## 小结
 
-* 传统的行为克隆在高度复杂的专家多模态动作分布面前，常常陷入灾难性的模式平均（Mode Averaging）问题，导致模型采取致命的妥协动作。
-* 扩散策略（Diffusion Policy）巧妙地利用基于严密马尔可夫链理论的去噪过程，将任意复杂的控制策略生成转化为从高斯噪声中提纯物理信号的过程。
-* 逆向条件去噪的核心数学引擎在于，通过条件神经网络预测前向过程中引入的纯噪声分量，这一结论是基于严谨的贝叶斯后验概率均值重参数化推导而得出的必然结果。
-* 动作序列块（Action Chunking）和滚动优化时间域（Receding Horizon Control）的组合，赋予了该策略面对真实物理世界时极高的稳健性与连贯性。
+- 传统的行为克隆在高度复杂的专家多模态动作分布面前，常常陷入灾难性的模式平均（Mode Averaging）问题，导致模型采取致命的妥协动作。
+- 扩散策略（Diffusion Policy）巧妙地利用基于严密马尔可夫链理论的去噪过程，将任意复杂的控制策略生成转化为从高斯噪声中提纯物理信号的过程。
+- 逆向条件去噪的核心数学引擎在于，通过条件神经网络预测前向过程中引入的纯噪声分量，这一结论是基于严谨的贝叶斯后验概率均值重参数化推导而得出的必然结果。
+- 动作序列块（Action Chunking）和滚动优化时间域（Receding Horizon Control）的组合，赋予了该策略面对真实物理世界时极高的稳健性与连贯性。

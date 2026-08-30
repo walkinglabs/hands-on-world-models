@@ -2,7 +2,7 @@
 
 在前面的章节中，我们深入探讨了 DreamerV1 及其核心组件——循环状态空间模型（Recurrent State-Space Model, RSSM）。通过将连续的潜在状态与循环神经网络相结合，DreamerV1 在许多视觉控制任务上取得了令人瞩目的成就。然而，随着研究人员试图将世界模型应用于更加复杂、庞大且多样的环境（如雅达利游戏或三维导航任务）时，连续潜在空间的局限性开始逐渐显露。
 
-在这一节中，我们将跟随世界模型的演进脉络，讨论 DreamerV2 [[Hafner et al., 2020]](https://arxiv.org/abs/2010.02193) 和 DreamerV3 [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104)。DreamerV2 把 Dreamer 的连续随机状态改为多组分类分布组成的离散随机状态，并在 Atari 上取得了强结果。DreamerV3 则通过 symlog、分位回归损失与归一化等设计，提高跨领域使用同一套超参数的稳定性；原文报告的是 8 个领域、150 多项任务，而不是“所有主流强化学习基准”。
+在这一节中，我们将跟随世界模型的演进脉络，讨论 DreamerV2 [[Hafner et al., 2021]](https://arxiv.org/abs/2010.02193) 和 DreamerV3 [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104)。DreamerV2 把 Dreamer 的连续随机状态改为多组分类分布组成的离散随机状态，并在 Atari 上取得了强结果。DreamerV3 则通过 symlog、分位回归损失与归一化等设计，提高跨领域使用同一套超参数的稳定性；原文报告的是 8 个领域、150 多项任务，而不是“所有主流强化学习基准”。
 
 我们将从最基础的概率论概念起步，逐步推导出离散空间的梯度反向传播技巧，并深入理解旨在解决值域缩放问题的对数变换技巧。
 
@@ -39,6 +39,7 @@ $$\mathbf{p} = \text{Softmax}(\mathbf{l}) \quad \text{其中} \quad p_i = \frac{
 $$\tilde{\mathbf{z}} = \mathbf{z}_{\text{one-hot}} - \mathbf{p} + \mathbf{p}.$$
 
 如果我们在反向传播时切断（Detach） $\mathbf{z}_{\text{one-hot}} - \mathbf{p}$ 的梯度，那么：
+
 - 在前向计算时，由于 $\mathbf{p}$ 和 $-\mathbf{p}$ 相互抵消，计算图的实际值为 $\mathbf{z}_{\text{one-hot}}$，保证了输出是严格离散的独热向量。
 - 在反向计算时，梯度流经 $\tilde{\mathbf{z}}$ 时，被截断的部分不会产生梯度，所有的梯度都会流向剩下的 $\mathbf{p}$。而 $\mathbf{p}$ 是通过可导的 Softmax 函数得到的。
 
@@ -56,18 +57,18 @@ def straight_through_sample(logits, num_classes):
     """
     # [1] 计算连续的概率分布
     probs = F.softmax(logits, dim=-1)
-    
+
     # [2] 根据概率进行真实的分类分布采样
     dist = D.Categorical(probs=probs)
     indices = dist.sample()
-    
+
     # [3] 将采样结果转换为独热向量
     z_one_hot = F.one_hot(indices, num_classes=num_classes).float()
-    
+
     # [4] 应用直通估计器技巧 (z_one_hot - probs).detach() + probs
     # 前向传播时等于 z_one_hot，反向传播时等价于 probs
     z_sample = z_one_hot + probs - probs.detach()
-    
+
     return z_sample
 ```
 
@@ -100,6 +101,7 @@ $$ \mathcal{L}_{\text{KL}} = \alpha \text{KL}(\text{sg}[q] \parallel p) + (1-\al
 ### 对称对数变换 (Symlog Transformation)
 
 为了压缩具有巨大范围的实数值，一个直观的想法是使用对数函数 $\log(x)$。然而，标准的对数函数存在两个问题：
+
 1. 它未定义于负数区域，而环境的奖励完全可能是负数。
 2. 当 $x$ 接近 0 时，$\log(x)$ 会趋向于负无穷，这在数值计算中是不可接受的。
 
@@ -107,6 +109,7 @@ $$ \mathcal{L}_{\text{KL}} = \alpha \text{KL}(\text{sg}[q] \parallel p) + (1-\al
 $$\text{symlog}(x) = \text{sign}(x) \ln(|x| + 1)$$
 
 让我们仔细拆解这个巧妙的公式：
+
 - 绝对值加上 1（即 $|x|+1$）保证了对数函数的输入永远大于等于 1。因此，当 $x=0$ 时，$\ln(1) = 0$。这完美解决了零点附近的发散问题。
 - $\text{sign}(x)$ 是符号函数。它保留了原始数值的符号。
 
@@ -144,7 +147,7 @@ class SymlogTransform:
     @staticmethod
     def forward(x):
         return torch.sign(x) * torch.log(torch.abs(x) + 1.0)
-    
+
     @staticmethod
     def inverse(y):
         return torch.sign(y) * (torch.exp(torch.abs(y)) - 1.0)
@@ -155,45 +158,45 @@ def two_hot_encode(target, min_val=-20.0, max_val=20.0, num_bins=255):
     """
     # [1] 构建等距的离散网格 (Bins)
     bins = torch.linspace(min_val, max_val, num_bins, device=target.device)
-    
+
     # [2] 限制目标值的范围以防越界
     target = torch.clamp(target, min_val, max_val)
-    
+
     # [3] 计算目标值在网格上的相对位置
     # 这里通过减去最小值并除以网格间距得到浮点索引
     step = (max_val - min_val) / (num_bins - 1)
     index_float = (target - min_val) / step
-    
+
     # [4] 找到相邻的左右两个桶的整数索引
     left_idx = torch.floor(index_float).long()
     right_idx = torch.ceil(index_float).long()
-    
+
     # [5] 计算分配给右侧桶的权重（距离左侧桶越远，右侧权重越大）
     weight_right = index_float - left_idx.float()
     weight_left = 1.0 - weight_right
-    
+
     # 处理恰好落在网格点上的情况
     # 此时 left_idx == right_idx，我们平均分配权重
     mask = (left_idx == right_idx)
     weight_left[mask] = 1.0
     weight_right[mask] = 0.0
-    
+
     # [6] 将权重散布到一个全零张量中形成 Two-hot 分布
     # 获取 target 的 batch 大小
     batch_shape = target.shape
     two_hot = torch.zeros(*batch_shape, num_bins, device=target.device)
-    
+
     # 使用 scatter_ 填充概率值
     # 注意：需要增加一个维度以便于 scatter 操作
     two_hot.scatter_(-1, left_idx.unsqueeze(-1), weight_left.unsqueeze(-1))
     two_hot.scatter_add_(-1, right_idx.unsqueeze(-1), weight_right.unsqueeze(-1))
-    
+
     return two_hot
 ```
 
 ## 小结
 
-* 连续高斯潜在空间在表征强离散特征（如游戏类别、迷宫位置）时存在瓶颈。DreamerV2 创造性地通过多组分类分布（Categorical distribution）重构了 RSSM 的潜在空间。
-* 直通估计器（Straight-Through Estimator, STE）巧妙地化解了离散采样不可导的难题，使得计算图既能在前向传播中保持纯粹的离散状态，又能在反向传播中提供高质量的梯度信号。
-* KL 平衡（KL Balancing）解决了先验分布难以优化的问题，使得序列模型的动力学推演更加稳定。
-* DreamerV3 彻底革新了数值处理机制。对称对数变换（Symlog）将各种规模的奖励和价值压缩到紧凑区间内；双热编码（Two-hot Encoding）则将回归问题优雅地转化为分类问题，彻底根除了大尺度误差带来的梯度爆炸现象，为世界模型的通用化奠定了坚实的工程与数学基础。
+- 连续高斯潜在空间在表征强离散特征（如游戏类别、迷宫位置）时存在瓶颈。DreamerV2 创造性地通过多组分类分布（Categorical distribution）重构了 RSSM 的潜在空间。
+- 直通估计器（Straight-Through Estimator, STE）巧妙地化解了离散采样不可导的难题，使得计算图既能在前向传播中保持纯粹的离散状态，又能在反向传播中提供高质量的梯度信号。
+- KL 平衡（KL Balancing）解决了先验分布难以优化的问题，使得序列模型的动力学推演更加稳定。
+- DreamerV3 彻底革新了数值处理机制。对称对数变换（Symlog）将各种规模的奖励和价值压缩到紧凑区间内；双热编码（Two-hot Encoding）则将回归问题优雅地转化为分类问题，彻底根除了大尺度误差带来的梯度爆炸现象，为世界模型的通用化奠定了坚实的工程与数学基础。

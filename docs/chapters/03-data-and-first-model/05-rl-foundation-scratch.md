@@ -69,7 +69,7 @@ $$Q^\pi(s, a) = R(s, a) + \gamma \sum_{s' \in \mathcal{S}} P(s' \mid s, a) \sum_
 
 在现代强化学习中（尤其是离策略算法如 Q-learning），智能体在环境中交互产生的数据表现出极强的时间相关性。如果我们将这些连续的样本直接送入神经网络进行梯度下降，极易导致训练发散。
 
-为此，Lin (1992) 首次提出 [[Lin, 1992]](https://doi.org/10.1007/BF00992699)，并在 DQN [[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602) 中被发扬光大的核心机制是**经验回放缓冲区（Experience Replay Buffer）**。其思想十分纯粹：将每次交互的转移元组 $(s_t, a_t, r_{t+1}, s_{t+1}, \text{done})$ 存储在一个大容量的先进先出（FIFO）队列中；在训练时，从中均匀随机采样小批量（Mini-batch）数据。这一方面打破了样本间的时间相关性，另一方面使得罕见的高价值经验可以被多次复用。
+Lin 系统研究了经验回放 [[Lin, 1992]](https://doi.org/10.1007/BF00992699)，DQN 又把随机经验回放用于深度 Q 学习 [[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602)。常见实现把转移元组 $(s_t, a_t, r_{t+1}, s_{t+1}, \text{done})$ 存入固定容量的循环缓冲区并均匀采样；“覆盖最旧数据”是工程选择，并非经验回放定义中必须采用的 FIFO 规则。
 
 为了保证计算效率，我们不能使用 Python 原生的列表（list）来存储百万级别的经验，而是必须在一开始就预分配一块连续的张量（Tensor）内存，通过指针循环覆盖旧数据。
 
@@ -87,7 +87,7 @@ class ReplayBuffer:
         self.device = device
         self.ptr = 0     # 当前写入的游标
         self.size = 0    # 当前缓冲区中已有的数据量
-        
+
         # 预先分配固定大小的连续张量内存
         # 状态通常是多维连续值
         self.states = torch.zeros((capacity, state_dim), dtype=torch.float32, device=device)
@@ -106,7 +106,7 @@ class ReplayBuffer:
         self.rewards[self.ptr] = torch.tensor(reward, dtype=torch.float32, device=self.device)
         self.next_states[self.ptr] = torch.tensor(next_state, dtype=torch.float32, device=self.device)
         self.dones[self.ptr] = torch.tensor(done, dtype=torch.float32, device=self.device)
-        
+
         # 游标循环移动
         self.ptr = (self.ptr + 1) % self.capacity
         # 记录当前真实数量，不超过最大容量
@@ -116,7 +116,7 @@ class ReplayBuffer:
         """随机采样一个批量的经验"""
         # 生成随机索引
         ind = torch.randint(0, self.size, size=(batch_size,), device=self.device)
-        
+
         # 通过高级索引机制一次性提取张量
         return (
             self.states[ind],
@@ -138,7 +138,7 @@ class ReplayBuffer:
         self.capacity = capacity
         self.ptr = 0
         self.size = 0
-        
+
         # TensorFlow 中通常使用 tf.Variable 作为可修改的张量容器
         self.states = tf.Variable(tf.zeros((capacity, state_dim), dtype=tf.float32), trainable=False)
         self.next_states = tf.Variable(tf.zeros((capacity, state_dim), dtype=tf.float32), trainable=False)
@@ -154,7 +154,7 @@ class ReplayBuffer:
         self.rewards[self.ptr].assign(tf.cast([reward], tf.float32))
         self.next_states[self.ptr].assign(tf.cast(next_state, tf.float32))
         self.dones[self.ptr].assign(tf.cast([done], tf.float32))
-        
+
         self.ptr = (self.ptr + 1) % self.capacity
         self.size = min(self.size + 1, self.capacity)
 
@@ -162,7 +162,7 @@ class ReplayBuffer:
         """随机采样一个批量的经验"""
         # 生成随机索引
         ind = tf.random.uniform(shape=[batch_size], minval=0, maxval=self.size, dtype=tf.int32)
-        
+
         return (
             tf.gather(self.states, ind),
             tf.gather(self.actions, ind),
@@ -207,38 +207,38 @@ for episode in range(num_episodes):
     # 重置环境，获取初始状态
     state = np.random.randn(state_dim)
     episode_reward = 0
-    
+
     for step in range(max_steps):
         # 智能体基于当前策略选择动作 (这里用随机动作模拟)
         action = np.random.randn(action_dim)
-        
+
         # 环境执行动作，返回下一个状态、奖励和结束标志
         next_state = np.random.randn(state_dim)
         reward = np.random.rand()
         done = 1.0 if step == max_steps - 1 else 0.0
-        
+
         # 1. 交互与收集：将转移存入缓冲区
         buffer.add(state, action, reward, next_state, done)
-        
+
         state = next_state
         episode_reward += reward
-        
+
         # 2. 当缓冲区数据量足够时，进行批量采样与学习
         if buffer.size >= batch_size:
             states, actions, rewards, next_states, dones = buffer.sample(batch_size)
-            
+
             # 在这里通常会将这些批量张量传入神经网络进行损失计算和梯度反传
             # loss = compute_loss(states, actions, rewards, next_states, dones)
             # optimizer.step()
-            
+
             # 为了演示，我们仅验证采样的张量维度是否符合预期矩阵运算的形状
             assert states.shape == (batch_size, state_dim)
             assert rewards.shape == (batch_size, 1)
             assert dones.shape == (batch_size, 1)
-            
+
         if done:
             break
-            
+
     print(f"Episode {episode + 1} finished with Total Reward: {episode_reward:.2f}")
 ```
 
@@ -258,29 +258,29 @@ max_steps = 100
 for episode in range(num_episodes):
     state = np.random.randn(state_dim)
     episode_reward = 0
-    
+
     for step in range(max_steps):
         action = np.random.randn(action_dim)
         next_state = np.random.randn(state_dim)
         reward = np.random.rand()
         done = 1.0 if step == max_steps - 1 else 0.0
-        
+
         buffer.add(state, action, reward, next_state, done)
-        
+
         state = next_state
         episode_reward += reward
-        
+
         if buffer.size >= batch_size:
             states, actions, rewards, next_states, dones = buffer.sample(batch_size)
-            
+
             # TensorFlow 的维度验证
             assert states.shape == (batch_size, state_dim)
             assert rewards.shape == (batch_size, 1)
             assert dones.shape == (batch_size, 1)
-            
+
         if done:
             break
-            
+
     print(f"Episode {episode + 1} finished with Total Reward: {episode_reward:.2f}")
 ```
 

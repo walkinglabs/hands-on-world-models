@@ -1,6 +1,6 @@
 # 探索下一个世界模型：前沿与未来
 
-在前面几章中，我们已经深入探讨了基于循环神经网络（RNN）、变分自编码器（VAE）、生成对抗网络（GAN）以及扩散模型（Diffusion Models）构建的世界模型。通过不断迭代，这些模型在模拟环境动态演化、辅助强化学习智能体进行规划方面取得了令人瞩目的成就。然而，正如科学史上的每一次范式转移一样，现有方法的瓶颈往往是通向下一个里程碑的起点。当前基于像素级预测的自回归或扩散生成世界模型，在面对物理世界的极高信息熵、长序列规划的复合误差（Compounding Errors）时，暴露出计算效率低下和泛化能力不足的致命弱点 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)。
+前面几章讨论了使用循环网络、潜变量模型、自回归模型和扩散模型表示环境动力学的方法。LeCun 的立场文章指出，像素空间包含大量难以预测、却未必与任务相关的细节，因此主张在抽象表征空间预测 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)。这篇文章为“避免预测所有像素细节”提供了理论动机，但没有对所有自回归或扩散世界模型给出统一的效率、泛化或长序列误差定理。
 
 在本节中，我们将把目光投向地平线之外，探索有望定义“下一个时代”世界模型的前沿架构与理论基石。我们将从联合嵌入预测架构（JEPA）的能量模型视角出发，推演放弃像素级重建的数学必然性；随后，我们将引入理论神经科学中的变分自由能原则（Free Energy Principle, FEP），探讨主动推断（Active Inference）如何统一预测与决策；最后，我们将利用连续时间的状态空间模型（State Space Models, SSMs）突破离散时间步长的桎梏。这些前沿探索不仅是工程架构的革新，更是对“智能系统如何认知物理世界”这一哲学命题的严密数学重构。
 
@@ -48,7 +48,7 @@ $$c(\mathbf{S}) = \frac{1}{d} \sum_{i \neq j} C_{i, j}^2$$
 
 ## 主动推断与变分自由能
 
-仅仅能够准确预测未来是不够的，真正的世界模型最终必须指导决策。传统的强化学习将“状态转移预测”（环境动力学）与“策略优化”（最大化奖励）视为两个独立甚至对立的目标。神经科学家 Karl Friston 提出的变分自由能原则（Free Energy Principle, FEP） [[Friston, 2010]](https://doi.org/10.1038/nrn2787) 为这两者提供了一个极其优雅的统一数学框架。
+仅仅能够预测未来还不够，世界模型最终需要服务决策。Friston 的自由能原则从感知与行动共同最小化变分自由能的角度给出了一种理论视角 [[Friston, 2010]](https://doi.org/10.1038/nrn2787)。它与标准强化学习的奖励最大化并不天然等价；若要把两者统一，还需要明确生成模型、偏好分布和行动推断等额外假设。
 
 ### 惊讶与信息熵
 
@@ -91,6 +91,7 @@ $$
 ### 统一认知与行动
 
 主动推断最迷人的地方在于，它认为智能系统可以通过两种方式最小化自由能：
+
 1. **感知（Perception）**：改变内部信念 $Q(\mathbf{s} \mid \mathbf{o})$ 以更好地拟合环境（即常规的模型训练）。
 2. **行动（Action）**：通过执行动作 $a$ 改变外部物理世界，产生新的观测 $\mathbf{o}$，使得新观测符合模型的先验预期（即目标导向的决策）。
 
@@ -100,7 +101,7 @@ $$
 
 我们目前探讨的世界模型大多建立在离散的时间步 $t, t+1, t+2$ 之上。然而，真实的物理世界是连续流动的。对连续动态的离散化往往会导致信息丢失，并且在跨越多时间尺度的长序列预测时，循环网络或 Transformer 面临着灾难性的遗忘或平方级的计算复杂度。
 
-近年来，结构化状态空间序列模型（Structured State Space Models, SSMs）及其变体（如 Mamba [[Gu et al., 2021]](https://arxiv.org/abs/2111.00396)）成功地用连续时间的常微分方程（ODE）重新定义了序列建模，这为高分辨率世界模型提供了关键的数学工具。
+近年来，S4 等结构化状态空间序列模型从连续时间状态空间系统出发，设计了可高效计算的长序列层 [[Gu et al., 2021]](https://arxiv.org/abs/2111.00396)。这里引用的是 S4 论文，不是后来提出的 Mamba；这类模型为长序列建模提供了工具，但其对具体世界模型是否有效仍需实验验证。
 
 ### 线性状态空间动态系统
 
@@ -172,27 +173,27 @@ def vicreg_loss(x, y, sim_weight=25.0, var_weight=25.0, cov_weight=1.0, epsilon=
     y: 目标状态的真实表征 (Batch_size, embed_dim)
     """
     batch_size, embed_dim = x.shape
-    
+
     # 1. 不变性损失 (Invariance Loss)：等价于我们在公式中提到的 MSE 距离
     sim_loss = F.mse_loss(x, y)
-    
+
     # 2. 方差损失 (Variance Loss)：防止表征坍塌到单个点
     std_x = torch.sqrt(x.var(dim=0) + epsilon)
     std_y = torch.sqrt(y.var(dim=0) + epsilon)
     # 使用 ReLU 确保方差至少达到阈值 (通常设为 1.0)
     std_loss = torch.mean(F.relu(1.0 - std_x)) / 2 + torch.mean(F.relu(1.0 - std_y)) / 2
-    
+
     # 3. 协方差损失 (Covariance Loss)：对特征进行去相关，强制不同维度编码独立信息
     x_mean = x - x.mean(dim=0)
     y_mean = y - y.mean(dim=0)
     cov_x = (x_mean.T @ x_mean) / (batch_size - 1)
     cov_y = (y_mean.T @ y_mean) / (batch_size - 1)
-    
+
     # 提取非对角线元素的平方和
     off_diag_mask = ~torch.eye(embed_dim, dtype=torch.bool, device=x.device)
-    cov_loss = (cov_x[off_diag_mask].pow(2).sum() / embed_dim + 
+    cov_loss = (cov_x[off_diag_mask].pow(2).sum() / embed_dim +
                 cov_y[off_diag_mask].pow(2).sum() / embed_dim)
-    
+
     # 综合损失
     loss = sim_weight * sim_loss + var_weight * std_loss + cov_weight * cov_loss
     return loss, sim_loss, std_loss, cov_loss
@@ -220,6 +221,7 @@ print(f"Similarity Loss: {sim.item():.4f}, Variance Loss: {var.item():.4f}, Cova
 ## 小结
 
 下一代世界模型的探索已经越过了单纯增加网络参数或数据的阶段，转入对智能体认知物理世界底层逻辑的反思：
-* **JEPA** 证明了对于高熵现实世界，我们必须在抽象的隐变量空间进行预测，并通过方差与协方差正则化等手段对抗信息坍塌。
-* **主动推断与自由能原则** 将控制论与生成模型统一，使模型不再满足于单纯的未来猜测，而是主动通过行动降低环境的不可预测性。
-* **连续状态空间模型** 利用微分方程重新审视序列建模，为物理规律中的长程、多尺度依赖提供了理论上完美的框架。
+
+- **JEPA** 证明了对于高熵现实世界，我们必须在抽象的隐变量空间进行预测，并通过方差与协方差正则化等手段对抗信息坍塌。
+- **主动推断与自由能原则** 将控制论与生成模型统一，使模型不再满足于单纯的未来猜测，而是主动通过行动降低环境的不可预测性。
+- **连续状态空间模型** 利用微分方程重新审视序列建模，为物理规律中的长程、多尺度依赖提供了理论上完美的框架。

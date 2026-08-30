@@ -46,7 +46,7 @@ $$
 
 传统的方法试图通过深度估算网络，让模型回归出一个确定性的深度值 $\hat{Z}_c$。然而，由于遮挡和纹理缺失，单目深度估计往往存在极大的不确定性。一旦回归的深度出现偏差，三维空间中的特征投影就会彻底错位。
 
-为了从根本上规避确定性深度带来的误差累积，[[Philion & Fidler, 2020]](https://arxiv.org/abs/2008.05711) 提出了著名的 Lift, Splat, Shoot (LSS) 范式。该模型的核心创新在于：**不强迫网络猜测一个唯一的深度值，而是去预测该像素在离散深度空间上的概率分布。**
+Lift, Splat, Shoot（LSS）为每个图像位置预测离散深度分布，并把图像特征沿视锥提升到三维后汇聚到 BEV 网格 [[Philion & Fidler, 2020]](https://arxiv.org/abs/2008.05711)。深度分布保留了多个可能深度，但并不能从根本上消除深度估计误差。
 
 > [!NOTE]
 > 我们可以将“提升（Lift）”操作想象为一座灯塔向夜空中发射光束的过程。图像平面上的每一个像素都是一个微小的光源，像素的语义特征决定了这束光的“颜色”；而深度概率分布则决定了这束光在距离灯塔不同深度的夜空中，哪里显得最为明亮。通过这种方式，原本扁平的二维特征图在三维空间中弥散开来，化作一片充满概率的三维特征光晕（视锥）。这是理解连续物理映射与离散张量操作之间的绝佳桥梁。
@@ -63,13 +63,14 @@ $$
 
 ## 空间交叉注意力机制：BEVFormer 范式
 
-LSS 范式采用的是一种“前向投影”（2D 到 3D）的思想。它存在一个不可忽视的计算瓶颈：随着视锥分辨率的提升，需要实例化的视锥张量体积呈指数级爆炸。此外，多个相机视野重叠区域的特征融合仅仅依赖于简单的池化，缺乏自适应性。
+LSS 采用“先提升到视锥、再聚合到 BEV”的 2D 到 3D 路线。视锥张量的大小随图像分辨率、深度分桶数和特征维度的乘积增长，而不是指数增长；多个相机特征在 BEV 中通过池化聚合，也会限制自适应融合能力。
 
-为了解决这一问题，[[Li et al., 2022]](https://arxiv.org/abs/2203.17270) 提出了 BEVFormer，彻底翻转了采样的方向，采用了一种基于 Transformer 的“逆向查询”（3D 到 2D）策略。这构成了当代绝大多数端到端自动驾驶模型的基座。
+BEVFormer 从 BEV 查询出发，把参考点投影到多相机图像并用空间交叉注意力采样特征 [[Li et al., 2022]](https://arxiv.org/abs/2203.17270)。这种“由 BEV 查询图像”的方向区别于 LSS 的视锥提升，并影响了许多后续方法；原论文并不能支持“绝大多数端到端自动驾驶模型都以它为基座”的绝对结论。
 
 在 BEVFormer 中，我们首先在二维 BEV 空间中初始化一组可学习的网格查询参数（Grid Queries）$\mathbf{Q} \in \mathbb{R}^{H_{bev} \times W_{bev} \times C}$。每一个查询向量 $\mathbf{q}_p$ 唯一对应物理世界中的一根自车周围的垂直柱子（Pillar）。
 
 为了让查询向量能够看到周围的环境，模型执行了一种被称为空间交叉注意力（Spatial Cross-Attention, SCA）的精密机制：
+
 1. 对于每一个查询点（对应柱子的中心 $(X_w, Y_w)$），我们沿着高度 $Z_w$ 方向均匀采样一系列三维参考点 $\mathbf{P}_{ref} = [X_w, Y_w, Z_i]^\top$。
 2. 我们利用这两个公式，将这些三维参考点严格地投影到所有相机的二维图像面上，获得对应的二维像素参考点坐标集 $\mathbf{p}_{ref, 2D}$。
 3. (**查询这些二维坐标点周围的图像特征**) 并非使用传统的稠密注意力，而是引入了可变形注意力机制（Deformable Attention），只在被投影位置的局部极小邻域内采样并加权求和，从而极大地削减了计算开销：
@@ -87,6 +88,7 @@ $$
 占据网格（Occupancy Grid）网络由此应运而生。它是 BEV 的高维拓展，将自车周围的三维空间精细地划分为大小一致的三维体素（Voxel）。我们的目标不再是预测 2D 的俯视图特征，而是将特征空间扩展为 $C \times X_{dim} \times Y_{dim} \times Z_{dim}$ 的真实三维张量。
 
 网络需要对空间中的每一个体素执行分类任务，判断其处于三种状态之一：
+
 1. **空闲（Free）**：代表可行驶空间。
 2. **占据且无特定语义（Occupied-Unknown）**：这一项是 Occupancy 表征的杀手锏。它允许模型感知到前方存在障碍物（例如翻倒的奇形怪状的垃圾桶），即便该物体不属于任何预定义的训练类别（白名单之外的通用障碍物）。
 3. **占据且具备语义（Occupied-Semantic）**：该体素被特定的物体（如汽车、行人、路牌）占据。
@@ -116,37 +118,37 @@ class FrustumGenerator(nn.Module):
         super().__init__()
         self.downsample_factor = downsample_factor
         self.feat_size = (img_size[0] // downsample_factor, img_size[1] // downsample_factor)
-        
+
         # [构建离散深度的张量]
         self.depths = torch.arange(
             depth_bound[0], depth_bound[1], depth_interval, dtype=torch.float32
         )
         self.D = self.depths.shape[0]
-        
+
     def create_frustum(self):
         """
         根据特征图尺寸和深度范围，构建相机坐标系下的基础视锥。
         返回张量形状：(D, H_f, W_f, 3)，其中最后一维是 (u, v, d) 坐标。
         """
         H_f, W_f = self.feat_size
-        
+
         # 构建像素坐标网格
         xs = torch.linspace(0, W_f - 1, W_f, dtype=torch.float32)
         ys = torch.linspace(0, H_f - 1, H_f, dtype=torch.float32)
         # 注意 meshgrid 的索引顺序
         y_grid, x_grid = torch.meshgrid(ys, xs, indexing='ij')
-        
+
         # 将坐标重新缩放回原始图像尺寸
         x_grid = x_grid * self.downsample_factor
         y_grid = y_grid * self.downsample_factor
-        
+
         # 扩展出深度维度：我们为每一个深度面复制一份二维网格
         x_frustum = x_grid.unsqueeze(0).repeat(self.D, 1, 1) # (D, H_f, W_f)
         y_frustum = y_grid.unsqueeze(0).repeat(self.D, 1, 1) # (D, H_f, W_f)
-        
+
         # 扩展深度张量，匹配空间维度
         d_frustum = self.depths.view(-1, 1, 1).repeat(1, H_f, W_f) # (D, H_f, W_f)
-        
+
         # 将三者拼接，构成视锥点的 (u, v, d) 表示
         frustum = torch.stack((x_frustum, y_frustum, d_frustum), dim=-1)
         return frustum
@@ -159,7 +161,7 @@ class LSSFeatureLifter(nn.Module):
         self.cam_encoder = nn.Sequential(
             nn.Conv2d(in_channels, out_channels + num_depth_bins, kernel_size=1)
         )
-        
+
     def forward(self, img_feat):
         """
         执行 Lift 操作：将图像特征通过深度概率分布扩展至三维视锥。
@@ -169,22 +171,22 @@ class LSSFeatureLifter(nn.Module):
         B, _, H, W = img_feat.shape
         # [通过 1x1 卷积预测深度与上下文特征]
         cam_out = self.cam_encoder(img_feat)
-        
+
         # 沿通道维度切分，分离深度分支与上下文分支
         depth_logits = cam_out[:, :self.num_depth_bins, :, :]
         context_feat = cam_out[:, self.num_depth_bins:, :, :]
-        
+
         # [计算离散深度层面上的概率分布]
         # 使用 softmax 确保概率和为 1，形状为 (B, D, H, W)
         depth_prob = F.softmax(depth_logits, dim=1)
-        
+
         # [张量广播与外积]
         # context_feat: (B, C, 1, H, W)
         # depth_prob:   (B, 1, D, H, W)
         # 相乘后的 frustum_feat 形状为 (B, C, D, H, W)
         context_feat = context_feat.unsqueeze(2)
         depth_prob = depth_prob.unsqueeze(1)
-        
+
         frustum_feat = context_feat * depth_prob
         return frustum_feat
 ```

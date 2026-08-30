@@ -8,9 +8,10 @@
     "dev": "vitepress dev docs",
     "build": "vitepress build docs",
     "preview": "vitepress preview docs",
+    "citations:check": "node scripts/check-citations.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "verify": "npm run format:check && npm run build"
+    "verify": "npm run citations:check && npm run format:check && npm run build"
   },
   "engines": {
     "node": ">=18.0.0"
