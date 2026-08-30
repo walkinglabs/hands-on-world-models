@@ -1,5 +1,4 @@
 ## 8.4 特权信息蒸馏与虚实迁移（Sim2Real）
-:label:sec_privilege_distill_sim2real
 
 在前面的章节中，我们已经探讨了如何在高度理想化的物理仿真环境中训练智能体。然而，当我们将这些在仿真器中表现优异的策略直接部署到真实的物理机器人（如四足机器狗或灵巧手）上时，往往会遭遇灾难性的失败。这种仿真与现实之间的巨大鸿沟，被称为“虚实迁移（Sim2Real）”问题。
 
@@ -10,12 +9,10 @@
 本节我们将从基础物理概念出发，严谨地推导这一框架背后的数学逻辑，并深入探讨其张量维度的代码实现细节。
 
 ### 8.4.1 仿真与现实的数学鸿沟
-:label:subsec_sim2real_gap
 
 为了严谨地描述 Sim2Real 问题，让我们回顾高中物理中最基础的滑动摩擦力公式。假设一个机器人的足端在地面上滑动，其受到的摩擦力大小 $f$ 为：
 
 $$f = \mu N$$
-:eqlabel:eq_friction_basic
 
 其中，$\mu$ 是滑动摩擦系数，$N$ 是足端对地面的正压力。在绝大多数传统的仿真器中，$\mu$ 被简化地建模为一个全局静态常数，或是一个在空间上均匀分布的值。然而，在真实世界中，由于地面的磨损、灰尘的分布以及材质的微小变化，摩擦系数实际上是一个关于空间坐标 $(x, y)$ 和时间 $t$ 的复杂函数 $\mu(x, y, t)$。
 
@@ -24,12 +21,10 @@ $$f = \mu N$$
 在真实的物理世界中，环境参数 $\mathbf{e}$ 往往是不可观测（Unobservable）的隐变量。真实的传感器只能提供观测（Observation）向量 $\mathbf{o}_t$（例如关节角度、角速度等本体感知数据），它是真实状态 $\mathbf{s}_t$ 的一个低维投影。这就使得完整的 MDP 退化为了一个部分可观测马尔可夫决策过程（POMDP），直接在这个 POMDP 上进行策略寻优是极度困难的。
 
 ### 8.4.2 域随机化与特权马尔可夫决策
-:label:subsec_privilege_mdp
 
 如果我们想要让机器人在未知的真实参数 $\mathbf{e}^*$ 下也能正常工作，最直观的思路是在训练期间，从一个广泛的物理参数分布 $p(\mathbf{e})$ 中进行采样。我们的优化目标随之变为最大化参数分布下的期望回报：
 
 $$J(\pi) = \mathbb{E}_{\mathbf{e} \sim p(\mathbf{e}), \tau \sim P_{sim}(\cdot|\mathbf{e}), \pi} \left[ \sum_{t=0}^T \gamma^t r(s_t, a_t) \right]$$
-:eqlabel:eq_domain_randomization
 
 但这带来了一个巨大的挑战：如果策略 $\pi(a_t | \mathbf{o}_t)$ 仅仅依赖当前的瞬时观测 $\mathbf{o}_t$，面对动态且变化多端的隐性物理参数，它只能学到一个应对所有可能情况的最优折中（即最为保守的动作），从而失去了动态响应的敏捷性。
 
@@ -40,10 +35,8 @@ $$J(\pi) = \mathbb{E}_{\mathbf{e} \sim p(\mathbf{e}), \tau \sim P_{sim}(\cdot|\m
 在演员-评论家（Actor-Critic）架构下，其价值函数 $V_T(\mathbf{x}_t)$ 的贝尔曼方程可以被严谨地表示为：
 
 $$V_T(\mathbf{x}_t) = \mathbb{E}_{a_t \sim \pi_T, \mathbf{x}_{t+1}} \left[ r(\mathbf{x}_t, a_t) + \gamma V_T(\mathbf{x}_{t+1}) \right]$$
-:eqlabel:eq_teacher_bellman
 
 ### 8.4.3 两阶段特权蒸馏架构
-:label:subsec_distillation_architecture
 
 现在我们拥有了一个性能强大的教师策略 $\pi_T$，但在现实世界中，机器人根本无法获取 $\mathbf{e}_t$。我们需要一个仅依赖于历史观测轨迹 $\mathbf{h}_t = \{\mathbf{o}_{t-k+1}, \dots, \mathbf{o}_t\}$ 的学生策略 $\pi_S(a_t | \mathbf{h}_t)$。
 
@@ -55,7 +48,6 @@ $$V_T(\mathbf{x}_t) = \mathbb{E}_{a_t \sim \pi_T, \mathbf{x}_{t+1}} \left[ r(\ma
 在这个阶段，我们训练一个环境编码器（Environment Encoder） $E_\phi$，将高维、繁杂的物理特权信息 $\mathbf{e}_t \in \mathbb{R}^{d_e}$ 压缩映射为一个低维的隐变量（Latent Variable） $\mathbf{z}_t \in \mathbb{R}^{d_z}$：
 
 $$\mathbf{z}_t = E_\phi(\mathbf{e}_t)$$
-:eqlabel:eq_env_encoder
 
 随后，教师策略网络根据当前的本体观测和隐变量输出动作分布：$a_t \sim \pi_{\theta_T}(\cdot | \mathbf{o}_t, \mathbf{z}_t)$。在这个全仿真阶段，我们将 $E_\phi$ 和 $\pi_{\theta_T}$ 联合起来进行端到端的强化学习训练，最大化 :eqref:`eq_domain_randomization`。
 
@@ -63,19 +55,16 @@ $$\mathbf{z}_t = E_\phi(\mathbf{e}_t)$$
 在蒸馏阶段，我们冻结已经训练收敛的教师策略 $\pi_{\theta_T}$ 和环境编码器 $E_\phi$。接下来，我们引入一个适应网络（Adaptation Network） $A_\psi$，它的任务是通过处理一段长度为 $K$ 的历史观测窗口 $\mathbf{h}_t \in \mathbb{R}^{K \times d_o}$，来推断当前的物理隐变量：
 
 $$\hat{\mathbf{z}}_t = A_\psi(\mathbf{h}_t)$$
-:eqlabel:eq_adaptation_net
 
 为了让适应网络 $A_\psi$ 能够精准地完成推断，我们利用在仿真中收集的大规模轨迹数据，通过最小化真实隐变量 $\mathbf{z}_t$（由冻结的 $E_\phi$ 产生）和预测隐变量 $\hat{\mathbf{z}}_t$ 之间的均方误差（MSE）来进行监督学习：
 
 $$\mathcal{L}(\psi) = \mathbb{E}_{\tau \sim \mathcal{D}} \left[ \frac{1}{2} \| \mathbf{z}_t - \hat{\mathbf{z}}_t \|_2^2 \right]$$
-:eqlabel:eq_mse_distillation
 
 一旦适应网络的训练收敛，在物理机器人进行实际部署时，我们摒弃需要特权信息的 $E_\phi$。我们在每个控制周期计算推断出的隐变量 $\hat{\mathbf{z}}_t = A_\psi(\mathbf{h}_t)$，将其与当前的瞬时观测 $\mathbf{o}_t$ 进行张量拼接后，直接输入到冻结的教师策略网络中执行动作：$a_t \sim \pi_{\theta_T}(\cdot | \mathbf{o}_t, \hat{\mathbf{z}}_t)$。
 
 这种将物理属性的显式估计与具体动作生成解耦的精巧设计，极大地降低了单纯依靠端到端序列模型拟合 POMDP 的优化难度，同时也赋予了策略在现实世界中实现毫秒级快速电机适应的能力。
 
 ### 8.4.4 代码实现与张量维度分析
-:label:subsec_sim2real_code
 
 接下来，我们将使用 PyTorch 构建这一核心的数学框架。为了让整个过程在张量维度上绝对清晰，我们将分别定义教师网络部分和适应网络部分。
 
@@ -221,21 +210,9 @@ print(f"Predicted z_hat_t shape: {z_hat_t.shape}")
 在这个过程中，`AdaptationNetwork` 像一个精密的系统辨识器。当机器人在真实世界中踩到摩擦力极低的冰面时，前几个控制周期内的轻微打滑会被忠实地记录在 `h_t` 中。适应网络通过对这些异常轨迹的卷积计算，会迅速输出一个代表“低摩擦系数”的张量估值 `z_hat_t`，进而促使冻结的策略网络立即调整关节阻抗与步态以维持系统稳定。
 
 ### 8.4.5 小结与讨论
-:label:subsec_sim2real_summary
 
 特权信息蒸馏架构为跨越虚实鸿沟提供了一条数学上极为严谨的解耦路径。通过将原先高度非平稳的 POMDP 求解拆解为两个具有明确物理意义的子问题，我们不仅在第一阶段（通过完全可观测的特权 MDP）极大地加速了强化学习的收敛，更在第二阶段获得了在真实物理世界中对未知扰动极强的在线推断与自适应能力。
 
 > [!NOTE]
 > 
 > 这种两阶段范式本质上展示了隐式表示学习（Implicit Representation Learning）的强大力量：我们摒弃了直接从观测端到端映射到动作的黑盒做法，而是强制神经网络在一个低维的流形空间（隐变量空间）内，将复杂的动力学方程与物理定律进行纯粹的数学抽象。这一架构至今仍是目前最先进的灵巧手操作与多足机器人跨地形行走研究中的核心基石。
-
-### 练习
-
-1. 观察公式 :eqref:`eq_mse_distillation`，我们使用了均方误差（MSE）来直接匹配隐变量张量。如果教师策略输出的并非确定性动作，而是带有方差的多元高斯分布策略，我们能否跨过隐变量，直接在动作的概率分布上定义蒸馏损失？请推导基于行为克隆（Behavior Cloning）的 KL 散度目标函数形式。
-   - *提示*：考虑在给定同样的瞬时观测时，令学生策略生成的动作概率分布 $\pi_S(\cdot|\mathbf{h}_t)$ 在分布散度上逼近教师动作分布 $\pi_T(\cdot|\mathbf{o}_t, \mathbf{e}_t)$，即最小化 $D_{KL}(\pi_T \parallel \pi_S)$。尝试从梯度的方差角度分析这种做法与隐空间匹配相比存在何种劣势。
-2. 在 :numref:`subsec_sim2real_code` 中，我们使用的是一维时间卷积网络（1D CNN）处理固定长度的历史序列。如果在物理机刚刚启动时，历史观测的长度 $k$ 远小于预设的 `hist_len`，直接进行补零填充（Zero Padding）可能会引入剧烈的阶跃噪声。此时应如何使用门控循环单元（GRU）重新设计 `AdaptationNetwork`？请尝试给出对应的 PyTorch 模块代码。
-3. 假设部署时真实机器人的关节编码器存在严重的高频观测噪声。在第二阶段蒸馏时，如果我们一味地使用仿真器提供的“完美”历史数据轨迹 $\mathbf{h}_t$ 进行监督训练，部署到物理机时预测的 $\hat{\mathbf{z}}_t$ 将极度发散。我们应当在收集训练数据或优化过程中施加哪些针对性的数学扰动，以提升学生网络的鲁棒性？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

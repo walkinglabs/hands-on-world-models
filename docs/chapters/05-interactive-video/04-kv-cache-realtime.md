@@ -1,5 +1,4 @@
 # KV Cache 与视频生成的实时推理加速
-:label:sec_kv_cache_realtime
 
 ## 引言与学术脉络
 
@@ -8,12 +7,10 @@
 本节将从最基础的序列求和思想出发，严格推导自回归解码中的冗余计算，并详细解析 KV Cache 的数学机制及其在视频时空维度上的扩展。
 
 ## 自回归解码的效率瓶颈
-:label:subsec_autoregressive_bottleneck
 
 让我们回想高中数学中的数列求和问题。假设我们需要计算一个数列的前 $t$ 项和 $S_t = \sum_{i=1}^{t} a_i$。
 如果我们已经知道了前 $t-1$ 项的和 $S_{t-1}$，那么计算 $S_t$ 只需要简单的加法：
 $$S_t = S_{t-1} + a_t$$
-:eqlabel:eq_prefix_sum
 
 如果我们在每一步计算 $S_t$ 时，都愚蠢地从第一项 $a_1$ 一直加到 $a_t$，那么计算第 $t$ 项的时间复杂度将是 $O(t)$，计算前 $T$ 项的总时间复杂度将是 $O(T^2)$。这种“从头重算”的做法，恰恰就是朴素的 Transformer 模型在生成序列时所犯的错误。
 
@@ -21,39 +18,31 @@ $$S_t = S_{t-1} + a_t$$
 
 设我们在第 $t$ 步的输入是一个形状为 $t \times d$ 的矩阵 $\mathbf{X}_t \in \mathbb{R}^{t \times d}$，其中 $d$ 是隐藏层的特征维度。通过线性变换，我们得到：
 $$\mathbf{Q}_t = \mathbf{X}_t \mathbf{W}_q, \quad \mathbf{K}_t = \mathbf{X}_t \mathbf{W}_k, \quad \mathbf{V}_t = \mathbf{X}_t \mathbf{W}_v$$
-:eqlabel:eq_qkv_projection
 
 其中 $\mathbf{W}_q, \mathbf{W}_k, \mathbf{W}_v \in \mathbb{R}^{d \times d_k}$ 是学习到的权重矩阵。此时，注意力输出可严格表示为：
 $$\text{Attention}(\mathbf{Q}_t, \mathbf{K}_t, \mathbf{V}_t) = \text{softmax}\left(\frac{\mathbf{Q}_t \mathbf{K}_t^\top}{\sqrt{d_k}}\right) \mathbf{V}_t$$
-:eqlabel:eq_standard_attention
 
 在这个公式中，$\mathbf{K}_t$ 和 $\mathbf{V}_t$ 是由前 $t$ 个词元的完整历史计算得来的。当我们要生成第 $t+1$ 个词元时，输入的矩阵变为 $\mathbf{X}_{t+1} \in \mathbb{R}^{(t+1) \times d}$。若按照上述公式直接计算，我们会重新计算前 $t$ 个词元的 $\mathbf{K}$ 和 $\mathbf{V}$。随着 $t$ 的增长，计算量与 $t^2$ 成正比，这在视频生成（动辄数万个词元）中是绝对无法接受的。
 
 ## 键值缓存 (KV Cache) 的严密推导
-:label:subsec_kv_cache_derivation
 
 为了消除上述冗余，我们需要对自注意力机制进行数学上的解耦。
 
 考虑在生成第 $t$ 个词元时，我们实际上只关心序列的最后一个查询向量 $\mathbf{q}_t \in \mathbb{R}^{1 \times d_k}$ 对历史所有键 $\mathbf{K}_t$ 的注意力响应。矩阵 $\mathbf{X}_t$ 可以被分块（Block-partitioned）为前 $t-1$ 个词元的历史部分 $\mathbf{X}_{<t} \in \mathbb{R}^{(t-1) \times d}$ 和当前步骤的新词元 $\mathbf{x}_t \in \mathbb{R}^{1 \times d}$：
 $$\mathbf{X}_t = \begin{bmatrix} \mathbf{X}_{<t} \\ \mathbf{x}_t \end{bmatrix}$$
-:eqlabel:eq_x_partition
 
 因此，键矩阵 $\mathbf{K}_t$ 和值矩阵 $\mathbf{V}_t$ 也自然地可以写成分块形式：
 $$\mathbf{K}_t = \begin{bmatrix} \mathbf{K}_{<t} \\ \mathbf{k}_t \end{bmatrix} = \begin{bmatrix} \mathbf{X}_{<t} \mathbf{W}_k \\ \mathbf{x}_t \mathbf{W}_k \end{bmatrix}$$
-:eqlabel:eq_k_partition
 
 $$\mathbf{V}_t = \begin{bmatrix} \mathbf{V}_{<t} \\ \mathbf{v}_t \end{bmatrix} = \begin{bmatrix} \mathbf{X}_{<t} \mathbf{W}_v \\ \mathbf{x}_t \mathbf{W}_v \end{bmatrix}$$
-:eqlabel:eq_v_partition
 
 对于查询，由于自回归解码的因果性（Causal property），历史词元的输出在之前的步骤中已经计算完毕并固定下来。当前步骤只需处理最新的查询向量 $\mathbf{q}_t = \mathbf{x}_t \mathbf{W}_q$。
 
 此时，第 $t$ 步的注意力得分向量 $\mathbf{s}_t \in \mathbb{R}^{1 \times t}$ 为：
 $$\mathbf{s}_t = \mathbf{q}_t \mathbf{K}_t^\top = \mathbf{q}_t \begin{bmatrix} \mathbf{K}_{<t}^\top & \mathbf{k}_t^\top \end{bmatrix} = \begin{bmatrix} \mathbf{q}_t \mathbf{K}_{<t}^\top & \mathbf{q}_t \mathbf{k}_t^\top \end{bmatrix}$$
-:eqlabel:eq_attention_score_partition
 
 应用 softmax 函数后得到注意力权重 $\mathbf{\alpha}_t = \text{softmax}\left(\frac{\mathbf{s}_t}{\sqrt{d_k}}\right)$。最终的注意力输出向量 $\mathbf{o}_t \in \mathbb{R}^{1 \times d_k}$ 为：
 $$\mathbf{o}_t = \mathbf{\alpha}_t \mathbf{V}_t = \mathbf{\alpha}_t \begin{bmatrix} \mathbf{V}_{<t} \\ \mathbf{v}_t \end{bmatrix} = \sum_{i=1}^{t} \alpha_{t,i} \mathbf{v}_i$$
-:eqlabel:eq_attention_output_partition
 
 通过公式 :eqref:eq_k_partition 和 :eqref:eq_v_partition，我们发现 $\mathbf{K}_{<t}$ 和 $\mathbf{V}_{<t}$ 的值完全等同于在第 $t-1$ 步时计算的结果。因此，只要我们在显存中开辟一块空间，将之前计算的 $\mathbf{k}_i$ 和 $\mathbf{v}_i$ 缓存下来，在第 $t$ 步时只需计算新的 $\mathbf{q}_t$、$\mathbf{k}_t$ 和 $\mathbf{v}_t$。然后将 $\mathbf{k}_t$ 和 $\mathbf{v}_t$ 拼接到缓存中，即可完成整个自注意力计算。
 这就是 KV Cache 的核心数学原理，它将每一步的计算复杂度从 $O(t^2)$ 严格降低到了 $O(t)$。
@@ -62,7 +51,6 @@ $$\mathbf{o}_t = \mathbf{\alpha}_t \mathbf{V}_t = \mathbf{\alpha}_t \begin{bmatr
 > 可以将朴素的自回归解码想象为一个完全没有记忆力的人在朗读一本不断翻页的书，每次为了读出新的一页，他必须从第一页开始大声朗读。而引入 KV Cache 后，这个人拥有了短期记忆（显存），他只需在脑海中回忆之前的故事情节（缓存），然后结合眼前的这一页（当前 Token），就能直接继续讲下去。
 
 ## 视频生成中的时空 KV Cache
-:label:subsec_spatiotemporal_kv_cache
 
 文本生成中的 KV Cache 仅仅处理一维的时间序列。但在视频生成中，视频数据被三维张量所描述（帧时间 $T$、高度 $H$、宽度 $W$）。
 
@@ -75,13 +63,11 @@ $$\mathbf{o}_t = \mathbf{\alpha}_t \mathbf{V}_t = \mathbf{\alpha}_t \begin{bmatr
 在操作系统中，内存被划分为固定大小的页（Pages）以减少碎片；分页注意力同样将连续的键值向量划分为独立的块（Blocks）。
 设每个块能容纳 $B$ 个词元的键值对，则键缓存 $\mathbf{K}$ 可以表示为一系列非连续的张量块的集合：
 $$\mathcal{K} = \{ \mathbf{K}^{(1)}, \mathbf{K}^{(2)}, \dots, \mathbf{K}^{(M)} \}$$
-:eqlabel:eq_paged_k
 
 其中 $M = \lceil \frac{L}{B} \rceil$，每个 $\mathbf{K}^{(m)} \in \mathbb{R}^{B \times d_k}$。
 在注意力计算时，模型无需分配一整块连续的显存空间，而是通过一个专门的块表（Block Table）来记录逻辑上的时空词元序列与物理显存块的映射关系。当视频的自回归生成跨越到新的时间帧或空间行时，系统动态分配新的物理块，从而极大地提高了显存利用率，并支持了更高分辨率视频的实时推理。
 
 ## 代码实现与张量分析
-:label:subsec_kv_cache_code
 
 下面，我们将从零开始实现一个带有 KV Cache 的因果自注意力层。
 
@@ -232,21 +218,7 @@ class KVCacheSelfAttention(tf.keras.layers.Layer):
 2. **解码阶段（Decoding Stage）**：处于真正的自回归循环中，此时 `seq_len=1`，模型仅利用最新生成的一个时空词元作为输入。借助已经构建好的缓存，模型将矩阵乘法退化为极速的矩阵-向量乘法，从而高速产出下一词元。
 
 ## 小结
-:label:subsec_kv_cache_summary
 
 - 朴素自回归解码的时间复杂度随着序列长度呈现出严峻的二次方增长，使得大规模视频生成推理举步维艰。
 - 借由自注意力机制内在的线性组合与解耦性质，我们严格推导出键值缓存（KV Cache）不仅是计算上的近似，而是数学上精确等效的计算优化，大幅压低了自回归生成的计算时延。
 - 视频数据的三维特性导致时空词元激增，随之而来的显存墙问题进一步催生了类似操作系统管理内存的分页注意力（PagedAttention）技术。这对于深入理解与部署前沿的实时视频生成模型至关重要。
-
-## 练习
-:label:subsec_kv_cache_exercises
-
-1. 在公式 :eqref:eq_standard_attention 中，如果我们将自注意力替换为交叉注意力（Cross-Attention，即 Query 来源于当前生成序列，Key 和 Value 来源于外部静态条件序列），还需要为交叉注意力层实现动态的 KV Cache 吗？
-   - *提示*：重新审视 :eqref:eq_k_partition 和 :eqref:eq_v_partition 的条件，判断在交叉注意力机制下，被条件的 Key 和 Value 是否会随着生成步数的增加而动态生长。
-2. 假设我们采用 FP16 数据格式，生成分辨率为 $64 \times 64$，时间长为 32 帧的时空词元序列。已知模型的注意力层数为 24 层，隐藏维度为 1024。尝试推导保存一个批次（batch size = 1）中完整的 KV Cache 需要消耗多少显存（单位：兆字节 MB）？
-   - *提示*：先计算总序列长度 $L$，然后根据字节数公式 $\text{Bytes} = 2 (\text{FP16}) \times 2 (\text{K 和 V}) \times \text{layers} \times L \times d_{\text{model}}$ 进行推演，最后除以 $1024^2$。
-3. 请查阅关于 PagedAttention 的原论文 [Kwon et al., 2023]，尝试用自己的语言并结合二维平面的图示，解释“物理块”（Physical Block）和“逻辑块”（Logical Block）是如何解绑（Decoupling）注意力层内存必须连续分配的限制的？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

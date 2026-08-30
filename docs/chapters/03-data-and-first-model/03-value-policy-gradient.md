@@ -1,15 +1,12 @@
 # 策略梯度与价值函数基础
-:label:sec_policy_gradient
 
 ## 强化学习的优化范式追溯
-:label:subsec_rl_history
 
 在深度学习的早期，监督学习依赖于明确的标签（即专家的示范）来更新模型。然而，在诸如游戏、机器人控制或自动驾驶等开放环境中，获取逐帧的最优决策标签是极其昂贵甚至不可能的。强化学习（Reinforcement Learning, RL）提供了一种替代范式：智能体（Agent）通过与环境的交互，收集奖励（Reward）信号，并以此为导向优化自身的行为。
 
 在早期的表格型强化学习中，学者们通常关注如何精确估计处于某个状态的“价值”（即价值函数法）。但在连续控制或高维动作空间中，价值函数法面临“维度灾难”。直到 `[Williams, 1992]` 提出了 REINFORCE 算法，以及 `[Sutton et al., 1999]` 正式确立了策略梯度定理（Policy Gradient Theorem），直接优化策略本身（Policy-based methods）才成为现代深度强化学习的核心基石之一。本文将从最基础的概率论出发，毫无跳跃地为您推导出策略梯度定理的严密形式，并引入价值函数作为降低估计方差的关键工具。
 
 ## 策略与轨迹的数学描述
-:label:subsec_policy_trajectory
 
 在我们引入任何复杂的张量运算之前，首先必须对智能体与环境的交互过程进行严格的数学定义。
 假设我们处于一个马尔可夫决策过程（MDP）中，时间由离散的步长 $t=0, 1, 2, \dots$ 组成。
@@ -22,7 +19,6 @@
 $$
 \pi_\theta(a|s) = P(A_t=a | S_t=s; \theta)
 $$
-:eqlabel:eq_policy_def
 
 这里的 $\theta$ 是我们要优化的核心物理量。在最简单的一维离散动作空间中，$\pi_\theta(a|s)$ 可能仅仅是一个 softmax 函数的输出；而在连续动作空间中，它通常是一个高斯分布的概率密度函数，其中均值和方差由神经网络预测。
 
@@ -33,14 +29,12 @@ $$
 $$
 \tau = (s_0, a_0, r_1, s_1, a_1, r_2, \dots, s_{T-1}, a_{T-1}, r_T)
 $$
-:eqlabel:eq_trajectory
 
 轨迹发生的联合概率由策略和环境共同决定。利用概率论中的链式法则（乘法公式），我们可以将轨迹 $\tau$ 的发生概率写为：
 
 $$
 P(\tau | \theta) = P(s_0) \prod_{t=0}^{T-1} \pi_\theta(a_t|s_t) P(s_{t+1}|s_t, a_t)
 $$
-:eqlabel:eq_traj_prob
 
 其中 $P(s_0)$ 是初始状态分布。请注意，这个长串的连乘公式中，只有 $\pi_\theta(a_t|s_t)$ 包含了我们的模型参数 $\theta$。
 
@@ -49,17 +43,14 @@ $$
 $$
 R(\tau) = \sum_{t=0}^{T-1} \gamma^t r_{t+1}
 $$
-:eqlabel:eq_return
 
 ## 目标函数与对数导数技巧
-:label:subsec_objective_log_trick
 
 强化学习的终极目标是找到一组最优参数 $\theta^*$，使得轨迹的总回报的期望值（Expected Return）最大化。我们将这个目标函数记为 $J(\theta)$。
 
 $$
 J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} [R(\tau)] = \int P(\tau | \theta) R(\tau) d\tau
 $$
-:eqlabel:eq_objective
 
 如果是离散动作空间，这里的积分号就替换为对所有可能轨迹的求和。
 为了最大化 $J(\theta)$，在微积分和深度学习的体系中，我们最直接的方法就是使用梯度上升（Gradient Ascent）：
@@ -67,7 +58,6 @@ $$
 $$
 \theta \leftarrow \theta + \alpha \nabla_\theta J(\theta)
 $$
-:eqlabel:eq_gradient_ascent
 
 其中 $\alpha$ 是学习率。现在的核心难题是：如何求解目标函数的梯度 $\nabla_\theta J(\theta)$？
 
@@ -78,14 +68,12 @@ $$
 $$
 \nabla_\theta \log P(\tau|\theta) = \frac{\nabla_\theta P(\tau|\theta)}{P(\tau|\theta)}
 $$
-:eqlabel:eq_log_derivative_1
 
 将其稍微移项，我们得到：
 
 $$
 \nabla_\theta P(\tau|\theta) = P(\tau|\theta) \nabla_\theta \log P(\tau|\theta)
 $$
-:eqlabel:eq_log_derivative_2
 
 这个简单的公式是整个策略梯度算法的灵魂所在。回到我们的目标函数梯度：
 
@@ -97,7 +85,6 @@ $$
 &= \mathbb{E}_{\tau \sim \pi_\theta} \left[ \nabla_\theta \log P(\tau|\theta) R(\tau) \right]
 \end{aligned}
 $$
-:eqlabel:eq_policy_gradient_derivation
 
 这里我们做了一次极其关键的转换：将原本对概率分布本身的求导，转化为了对“某个随机变量求期望”的形式。因为在实际应用中，我们不可能穷举所有的轨迹来积分，但我们可以通过让智能体在环境中运行多次来**采样**轨迹，进而利用蒙特卡洛方法（Monte Carlo method）来无偏地估计这个期望值。
 
@@ -108,27 +95,23 @@ $$
 $$
 \log P(\tau|\theta) = \log P(s_0) + \sum_{t=0}^{T-1} \left( \log \pi_\theta(a_t|s_t) + \log P(s_{t+1}|s_t, a_t) \right)
 $$
-:eqlabel:eq_log_traj_prob
 
 现在，对等式两边关于 $\theta$ 求梯度。奇妙的事情发生了：在这个式子中，初始状态分布 $P(s_0)$ 和环境的状态转移概率 $P(s_{t+1}|s_t, a_t)$ 完全与参数 $\theta$ 无关！因此，它们的梯度统统为零。
 
 $$
 \nabla_\theta \log P(\tau|\theta) = \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t)
 $$
-:eqlabel:eq_grad_log_traj_prob
 
 将 :eqref:eq_grad_log_traj_prob 代回 :eqref:eq_policy_gradient_derivation，我们得到了经典的 REINFORCE 策略梯度公式：
 
 $$
 \nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot R(\tau) \right]
 $$
-:eqlabel:eq_reinforce_gradient
 
 > [!CAUTION]
 > 这是一个在强化学习中少有的、允许我们在不知道环境转移概率（即所谓 Model-free）的情况下，仍然可以计算目标函数梯度的公式。这也是 REINFORCE 算法名称中 "Score Function Estimator" 的由来。
 
 ## 因果性与奖励截断
-:label:subsec_causality
 
 :eqref:eq_reinforce_gradient 虽然形式严密，但在方差（Variance）上存在巨大的问题。让我们仔细观察公式中的项 $\nabla_\theta \log \pi_\theta(a_t|s_t) \cdot R(\tau)$。它表示时间步 $t$ 采取动作 $a_t$ 的对数概率梯度，乘以整条轨迹的**总回报** $R(\tau)$。
 
@@ -139,19 +122,16 @@ $$
 $$
 G_t = \sum_{t'=t}^{T-1} \gamma^{t'-t} r_{t'+1}
 $$
-:eqlabel:eq_return_to_go
 
 由此，策略梯度公式被改良为：
 
 $$
 \nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot G_t \right]
 $$
-:eqlabel:eq_policy_gradient_causal
 
 这个公式直观地表达了强化学习的本质原理：如果一个动作导致了较高的未来累积回报 $G_t > 0$，那么其对数概率的梯度方向就会被放大，网络在下一次遇到类似状态时，输出该动作的概率就会提高；反之亦然。
 
 ## 价值函数的引入与基线技巧
-:label:subsec_value_function_baseline
 
 尽管因果性截断降低了一部分方差，但蒙特卡洛采样的本质决定了 $G_t$ 的波动仍然极大。为了进一步稳定训练，我们需要引入**价值函数（Value Function）**的概念。
 
@@ -163,7 +143,6 @@ $$
 $$
 V^\pi(s) = \mathbb{E}_{\tau \sim \pi} [G_t | S_t = s]
 $$
-:eqlabel:eq_state_value
 
 (**定义动作价值函数（Action Value Function）**)
 动作价值 $Q^\pi(s, a)$ 衡量了智能体处于状态 $s$，**首先采取动作 $a$**，随后严格遵循策略 $\pi$ 所能期望获得的累积回报：
@@ -171,14 +150,12 @@ $$
 $$
 Q^\pi(s, a) = \mathbb{E}_{\tau \sim \pi} [G_t | S_t = s, A_t = a]
 $$
-:eqlabel:eq_action_value
 
 两者的关系非常直接：处于状态 $s$ 的期望价值，就是选择各种动作能够带来的期望价值，按照策略给出的概率分布进行的加权平均。这也是全概率公式的一种体现。
 
 $$
 V^\pi(s) = \sum_a \pi(a|s) Q^\pi(s, a)
 $$
-:eqlabel:eq_vq_relation
 
 ### 引入基线（Baseline）
 
@@ -193,19 +170,16 @@ $$
 $$
 A^\pi(s_t, a_t) = Q^\pi(s_t, a_t) - V^\pi(s_t)
 $$
-:eqlabel:eq_advantage_function
 
 利用优势函数，最终的、同时具备极低方差和无偏特性的策略梯度定理（Actor-Critic 架构的理论基础）可以写为：
 
 $$
 \nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot A^\pi(s_t, a_t) \right]
 $$
-:eqlabel:eq_pg_advantage
 
 在实际代码实现中，如果我们只使用纯粹的 REINFORCE 算法，往往只会减去一个基于蒙特卡洛采样的基线。下面，我们将通过具体的代码来实现带有基线的 REINFORCE 算法。
 
 ## 代码实现：带基线的 REINFORCE
-:label:subsec_reinforce_implementation
 
 以下代码展示了如何使用深度学习框架实现带基线的策略梯度优化。我们假设环境提供了一维离散动作空间，并使用多层感知机（MLP）作为策略网络。
 
@@ -316,14 +290,3 @@ def reinforce_update(policy_net, optimizer, saved_log_probs, rewards):
 4. 为了抑制蒙特卡洛采样带来的巨大方差，我们引入了状态价值、动作价值的严格定义，并通过推导优势函数，引入了用于修正权重的**基线（Baseline）**概念。
 
 这些数学基础是深度强化学习后续所有高级算法（诸如 PPO、TRPO、SAC）不可或缺的底层逻辑。理解并能够自行手推上述的每一步公式转换，将为您理解复杂环境下的决策智能打下最坚实的基石。
-
-## 练习
-
-1. **证明对数导数恒等式的多维形式**：我们在 :eqref:eq_log_derivative_1 中利用一维标量函数的导数得出了对数导数技巧。如果 $P(x|\theta)$ 是一个多元高斯分布，请尝试写出该多元分布密度函数的对数，并验证该技巧对其参数化均值和协方差矩阵的梯度计算是否依然成立。
-   - *提示*：先回顾多元高斯分布的概率密度函数，写出其自然对数表达式，你会发现指数项将转化为二次型，求导过程非常直观。
-2. **基线无关性证明**：在 :eqref:eq_policy_gradient_causal 中，试着在 $G_t$ 内部减去一个仅依赖于当前状态 $s_t$ 的任意标量函数 $b(s_t)$。证明此举不会改变梯度的期望值（即 $\mathbb{E}[\nabla_\theta \log \pi_\theta(a_t|s_t) b(s_t)] = 0$）。
-   - *提示*：由于 $b(s_t)$ 独立于当前动作 $a_t$，你可以将期望写为积分或求和形式，将梯度算子移入，并将全概率积分对该项的结果化简为零（因为所有动作的概率之和始终为 1 的导数必然是 0）。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

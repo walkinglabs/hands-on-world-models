@@ -1,5 +1,4 @@
 # 6.4 动作条件的 JEPA（Action-conditional JEPA）
-:label:sec_action_jepa
 
 在深度学习的早期发展中，研究者们曾试图通过像素级的重构来理解世界。然而，现实世界包含了大量不可预测且往往无关紧要的细节——例如微风中树叶的随机摆动，或是背景中随机的纹理变化。在这一背景下，Yann LeCun 在其经典论文《迈向自主机器智能之路》（*A Path Towards Autonomous Machine Intelligence*, [LeCun, 2022]）中提出了联合嵌入预测架构（Joint Embedding Predictive Architecture, JEPA）。与传统的自编码器不同，JEPA 放弃了在像素空间进行重构，转而在抽象的特征（隐变量）空间中进行预测，从而强制模型学习世界的高阶语义。
 
@@ -12,24 +11,20 @@
 为了透彻理解动作条件下的预测机制，我们首先回到高中物理中最基础的匀速直线运动模型。假设一个物体在时刻 $t$ 的位置为 $x_t \in \mathbb{R}$，在时间间隔 $\Delta t$ 内，它受到了速度为 $v_t$ 的动作输入。那么，它在时刻 $t+1$ 的位置可以通过以下标量方程精确描述：
 
 $$x_{t+1} = x_t + v_t \cdot \Delta t$$
-:eqlabel:eq_kinematics_scalar
 
 在这个简单的物理系统中，状态 $x_t$ 是完全可观测的（例如物体在坐标轴上的位置），而 $v_t$ 则是我们主动施加的“动作”。如果我们将其推广到多维空间，状态变为向量 $\mathbf{x}_t \in \mathbb{R}^D$，动作变为控制向量 $\mathbf{a}_t \in \mathbb{R}^A$，我们便得到了现代控制理论中的线性离散时间状态方程：
 
 $$\mathbf{x}_{t+1} = \mathbf{A}\mathbf{x}_t + \mathbf{B}\mathbf{a}_t$$
-:eqlabel:eq_kinematics_vector
 
 其中矩阵 $\mathbf{A}$ 和 $\mathbf{B}$ 描述了系统固有的物理规律。然而，在自动驾驶或机器人控制等真实场景中，我们无法直接获取像“坐标”这样干净的状态向量 $\mathbf{x}_t$。我们能获取的，往往是包含数百万像素的高维图像或高频传感器阵列数据（例如 $\mathbf{o}_t \in \mathbb{R}^{H \times W \times C}$）。更严重的是，这些原始观测数据内部的演化规律是高度非线性的。
 
 为了解决高维观测数据的预测难题，动作条件 JEPA 采用了**降维与抽象**的核心思想。它不直接去预测复杂的 $\mathbf{o}_{t+1}$，而是引入一个**编码器（Encoder）** $E_\theta$，将高维的观测数据映射到一个低维的隐特征空间（Latent Space）中：
 
 $$\mathbf{s}_t = E_\theta(\mathbf{o}_t), \quad \mathbf{s}_t \in \mathbb{R}^d$$
-:eqlabel:eq_encoder_state
 
 在这个抽象的隐空间中，我们再引入一个由神经网络参数化的非线性**预测器（Predictor）** $P_\phi$，利用当前时刻的隐状态 $\mathbf{s}_t$ 和动作 $\mathbf{a}_t$ 来预测下一时刻的隐状态：
 
 $$\hat{\mathbf{s}}_{t+1} = P_\phi(\mathbf{s}_t, \mathbf{a}_t)$$
-:eqlabel:eq_predictor_state
 
 通过这种方式，动作条件 JEPA 将复杂的“像素级演化”转换为了纯粹的“语义级演化”，极大地降低了预测环境动态的难度。
 
@@ -49,17 +44,14 @@ $$\hat{\mathbf{s}}_{t+1} = P_\phi(\mathbf{s}_t, \mathbf{a}_t)$$
 在给定的批次大小 $B$（Batch Size）下，我们可以将损失函数定义为预测表征 $\hat{\mathbf{Y}}$ 与目标表征 $\mathbf{Y}$ 之间的均方误差（MSE）。设批次中的第 $i$ 个样本的第 $j$ 个特征维度分别为 $\hat{y}_{t+1}^{(i,j)}$ 和 $y_{t+1}^{(i,j)}$，标量形式的损失函数展开如下：
 
 $$\mathcal{L}_{JEPA}(\theta, \phi) = \frac{1}{B \cdot d} \sum_{i=1}^B \sum_{j=1}^d \left( \hat{y}_{t+1}^{(i,j)} - y_{t+1}^{(i,j)} \right)^2$$
-:eqlabel:eq_jepa_loss_scalar
 
 将其写为紧凑的矩阵形式（即 Frobenius 范数的平方）：
 
 $$\mathcal{L}_{JEPA}(\theta, \phi) = \frac{1}{B \cdot d} \left\| P_\phi(E_\theta(\mathbf{O}_t), \mathbf{A}_t) - E_{\bar{\theta}}(\mathbf{O}_{t+1}) \right\|_F^2$$
-:eqlabel:eq_jepa_loss_matrix
 
 请严格注意，在反向传播计算梯度时，梯度**只流向**参数 $\theta$ 和 $\phi$。目标编码器的参数 $\bar{\theta}$ 被视为常数（Stop-Gradient），其更新严格遵循以下 EMA 规则：
 
 $$\bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta$$
-:eqlabel:eq_ema_update
 
 其中 $\tau \in [0, 1)$ 是动量系数（Momentum），通常取值非常接近 $1$（如 $0.99$ 或 $0.996$）。
 
@@ -93,7 +85,6 @@ $$\bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta$$
 相应的，总损失函数将是这 $K$ 步预测误差的累加：
 
 $$\mathcal{L}_{multi} = \sum_{k=1}^K \lambda_k \left\| \hat{\mathbf{s}}_{t+k} - E_{\bar{\theta}}(\mathbf{o}_{t+k}) \right\|_F^2$$
-:eqlabel:eq_multistep_loss
 
 其中 $\lambda_k$ 为不同时间步的权重系数。通过多步展开训练，预测器被迫学习长期的环境动态，而不仅仅是下一步的细微变化。
 
@@ -330,14 +321,3 @@ for step in range(50):
 在实际训练中，你需要注意以下几点：
 1. **EMA 动量参数（$\tau$）的选择**：如果 $\tau$ 太小，目标网络更新过快，很容易陷入表征坍塌；如果 $\tau$ 太大（非常接近 $1.0$），目标网络更新过于缓慢，导致训练收敛极慢。一种常见的策略是采用“余弦退火（Cosine Annealing）”，在训练过程中逐渐将 $\tau$ 从 $0.99$ 提升至 $1.0$。
 2. **多步预测的稳定性**：在执行多步自回归展开时，由于每一次预测都建立在前一次的输出之上，误差会呈指数级累积。通常需要在预测器中加入 Layer Normalization，并在训练早期限制预测的步数 $K$。
-
-## 练习
-
-1. **数学推导**：如果我们将损失函数中的均方误差（MSE）替换为余弦相似度损失（Cosine Similarity Loss），目标编码器的 EMA 机制依然是必须的吗？为什么？
-   *提示：考虑余弦相似度优化空间下是否存在平凡解（即无论输入如何，输出总是固定的单位向量）。*
-2. **代码扩展**：修改上述 PyTorch 代码中的 `ActionConditionalJEPA.forward` 方法，使其能够接受一个形状为 `(Batch_Size, K, action_dim)` 的动作序列，并返回累加的 $K$ 步自回归损失（参考 :eqref:eq_multistep_loss）。
-   *提示：你需要在一个循环中多次调用 `self.predictor`，并将前一步的预测 `s_pred` 作为下一步的输入状态。注意只在最终时刻计算或者在每一步都计算与真实目标的损失。*
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

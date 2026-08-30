@@ -1,12 +1,10 @@
 # 高性能 GPU 仿真与 Isaac Gym/Isaac Sim
-:label:sec_gpu_sim_isaac
 
 在前面章节中，我们已经探讨了深度强化学习在机器人控制领域的理论基础与基本应用。但在真实世界的工程实践中，我们将面临一个极具挑战性的物理屏障：数据样本的获取效率。深度强化学习算法对数据的渴求往往是无止境的，智能体需要数以亿计的试错步数来学习哪怕是最基础的行走策略。为了满足这一需求，在过去十多年中，学术界与工业界经历了从传统 CPU 串行仿真向端到端（End-to-End）GPU 高度并行仿真的深刻范式转移。
 
 本节将带领我们深入探究现代大规模机器人仿真（如 NVIDIA Isaac Gym 与 Isaac Sim）底层的计算架构与物理推演机制。我们将从最基础的牛顿定律出发，逐步推导至多刚体动力学系统，最终解析张量化计算是如何在 GPU 架构中实现计算效率的数量级飞跃的。
 
 ## 历史溯源与强化学习仿真的通信瓶颈
-:label:sec_gpu_sim_bottleneck
 
 在早期基于深度强化学习的机器人控制研究中，学术界广泛依赖于诸如 MuJoCo [Todorov et al., 2012]、PyBullet 等基于 CPU 的成熟物理引擎。这些引擎在单体或小规模环境中的计算精度极高，但在面对深度强化学习的扩展法则（Scaling Laws）时，暴露出不可调和的底层架构矛盾。
 
@@ -17,7 +15,6 @@
 正是在这一背景下，Makoviychuk 等人提出了 Isaac Gym [Makoviychuk et al., 2021]，标志着首个专为强化学习设计的高度张量化、端到端 GPU 机器人仿真平台的诞生。它将物理引擎（PhysX）底层的数据流彻底迁移至 GPU，消除了 CPU 与 GPU 之间冗余的显存传输。
 
 ## 物理动力学的降维解析与系统张量化
-:label:sec_gpu_sim_dynamics
 
 要深刻理解 GPU 并行仿真的本质，我们必须先了解物理方程是如何被数学描述，并最终被转化为可以被并行处理的矩阵形式的。
 
@@ -28,14 +25,12 @@
 $$
 F = m a = m \frac{d^2 x}{dt^2}
 $$
-:eqlabel:eq_newton_1d_basic
 
 如果是旋转运动，我们有其等价的角动量形式：
 
 $$
 \tau = I \alpha = I \frac{d^2 \theta}{dt^2}
 $$
-:eqlabel:eq_newton_rot_basic
 
 其中 $\tau$ 是力矩，$I$ 是转动惯量，$\alpha$ 是角加速度。当我们将目光转向现代机器人（例如包含 12 个关节的四足机器人或具备 7 个自由度的协作机械臂）时，所有的连杆在空间中相互铰接。此时如果移动某一个基座关节，不仅会产生自身的转动惯性，还会因为离心力和科里奥利力（Coriolis Force）对末端的其他连杆产生极度复杂的耦合冲击。此时，直接对每个连杆应用 :eqref:eq_newton_1d_basic 并强行求解内部约束力，会带来极度繁冗的偏微分方程组。
 
@@ -44,28 +39,24 @@ $$
 $$
 T(q, \dot{q}) = \frac{1}{2} \dot{q}^\top M(q) \dot{q}
 $$
-:eqlabel:eq_kinetic_energy
 
 在这里，$M(q) \in \mathbb{R}^{n \times n}$ 被称为质量矩阵（Mass Matrix）。它是一个对称且正定的矩阵，物理上反映了机器人在当前姿态 $q$ 下的等效质量或转动惯量分布。同时，系统的势能 $V(q)$ 则仅受当前姿态和重力场影响。系统拉格朗日函数 $\mathcal{L}$ 定义为动能与势能之差：
 
 $$
 \mathcal{L}(q, \dot{q}) = T(q, \dot{q}) - V(q)
 $$
-:eqlabel:eq_lagrangian
 
 基于最小作用量原理，系统轨迹必须满足欧拉-拉格朗日方程：
 
 $$
 \frac{d}{dt} \left( \frac{\partial \mathcal{L}}{\partial \dot{q}} \right) - \frac{\partial \mathcal{L}}{\partial q} = \tau
 $$
-:eqlabel:eq_euler_lagrange
 
-将 :eqref:eq_kinetic_energy 和 :eqref:eq_lagrangian 代入 :eqref:eq_euler_lagrange 中展开推导，我们便得到了机器人控制理论中最著名的多刚体动力学方程（Rigid-body Dynamics Equation）：
+将前面的动能表达式与拉格朗日函数代入欧拉-拉格朗日方程中展开推导，我们便得到了机器人控制理论中最著名的多刚体动力学方程（Rigid-body Dynamics Equation）：
 
 $$
 M(q) \ddot{q} + C(q, \dot{q}) \dot{q} + G(q) = \tau
 $$
-:eqlabel:eq_robot_dynamics
 
 我们对 :eqref:eq_robot_dynamics 中的每一项进行细致拆解：
 - $M(q) \ddot{q}$：惯性项。它直接对应了高中物理中的 $m a$，不同之处在于这里的质量 $M(q)$ 不再是常数，而是随着机器人各个关节角度变化而实时更新的矩阵。
@@ -80,21 +71,18 @@ $$
 $$
 \text{对于环境 } i = 1, 2, \dots, N: \quad \ddot{q}_i = M(q_i)^{-1} (\tau_i - C(q_i, \dot{q}_i) \dot{q}_i - G(q_i))
 $$
-:eqlabel:eq_cpu_loop
 
 而在 Isaac Gym 这样的 GPU 仿真器中，上述方程在内存布局上实现了完全的张量化。广义坐标不再是独立在不同内存空间的一维向量，而是被显式地“升维”合并为一个统一的张量 $\mathbf{Q} \in \mathbb{R}^{N \times n}$。所有的物理矩阵也相应地成为批次张量（Batched Tensors），例如批次质量矩阵 $\mathbf{M}(\mathbf{Q}) \in \mathbb{R}^{N \times n \times n}$。
 
-通过这种彻底的张量化，:eqref:eq_cpu_loop 被重写为一个高度并行的矩阵方程：
+通过这种彻底的张量化，上面的串行循环求解式被重写为一个高度并行的矩阵方程：
 
 $$
 \ddot{\mathbf{Q}} = \mathbf{M}(\mathbf{Q})^{-1} \circledast \big(\boldsymbol{\tau} - \mathbf{C}(\mathbf{Q}, \dot{\mathbf{Q}}) \circledast \dot{\mathbf{Q}} - \mathbf{G}(\mathbf{Q})\big)
 $$
-:eqlabel:eq_gpu_tensorized
 
 在公式 :eqref:eq_gpu_tensorized 中，$\circledast$ 代表沿着环境批次维度（Batch Dimension）执行的并行矩阵乘法操作。现代 GPU 拥有上千个极简的 CUDA 浮点运算核心，非常适合处理这类密集的张量运算。利用张量核心（Tensor Cores），数千个环境的正向动力学推演在几毫秒之内即可同步完成，实现了真正意义上的硬件级加速。
 
 ## 非光滑力学：并行接触力求解
-:label:sec_gpu_sim_contact
 
 除了顺畅的运动学推演，机器人在与外部环境互动时（如机器狗足端落地、机械手抓取物体），会产生瞬间的接触与碰撞。这是仿真领域中最具挑战性的非光滑力学问题（Non-smooth Mechanics）。
 
@@ -110,19 +98,16 @@ $$
 $$
 f_n \cdot a_n = 0
 $$
-:eqlabel:eq_lcp_complementarity
 
 结合以上三点，接触力的求解被规约为如下的标准互补问题格式：
 
 $$
 0 \le f_n \perp a_n \ge 0
 $$
-:eqlabel:eq_lcp_standard
 
 在整个机器人系统的多体动力学映射下，局部的法向加速度实质上是由整体接触力和外部激励共同决定的，形式上可展开为 $a_n = A f_n + b$。矩阵 $A$ 中蕴含了系统的逆质量矩阵与接触雅可比的投影运算。在 Isaac Gym 中，底层的 GPU PhysX 求解器通过投影高斯-赛德尔（Projected Gauss-Seidel, PGS）的变体算法，在成百上千个 GPU 线程上进行有限步的分布式迭代。虽然这种方法放弃了少许极限的计算精度，但它极大地缓解了大规模 LCP 问题带来的算力瓶颈。
 
 ## 编写高度并行的张量化仿真环境
-:label:sec_gpu_sim_code
 
 理解了底层物理与计算架构后，我们可以深入考察基于张量操作的仿真编程范式。下面，我们分别展示在张量框架下进行大规模并行环境初始化与奖励函数计算的核心操作。
 
@@ -207,24 +192,9 @@ with tf.device('/GPU:0'):
 在这个编程范式中，所有的物理状态与策略计算全部封装在连续的张量结构内。通过避免逐环境循环（Loop-free Design），我们将底层的时间开销全部转移给了 GPU 并行计算库。这也是我们在编写现代机器人强化学习环境时需要培养的最核心的工程直觉。
 
 ## 小结
-:label:sec_gpu_sim_summary
 
 * 传统基于 CPU 的仿真架构在面对大规模强化学习需求时，受限于 PCIe 总线的带宽瓶颈，难以发挥深度学习硬件的全部潜能。
 * 多体动力学的核心可由拉格朗日力学推导而来的 :eqref:eq_robot_dynamics 进行严谨表述。
 * Isaac Gym 等端到端 GPU 仿真平台的本质创新在于内存驻留（Memory Residency）与状态张量化，使得成百上千个物理系统的 :eqref:eq_gpu_tensorized 求解能够直接映射到 GPU 的批次矩阵运算硬件中。
 * 非光滑的接触与碰撞被规约为线性互补问题（LCP），利用局部并行迭代求解器进一步提升吞吐量。
 * 在实际编码中，开发者应当彻底摒弃串行的思维模式，使用张量计算图代替循环来处理环境状态反馈与奖励分配。
-
-## 练习
-:label:sec_gpu_sim_exercises
-
-1. 考虑公式 :eqref:eq_gpu_tensorized 中的批次并行乘法 $\circledast$。如果批次大小 $N = 10000$ 且机器人关节数量 $n = 6$，请精确计算在这个时间步中，GPU 所需要进行逆矩阵与向量相乘的浮点运算总次数大约是多少？
-   * **提示**：回忆线性代数中 $n \times n$ 矩阵与 $n \times 1$ 向量相乘所需的乘法和加法次数级数。
-2. 在机器人动力学 :eqref:eq_robot_dynamics 中，若我们要求机器人始终维持一个静态的绝对静止姿态（$\dot{q} = 0, \ddot{q} = 0$），欧拉-拉格朗日方程将退化为什么形式？此时电机所需的控制输出 $\tau$ 在物理上代表什么意义？
-   * **提示**：直接将零速度和零加速度代入项中进行消除观察。
-3. 请用你熟悉的深度学习框架（PyTorch 或是 JAX）实现一个高度并行的碰撞检测伪代码：假设有 $N$ 个微小球体位于不同高度 $h \in \mathbb{R}^N$ 并以重力加速度下落，检测哪些球体触碰到了绝对高度为 $0$ 的地面。
-   * **提示**：利用布尔掩膜（Boolean Mask）与张量的比较运算（如 `<` 或 `<=`）替代所有串行的 `if` 逻辑。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

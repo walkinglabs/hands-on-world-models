@@ -1,5 +1,4 @@
 # 模型预测控制（MPC）与交叉熵方法（CEM）
-:label:sec_mpc_cem
 
 在强化学习与控制理论的交汇处，如何利用一个已知的（或学习到的）动力学模型来进行最优决策，始终是核心问题之一。在前面的章节中，我们已经探讨了如何从数据中学习环境的动力学模型。现在，假设我们手中已经有了一个可以预测未来的“世界模型”，我们应该如何利用它来寻找最优的动作序列？这正是模型预测控制（Model Predictive Control, MPC）的用武之地。而当面临高维、非线性的复杂动作空间时，交叉熵方法（Cross-Entropy Method, CEM）作为一种强大的无梯度优化算法，成为了MPC在深度强化学习时代的黄金搭档。
 
@@ -23,7 +22,6 @@ $$v_{t+1} = v_t + \frac{1}{m} a_t \Delta t$$
 
 我们可以将其抽象为一个离散时间动力学函数（Dynamics Function）：
 $$s_{t+1} = f(s_t, a_t)$$
-:eqlabel:eq_dynamics_1d
 
 我们的目标是让质点在某个未来的时间点停在一个目标位置 $x_{\text{target}}$。为了量化这个目标，我们定义一个代价函数（Cost Function），它在每个时间步评估当前状态和动作的“糟糕程度”。一个简单的一维代价函数可以是距离目标的平方误差加上对巨大推力的惩罚：
 $$c(s_t, a_t) = (x_t - x_{\text{target}})^2 + \lambda a_t^2$$
@@ -34,13 +32,11 @@ $$c(s_t, a_t) = (x_t - x_{\text{target}})^2 + \lambda a_t^2$$
 
 累积代价函数 $J$ 可以写为：
 $$J(\mathbf{a}_{t:t+H-1} \mid s_t) = \sum_{\tau=t}^{t+H-1} c(s_\tau, a_\tau)$$
-:eqlabel:eq_mpc_cost
 
 注意，这里的未来状态 $s_\tau$ 是由初始状态 $s_t$ 和规划的动作序列通过动力学模型 $f$ 递推生成的。因此，寻找最优动作序列的数学本质，是在给定的非线性等式约束（系统动力学）下求解一个多元函数极值问题：
 
 $$\mathbf{a}^*_{t:t+H-1} = \mathop{\mathrm{argmin}}_{\mathbf{a}_{t:t+H-1}} \sum_{\tau=t}^{t+H-1} c(s_\tau, a_\tau)$$
 $$\text{subject to } s_{\tau+1} = f(s_\tau, a_\tau), \quad s_t \text{ given}$$
-:eqlabel:eq_mpc_optimization
 
 ### 滚动时域控制（Receding Horizon）
 
@@ -80,7 +76,6 @@ $$\text{subject to } s_{\tau+1} = f(s_\tau, a_\tau), \quad s_t \text{ given}$$
 在数学上，经历了一系列关于交叉熵和重要性采样的严格推导（详见 `[Rubinstein, 1997]`），CEM的核心更新规则简化为了最大化那些“精英样本”在参数化分布下的对数似然：
 
 $$\theta_{k+1} = \mathop{\mathrm{argmax}}_{\theta} \frac{1}{N_e} \sum_{i \in \mathcal{E}_k} \log p(\mathbf{x}_i; \theta)$$
-:eqlabel:eq_cem_update_general
 
 其中，$N_e$ 是精英样本的数量，$\mathcal{E}_k$ 是在第 $k$ 次迭代中通过代价函数排序选出的表现最好的样本集合。
 
@@ -92,11 +87,9 @@ $$\theta_{k+1} = \mathop{\mathrm{argmax}}_{\theta} \frac{1}{N_e} \sum_{i \in \ma
 
 新的均值是精英样本的经验均值：
 $$\mu_{k+1} = \frac{1}{N_e} \sum_{i \in \mathcal{E}_k} \mathbf{x}_i$$
-:eqlabel:eq_cem_mu
 
 新的方差是精英样本的经验方差：
 $$\sigma^2_{k+1} = \frac{1}{N_e} \sum_{i \in \mathcal{E}_k} (\mathbf{x}_i - \mu_{k+1})^2$$
-:eqlabel:eq_cem_sigma
 
 ### MPC-CEM的完整算法循环
 
@@ -229,14 +222,3 @@ class CEMPlanner:
 在这一章中，我们详细拆解了模型预测控制（MPC）的核心原理，从基础的一维运动学问题推广到了有限时域最优控制的数学公式。我们解释了由于深度神经网络模型的高度非线性，传统的基于梯度的优化方法难以奏效。为了克服这一瓶颈，我们引入了交叉熵方法（CEM）。
 
 CEM巧妙地将复杂的序列优化问题转化为一个分布匹配问题，通过不断地在“概率空间”中对“精英样本”进行最大似然估计，能够高效地在巨大的动作空间中锁定最优解。将CEM与MPC结合，赋予了我们在拥有精确世界模型后的强大规划能力。
-
-## 练习
-
-1. 在CEM的实现中，如果在迭代后期的 `sigma` 变得非常接近于 0，会对后续的搜索产生什么影响？代码中是如何通过 `torch.clamp` 来缓解这个问题的？
-2. （推导题）如果代价函数 $c(s_t, a_t)$ 是动作的纯二次型（没有位置误差），即目标是消耗最小的能量而不关心去哪里，此时CEM精英集计算出的 $\mu$ 会倾向于收敛到什么值？尝试通过数学公式进行简单的定性推导。
-3. 当前我们的CEM实现假设每个时间步的动作之间是相互独立的（即高斯分布的协方差矩阵是对角阵）。但在许多物理任务中，动作序列在时间上往往具有连贯性。你可以构思一种修改CEM采样分布的方法来引入时间维度的相关性吗？
-   - *提示*：考虑使用自回归模型，或者通过对采样出的白噪声施加时间维度的低通滤波（如使用有色噪声生成机制）来平滑动作轨迹。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

@@ -1,5 +1,4 @@
 # 强化学习基础模块的从零开始实现
-:label:`sec_rl_foundation_scratch`
 
 在前面的章节中，我们已经探讨了监督学习和世界模型中的基础预测机制。然而，当我们的模型不仅需要被动地预测未来，还需要在环境中主动做出决策以最大化某种长期收益时，我们就踏入了强化学习（Reinforcement Learning, RL）的领域。强化学习的理论基础可以追溯到理查德·贝尔曼（Richard Bellman）在动态规划（Dynamic Programming）上的开创性工作 `[Bellman, 1957]`，以及随后由 Sutton 和 Barto 建立的现代时序差分学习框架 `[Sutton & Barto, 1998]`。在深度学习时代，将强大的神经网络与强化学习结合，催生了诸如深度Q网络（DQN） `[Mnih et al., 2013]` 和近端策略优化（PPO） `[Schulman et al., 2017]` 等突破性算法。
 
@@ -14,12 +13,10 @@
 随后，环境根据状态转移概率函数 $P$ 发生演进。这里我们给出一维情况下的最基础概率定义。假设当前状态为 $s$，智能体采取了动作 $a$，环境转移到下一个确定的状态 $s'$ 的概率记为：
 
 $$P(s' \mid s, a) = \mathbb{P}(s_{t+1} = s' \mid s_t = s, a_t = a)$$
-:eqlabel:`eq_mdp_transition`
 
 同时，环境会根据当前的转移反馈给智能体一个标量奖励 $r_t$。奖励函数 $R(s, a)$ 描述了在状态 $s$ 下执行动作 $a$ 所获得的期望奖励：
 
 $$R(s, a) = \mathbb{E}[r_{t+1} \mid s_t = s, a_t = a]$$
-:eqlabel:`eq_mdp_reward`
 
 马尔可夫性的核心在于：**未来的状态演进仅依赖于当前的状态和动作，而与过去的历史轨迹无关**。
 
@@ -32,12 +29,10 @@ $$R(s, a) = \mathbb{E}[r_{t+1} \mid s_t = s, a_t = a]$$
 如果我们将未来每一项奖励直接相加，当时间趋于无穷时，这个和可能会发散。为了保证数学上的收敛性，并引入“未来的奖励不如当前的奖励确切”这一时间偏好，我们引入折扣因子（Discount Factor） $\gamma \in [0, 1)$。于是，标量回报 $G_t$ 被严格定义为：
 
 $$G_t = r_{t+1} + \gamma r_{t+2} + \gamma^2 r_{t+3} + \dots = \sum_{k=0}^{\infty} \gamma^k r_{t+k+1}$$
-:eqlabel:`eq_discounted_return`
 
-通过提取公因式 $\gamma$，我们可以将 :eqref:`eq_discounted_return` 写成一种极其优雅的递归形式：
+通过提取公因式 $\gamma$，我们可以将上式写成一种极其优雅的递归形式：
 
 $$G_t = r_{t+1} + \gamma (r_{t+2} + \gamma r_{t+3} + \dots) = r_{t+1} + \gamma G_{t+1}$$
-:eqlabel:`eq_return_recursive`
 
 ### 状态价值函数与动作价值函数
 
@@ -46,16 +41,14 @@ $$G_t = r_{t+1} + \gamma (r_{t+2} + \gamma r_{t+3} + \dots) = r_{t+1} + \gamma G
 我们定义状态价值函数（State-Value Function） $V^\pi(s)$ 为在状态 $s$ 下，遵循策略 $\pi$ 的期望回报：
 
 $$V^\pi(s) = \mathbb{E}_\pi [G_t \mid s_t = s]$$
-:eqlabel:`eq_state_value`
 
 同理，我们定义动作价值函数（Action-Value Function） $Q^\pi(s, a)$ 为在状态 $s$ 下，先执行动作 $a$，随后遵循策略 $\pi$ 的期望回报：
 
 $$Q^\pi(s, a) = \mathbb{E}_\pi [G_t \mid s_t = s, a_t = a]$$
-:eqlabel:`eq_action_value`
 
 ### 贝尔曼期望方程
 
-结合 :eqref:`eq_return_recursive` 和价值函数的定义，我们可以进行极其严密的数学推导，将 $V^\pi(s)$ 展开为贝尔曼期望方程（Bellman Expectation Equation）。这一方程是连接当前状态价值与未来状态价值的桥梁。
+结合前文的回报递归公式和价值函数的定义，我们可以进行极其严密的数学推导，将 $V^\pi(s)$ 展开为贝尔曼期望方程（Bellman Expectation Equation）。这一方程是连接当前状态价值与未来状态价值的桥梁。
 
 $$
 \begin{aligned}
@@ -65,12 +58,10 @@ V^\pi(s) &= \mathbb{E}_\pi [r_{t+1} + \gamma G_{t+1} \mid s_t = s] \\
 &= \sum_{a \in \mathcal{A}} \pi(a \mid s) \left( R(s, a) + \gamma \sum_{s' \in \mathcal{S}} P(s' \mid s, a) V^\pi(s') \right)
 \end{aligned}
 $$
-:eqlabel:`eq_bellman_v`
 
 同理，对于动作价值函数 $Q^\pi(s, a)$，其贝尔曼期望方程为：
 
 $$Q^\pi(s, a) = R(s, a) + \gamma \sum_{s' \in \mathcal{S}} P(s' \mid s, a) \sum_{a' \in \mathcal{A}} \pi(a' \mid s') Q^\pi(s', a')$$
-:eqlabel:`eq_bellman_q`
 
 这些方程表明，价值函数可以通过自身的下一次迭代来递归地定义。在深度强化学习中，由于状态空间通常是连续且高维的，我们无法通过纯粹的矩阵求逆来求解上述线性方程组，而是必须借助神经网络，通过时序差分（TD）误差来不断逼近这一等式。
 
@@ -185,15 +176,13 @@ class ReplayBuffer:
 
 在强化学习的训练框架中，最核心的骨架是“交互-收集-更新”循环。在这里，我们模拟一个极简的连续状态空间环境。
 
-为了计算我们在 :eqref:`eq_bellman_q` 中推导出的价值，深度强化学习将参数化的神经网络 $Q_\theta(s, a)$ 引入。网络的目标是最小化时序差分误差（TD Error）。假设我们利用当前经验元组 $(s, a, r, s', d)$，其中 $d$ 为指示当前回合是否结束的二值变量（1为结束，0为未结束）。根据贝尔曼最优方程的单步近似，目标值 $y$ 被构造为：
+为了计算我们在前文推导出的动作价值，深度强化学习将参数化的神经网络 $Q_\theta(s, a)$ 引入。网络的目标是最小化时序差分误差（TD Error）。假设我们利用当前经验元组 $(s, a, r, s', d)$，其中 $d$ 为指示当前回合是否结束的二值变量（1为结束，0为未结束）。根据贝尔曼最优方程的单步近似，目标值 $y$ 被构造为：
 
 $$y = r + \gamma (1 - d) \max_{a'} Q_{\theta^{-}}(s', a')$$
-:eqlabel:`eq_td_target`
 
 其中 $Q_{\theta^{-}}$ 是缓慢更新的目标网络，用于稳定训练（我们将在后续具体算法章节详细讨论其梯度截断机制）。此时的损失函数即为均方误差：
 
 $$L(\theta) = \frac{1}{N} \sum_{i=1}^N \left( Q_\theta(s_i, a_i) - y_i \right)^2$$
-:eqlabel:`eq_td_loss`
 
 项 $(1-d)$ 极其关键。它的物理意义是：如果当前步导致回合结束（$d=1$），那么未来再也没有任何奖励，即下一状态的价值应当被严格截断为 0。
 
@@ -298,15 +287,3 @@ for episode in range(num_episodes):
 ## 小结
 
 在本节中，我们严格地定义了马尔可夫决策过程的数学基础，并从累积折扣回报出发，详细推导了贝尔曼期望方程的数学形式。我们强调了在实现阶段，如何利用经验回放缓冲区从连续的时间序列中提取独立同分布（IID）近似的批量张量。通过预分配连续的内存块，我们将复杂的内存管理映射为极其高效的张量索引操作，从而为接下来实现诸如 DQN 和 PPO 等高阶深度强化学习算法奠定了坚实的底层工程基础。
-
-## 练习
-
-1. 在经验回放缓冲区的实现中，为什么我们使用指针循环覆盖（`self.ptr = (self.ptr + 1) % self.capacity`）而不是通过队列数据结构（如 Python 的 `collections.deque`）进行动态内存分配？
-    - *提示：思考在深度学习框架中，张量在 CPU/GPU 内存中重新分配和拷贝带来的额外开销。*
-2. 假设在时间步 $t$，智能体获得了正的奖励，并且达到了目标，导致 $done = 1$。此时如果折扣因子 $\gamma = 0.99$，根据目标公式 :eqref:`eq_td_target`，当前动作的目标价值 $y$ 是什么？如果不引入 $(1-d)$ 会发生什么？
-    - *提示：如果回合已经结束，下一状态是否存在实际物理意义？强行累加下一状态的随机价值会导致什么样的误差传播？*
-3. 尝试在 PyTorch 的 `ReplayBuffer` 实现中，增加一种计算**优先级权重**的逻辑（类似于 Prioritized Experience Replay）。你将如何在有限容量下存储每个样本的权重，并在 `sample` 阶段利用该权重改变均匀采样的分布？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

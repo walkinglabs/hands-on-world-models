@@ -1,5 +1,4 @@
 # 扩散策略（Diffusion Policy）
-:label:sec_diffusion_policy
 
 在机器人学习的早期探索中，行为克隆（Behavior Cloning, BC）占据了主导地位。传统的行为克隆模型通常被建模为一个确定性函数或简单的高斯分布，其目标是最小化预测动作与专家动作之间的均方误差（MSE）。然而，由于现实世界中专家数据的内在复杂性，传统方法在处理多模态动作分布（Multimodal Action Distribution）时往往会遭遇严重瓶颈。
 
@@ -8,7 +7,6 @@
 为了打破这一困境，研究人员开始将目光投向生成式模型。在自然语言处理和计算机视觉领域大放异彩的去噪扩散概率模型（Denoising Diffusion Probabilistic Models, DDPM） [Ho et al., 2020]，以其惊人的分布建模能力引起了控制领域的关注。2023年，[Chi et al., 2023] 首次系统性地提出了扩散策略（Diffusion Policy），将视觉运动策略的动作生成过程建模为一个条件去噪扩散过程。它彻底抛弃了确定性输出的执念，转而学习如何从纯随机的噪声中，根据当前的视觉观察“雕刻”出合理的动作轨迹。在本节中，我们将从最基础的概率论出发，逐步剥开扩散策略的数学外衣，并最终实现一个完整的扩散策略模型。
 
 ## 扩散过程的数学基础：从信号到噪声
-:label:subsec_diffusion_forward
 
 在探讨复杂的动作轨迹之前，我们先从一个初高中生都能理解的简单物理量起步。假设机器人的当前动作仅仅是一个标量 $a_0 \in \mathbb{R}$（例如方向盘的转动角度）。
 
@@ -19,14 +17,12 @@
 我们定义每一步的转移概率分布为：
 
 $$q(a_k \mid a_{k-1}) = \mathcal{N}(a_k; \sqrt{\alpha_k} a_{k-1}, (1 - \alpha_k)\mathbf{I})$$
-:eqlabel:eq_diffusion_step
 
 其中，$\alpha_k$ 是一个介于 $0$ 和 $1$ 之间、且随着步数 $k$ 增加而逐渐减小的超参数（我们称由所有 $\alpha_k$ 组成的序列为方差调度计划，Variance Schedule）。
 
 根据正态分布的性质，我们可以将 :eqref:eq_diffusion_step 写成一个显式的代数等式。如果我们引入一个服从标准正态分布的随机变量 $\boldsymbol{\epsilon} \sim \mathcal{N}(0, \mathbf{I})$，那么第 $k$ 步的状态可以表示为：
 
 $$a_k = \sqrt{\alpha_k} a_{k-1} + \sqrt{1 - \alpha_k} \boldsymbol{\epsilon}_{k-1}$$
-:eqlabel:eq_diffusion_algebraic
 
 从表面上看，如果要计算任意步 $a_k$，我们需要一步步从 $a_0$ 迭代计算过来。但这在实际训练中是极其低效的。令人惊叹的是，由于高斯分布的加法性质（两个独立的正态分布变量之和仍然是正态分布，其均值为零，方差等于两者方差之和），我们可以直接写出从初始状态 $a_0$ 到任意状态 $a_k$ 的一步转移公式。
 
@@ -44,12 +40,10 @@ $$
 如果我们定义 $\bar{\alpha}_k = \prod_{i=1}^k \alpha_i$，通过数学归纳法，我们可以直接写出任意步 $k$ 的边缘分布公式：
 
 $$a_k = \sqrt{\bar{\alpha}_k} a_0 + \sqrt{1 - \bar{\alpha}_k} \boldsymbol{\epsilon}$$
-:eqlabel:eq_diffusion_marginal
 
 这里 $\boldsymbol{\epsilon} \sim \mathcal{N}(0, \mathbf{I})$。这个公式极其优美且关键：它告诉我们，无论前向扩散了多少步，当前状态 $a_k$ 都可以被看作是初始真实动作 $a_0$ 的衰减（权重为 $\sqrt{\bar{\alpha}_k}$）与累积随机噪声（权重为 $\sqrt{1 - \bar{\alpha}_k}$）的线性组合。由于 $\alpha_k < 1$，随着 $k \to K$，$\bar{\alpha}_K \to 0$，$a_K$ 将完全由噪声主导。
 
 ## 逆向去噪：条件概率的参数化重构
-:label:subsec_diffusion_reverse
 
 前向过程破坏了真实的动作信息，而我们的终极目标是教会神经网络如何逆向执行这一过程——即从纯噪声 $a_K \sim \mathcal{N}(0, \mathbf{I})$ 开始，一步步去除噪声，最终恢复出能够执行任务的合理动作 $a_0$。
 
@@ -64,17 +58,14 @@ $$
 将等式右侧三个已知的高斯分布概率密度函数代入，并对指数项进行配方展开后，我们可以证明 $q(a_{k-1} \mid a_k, a_0)$ 依然是一个高斯分布 $\mathcal{N}(a_{k-1}; \tilde{\mu}_k, \tilde{\beta}_k \mathbf{I})$，其均值 $\tilde{\mu}_k$ 为：
 
 $$\tilde{\mu}_k(a_k, a_0) = \frac{\sqrt{\bar{\alpha}_{k-1}} (1 - \alpha_k)}{1 - \bar{\alpha}_k} a_0 + \frac{\sqrt{\alpha_k} (1 - \bar{\alpha}_{k-1})}{1 - \bar{\alpha}_k} a_k$$
-:eqlabel:eq_posterior_mean_raw
 
 由于在实际逆向生成时我们是不可能提前知道真实动作 $a_0$ 的，我们需要通过神经网络来预测它。仔细观察公式 :eqref:eq_diffusion_marginal，我们可以将 $a_0$ 重新表达为关于 $a_k$ 和噪声 $\boldsymbol{\epsilon}$ 的函数：
 
 $$a_0 = \frac{1}{\sqrt{\bar{\alpha}_k}} \left( a_k - \sqrt{1 - \bar{\alpha}_k} \boldsymbol{\epsilon} \right)$$
-:eqlabel:eq_a0_reparameterized
 
 将 :eqref:eq_a0_reparameterized 代入 :eqref:eq_posterior_mean_raw 并进行代数化简，我们得到了一个极其优雅的均值推导表达式：
 
 $$\tilde{\mu}_k = \frac{1}{\sqrt{\alpha_k}} \left( a_k - \frac{1 - \alpha_k}{\sqrt{1 - \bar{\alpha}_k}} \boldsymbol{\epsilon} \right)$$
-:eqlabel:eq_posterior_mean_simplified
 
 这个等式揭示了逆向去噪机制的核心底色：**为了计算前一步更清晰的动作状态 $a_{k-1}$，我们只需要知道当前带噪状态 $a_k$ ，以及在前向过程中具体添加到 $a_k$ 里的累积噪声 $\boldsymbol{\epsilon}$ 即可。**
 
@@ -83,12 +74,10 @@ $$\tilde{\mu}_k = \frac{1}{\sqrt{\alpha_k}} \left( a_k - \frac{1 - \alpha_k}{\sq
 由此，机器人的逆向采样（决策）迭代公式被最终定义为：
 
 $$\mathbf{A}_{k-1} = \frac{1}{\sqrt{\alpha_k}} \left( \mathbf{A}_k - \frac{1 - \alpha_k}{\sqrt{1 - \bar{\alpha}_k}} \boldsymbol{\epsilon}_\theta(\mathbf{A}_k, k, \mathbf{O}) \right) + \sigma_k \mathbf{z}$$
-:eqlabel:eq_reverse_sampling
 
 其中 $\mathbf{z} \sim \mathcal{N}(0, \mathbf{I})$ 引入了不可或缺的退火随机噪声，从热力学的角度来看，这种朗之万动力学（Langevin Dynamics）式的随机扰动确保了采样过程能够在多模态动作分布中进行充分的概率探索；$\sigma_k$ 通常取值为 $\sqrt{1 - \alpha_k}$ 或是其他推导出的近似方差标量。
 
 ## 架构创新：动作块与滚动优化
-:label:subsec_architecture_receding_horizon
 
 为了将上述纯粹的数学概率理论切实应用到现实世界中对延迟极其敏感的机器人控制上，扩散策略团队引入了两个极具工程智慧的控制逻辑架构设计：
 
@@ -98,7 +87,6 @@ $$\mathbf{A}_{k-1} = \frac{1}{\sqrt{\alpha_k}} \left( \mathbf{A}_k - \frac{1 - \
 在深度网络的架构拓扑层面，由于我们需要对时间序列维度的动作轨迹进行去噪，传统的二维卷积图像网络不再适用。扩散策略最常采用带有密集残差连接的一维条件卷积网络（1D Conditional ResNet）或时间序列 Transformer 作为 $\boldsymbol{\epsilon}_\theta$ 的骨干。至关重要的外部观察条件 $\mathbf{O}$ 往往通过 FiLM（Feature-wise Linear Modulation）机制或跨注意力机制（Cross-Attention）深度且均匀地注入到去噪网络的深层架构中。
 
 ## 深度解析：代码实现
-:label:subsec_diffusion_implementation
 
 接下来，我们将使用 PyTorch 从零构建一个高密度的扩散策略架构。为了避免使代码被冗长繁琐的视觉处理管道（如 ResNet 或 ViT 编码器）所淹没，我们将剥离这些前置编码器，假定视觉特征已经被抽取为了连续的向量，从而纯粹地专注于扩散动作生成与条件去噪的本质过程。
 
@@ -310,16 +298,3 @@ with torch.no_grad():
 * 扩散策略（Diffusion Policy）巧妙地利用基于严密马尔可夫链理论的去噪过程，将任意复杂的控制策略生成转化为从高斯噪声中提纯物理信号的过程。
 * 逆向条件去噪的核心数学引擎在于，通过条件神经网络预测前向过程中引入的纯噪声分量，这一结论是基于严谨的贝叶斯后验概率均值重参数化推导而得出的必然结果。
 * 动作序列块（Action Chunking）和滚动优化时间域（Receding Horizon Control）的组合，赋予了该策略面对真实物理世界时极高的稳健性与连贯性。
-
-## 练习
-
-1. 仔细观察在逆向采样循环中，代码使用了严密的贝叶斯后验推导公式 :eqref:eq_reverse_sampling。如果我们出于加快采样速度的目的，强行去掉了最后的退火随机噪声项 `sigma * noise`（这种技术被称为确定性隐式采样，或 DDIM），你认为从物理运动学的角度看，这会对机器人最终生成的动作轨迹分布造成怎样的退化？
-   *提示：想象动作决策空间中存在两个相距甚远但同样完美的全局最优点，模型是否会重新陷入传统确定性网络的局部陷阱？随机退火噪声在热力学探索中起到了什么不可替代的作用？*
-2. 架构设计中，为什么要煞费苦心地将环境视觉特征 `observation` 与时间步特征 `timestep` 组合在一起，并通过 FiLM 仿射变换调制注入到每一层卷积激活空间中，而不是仅仅在输入层将 `observation` 简单粗暴地拼接（Concat）到带噪动作的特征维度上？
-   *提示：考虑随着网络深度的几何增加，输入层的原始条件特征信息会如何在残差阻力中迅速衰减？时间步特征又该如何深度主导并扭曲不同去噪阶段的特征语义流形？*
-3. 请尝试彻底重写并推翻公式 :eqref:eq_posterior_mean_simplified 的重参数化代换。如果不使用 :eqref:eq_a0_reparameterized 将 $a_0$ 替换掉，我们能否直接让神经网络放弃预测抽象的噪声 $\boldsymbol{\epsilon}$，转而去直接预测纯净的原始动作轨迹 $a_0$？如果可以，均方误差（MSE）的损失函数应当如何重新构建？
-   *提示：公式 :eqref:eq_posterior_mean_raw 事实上已经给出了一条从预测出的 $\hat{a}_0$ 直接计算出上一步均值转移状态的光明大道。*
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

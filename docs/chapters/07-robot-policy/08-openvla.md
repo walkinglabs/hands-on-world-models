@@ -1,12 +1,10 @@
 # OpenVLA：开源具身大模型
-:label:sec_openvla
 
 在探讨了RT系列模型（如RT-1与RT-2）之后，我们进入了一个由大语言模型（LLM）主导的具身智能新阶段。RT-2向我们展示了将视觉-语言大模型（Vision-Language Model, VLM）直接用于输出机器人动作的巨大潜力 `[Brohan et al., 2023]`。然而，这类模型通常依赖于闭源的大规模专有架构，其高昂的训练成本和闭门造车的生态限制了整个具身智能社区的发展。为了打破这一壁垒，OpenVLA `[Kim et al., 2024]` 应运而生。作为一个拥有70亿参数的完全开源的视觉-语言-动作（Vision-Language-Action, VLA）模型，OpenVLA不仅在多项机器人操作基准测试中展现出卓越的性能，还为研究者提供了一套基于低秩自适应（LoRA）的高效微调范式。
 
 本节我们将深入解构OpenVLA的核心设计思想。我们将从动作序列的自回归建模出发，严格推导其如何将连续的物理动作映射为语言模型的离散词表，并探讨其如何利用几何降维的思想实现高效的模型微调。
 
 ## 视觉-语言-动作建模的自回归表述
-:label:sec_openvla_autoregressive
 
 大语言模型（如Llama 2或GPT系列）的核心数学形式是**自回归生成**（Autoregressive Generation）。给定一段离散的文本序列，模型通过极大化下一个词的条件概率来进行训练。OpenVLA继承了这一优雅的范式，并将其扩展到了多模态与控制领域。
 
@@ -16,17 +14,14 @@
 我们希望寻找一个策略模型 $\pi$，使得动作序列的条件概率最大化：
 
 $$ P(\mathbf{a}_t \mid x_{\text{img}}, x_{\text{text}}) $$
-:eqlabel:eq_openvla_prob_raw
 
 由于语言模型本质上是处理离散序列的，我们需要将动作向量 $\mathbf{a}_t$ 的各个维度依次展开，并将其视为句子中的“词语”。如果我们假设各个动作维度的生成依赖于前面的维度，概率分布可以根据链式法则严格拆解为：
 
 $$ P(\mathbf{a}_t \mid x_{\text{img}}, x_{\text{text}}) = \prod_{d=1}^{D} P(a_{t}^{(d)} \mid x_{\text{img}}, x_{\text{text}}, a_{t}^{(1)}, \dots, a_{t}^{(d-1)}) $$
-:eqlabel:eq_openvla_chain_rule
 
 这种拆解将一个高维的联合概率密度估计问题，转化为了 $D$ 个一维条件概率分布的序列预测问题。现在，模型只需要在每一步预测动作的某一个维度。这与预测句子的下一个单词在数学形式上达到了完美的统一。
 
 ## 连续物理动作的离散化（Tokenization）
-:label:sec_openvla_tokenization
 
 由于语言模型的输出空间是预定义好的离散词汇表（Vocabulary），而物理世界中机器人的动作通常是连续的实数（例如关节角度的弧度值或移动距离的米数），我们必须在连续动作与离散词汇之间建立一座严格的数学桥梁。这被称为动作的**离散化**或**词元化**（Action Tokenization）。
 
@@ -37,14 +32,12 @@ $$ P(\mathbf{a}_t \mid x_{\text{img}}, x_{\text{text}}) = \prod_{d=1}^{D} P(a_{t
 第一步，我们需要通过仿射变换（Affine Transformation）将真实的物理量 $v$ 映射到 $[0, 1]$ 的标准区间。我们定义归一化函数：
 
 $$ v_{\text{norm}} = \frac{v - v_{\min}}{v_{\max} - v_{\min}} $$
-:eqlabel:eq_openvla_norm
 
 显然，当 $v = v_{\min}$ 时，$v_{\text{norm}} = 0$；当 $v = v_{\max}$ 时，$v_{\text{norm}} = 1$。
 
 第二步，我们将 $[0, 1]$ 区间放大到离散桶的索引范围 $[0, B-1]$，并通过就近取整操作得到最终的离散类别 $k$：
 
 $$ k = \text{round}(v_{\text{norm}} \times (B-1)) $$
-:eqlabel:eq_openvla_discretize
 
 其中，$\text{round}(\cdot)$ 表示四舍五入到最接近的整数。此时，连续的标量 $v$ 就成功转化为了一个离散的整数 $k$。OpenVLA 将这 $B$ 个整数作为特殊的词元（Action Tokens）直接追加到大语言模型的词汇表中。
 
@@ -55,12 +48,10 @@ $$ k = \text{round}(v_{\text{norm}} \times (B-1)) $$
 通过代数变换重组 :eqref:eq_openvla_norm 和 :eqref:eq_openvla_discretize，我们可以推导出还原后的连续动作近似值 $\hat{v}$：
 
 $$ \hat{v} = \left( \frac{k}{B-1} \right) (v_{\max} - v_{\min}) + v_{\min} $$
-:eqlabel:eq_openvla_detokenize
 
 量化引入的最大绝对误差（Quantization Error）由相邻两个桶代表的物理间隔的一半决定：
 
 $$ \epsilon_{\max} = \frac{v_{\max} - v_{\min}}{2(B-1)} $$
-:eqlabel:eq_openvla_error
 
 这在物理上意味着：只要我们设置的桶数量 $B$ 足够大（OpenVLA 默认设为 256），离散化带来的误差 $\epsilon_{\max}$ 就会极度缩小，从而对最终的物理控制影响微乎其微。
 
@@ -69,25 +60,21 @@ $$ \epsilon_{\max} = \frac{v_{\max} - v_{\min}}{2(B-1)} $$
 对于多维动作向量 $\mathbf{a}_t \in \mathbb{R}^D$，我们通常在所有维度上共享相同的动作词汇表空间。但在实际情况中，不同物理维度的数据分布（例如坐标系 X 轴的位移与末端夹爪的开度）可能相差极大。因此，我们需要对每个维度 $d$ 单独统计其在数据集中的极值 $a_{\min}^{(d)}$ 和 $a_{\max}^{(d)}$，进而通过矢量化形式并行完成整个动作向量的离散化。
 
 ## OpenVLA 的网络架构与特征融合
-:label:sec_openvla_architecture
 
 OpenVLA 的架构由三个核心组件构成：视觉编码器（Vision Encoder）、视觉-语言投影层（Projector）和大语言模型主干（LLM Backbone）。其本质是将图像映射为语言模型能够理解的“视觉词汇”，进而触发大语言模型的自回归推理。
 
 1. **视觉编码器**：OpenVLA 采用了多尺度特征提取的方法。它将图像切分为 $N$ 个不重叠的图像块（Patches），并通过视觉变换器（如 SigLIP 或 DINOv2）提取特征矩阵 $\mathbf{X}_{\text{vis}} \in \mathbb{R}^{N \times d_{\text{vis}}}$。
 2. **投影层**：由于视觉特征的维度 $d_{\text{vis}}$ 与语言模型的词嵌入维度 $d_{\text{llm}}$ 不匹配，我们需要引入一个多层感知机（MLP）将其投影到相同的空间：
    $$ \mathbf{H}_{\text{vis}} = \text{MLP}(\mathbf{X}_{\text{vis}}) \in \mathbb{R}^{N \times d_{\text{llm}}} $$
-   :eqlabel:eq_openvla_projector
 3. **特征拼接与推理**：将文本指令通过嵌入层转化为矩阵 $\mathbf{H}_{\text{text}} \in \mathbb{R}^{M \times d_{\text{llm}}}$ 后，在序列维度上与视觉特征拼接，形成完整的输入序列 $[\mathbf{H}_{\text{vis}}; \mathbf{H}_{\text{text}}]$。随后，Llama 2 主干网络将在此基础上自回归地生成动作词元。
 
 ## 低秩自适应（LoRA）：高效微调的几何视角
-:label:sec_openvla_lora
 
 拥有 70 亿参数的 OpenVLA 若直接进行全参数微调（Full Fine-Tuning），将对显存和计算资源造成极大的挑战。OpenVLA 选择采用低秩自适应（Low-Rank Adaptation, LoRA）技术 `[Hu et al., 2021]`，使得普通实验室甚至个人研究者也能在特定的机器人任务上对其进行高效微调。
 
 让我们从线性变换的几何视角来严格拆解 LoRA 的原理。在大模型的前馈网络中，核心运算是矩阵乘法。设预训练的权重矩阵为 $\mathbf{W}_0 \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}$，输入向量为 $\mathbf{x} \in \mathbb{R}^{d_{\text{in}}}$，则线性投影的输出为：
 
 $$ \mathbf{h} = \mathbf{W}_0 \mathbf{x} $$
-:eqlabel:eq_openvla_linear_base
 
 在微调过程中，我们需要寻找一个更新量 $\Delta \mathbf{W}$，使得新的权重矩阵为 $\mathbf{W} = \mathbf{W}_0 + \Delta \mathbf{W}$。全参数微调需要更新 $\Delta \mathbf{W}$ 中的 $d_{\text{out}} \times d_{\text{in}}$ 个参数，这往往是百万级别的标量。
 
@@ -96,17 +83,14 @@ $$ \mathbf{h} = \mathbf{W}_0 \mathbf{x} $$
 基于这一洞察，LoRA 强制约束更新矩阵 $\Delta \mathbf{W}$ 的秩（Rank）不超过常数 $r$，且 $r \ll \min(d_{\text{out}}, d_{\text{in}})$。根据线性代数的矩阵分解原理，任何秩为 $r$ 的矩阵均可以分解为两个低秩矩阵的乘积：
 
 $$ \Delta \mathbf{W} = \mathbf{A} \mathbf{B} $$
-:eqlabel:eq_openvla_lora_decomposition
 
 其中，$\mathbf{B} \in \mathbb{R}^{r \times d_{\text{in}}}$ 将原始高维特征投影到低维子空间，而 $\mathbf{A} \in \mathbb{R}^{d_{\text{out}} \times r}$ 将低维特征重新映射回高维的目标空间。前向传播公式也随之被重写为两条独立的数据流之和：
 
 $$ \mathbf{h} = \mathbf{W}_0 \mathbf{x} + \mathbf{A} \mathbf{B} \mathbf{x} $$
-:eqlabel:eq_openvla_lora_forward
 
 在训练期间，**我们冻结庞大的预训练权重 $\mathbf{W}_0$ 的梯度，仅对小矩阵 $\mathbf{A}$ 和 $\mathbf{B}$ 进行梯度下降**。这种几何降维的思想将需要更新的参数量从 $\mathcal{O}(d_{\text{out}} d_{\text{in}})$ 急剧压缩到了 $\mathcal{O}(r(d_{\text{out}} + d_{\text{in}}))$。在实际部署 OpenVLA 时，这能节省超过 80% 的显存占用。
 
 ## 代码实现
-:label:sec_openvla_code
 
 (**我们将利用 PyTorch 搭建 OpenVLA 的核心模块**)，包括动作的离散化处理器、视觉-语言投影层，以及简化的条件自回归生成流程。
 
@@ -213,15 +197,3 @@ class SimpleOpenVLA(nn.Module):
 - OpenVLA 通过统一的语言建模范式，将机器人动作空间精确地映射为大模型的扩展离散词汇表，实现了视觉-语言-动作的端到端自回归生成。
 - 连续物理动作的离散化通过归一化、缩放与舍入操作完成，这引入了与离散区间成正比的固有误差，但通过增大区间数（如256桶）可将误差缩小至物理可容忍的范围。
 - 通过引入低秩自适应（LoRA）技术，我们能够将高维的权重更新分解为两个低维矩阵的乘积，极大地降低了微调大参数量模型时的硬件门槛与计算复杂度。
-
-## 练习
-
-1. 在等式 :eqref:eq_openvla_error 中，我们证明了最大绝对误差与桶的数量 $B$ 相关。如果一个机器人关节的角度范围是 $[-\pi, \pi]$，并且任务要求关节控制误差不能超过 $0.01$ 弧度。试推导：为了满足该精度，至少需要多少个离散桶？
-    - *提示：将已知变量代入不等式 $\epsilon_{\max} \le 0.01$，解出 $B$ 的取值。*
-2. 假设我们需要在一个拥有 4096 维隐藏状态（即 $d_{\text{in}} = d_{\text{out}} = 4096$）的 Transformer 层应用 LoRA 微调。设低秩约束为 $r = 16$。试计算相比于全参数微调，LoRA 更新的参数量减少了百分之多少？
-    - *提示：分别计算 $\Delta \mathbf{W}$ 和 $\mathbf{A}$, $\mathbf{B}$ 的总元素数量。*
-3. 在连续动作的离散化中，如果我们不采用等距离的均匀量化，而是引入如对数量化（Logarithmic Quantization）的非均匀分配，这样做在物理控制上会有什么直观的优势和劣势？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

@@ -1,5 +1,4 @@
 # Video-JEPA（V-JEPA）的简洁实现
-:label:`sec_video_jepa_concise`
 
 在深入探究了图像级别的联合嵌入预测架构（I-JEPA）之后，我们自然而然地会将目光投向时间维度。物理世界并不是静止的图像集合，而是连续演化的动态系统。本节，我们将详细探讨并实现 Video-JEPA（V-JEPA）[Bardes et al., 2024]，这是由 Yann LeCun 提出的联合嵌入预测架构（JEPA）在视频领域的重磅延伸。
 
@@ -12,7 +11,6 @@
 正是在这样的学术背景下，V-JEPA 应运而生。它放弃了在像素空间的逐点重建，转而要求模型在**抽象的特征表示空间**中预测缺失的视频片段。这种转变，不仅极大地提升了训练效率，更使其在特征提取上展现出了更强的泛化能力。
 
 ## 从静态二维到动态三维：数据的降维解析
-:label:`subsec_video_data_reduction`
 
 为了理解 V-JEPA 的输入机制，我们首先需要将视频这一复杂的多媒体形态，降维拆解为高中生即可理解的数学对象。
 
@@ -28,7 +26,6 @@
 最终，一个视频将被转化为 $N = N_t \times N_h \times N_w$ 个词元（Tokens），每个词元代表一个时空局部区域的信息。
 
 ## 核心机制的数学推导与严格定义
-:label:`subsec_vjepa_math`
 
 V-JEPA 的核心思想是：给定视频的一个部分上下文（Context），预测该视频中被遮挡部分（Target）在隐空间中的特征表示。
 
@@ -48,13 +45,11 @@ V-JEPA 的核心思想是：给定视频的一个部分上下文（Context），
 $$
 H_{\mathcal{C}} = f_{\theta_c}(X_{\mathcal{C}}) 
 $$
-:eqlabel:`eq_vjepa_context_enc`
 
 同理，我们将目标序列 $X_{\mathcal{T}}$ 输入目标编码器，得到它在隐空间的目标真实值（Ground Truth）：
 $$
 H_{\mathcal{T}} = f_{\theta_t}(X_{\mathcal{T}})
 $$
-:eqlabel:`eq_vjepa_target_enc`
 
 ### 3. 位置条件预测
 
@@ -63,7 +58,6 @@ $$
 $$
 \hat{H}_{\mathcal{T}} = g_{\phi}(H_{\mathcal{C}}, P_{\mathcal{T}})
 $$
-:eqlabel:`eq_vjepa_predictor`
 
 > [!quote] 唯一的类比：关于特征预测与参数指数移动平均 (EMA)
 > V-JEPA 的架构最反直觉的地方在于：为什么需要两个编码器，并且目标编码器的参数不通过梯度下降更新？
@@ -77,12 +71,10 @@ $$
 $$
 \mathcal{L} = \frac{1}{|\mathcal{T}|} \sum_{i \in \mathcal{T}} \left\| \hat{h}_i - h_i \right\|_2^2
 $$
-:eqlabel:`eq_vjepa_loss`
 
 其中 $\hat{h}_i$ 是 $\hat{H}_{\mathcal{T}}$ 中的第 $i$ 个词元， $h_i$ 是 $H_{\mathcal{T}}$ 中的对应词元。通过最小化 $\mathcal{L}$，模型只能更新预测器 $\phi$ 和上下文编码器 $\theta_c$ 的参数。
 
 ## 核心网络架构与前向传播实现
-:label:`subsec_vjepa_implementation`
 
 在理解了严密的数学推导后，我们将使用 PyTorch 来构建这个系统的简洁版本。为了保持代码的教科书般的清晰，我们将分模块实现。
 
@@ -273,16 +265,3 @@ class VJEPAModel(nn.Module):
 ## 结语
 
 通过本节的探讨，我们完成了一次从视频的物理维度到抽象语义维度的穿越。V-JEPA 摒弃了执着于重建像素级细节的执念，证明了“预测高维抽象特征”才是通向对时空动态规律深刻理解的正确途径。这种架构的优美之处在于其简洁的数学表达和极为高效的训练过程。
-
-## 练习
-
-1. 在公式 :eqref:`eq_vjepa_loss` 中，我们使用的是归一化的均方误差（MSE）。如果在损失函数计算之前，对预测特征 $\hat{H}_{\mathcal{T}}$ 和目标特征 $H_{\mathcal{T}}$ 进行层归一化（Layer Normalization），这会对模型的训练稳定性产生什么影响？
-   - **提示**：思考表征坍塌（Collapse）在特征空间中的几何意义，归一化操作如何限制特征向量的模长和方向分布？
-2. 尝试修改 `VJEPAModel` 的代码，使得上下文掩码（Context Mask）不仅可以随机遮挡，还可以实现“时间维度的因果掩码”（即只能用过去的帧预测未来的帧）。
-   - **提示**：修改掩码生成逻辑，确保选定的 $\mathcal{T}$ 在时间轴上始终晚于选定的 $\mathcal{C}$。
-3. 为什么预测器（Predictor）的深度（`predictor_depth`）和宽度（`predictor_embed_dim`）通常设计得比编码器更小（浅且窄）？
-   - **提示**：这涉及到我们希望模型把“理解世界”的重任放在哪个模块上。如果预测器过于强大，上下文编码器还会努力提取高质量的特征吗？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

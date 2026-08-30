@@ -1,5 +1,4 @@
 # 7.1 具身智能与多模态观测
-:label:sec_multimodal_observation
 
 在前面的章节中，我们主要探讨了在纯视觉或纯文本环境下的深度学习模型。然而，真正的智能体（Agent）并非“缸中之脑”，它们生存在复杂的物理世界中，需要通过躯体与环境发生持续的物理交互。这种强调智能体与环境物理形态耦合的智能范式，被称为**具身智能**（Embodied AI）。
 
@@ -24,7 +23,6 @@
 $$
 \mathbf{o}_{\text{prop}} = [\mathbf{q}^\top, \dot{\mathbf{q}}^\top]^\top \in \mathbb{R}^{2n}
 $$
-:eqlabel:eq_prop_vector
 
 然而，机器人并不是在一个空无一物的真空中运动。假设我们要让机械臂去抓取桌子上的一个苹果，仅仅知道机械臂自身的关节角度显然是不够的，它还必须知道苹果在空间中的位置。这种对外部环境的感知，被称为**外感受**（Exteroception）。在现代机器人系统中，最常见的外感受器就是RGB摄像头，它提供了一个三维张量 $\mathbf{I} \in \mathbb{R}^{H \times W \times 3}$。
 
@@ -33,7 +31,6 @@ $$
 $$
 \mathbf{o}_t = \{ \mathbf{I}_t, \mathbf{o}_{\text{prop}, t} \}
 $$
-:eqlabel:eq_multimodal_obs
 
 我们的目标是设计一个神经网络函数 $f_\theta$，将这个异构的观测集合映射为一个统一的低维稠密向量 $\mathbf{z}_t \in \mathbb{R}^d$，从而供下游的策略网络（Policy Network）计算具体的控制动作。
 
@@ -46,12 +43,10 @@ $$
 $$
 \mathbf{z}_{\text{vis}} = f_{\text{vis}}(\mathbf{I}; \theta_{\text{vis}}) \in \mathbb{R}^{d_v}
 $$
-:eqlabel:eq_vis_encoder
 
 $$
 \mathbf{z}_{\text{prop}} = f_{\text{prop}}(\mathbf{o}_{\text{prop}}; \theta_{\text{prop}}) \in \mathbb{R}^{d_p}
 $$
-:eqlabel:eq_prop_encoder
 
 其中，$f_{\text{vis}}$ 通常是ResNet或Vision Transformer（ViT），而 $f_{\text{prop}}$ 通常是一个多层感知机（MLP）。
 
@@ -62,14 +57,12 @@ $$
 $$
 z = w_1 z_v + w_2 z_p + b
 $$
-:eqlabel:eq_scalar_fusion
 
 将这个标量方程严格地推广到高维向量空间。我们将两个特征向量在特征维度上进行拼接，得到向量 $[\mathbf{z}_{\text{vis}}^\top, \mathbf{z}_{\text{prop}}^\top]^\top \in \mathbb{R}^{d_v + d_p}$。然后，我们应用一个权重矩阵 $\mathbf{W} \in \mathbb{R}^{d \times (d_v + d_p)}$ 进行线性投影，并经过一个非线性激活函数 $\sigma$：
 
 $$
 \mathbf{z}_{\text{fused}} = \sigma \left( \mathbf{W} \begin{bmatrix} \mathbf{z}_{\text{vis}} \\ \mathbf{z}_{\text{prop}} \end{bmatrix} + \mathbf{b} \right)
 $$
-:eqlabel:eq_vector_fusion
 
 这种被称为“后期融合（Late Fusion）”的策略在早期深度强化学习中非常普遍。然而，它的局限性在于：权重矩阵 $\mathbf{W}$ 在训练完成后是静态的，这意味着无论机器人处于何种姿态，视觉特征和本体特征之间的组合方式是不变的。
 
@@ -88,28 +81,24 @@ $$
 $$
 e_i = \frac{(\mathbf{W}_q \mathbf{z}_{\text{prop}})^\top (\mathbf{W}_k \mathbf{z}_{\text{vis}, i})}{\sqrt{d_k}}
 $$
-:eqlabel:eq_attention_energy
 
 为了将这个不受界的能量值 $e_i$ 转化为合法的概率分布，我们应用 Softmax 操作：
 
 $$
 \alpha_i = \frac{\exp(e_i)}{\sum_{j=1}^N \exp(e_j)}
 $$
-:eqlabel:eq_attention_weight
 
 最后，我们用这些概率权重 $\alpha_i$ 对视觉值向量（Value vectors）进行加权求和，得到融合后的特征向量：
 
 $$
 \mathbf{z}_{\text{cross}} = \sum_{i=1}^N \alpha_i (\mathbf{W}_v \mathbf{z}_{\text{vis}, i})
 $$
-:eqlabel:eq_attention_sum
 
 将上述步骤统一写成严格的矩阵乘法形式。令查询 $\mathbf{Q} \in \mathbb{R}^{1 \times d_k}$，键 $\mathbf{K} \in \mathbb{R}^{N \times d_k}$，值 $\mathbf{V} \in \mathbb{R}^{N \times d_v}$：
 
 $$
 \text{CrossAttention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax} \left( \frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}} \right) \mathbf{V} \in \mathbb{R}^{1 \times d_v}
 $$
-:eqlabel:eq_cross_attention_matrix
 
 通过这种方式，神经网络能够学会根据当前的机器人的关节状态，动态地“注视”图像中对其下一步动作最具指导意义的区域。
 
@@ -259,7 +248,3 @@ print(f"融合特征的张量形状: {output.shape}")
 2. 仔细观察代码实现中的 `MultiModalEncoder` 类。为什么在对 `z_vis` 和 `z_prop` 提取特征的最后一步，我们都加入了一个 `LayerNorm`（层归一化）操作？如果不加，在后续的拼接与线性映射中可能会引发什么数值优化问题？
    * **提示**：思考不同模态编码器初始输出权重的方差差异，以及这种差异在 $\mathbf{W} \mathbf{z}_{\text{concat}}$ 矩阵乘法中会导致梯度如何流动。
 3. 如果我们希望将当前的**后期拼接融合**替换为 :numref:`sec_multimodal_observation` 提到的**跨模态注意力融合**，请写出将视觉卷积特征图（形状为 `[B, 64, 7, 7]`）转换为注意力键 $\mathbf{K}$ 和值 $\mathbf{V}$ 时，张量形状必须经历哪些重塑（Reshape）和转置操作？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

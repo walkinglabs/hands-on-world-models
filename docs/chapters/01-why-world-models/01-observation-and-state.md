@@ -1,5 +1,4 @@
 # 1.1 观测与状态（Observation and State）
-:label:`sec_observation_and_state`
 
 在开始构建任何智能体（Agent）或世界模型（World Model）之前，我们必须首先厘清两个在日常语言中经常被混用，但在物理学、控制论与人工智能领域有着严格数学界限的概念：**观测（Observation）** 与 **状态（State）**。
 
@@ -8,7 +7,6 @@
 本节我们将从高中物理中的简单运动学起步，逐步平滑过渡到高阶概率论中的贝叶斯滤波理论，以最严密的数学形式揭示这两个概念的本质区别，以及如何通过历史观测去推断系统的隐性真实状态。
 
 ## 物理直觉：为什么我们需要状态？
-:label:`sec_why_we_need_state`
 
 为了让抽象的数学概念落地，让我们先假设一个最简单的高中物理场景：一辆在直线上行驶的汽车。
 
@@ -19,36 +17,30 @@
 如果我们手中*只有*对位置的记录，即系统对外输出的**观测（Observation）**仅为 $o_t = x_t$，那么对于系统未来演化的预测将不可避免地依赖于更早的历史信息。具体来说，我们只能利用相邻两次的观测来近似估算当前的速度：
 
 $$ v_t \approx \frac{x_t - x_{t-1}}{\Delta t} $$
-:eqlabel:`eq_kinematics_velocity`
 
 将 :eqref:`eq_kinematics_velocity` 代入位移公式，下一时刻的位置预测可以写成：
 
 $$ x_{t+1} = x_t + v_t \Delta t \approx x_t + (x_t - x_{t-1}) = 2x_t - x_{t-1} $$
-:eqlabel:`eq_kinematics_obs`
 
 请仔细审视 :eqref:`eq_kinematics_obs` 这个等式：为了决定系统在 $t+1$ 时刻的状态演化，我们不得不查阅 $t-1$ 时刻的旧档案。随着物理系统的非线性或复杂度增加（例如引入加速度甚至加加速度），我们可能需要回溯至 $t-2$、$t-3$ 甚至初始时刻的历史观测。这种对历史记录的长程且深度的依赖，在数学建模中极为笨重，在计算机仿真与强化学习中则是不可接受的计算灾难。
 
 为了打破对无穷历史的依赖，理论家们引入了**状态（State）**的概念。状态被严谨地定义为一个系统中**所有必要历史信息的充分统计量（Sufficient Statistic）**。对于上述匀速运动的汽车而言，如果我们同时掌控了位置与速度，并将这两个标量纵向拼接，组合成一个二维列向量，这就构成了该系统的完备状态 $\mathbf{s}_t$：
 
 $$ \mathbf{s}_t = \begin{bmatrix} x_t \\ v_t \end{bmatrix} \in \mathbb{R}^2 $$
-:eqlabel:`eq_state_vector`
 
 当我们拥有了升维后的状态 $\mathbf{s}_t$ 之后，系统的演化规律便得到了一次极其优雅的降维简化——它可以通过与一个固定的状态转移矩阵（State Transition Matrix）相乘来完全确定：
 
 $$ \mathbf{s}_{t+1} = \begin{bmatrix} x_{t+1} \\ v_{t+1} \end{bmatrix} = \begin{bmatrix} 1 & \Delta t \\ 0 & 1 \end{bmatrix} \begin{bmatrix} x_t \\ v_t \end{bmatrix} = \mathbf{A} \mathbf{s}_t $$
-:eqlabel:`eq_state_transition`
 
 对比 :eqref:`eq_kinematics_obs` 和 :eqref:`eq_state_transition`，我们可以得出状态向量最为关键的物理性质：**只要给定当前的完整状态，系统未来的演化轨迹便完全独立于过去的历史。** 这种切断历史羁绊的“无记忆性”，在数学过程上拥有一个极其显赫的名字——**马尔可夫性质（Markov Property）** `[Markov, 1906]`。
 
 ## 马尔可夫性质与部分可观测环境
-:label:`sec_markov_property`
 
 让我们将上述理想且确定性的经典力学系统，推广到充满随机噪声和未知干扰的概率论范畴。在现代机器学习范式中，系统状态不仅受自身内在规律支配，还会受到外界智能体（Agent）注入的控制动作（Action） $A_t$ 的干预。
 
 设大写字母 $S_t$ 为随机变量，表示系统在时刻 $t$ 的真实隐藏状态。如果过程满足马尔可夫性质，那么在给定当前状态 $S_t$ 和采取的动作 $A_t$ 的前提下，系统转移到下一时刻任何可能状态 $S_{t+1}$ 的条件概率分布，完全与 $t$ 时刻之前的任何更古老的状态或动作无关：
 
 $$ \mathbb{P}(S_{t+1} \mid S_t, A_t, S_{t-1}, A_{t-1}, \dots, S_0) = \mathbb{P}(S_{t+1} \mid S_t, A_t) $$
-:eqlabel:`eq_markov_property`
 
 等式 :eqref:`eq_markov_property` 堪称是整个强化学习大厦的基石。然而，遗憾的是，在真实世界中，我们几乎永远无法直接获取系统内部那台精密仪器的完整状态 $S_t$。智能体所能捕获的，仅仅是传感器通过某层滤镜投射而来的**观测（Observation）** $O_t$。
 
@@ -59,17 +51,14 @@ $$ \mathbb{P}(S_{t+1} \mid S_t, A_t, S_{t-1}, A_{t-1}, \dots, S_0) = \mathbb{P}(
 我们将这种只能获得局部、有损投影信息的框架称为**部分可观测马尔可夫决策过程（Partially Observable Markov Decision Process, POMDP）**。在 POMDP 中，虽然底层状态转移满足马尔可夫性质，但我们所能记录的观测序列 $O_t$ 却是从真实的信念分布中采样的结果，受观测概率模型支配：
 
 $$ O_t \sim \mathbb{P}(O \mid S_t) $$
-:eqlabel:`eq_observation_model`
 
 关键在于：由于 $O_t$ 只是状态的有损投影，它**自身绝不具备马尔可夫性质**。如果你仅仅截取一帧静态的赛车游戏画面，你根本无法仅凭这单一图像判断出赛车是在加速、刹车还是匀速前进。为了做出最优决策，智能体必须在自己的“大脑”内部，利用能够获取的所有碎片化线索，重新拼接出一个近似的“内部状态”。
 
 ## 贝叶斯滤波：从历史序列提取状态表示
-:label:`sec_bayes_filtering`
 
 既然孤立的单一观测 $O_t$ 无法提供充分的信息，最直观的破局之道是将有史以来的所有观测和动作全部累积起来，形成一条严密的**历史轨迹（History）** $H_t$：
 
 $$ H_t = (O_1, A_1, O_2, A_2, \dots, A_{t-1}, O_t) $$
-:eqlabel:`eq_history`
 
 显然，$H_t$ 囊括了自时间源头起的所有信息，因此它天然具备马尔可夫性质。然而，随着时间步 $t$ 趋向于无限，历史轨迹的长度将不断增长，这导致状态空间呈指数级维度灾难。
 
@@ -79,28 +68,23 @@ $$ H_t = (O_1, A_1, O_2, A_2, \dots, A_{t-1}, O_t) $$
 
 1. **预测步（Prediction Step）：** 在接收到新的动作 $A_{t-1}$ 后，根据系统的状态转移模型 $\mathbb{P}(S_t \mid S_{t-1}, A_{t-1})$ 和上一步的信念状态 $b_{t-1}(S_{t-1})$，结合全概率公式预测当前的状态分布：
    $$ \mathbb{P}(S_t \mid H_{t-1}, A_{t-1}) = \sum_{S_{t-1}} \mathbb{P}(S_t \mid S_{t-1}, A_{t-1}) b_{t-1}(S_{t-1}) $$
-   :eqlabel:`eq_bayes_predict`
 
 2. **更新步（Update Step）：** 在接收到最新的观测 $O_t$ 后，利用观测模型 $\mathbb{P}(O_t \mid S_t)$ 更新并归一化状态信念：
    $$ b_t(S_t) = \mathbb{P}(S_t \mid H_t) = \frac{\mathbb{P}(O_t \mid S_t) \mathbb{P}(S_t \mid H_{t-1}, A_{t-1})}{\mathbb{P}(O_t \mid H_{t-1}, A_{t-1})} \propto \mathbb{P}(O_t \mid S_t) \mathbb{P}(S_t \mid H_{t-1}, A_{t-1}) $$
-   :eqlabel:`eq_bayes_update`
 
 将 :eqref:`eq_bayes_predict` 代入 :eqref:`eq_bayes_update`，我们得到了一个令人振奋的递归方程：
 
 $$ b_t(S) \propto \mathbb{P}(O_t \mid S) \sum_{S_{t-1}} \mathbb{P}(S \mid S_{t-1}, A_{t-1}) b_{t-1}(S_{t-1}) $$
-:eqlabel:`eq_bayes_filter_final`
 
 仔细端详 :eqref:`eq_bayes_filter_final`，我们发现新的信念状态 $b_t$ 完全且仅仅由三项元素决定：上一时刻的信念状态 $b_{t-1}$、采取的动作 $A_{t-1}$ 以及最新到达的观测 $O_t$。
 
 在深度学习尤其是世界模型的设计中，直接计算这套高维积分往往是不可行的。因此，现代架构倾向于使用深度神经网络（例如递归神经网络 RNN，或门控循环单元 GRU）将这一概率推断过程抽象并参数化为一个非线性函数 $f_\theta$。智能体的隐藏状态张量 $\mathbf{h}_t$ 便等价于这一信念状态：
 
 $$ \mathbf{h}_t = f_\theta(\mathbf{h}_{t-1}, A_{t-1}, O_t) $$
-:eqlabel:`eq_rnn_update`
 
 等式 :eqref:`eq_rnn_update` 与等式 :eqref:`eq_bayes_filter_final` 在数学直觉上是一脉相承的。当前计算图中的状态向量 $\mathbf{h}_t$ 不仅吸纳了最新的环境观测，更关键的是它通过前驱节点 $\mathbf{h}_{t-1}$ 将无穷远古的历史信息进行了高效且定长的特征压缩。这正是后续章节中我们介绍循环状态空间模型（Recurrent State Space Model, RSSM）处理序列数据时的物理本源。
 
 ## 观测与状态的张量操作实战
-:label:`sec_implementation_obs_state`
 
 理论终须代码检验。现在，让我们从严谨的概率公式降落到具体的张量运算层面。
 
@@ -172,19 +156,3 @@ for t in range(5):
 - **观测（Observation）** 往往是局部、带噪且无法自证其完整性的信息碎片，它严重缺乏**马尔可夫性质**，单独依赖观测无法精确预测复杂动态系统的未来。
 - **状态（State）** 则是系统中所有历史信息的充分统计表示。它切断了对冗长历史轨迹的依赖，只要给定当前状态，系统的未来演进就被完全决定。
 - 面对真实世界的部分可观测限制（POMDP），无论是经典的贝叶斯滤波，还是深度学习中的 RNN 循环层与帧堆叠技巧，其本质数学动机皆高度一致：将庞大、无序的时序观测压缩为一个紧凑且符合马尔可夫演化规律的潜在状态向量。这是我们踏入世界模型（World Models）殿堂必须跨越的第一道理论门槛。
-
-## 练习
-
-1. 请回顾 :eqref:`eq_state_vector` 和 :eqref:`eq_state_transition` 所定义的直线运动。如果该汽车不再做匀速直线运动，而是做**匀加速直线运动**（加速度 $a$ 为一个未知的恒定常数），而我们的传感器依然只能观测到位置 $x_t$。
-   - 为了使系统满足马尔可夫性质，你需要如何重新定义状态向量 $\mathbf{s}_t$？它的维度是多少？
-   - 请写出针对你所定义的新状态向量，从 $\mathbf{s}_t$ 转移到 $\mathbf{s}_{t+1}$ 的准确的状态转移矩阵 $\mathbf{A}$（假设每一步的时间间隔仍为 $\Delta t$）。
-   > *提示：结合高中物理知识，在匀加速运动中，$x_{t+1} = x_t + v_t \Delta t + \frac{1}{2} a (\Delta t)^2$。请思考状态向量中是否需要容纳更多元素来涵盖所有的衍生物理量。*
-
-2. 在本节末尾的 `ObservationBuffer` 实现中，假如我们在 $t=1$ 时刻提取状态，此时缓冲区的最前面有 3 个位置（即历史时刻 $t=0, -1, -2$）尚未被真实的观测画面填充。默认情况下它们是全零矩阵。
-   - 在训练基于图像的强化学习智能体时，这种突兀的全零“空洞”特征会对卷积神经网络产生什么样的影响？
-   - 能否构思一种无需全零初始化的替代工程策略，来处理初始交互阶段（时间步 $<K$）的状态构造问题？
-   > *提示：可以考虑通过对起始帧的重复复制，或者使用自适应序列长度模型进行处理，思考哪种做法更为平滑。*
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

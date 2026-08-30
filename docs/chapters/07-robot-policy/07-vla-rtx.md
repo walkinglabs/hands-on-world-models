@@ -1,5 +1,4 @@
 # 视觉-语言-动作模型与RT-X
-:label:sec_vla_rtx
 
 在人类探索通用人工智能（Artificial General Intelligence, AGI）的历程中，如果说大型语言模型（Large Language Models, LLMs）赋予了机器“认知”与“推理”的大脑，视觉-语言模型（Vision-Language Models, VLMs）为机器装配了“观察”世界的双眼，那么视觉-语言-动作模型（Vision-Language-Action Models, VLA）则是迈向具身智能（Embodied AI）的关键一步——它赋予了机器在物理世界中“行动”的躯干与四肢。
 
@@ -28,12 +27,10 @@ RT-1 首先证明了将图像、语言和动作统一到同一个 Transformer �
 为了将其离散化为 $N$ 个独立的区间（Bins），我们首先对 $a$ 进行归一化，使其映射到 $[0, 1]$ 之间：
 
 $$ \tilde{a} = \frac{a - a_{\min}}{a_{\max} - a_{\min}} $$
-:eqlabel:eq_action_normalize_scalar
 
 接着，我们将归一化后的值乘以 $(N-1)$，并向下取整，得到该动作所属的离散类别标签 $k$（$k \in \{0, 1, \dots, N-1\}$）：
 
 $$ k = \lfloor \tilde{a} \times (N - 1) \rceil $$
-:eqlabel:eq_action_discretize_scalar
 
 在这里，符号 $\lfloor \cdot \rceil$ 表示就近取整运算。通过这种方式，原本连续的物理量 $a$ 就变成了一个可以用独热编码（One-hot Encoding）表示的分类变量。
 
@@ -44,12 +41,10 @@ $$ k = \lfloor \tilde{a} \times (N - 1) \rceil $$
 我们可以利用哈达玛积（Hadamard Product，即逐元素乘法）和基本的向量运算，将 :eqref:eq_action_discretize_scalar 严谨地推广到高维向量空间。设 $\mathbf{a}_{\min}$ 和 $\mathbf{a}_{\max}$ 分别为各维度的边界向量，则归一化动作向量 $\tilde{\mathbf{a}}_t$ 可以表示为：
 
 $$ \tilde{\mathbf{a}}_t = (\mathbf{a}_t - \mathbf{a}_{\min}) \oslash (\mathbf{a}_{\max} - \mathbf{a}_{\min}) $$
-:eqlabel:eq_action_normalize_vector
 
 其中 $\oslash$ 表示逐元素除法。进而，动作的离散标签向量 $\mathbf{k}_t \in \mathbb{Z}^D$ 为：
 
 $$ \mathbf{k}_t = \lfloor \tilde{\mathbf{a}}_t \odot (N - 1) \rceil $$
-:eqlabel:eq_action_discretize_vector
 
 最终，这 $D$ 个离散值将被映射到一个预先定义的动作词表中，就像一句话中的 $D$ 个单词一样，送入 Transformer 进行序列建模。
 
@@ -62,12 +57,10 @@ $$ \mathbf{k}_t = \lfloor \tilde{\mathbf{a}}_t \odot (N - 1) \rceil $$
 根据概率论中的链式法则（Chain Rule），联合概率分布可以分解为一系列条件概率的乘积：
 
 $$ P(\mathbf{k}_t \mid \mathcal{I}_t, L; \boldsymbol{\theta}) = \prod_{d=1}^{D} P(k_{t,d} \mid k_{t,<d}, \mathcal{I}_t, L; \boldsymbol{\theta}) $$
-:eqlabel:eq_autoregressive_action
 
 其中 $\boldsymbol{\theta}$ 为 VLA 模型的参数。在训练阶段，我们使用极大似然估计（Maximum Likelihood Estimation），即最小化负对数似然（Negative Log-Likelihood）损失函数：
 
 $$ \mathcal{L}(\boldsymbol{\theta}) = - \sum_{t=1}^{T} \sum_{d=1}^{D} \log P(k_{t,d} \mid k_{t,<d}, \mathcal{I}_t, L; \boldsymbol{\theta}) $$
-:eqlabel:eq_vla_loss
 
 通过公式 :eqref:eq_vla_loss，我们将复杂的机械臂闭环控制任务，严丝合缝地转换为了标准的自然语言处理中的“下一个词元预测”（Next-Token Prediction）任务。
 
@@ -82,12 +75,10 @@ $$ \mathcal{L}(\boldsymbol{\theta}) = - \sum_{t=1}^{T} \sum_{d=1}^{D} \log P(k_{
 具体而言，给定视觉网络某一层输出的特征图 $\mathbf{F} \in \mathbb{R}^{C \times H \times W}$（其中 $C$ 为通道数），以及语言指令的嵌入向量 $\mathbf{e}_L \in \mathbb{R}^{d_L}$。FiLM 层首先通过两层全连接网络，将 $\mathbf{e}_L$ 映射为两个 $C$ 维的仿射变换向量 $\boldsymbol{\gamma}$ 和 $\boldsymbol{\beta}$：
 
 $$ \boldsymbol{\gamma} = \mathbf{W}_\gamma \mathbf{e}_L + \mathbf{b}_\gamma, \quad \boldsymbol{\beta} = \mathbf{W}_\beta \mathbf{e}_L + \mathbf{b}_\beta $$
-:eqlabel:eq_film_params
 
 然后，在每个通道 $c \in \{1, \dots, C\}$ 上，对特征图进行空间一致的仿射调制：
 
 $$ \mathbf{F}'_{c, h, w} = \gamma_c \cdot \mathbf{F}_{c, h, w} + \beta_c $$
-:eqlabel:eq_film_modulation
 
 经过 FiLM 调制后，视觉特征图会被展平为一维的词元序列（Token Sequence），并与动作词元序列拼接，送入仅包含解码器的 Transformer（Decoder-only Transformer）中。
 
@@ -244,16 +235,3 @@ class TinyVLAModel(nn.Module):
 * 动作序列的交叉熵损失，相较于均方误差，能够更好地建模具有多模态特性的动作分布。
 * FiLM 机制提供了一种轻量级且有效的跨模态特征调制方法，使得语言指令能够在视觉特征提取的早期介入。
 * 跨具身（Cross-Embodiment）学习通过统一坐标系下的逆运动学变换，打破了硬件壁垒，使得在千万级不同机器人轨迹上的联合训练成为可能。
-
-## 练习
-
-1. 在标量动作离散化公式 :eqref:eq_action_normalize_scalar 中，如果系统的物理传感器发生故障，导致输入的观测动作 $a$ 略微超出了预定义的 $[a_{\min}, a_{\max}]$ 范围，在代码实现中应如何处理，以防止程序崩溃或产生无效的分类标签？
-   - *提示*：回想我们在代码实现中使用了 `torch.clamp` 操作，思考它在数学定义上的等价表达。
-2. 假设我们使用了包含 256 个区间的词表对动作进行离散化。如果我们需要模型进行极高精度的插孔任务，离散化可能会带来什么问题？你能想出一种在不显著增加词表大小的前提下，提高动作精度的数学方案吗？
-   - *提示*：思考如何将一个大的数值分解为“高位（粗调）”和“低位（微调）”的组合，类似于浮点数的尾数和指数。
-3. 推导公式 :eqref:eq_film_modulation 的反向传播梯度。假设后续网络计算得到了关于 $\mathbf{F}'_{c, h, w}$ 的梯度 $\frac{\partial \mathcal{L}}{\partial \mathbf{F}'_{c, h, w}}$，写出关于 $\boldsymbol{\gamma}_c$ 和原始特征 $\mathbf{F}_{c, h, w}$ 的偏导数表达式。
-   - *提示*：应用基础的微积分乘积法则和链式法则。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

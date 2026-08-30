@@ -1,5 +1,4 @@
 # 基于世界模型想象的强化学习
-:label:sec_imagination_rl
 
 在深度强化学习的发展历程中，样本效率（Sample Efficiency）始终是一个难以逾越的瓶颈。传统的无模型（Model-Free）强化学习算法，例如深度Q网络（DQN）或近端策略优化（PPO），通常需要与环境进行数百万次甚至上亿次的交互，才能学习到有效的策略。在电子游戏中这种试错成本尚可接受，但在现实世界的机器人控制、自动驾驶等领域，高昂的试错代价使得传统无模型方法举步维艰。
 
@@ -20,19 +19,16 @@
 在一个确定性的动力学系统中，如果已知当前时刻 $t$ 的状态向量 $s_t$ 以及智能体执行的动作向量 $a_t$，系统的下一时刻状态 $s_{t+1}$ 可以由一个确定性的非线性函数精确映射得出：
 
 $$s_{t+1} = f(s_t, a_t)$$
-:eqlabel:eq_deterministic_dynamics
 
 然而，真实世界往往充满了不可观测的系统噪声和随机扰动。因此，必须将确定性的映射矩阵升级为概率分布映射形式。给定当前状态 $s_t$ 和动作 $a_t$，下一状态 $s_{t+1}$ 服从一个状态转移概率分布：
 
 $$s_{t+1} \sim p(s_{t+1} \mid s_t, a_t)$$
-:eqlabel:eq_stochastic_dynamics
 
 在传统基于模型的方法中，如果我们能够参数化并学习到这个概率分布 $p$，我们就可以利用它来展开多步预测。但是，当观测空间是高维张量（例如 $64 \times 64 \times 3$ 的RGB图像）时，直接在高维连续流形上拟合条件概率极具挑战，像素级别的微小预测误差会在多步自回归计算中呈指数级发散。
 
 为了应对维数灾难，世界模型引入了隐空间映射（Latent Space Mapping）机制。我们将高维的观测数据 $o_t$ 投影到一个低维紧致的隐状态向量 $z_t \in \mathbb{R}^d$ 中。动力学的时序演化不再在高维像素张量空间中进行，而是完全转移到这个低维黎曼流形中：
 
 $$z_{t+1} \sim p(z_{t+1} \mid z_t, a_t)$$
-:eqlabel:eq_latent_dynamics
 
 只要隐状态序列分布充分近似了推断当前奖励 $r_t$ 和重构原始观测 $o_t$ 的充分统计量，智能体就能够在极低计算开销下执行大规模的并行轨迹采样。
 
@@ -45,12 +41,10 @@ RSSM将潜状态隐式解构为正交的两部分：一个确定性的非马尔�
 给定初始条件和一系列动作序列 $a_{1:T}$，观测序列 $o_{1:T}$ 与奖励序列 $r_{1:T}$ 及对应隐序列 $z_{1:T}$ 的联合似然模型为：
 
 $$p(o_{1:T}, r_{1:T}, z_{1:T} \mid a_{1:T}) = \prod_{t=1}^T p(o_t \mid h_t, z_t) p(r_t \mid h_t, z_t) p(z_t \mid h_t)$$
-:eqlabel:eq_rssm_generative
 
 其中，确定性隐藏状态轨迹 $h_t$ 根据如下非线性递归方程更新：
 
 $$h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})$$
-:eqlabel:eq_rssm_deterministic
 
 在公式 :eqref:eq_rssm_generative 的连乘项中，定义了系统核心的基础测度：
 1. **先验转移模型（Prior Dynamics）**：$p_\theta(z_t \mid h_t)$，负责在缺少当前观测信息的情况下，沿着时间轴预测随机变量分布的演化。
@@ -60,7 +54,6 @@ $$h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})$$
 在优化阶段，自然的目标是最大化真实观测与奖励的边缘对数似然 $\ln p(o_{1:T}, r_{1:T} \mid a_{1:T})$。由于多重高维随机变量的直接积分 $\int z_{1:T} dz$ 在计算上是不可解的，我们必须引入变分推断（Variational Inference）框架。构建一个能够访问全局信息的近似后验推断分布，我们要求其不仅依赖于循环历史信息，同时显式以当前真实观测 $o_t$ 为条件：
 
 $$q_\phi(z_t \mid h_t, o_t)$$
-:eqlabel:eq_rssm_posterior
 
 > [!NOTE]
 > 对于变分下界推导这一反直觉的高阶过程，我们可以借助一个精炼的类比：优化真实边缘似然如同试图精确重构一个漫长演化的远古生态系统，几乎不可能；而变分推断中的后验模型 $q$ 就像一位找到了部分当代化石残片（真实观测 $o$）的考古学家。通过最大化证据下界（ELBO），考古学家迫使自己不看化石做出的预测（先验 $p$）与看着化石做出的分析（后验 $q$）逐步对齐，从而在不需要穷举所有可能性的情况下，逼近那段未知的演化动力学真相。
@@ -74,7 +67,6 @@ $$
 &= \sum_{t=1}^T \mathbb{E}_{q_\phi} \Big[ \underbrace{\ln p_\theta(o_t \mid h_t, z_t)}_{\text{重构对数似然}} + \underbrace{\ln p_\theta(r_t \mid h_t, z_t)}_{\text{反馈对数似然}} - \underbrace{\text{KL}\big( q_\phi(z_t \mid h_t, o_t) \,\|\, p_\theta(z_t \mid h_t) \big)}_{\text{动力学分布散度}} \Big]
 \end{aligned}
 $$
-:eqlabel:eq_rssm_elbo
 
 公式 :eqref:eq_rssm_elbo 从信息论和统计力学双重维度锁定了RSSM的优化流形：
 1. **重构对数似然**强制隐空间 $z_t$ 必须保留足以映射回原始输入度规的信息容量。
@@ -88,7 +80,6 @@ $$
 在此阶段，智能体与物理环境绝对隔离。初始化过程从经验回放池中随机无偏采样一个后验隐状态 $z_\tau$。随后，策略网络（Actor）基于此纯代数状态空间输出动作，先验转移模型则代替物理规律，自回归地计算未来的时空演化轨迹：
 
 $$a_t \sim \pi_\psi(a_t \mid \hat{s}_t), \quad \hat{z}_{t+1} \sim p_\theta(\hat{z}_{t+1} \mid \hat{h}_{t+1}), \quad \text{其中 } \hat{h}_{t+1} = f_\theta(\hat{h}_t, \hat{z}_t, a_t)$$
-:eqlabel:eq_dream_rollout
 
 约定俗成地，采用上标 $\hat{\cdot}$ 标注该张量系在纯计算图内演化所得。为符号紧凑起见，令 $\hat{s}_t = (\hat{h}_t, \hat{z}_t)$。
 
@@ -97,12 +88,10 @@ $$a_t \sim \pi_\psi(a_t \mid \hat{s}_t), \quad \hat{z}_{t+1} \sim p_\theta(\hat{
 假定隐状态 $z$ 被配置为对角协方差多元高斯分布，借由位置尺度族分布特有的重参数化技巧（Reparameterization Trick），可将其拆解为确定性仿射变换与标准正态白噪声 $\epsilon$ 的阿达马乘积：$\hat{z}_{t+1} = \mu_\theta(\hat{h}_{t+1}) + \sigma_\theta(\hat{h}_{t+1}) \odot \epsilon$。这赋予了状态对动作的直接偏导通路，任何标量目标泛函 $V(\hat{s}_t)$ 关于策略参数 $\psi$ 的解析梯度皆可通过反向传播时间链（BPTT）严格求出：
 
 $$\frac{\partial V(\hat{s}_t)}{\partial \psi} = \sum_{\tau=t}^{t+H} \gamma^{\tau-t} \frac{\partial \mathbb{E}[r_\tau]}{\partial \hat{s}_\tau} \frac{\partial \hat{s}_\tau}{\partial \psi}$$
-:eqlabel:eq_analytic_gradient
 
 低方差解析梯度的大量应用，奠定了Imagination RL惊人收敛速度的基础。为消除有限视野截断带来的偏差，体系内会同步维持一个参数为 $\xi$ 的价值基线网络（Critic）$v_\xi(\hat{s}_t)$，预测截断层级以外的期望回报。多步展开的目标价值算子可通过 $\lambda$-return 公式进行带指数衰减权重的修正累积：
 
 $$V_t^\lambda = \hat{r}_t + \gamma \begin{cases} (1-\lambda) v_\xi(\hat{s}_{t+1}) + \lambda V_{t+1}^\lambda, & t < H \\ v_\xi(\hat{s}_{t+1}), & t = H \end{cases}$$
-:eqlabel:eq_lambda_return
 
 最终的交替梯度下降法则退化为：Actor $\pi_\psi$ 朝着扩大 $V_t^\lambda$ 解析梯度的方向迭代，Critic $v_\xi$ 则极小化其输出预测与自举目标 $V_t^\lambda$ 间的均方勒贝格范数。
 
@@ -216,15 +205,3 @@ class ActorCriticInDream(nn.Module):
 ## 小结
 
 在本节中，我们通过分析高阶马尔可夫演化算子的非线性与随机性缺陷，推演出了必须构建紧凑隐状态流形的数学必然性。基于随机变分后验方法和对数似然凸性的处理，我们严格导出了约束RSSM动力学的最优变分界（ELBO）。并结合微积分时间序列展开和重参数化技巧，详细证明了在张量计算网络进行平滑梯度流动的高效性。在下述章节内，我们将探索如何在此连续隐空间架构中引入基于分类分布和强化树的离散算子模块。
-
-## 练习
-
-1. 细致观察变分极值公式 :eqref:eq_rssm_elbo 中如果移除KL散度约束项，动力学张量图的训练会面临怎样的退化？这种退化将如何导致智能体在梦境中推断失控？
-   * 提示：对比分析后验推断模型在训练时的信息依赖，与开环先验模型在预测时的算子盲区。
-2. 试论证在重参数化技巧引导下获取的解析梯度公式 :eqref:eq_analytic_gradient，对比经典似然比策略梯度公式（REINFORCE）在方差界定层面为何具有压倒性优势。
-   * 提示：考察积分变量如何从随机微分转化为确定性求导算子。
-3. 若需将 `RSSMCell` 的隐状态族域由连续的对角高斯转变为离散型的Gumbel-Softmax张量松弛结构，请尝试在代码层面草拟改写思路，并分析反向传导过程可能诱发的梯度病态问题。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

@@ -1,5 +1,4 @@
 # 交互式视频生成模块的从零开始实现
-:label:`sec_interactive_video_scratch`
 
 在前面的章节中，我们已经探讨了静态图像的潜在空间表征以及无条件视频生成的基础架构。然而，真正的世界模型（World Models）必须具备对环境做出响应的能力。在本节中，我们将深入探讨并从零开始实现一个**交互式视频生成模块**（Interactive Video Generation Module）。该模块的核心任务是：给定过去的视频帧序列和一系列控制动作（如按键、摇杆输入或连续控制指令），模型需要预测并生成符合物理规律及动作逻辑的未来视频帧。
 
@@ -16,12 +15,10 @@
 然而，在交互式视频生成中，系统是极其复杂的，并且受到外部输入的影响。我们不再具有完美的物理方程，而是只能通过观测数据来推断状态的转移规律。定义 $x_t$ 为第 $t$ 个时间步的视频帧观测，$a_t$ 为在该时间步施加的动作指令。我们的目标是建立一个概率模型，估计在给定历史观测序列 $x_{1:t}$ 和历史动作序列 $a_{1:t}$ 的条件下，下一个时间步观测 $x_{t+1}$ 的条件概率分布：
 
 $$P(x_{t+1} \mid x_1, x_2, \ldots, x_t, a_1, a_2, \ldots, a_t)$$
-:eqlabel:`eq_interactive_prob`
 
 根据概率论中的链式法则，整个长度为 $T$ 的交互式视频序列的联合概率分布可以严格展开为条件概率的连乘积：
 
 $$P(x_1, \ldots, x_T \mid a_1, \ldots, a_{T-1}) = \prod_{t=1}^{T} P(x_t \mid x_{<t}, a_{<t})$$
-:eqlabel:`eq_interactive_chain_rule`
 
 在此公式中，每一次帧的生成都严格依赖于**严格发生在此之前**的所有帧和动作。这种时间上的不对称性，要求我们在模型架构中必须引入因果掩码（Causal Masking），以阻断任何从未来向过去的信息流动。
 
@@ -34,7 +31,6 @@ $$P(x_1, \ldots, x_T \mid a_1, \ldots, a_{T-1}) = \prod_{t=1}^{T} P(x_t \mid x_{
 更关键的是动作 $a_t$ 的注入。动作本质上是连接时间步 $t$ 和时间步 $t+1$ 的桥梁。因此，在序列排布上，我们将动作标记（Action Token）显式地插入在相邻两帧的视觉标记之间。设展平后的序列为 $\mathcal{U}$，其结构定义为：
 
 $$\mathcal{U} = [Z_1, a_1, Z_2, a_2, \ldots, Z_{T-1}, a_{T-1}, Z_T]$$
-:eqlabel:`eq_interleaved_seq`
 
 通过这种交错排列（Interleaving），我们可以强制自回归模型在预测帧 $Z_{t+1}$ 的首个空间标记时，必须不仅关注历史帧，还要读取到紧邻的动作指令 $a_t$。
 
@@ -45,7 +41,6 @@ $$\mathcal{U} = [Z_1, a_1, Z_2, a_2, \ldots, Z_{T-1}, a_{T-1}, Z_T]$$
 设输入序列的嵌入矩阵为 $\mathbf{H} \in \mathbb{R}^{N \times D}$，其中 $N$ 是序列总长度，$D$ 是隐含层维度。我们通过线性映射得到查询矩阵 $\mathbf{Q}$、键矩阵 $\mathbf{K}$ 和值矩阵 $\mathbf{V}$：
 
 $$\mathbf{Q} = \mathbf{H} \mathbf{W}_Q, \quad \mathbf{K} = \mathbf{H} \mathbf{W}_K, \quad \mathbf{V} = \mathbf{H} \mathbf{W}_V$$
-:eqlabel:`eq_qkv`
 
 标准自注意力机制计算 $\mathbf{Q}$ 与 $\mathbf{K}$ 的点积来衡量相似度。然而，对于预测任务，我们必须施加严格的因果性：第 $i$ 个位置只能观察到位置 $j \le i$ 的信息。为此，我们引入一个下三角掩码矩阵 $\mathbf{M} \in \mathbb{R}^{N \times N}$，其定义如下：
 
@@ -55,12 +50,10 @@ $$
 -\infty & \text{if } j > i 
 \end{cases}
 $$
-:eqlabel:`eq_causal_mask`
 
 带掩码的缩放点积注意力（Masked Scaled Dot-Product Attention）的严格数学形式为：
 
 $$\mathrm{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}, \mathbf{M}) = \mathrm{softmax}\left(\frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{d_k}} + \mathbf{M}\right) \mathbf{V}$$
-:eqlabel:`eq_masked_attention`
 
 当 $j > i$ 时，矩阵相加使得相应的对数几率趋近于 $-\infty$，在经过 $\mathrm{softmax}$ 归一化后，其注意力权重将严格等于零，从而在物理学意义上隔绝了未来的“信息泄露”。
 
@@ -382,7 +375,6 @@ class InteractiveVideoGenerator(tf.keras.Model):
 在给定逻辑回归输出（Logits）的情况下，对于预测序列中的第 $k$ 个视觉标记（在展平序列中的真实值设为 $y_k$），我们采用标准的交叉熵损失函数（Cross-Entropy Loss）：
 
 $$\mathcal{L} = -\frac{1}{N_{vis}} \sum_{k=1}^{N_{vis}} \log \frac{\exp(\mathbf{logits}_{k, y_k})}{\sum_{v=1}^{V} \exp(\mathbf{logits}_{k, v})}$$
-:eqlabel:`eq_ce_loss`
 
 其中 $V$ 是词表大小（`vocab_size`），$N_{vis}$ 是序列中所有视觉标记的总数。在实现损失函数时，我们需要小心地处理索引对齐问题。序列中位置 $i$ 的隐含层输出用于预测位置 $i+1$ 的标记。同时，我们要利用掩码（Mask）将预测动作标记处的损失过滤掉，仅计算视觉标记上的梯度。
 
@@ -444,14 +436,3 @@ def calculate_loss(logits, visual_tokens, tokens_per_frame):
 - 交互式视频生成可以被严谨地映射为一个给定历史帧和外部动作序列的条件联合概率预测问题。
 - 在 Transformer 架构下，通过将离散的视觉标记和连续或离散的动作标记交错排列，模型能够自发地学习时间动态和动作干预结果。
 - 带掩码的因果自注意力机制（Causal Self-Attention）是确保预测严谨性、阻止未来信息渗透进入当前推断的绝对数学防线。
-
-## 练习
-
-1. 在公式 :eqref:`eq_interleaved_seq` 中，我们将动作标记 $a_t$ 置于帧 $Z_t$ 之后、$Z_{t+1}$ 之前。如果我们将动作前置，即序列重排为 $[a_1, Z_1, a_2, Z_2, \ldots]$，你认为会对因果注意力掩码（Causal Mask）矩阵 $\mathbf{M}$ 的设计产生怎样的影响？
-    *提示：思考模型在生成 $Z_1$ 的首个标记时，需要观察到哪些信息。*
-2. 试推导如果我们不使用基于词表的分类来预测标记，而是使用均方误差（MSE）回归直接预测连续的图像补丁（Patch），需要对 `InteractiveVideoGenerator` 类的输出层进行何种修改？
-3. 在代码实现中，我们的空间位置编码和时间位置编码是直接相加的。设计一种替代方案，能够在嵌入维度上更为明确地解耦时空特征。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

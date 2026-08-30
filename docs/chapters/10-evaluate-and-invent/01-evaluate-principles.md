@@ -1,5 +1,4 @@
 # 世界模型的评估原则与核心指标
-:label:sec_evaluation_principles
 
 在深度学习的发展历程中，评估（Evaluation）始终是引导模型演进的灯塔。对于监督学习而言，分类准确率或均方误差是直观且明确的评估指标；对于生成模型，我们有基于人类视觉感知的感知度量（如FID分数）。然而，当我们涉足“世界模型”（World Models）这一领域时，如何评估一个模型是否真正“理解”了世界的运作规律，便成了一个极具挑战性的开放问题。
 
@@ -28,14 +27,12 @@
 假设我们的世界模型（在这里是一个简单的物理公式）给出了预测值 $\hat{x}_{t+1}$。此时，评估模型预测好坏的最自然方式，就是计算预测位置与真实观测位置之间的距离。这在数学上体现为绝对误差或平方误差。为了便于后续求导优化，我们通常选择平方误差：
 
 $$ e_{t+1} = (x_{t+1} - \hat{x}_{t+1})^2 $$
-:eqlabel:eq_scalar_squared_error
 
 公式 :eqref:eq_scalar_squared_error 描述的是单一物理量的预测误差。在真实的世界模型中，状态通常不是一个单一的标量，而是一个包含了众多属性（如位置、速度、姿态、环境特征等）的高维向量 $\mathbf{z}_{t+1} \in \mathbb{R}^d$。
 
 此时，我们需要将一维的误差公式严谨地推广到高维向量空间。对于两个向量 $\mathbf{z}_{t+1}$ 和 $\mathbf{\hat{z}}_{t+1}$，它们之间的距离可以通过欧几里得距离（L2范数）的平方来衡量，这便是多维隐空间中的均方误差（Mean Squared Error, MSE）：
 
 $$ \mathcal{L}_{\text{MSE}} = \frac{1}{d} \sum_{i=1}^{d} (z_{t+1}^{(i)} - \hat{z}_{t+1}^{(i)})^2 = \frac{1}{d} \|\mathbf{z}_{t+1} - \mathbf{\hat{z}}_{t+1}\|_2^2 $$
-:eqlabel:eq_vector_mse
 
 在这里，$z_{t+1}^{(i)}$ 表示真实状态向量的第 $i$ 个维度分量，$\|\cdot\|_2$ 表示向量的 L2 范数。这个确定性的评估指标极其直观，但在现实世界中却面临着严峻的挑战。
 
@@ -48,19 +45,16 @@ $$ \mathcal{L}_{\text{MSE}} = \frac{1}{d} \sum_{i=1}^{d} (z_{t+1}^{(i)} - \hat{z
 在一维场景下，假设模型预测小球下一时刻的位置服从一个均值为 $\hat{\mu}_{t+1}$、方差为 $\hat{\sigma}_{t+1}^2$ 的高斯分布。根据高斯分布的概率密度函数，真实观测值 $x_{t+1}$ 出现在该分布中的概率密度（似然）为：
 
 $$ p(x_{t+1} | \hat{\mu}_{t+1}, \hat{\sigma}_{t+1}^2) = \frac{1}{\sqrt{2\pi\hat{\sigma}_{t+1}^2}} \exp\left(-\frac{(x_{t+1} - \hat{\mu}_{t+1})^2}{2\hat{\sigma}_{t+1}^2}\right) $$
-:eqlabel:eq_scalar_gaussian_pdf
 
 一个好的世界模型，应当使其预测的概率分布在真实观测值处具有最大的概率密度。这就是**最大似然估计（Maximum Likelihood Estimation, MLE）**的核心思想。为了将连乘转化为求和并避免数值下溢，我们通常对似然函数取对数，并加上负号，得到负对数似然（Negative Log-Likelihood, NLL）：
 
 $$ \text{NLL} = - \ln p(x_{t+1}) = \frac{1}{2} \ln(2\pi\hat{\sigma}_{t+1}^2) + \frac{(x_{t+1} - \hat{\mu}_{t+1})^2}{2\hat{\sigma}_{t+1}^2} $$
-:eqlabel:eq_scalar_nll
 
 仔细观察公式 :eqref:eq_scalar_nll 的第二项。如果模型的方差 $\hat{\sigma}_{t+1}^2$ 被固定为一个常数，那么最小化 NLL 就严格等价于最小化均方误差。这证明了：**均方误差本质上是假设预测分布为等方差高斯分布时的特殊最大似然估计**。通过引入可学习的方差 $\hat{\sigma}_{t+1}^2$，模型学会了表达“不确定性”——当环境随机性大时，模型会输出更大的方差，从而使第一项增大，但避免了因点预测错误导致的第二项剧烈惩罚。
 
 将其严谨地推广到高维向量空间。假设模型预测的高维状态服从多变量高斯分布 $\mathcal{N}(\boldsymbol{\hat{\mu}}_{t+1}, \boldsymbol{\hat{\Sigma}}_{t+1})$，其中 $\boldsymbol{\hat{\Sigma}}_{t+1}$ 为协方差矩阵。高维分布的负对数似然形式为：
 
 $$ \mathcal{L}_{\text{NLL}} = \frac{d}{2}\ln(2\pi) + \frac{1}{2}\ln|\boldsymbol{\hat{\Sigma}}_{t+1}| + \frac{1}{2}(\mathbf{z}_{t+1} - \boldsymbol{\hat{\mu}}_{t+1})^\top \boldsymbol{\hat{\Sigma}}_{t+1}^{-1} (\mathbf{z}_{t+1} - \boldsymbol{\hat{\mu}}_{t+1}) $$
-:eqlabel:eq_vector_nll
 
 在实际的世界模型实现中，为了降低计算复杂度，通常假设各个维度相互独立，即协方差矩阵为对角阵 $\boldsymbol{\hat{\Sigma}} = \text{diag}(\hat{\sigma}_1^2, \dots, \hat{\sigma}_d^2)$。此时，高维的似然评估退化为各个维度一维似然评估的累加。
 
@@ -75,7 +69,6 @@ $$ \mathcal{L}_{\text{NLL}} = \frac{d}{2}\ln(2\pi) + \frac{1}{2}\ln|\boldsymbol{
 评估这样的模型，我们采用了变分推断（Variational Inference）框架。我们要最大化观测数据 $\mathbf{x}_{1:T}$ 的边缘似然的下界，即证据下界（Evidence Lower Bound, ELBO）。对于单一时间步，ELBO 可以拆解为以下严格的数学形式：
 
 $$ \mathcal{L}_{\text{ELBO}} = \mathbb{E}_{q(\mathbf{z}_t | \mathbf{x}_t)}\big[\ln p(\mathbf{x}_t | \mathbf{z}_t)\big] - \beta D_{\text{KL}}\Big( q(\mathbf{z}_t | \mathbf{x}_t) \,\Big\|\, p(\mathbf{z}_t | \mathbf{z}_{t-1}, \mathbf{a}_{t-1}) \Big) $$
-:eqlabel:eq_elbo_world_model
 
 让我们温柔地拆解这个极其重要的高阶公式。它包含了两项截然不同的评估指标：
 
@@ -95,7 +88,6 @@ $$ \mathcal{L}_{\text{ELBO}} = \mathbb{E}_{q(\mathbf{z}_t | \mathbf{x}_t)}\big[\
 具体的评估指标退化为联合的损失函数，直接在模型的展开轨迹上评估：
 
 $$ \mathcal{L}_{\text{Utility}} = \sum_{k=0}^{K} \Big[ l^r(r_{t+k}, \hat{r}_t^k) + l^v(v_{t+k}, \hat{v}_t^k) + l^p(\pi_{t+k}, \hat{\mathbf{p}}_t^k) \Big] $$
-:eqlabel:eq_value_equivalence
 
 其中，$\hat{r}_t^k$, $\hat{v}_t^k$ 和 $\hat{\mathbf{p}}_t^k$ 是世界模型从状态 $\mathbf{z}_t$ 出发，在脑海中向前推演 $k$ 步后预测出的奖励、状态价值和策略向量。这里的 $l^r$ 和 $l^v$ 往往采用普通的均方误差（或变体），而 $l^p$ 则多采用交叉熵。这种评估原则彻底摒弃了对环境细节的无谓纠缠，将评估的利刃直指任务的核心。
 
@@ -211,15 +203,3 @@ print(f"KL散度动力学惩罚: {kl.numpy():.4f}")
 ## 小结
 
 在本节中，我们严格梳理了世界模型的评估原则。我们从确定性系统的均方误差起步，通过引入不可避免的环境随机性，自然地过渡到了概率性推断的负对数似然。针对隐空间中的动态推演，我们拆解了变分下界中的 KL 散度匹配机制，并讨论了任务导向的价值等效评估原则。这些指标共同构成了评估现代世界模型性能的完整基石。
-
-## 练习
-
-1. 假设由于传感器的故障，观测数据在一维空间中不再服从高斯分布，而是服从拉普拉斯分布（Laplace Distribution）。此时的最大似然估计所导出的退化误差公式是什么形式？这与均方误差有何本质不同？
-   - *提示*：写出拉普拉斯分布的概率密度函数公式，对其取负对数。回忆绝对值与 L1 范数的联系。
-2. 在公式 :eqref:eq_elbo_world_model 中，如果我们将 KL 散度前面的系数 $\beta$ 调得非常小，这会导致世界模型的训练发生什么变化？后验分布与先验分布之间会呈现怎样的状态？
-   - *提示*：如果惩罚项变小，先验预测网络（蒙眼的预测者）还会拼命去学习后验推断网络（拥有视觉的引导者）提取出的知识吗？
-3. 修改代码实现中 `prior_logvar` 的初始化值，将其设为一个很大的负数（例如 `-10.0`，意味着极小的方差）。观察并解释 NLL 损失的急剧变化。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/world-models-evaluation-principles/1234)
-:end_tab:

@@ -1,5 +1,4 @@
 # 可控视频生成模块的简洁实现
-:label:sec_controllable_video_concise
 
 在深入探讨了无条件视频生成的理论与工程细节之后，我们自然而然地面临一个更为核心的问题：如何让模型按照我们的意图生成特定的视频内容？对于构建“世界模型”（World Models）而言，这种基于意图的条件生成——特别是基于动作（Action）或文本指令（Text Prompt）的生成——是实现智能体与环境交互的基石。
 
@@ -12,7 +11,6 @@
 从纯粹的概率学视角来看，无条件视频生成旨在拟合真实视频数据的边缘概率分布 $p(\mathbf{x})$。而可控生成，本质上是将目标转化为拟合一个条件概率分布 $p(\mathbf{x} \mid \mathbf{c})$，其中 $\mathbf{c}$ 代表控制信号。在世界模型中，这个控制信号 $\mathbf{c}$ 通常是智能体在时间步 $t$ 执行的动作序列（Action Sequence）或高维条件图。
 
 ## 条件注入的数学推导：从标量到张量
-:label:sec_condition_injection_math
 
 为了严谨地理解控制信号是如何影响视频生成的，我们不能直接跳跃到复杂的注意力机制。相反，让我们退回到最基础的物理运动场景，从一个初中物理中的一维质点运动开始推导。
 
@@ -23,7 +21,6 @@
 根据基本的运动学规律，最简单的控制关系是线性的。下一个状态 $y$ 可以表示为当前状态的维持与控制信号的叠加。如果我们引入一组可学习的权重参数，这种关系可以被严谨地表述为：
 
 $$y = w_x x + w_c c + b$$
-:eqlabel:eq_scalar_control
 
 其中，$w_x, w_c \in \mathbb{R}$ 分别是状态特征和控制信号的权重，$b \in \mathbb{R}$ 是偏置项。公式 :eqref:eq_scalar_control 告诉我们，控制信号 $c$ 是通过**加法（Addition）**的形式直接注入到目标状态中的。在早期的神经网络中，这等价于将 $x$ 和 $c$ 进行拼接（Concatenation）后通过一个全连接层。
 
@@ -34,7 +31,6 @@ $$y = w_x x + w_c c + b$$
 要将 $k$ 维的控制信号注入到 $d$ 维的特征中，我们需要将标量公式 :eqref:eq_scalar_control 泛化到向量空间。这要求我们引入一个变换矩阵 $\mathbf{W}_c \in \mathbb{R}^{d \times k}$，将控制向量投影到与视觉特征相同的维度空间中：
 
 $$\mathbf{y} = \mathbf{W}_x \mathbf{x} + \mathbf{W}_c \mathbf{c} + \mathbf{b}$$
-:eqlabel:eq_vector_control
 
 公式 :eqref:eq_vector_control 就是经典的“特征拼接投影”（Feature Concatenation and Projection）的严格数学表达。由于矩阵乘法是线性变换，这种加性注入方式虽然简单，但存在严重的局限性：**控制信号 $\mathbf{c}$ 对输出 $\mathbf{y}$ 的影响是全局恒定的，它无法根据视觉特征 $\mathbf{x}$ 本身的内容动态地调整控制强度。**
 
@@ -45,65 +41,54 @@ $$\mathbf{y} = \mathbf{W}_x \mathbf{x} + \mathbf{W}_c \mathbf{c} + \mathbf{b}$$
 假设我们希望控制信号根据其与当前视觉特征的相似度来动态决定注入的强度。我们可以计算两者的内积 $\alpha = \mathbf{x}^\top \mathbf{W}_{match} \mathbf{c}$，其中 $\alpha \in \mathbb{R}$ 是一个标量权重，代表了匹配程度。然后，我们将控制信号加权后注入：
 
 $$\mathbf{y} = \mathbf{x} + \alpha (\mathbf{W}_v \mathbf{c})$$
-:eqlabel:eq_dynamic_match
 
 在公式 :eqref:eq_dynamic_match 中，如果视觉特征与控制信号高度匹配（内积大），控制信号就会被强烈地注入；反之则被忽略。这一由加法转向乘法（动态加权）的演进，正是现代交叉注意力机制（Cross-Attention）的核心数学基石。
 
 ## 交叉注意力机制的严谨解构
-:label:sec_cross_attention_rigorous
 
 视频是一系列图像帧的序列，这就意味着我们的视觉特征实际上是一个张量。令视觉特征序列为 $\mathbf{X} \in \mathbb{R}^{N \times d}$（$N$ 是空间或时间序列的长度，$d$ 是特征维度），控制信号序列为 $\mathbf{C} \in \mathbb{R}^{M \times k}$（例如 $M$ 个文本词向量或动作序列）。
 
 我们将基于公式 :eqref:eq_dynamic_match 的内积思想，严密推导标准的交叉注意力机制。首先，我们用三个不同的参数矩阵对输入进行线性变换，分别生成查询（Query）、键（Key）和值（Value）。这里，**查询来自于视觉特征，而键和值来自于控制信号**：
 
 $$\mathbf{Q} = \mathbf{X} \mathbf{W}_Q, \quad \mathbf{K} = \mathbf{C} \mathbf{W}_K, \quad \mathbf{V} = \mathbf{C} \mathbf{W}_V$$
-:eqlabel:eq_qkv_projection
 
 其中，$\mathbf{W}_Q \in \mathbb{R}^{d \times d_h}$, $\mathbf{W}_K \in \mathbb{R}^{k \times d_h}$, $\mathbf{W}_V \in \mathbb{R}^{k \times d_v}$。此时，$\mathbf{Q} \in \mathbb{R}^{N \times d_h}$ 和 $\mathbf{K} \in \mathbb{R}^{M \times d_h}$ 被投影到了相同的隐含维度 $d_h$。
 
 接下来，我们需要计算每一个视觉特征元素与每一个控制元素的匹配程度。通过矩阵乘法 $\mathbf{Q} \mathbf{K}^\top \in \mathbb{R}^{N \times M}$，我们一次性计算出了所有 $N \times M$ 个组合的内积相似度。为了防止内积值随维度 $d_h$ 增大而导致梯度消失，我们除以缩放因子 $\sqrt{d_h}$，并在每一行应用 Softmax 函数，得到归一化的注意力权重矩阵 $\mathbf{A}$：
 
 $$\mathbf{A} = \text{softmax}\left(\frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{d_h}}\right) \in \mathbb{R}^{N \times M}$$
-:eqlabel:eq_attention_matrix
 
 最终的输出是将注意力矩阵 $\mathbf{A}$ 应用于值矩阵 $\mathbf{V}$，完成对控制信号的动态提取：
 
 $$\text{CrossAttention}(\mathbf{X}, \mathbf{C}) = \mathbf{A} \mathbf{V} \in \mathbb{R}^{N \times d_v}$$
-:eqlabel:eq_cross_attention_final
 
 > [!NOTE]
 > **极其克制的唯一类比**
 > 如果我们必须用一个生活中的物理过程来比喻交叉注意力机制：想象你（视觉特征 $\mathbf{X}$）走进一个庞大的中药铺（控制信号集合 $\mathbf{C}$）。你手里拿着一张具体的药方（生成查询 $\mathbf{Q}$），而药铺里的每一个药屉外都贴着标签（生成键 $\mathbf{K}$）。你逐一比对药方上的名字和药屉上的标签（计算点积 $\mathbf{Q}\mathbf{K}^\top$ 并通过 Softmax 决定匹配度 $\mathbf{A}$）。匹配度越高的药屉，你从里面抓取的药材（提取值 $\mathbf{V}$）就越多。最终你带走的是所有药材按比例混合后的一包新药（输出 $\mathbf{A}\mathbf{V}$）。这种“基于查询的加权检索”过程，保证了生成模型能够极其精准地捕捉到与当前视觉区域最相关的控制指令，而不是盲目地接受所有外部输入。
 
 ## 无分类器引导（Classifier-Free Guidance）
-:label:sec_cfg_math
 
 仅仅拥有交叉注意力网络结构并不能保证模型紧密遵循控制信号。在模型训练中，由于强大的无条件先验 $p(\mathbf{x})$ 的存在，模型往往会忽略我们注入的控制条件 $c$（这一现象被称为条件坍塌）。为了解决这一问题，无分类器引导（Classifier-Free Guidance, CFG）`[Ho & Salimans, 2022]` 被提出，并成为当前所有顶级可控视频生成系统（如Sora, SVD）的标配。
 
 CFG的数学本质源自对条件概率的贝叶斯重写。根据贝叶斯定理，条件数据分布的对数似然梯度（即得分函数 Score Function）可以分解为：
 
 $$\nabla_{\mathbf{x}} \log p(\mathbf{x} | c) = \nabla_{\mathbf{x}} \log p(\mathbf{x}) + \nabla_{\mathbf{x}} \log p(c | \mathbf{x})$$
-:eqlabel:eq_score_bayes
 
 在这个公式中，右侧第二项 $\nabla_{\mathbf{x}} \log p(c | \mathbf{x})$ 可以被视为一种“引导力”，它促使生成的图像 $\mathbf{x}$ 更符合条件 $c$。CFG的核心洞察是：我们可以人为地放大这种引导力。通过引入一个控制强度的标量系数 $w > 0$，我们定义一个修正后的引导得分：
 
 $$\nabla_{\mathbf{x}} \log p_w(\mathbf{x} | c) = \nabla_{\mathbf{x}} \log p(\mathbf{x}) + (1 + w) \nabla_{\mathbf{x}} \log p(c | \mathbf{x})$$
-:eqlabel:eq_score_cfg_intermediate
 
 现在，我们将公式 :eqref:eq_score_bayes 中的隐式引导项 $\nabla_{\mathbf{x}} \log p(c | \mathbf{x}) = \nabla_{\mathbf{x}} \log p(\mathbf{x} | c) - \nabla_{\mathbf{x}} \log p(\mathbf{x})$ 代入到公式 :eqref:eq_score_cfg_intermediate 中，得到：
 
 $$\nabla_{\mathbf{x}} \log p_w(\mathbf{x} | c) = (1 + w) \nabla_{\mathbf{x}} \log p(\mathbf{x} | c) - w \nabla_{\mathbf{x}} \log p(\mathbf{x})$$
-:eqlabel:eq_cfg_final
 
 在扩散模型的框架下，得分函数被参数化的噪声预测网络 $\epsilon_\theta$ 所等价替代。因此，在推理阶段，模型预测的最终噪声 $\tilde{\epsilon}$ 为：
 
 $$\tilde{\epsilon}_\theta(\mathbf{x}_t, t, c) = (1 + w) \epsilon_\theta(\mathbf{x}_t, t, c) - w \epsilon_\theta(\mathbf{x}_t, t, \emptyset)$$
-:eqlabel:eq_cfg_noise
 
 公式 :eqref:eq_cfg_noise 优雅地告诉我们：只需要一个同时支持条件输入 $c$ 和空条件 $\emptyset$ 的单一网络，通过取条件预测与无条件预测的线性外推（Extrapolation，因为 $1+w > 1$ 且系数和为1），就能在不引入额外分类器网络的情况下，极其强劲地提升控制信号的服从度。
 
 ## 简洁实现
-:label:sec_controllable_implementation
 
 基于上述严谨的数学推导，我们现在开始用代码实现这个可控视频生成模块。我们将首先实现交叉注意力机制，然后将其集成到一个微型的条件去噪网络块中。
 
@@ -238,7 +223,6 @@ def classifier_free_guidance_step(model_block, x_t, context, unconditional_conte
 在训练阶段，我们需要网络不仅学会从输入中去噪，还要学会将去噪过程与控制信号相关联。在实践中，为了支持无分类器引导，我们需要以一定概率（例如 $10\%$ 到 $20\%$）随机将控制信号替换为空标记（Null Token）。其训练目标的损失函数可以表示为：
 
 $$ \mathcal{L} = \mathbb{E}_{\mathbf{x}_0, c, \epsilon \sim \mathcal{N}(0, \mathbf{I}), t} \left[ \left\| \epsilon - \epsilon_\theta(\mathbf{x}_t, t, c_\phi) \right\|^2_2 \right] $$
-:eqlabel:eq_training_loss
 
 其中 $c_\phi$ 有 $(1 - p_{uncond})$ 的概率是真实控制信号 $c$，有 $p_{uncond}$ 的概率是被屏蔽的空信号 $\emptyset$。这确保了单个模型 $\epsilon_\theta$ 在同一个权重空间中同时学会了 $p(\mathbf{x} \mid c)$ 和 $p(\mathbf{x})$ 的去噪能力。
 
@@ -248,16 +232,3 @@ $$ \mathcal{L} = \mathbb{E}_{\mathbf{x}_0, c, \epsilon \sim \mathcal{N}(0, \math
 * 从简单的标量加性注入，到向量空间的拼接，再到现代基于内积度量匹配度的交叉注意力机制，条件注入的方法在数学演进上日益严密且具有表达力。
 * 交叉注意力允许特征序列的每个元素根据查询 $\mathbf{Q}$ 动态检索控制序列的键 $\mathbf{K}$ 并聚合值 $\mathbf{V}$。
 * 无分类器引导（CFG）利用贝叶斯法则，通过推断阶段的线性外推，极其有效地放大了控制信号的权重，克服了条件坍塌问题。
-
-## 练习
-
-1. 回顾公式 :eqref:eq_vector_control，如果控制向量 $\mathbf{c}$ 的维度 $k$ 远大于视觉特征的维度 $d$，直接映射会带来什么计算和内存上的问题？
-   * **提示：** 分析矩阵 $\mathbf{W}_c$ 的参数量，并思考在卷积特征图上的空间广播会如何放大这个问题。
-2. 在 `CrossAttention` 的实现代码中，我们对注意力得分除以了缩放因子 `self.scale`（即 $\sqrt{d_h}$）。如果不进行这一缩放，在深度网络训练初期会发生什么？
-   * **提示：** 思考未缩放的内积在维度 $d_h$ 较大时其方差的变化，以及极大值输入对 Softmax 函数梯度的影响。
-3. 假设我们希望构建一个既能通过“用户语言指令（Text）”控制，又能通过“摇杆动作（Action）”控制的视频生成模型，你应该如何设计公式 :eqref:eq_qkv_projection 中的 $\mathbf{K}$ 和 $\mathbf{V}$？
-   * **提示：** 考虑序列拼接（Sequence Concatenation）或者多路交叉注意力（Multiple Cross-Attention Blocks）的架构差异。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

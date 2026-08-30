@@ -1,5 +1,4 @@
 # 1.2 什么是世界模型？
-:label:sec_what_is_a_world_model
 
 在深度学习与强化学习的早期发展中，大多数无模型（Model-Free）算法直接学习从状态到动作的映射（策略）或状态的价值函数。然而，人类和动物的智能显然并非完全依赖于这种反复试错的直接映射。当我们闭上眼睛，我们能够在脑海中预演即将发生的动作及其后果；当我们驾驶汽车时，我们对前车的刹车行为有精确的物理预期。这种在智能体内部构建的、用于模拟和预测外部环境演化规律的数学抽象，便是我们所说的“世界模型”（World Model）。
 
@@ -16,20 +15,17 @@
 假设我们在研究一个在光滑水平面上做直线运动的木块。在任意给定的时刻 $t$，我们如何“完全”描述这个木块的客观存在？在经典力学中，我们只需要知道它的位置 $x_t$ 和速度 $v_t$。如果我们定义当前的状态 $s_t$ 为一个包含位置和速度的集合：
 
 $$s_t = \{x_t, v_t\}$$
-:eqlabel:eq_kinematics_state
 
 如果我们在时刻 $t$ 对木块施加一个恒定的力 $F_t$，根据牛顿第二定律，木块会获得加速度 $a_t = F_t / m$（这里我们将加速度 $a_t$ 视为我们采取的动作或控制输入）。经过一段微小的时间 $\Delta t$ 后，木块在下一个时刻 $t+1$ 的状态将如何演化？根据基础的运动学公式，我们有：
 
 $$x_{t+1} = x_t + v_t \Delta t + \frac{1}{2} a_t \Delta t^2$$
 $$v_{t+1} = v_t + a_t \Delta t$$
-:eqlabel:eq_kinematics_evolution
 
 仔细观察 :eqref:eq_kinematics_evolution，你会发现一个深刻的规律：**系统未来的状态 $s_{t+1}$，完全且唯一地由当前状态 $s_t$ 和当前采取的动作 $a_t$ 所决定。** 
 
 我们可以将这种决定性的物理规律抽象为一个通用的数学函数 $f$：
 
 $$s_{t+1} = f(s_t, a_t)$$
-:eqlabel:eq_deterministic_dynamics
 
 在上述语境中，这个函数 $f$（即运动学公式）就是该物理系统的“世界模型”。它完美地模拟了环境的动态（Dynamics）。只要给定初始状态 $s_0$ 和一系列动作序列 $a_0, a_1, \dots$，我们就可以通过反复调用函数 $f$（即前向展开），精准地预测出系统在未来任意时刻的状态 $s_t$。
 
@@ -44,7 +40,6 @@ $$s_{t+1} = f(s_t, a_t)$$
 为了应对这种不确定性，我们必须摒弃确定性的函数映射 $s_{t+1} = f(s_t, a_t)$，转向**概率生成模型（Probabilistic Generative Models）**。我们将时刻 $t+1$ 的状态 $S_{t+1}$ 视为一个随机变量，并尝试建模其条件概率分布（Conditional Probability Distribution）：
 
 $$P(S_{t+1} = s_{t+1} \mid S_t = s_t, A_t = a_t)$$
-:eqlabel:eq_stochastic_dynamics_scalar
 
 这个公式读作：在给定当前状态 $s_t$ 和动作 $a_t$ 的条件下，下一个状态为 $s_{t+1}$ 的概率。
 
@@ -53,7 +48,6 @@ $$P(S_{t+1} = s_{t+1} \mid S_t = s_t, A_t = a_t)$$
 当状态是连续的高维向量时，上述离散的概率分布将变为连续的概率密度函数（Probability Density Function, PDF），记作 $p(s_{t+1} \mid s_t, a_t)$。此时，我们的**世界模型的任务，就是通过某种方式估计或参数化（Parameterize）这个概率密度函数**。例如，我们可以假设下一个状态服从多元高斯分布（Multivariate Gaussian Distribution）：
 
 $$p(s_{t+1} \mid s_t, a_t) = \mathcal{N}(s_{t+1}; \boldsymbol{\mu}_\theta(s_t, a_t), \boldsymbol{\Sigma}_\theta(s_t, a_t))$$
-:eqlabel:eq_gaussian_dynamics
 
 在这里，均值向量 $\boldsymbol{\mu}_\theta$ 和协方差矩阵 $\boldsymbol{\Sigma}_\theta$ 均是由参数为 $\theta$ 的模型（如神经网络）计算得出的。通过这种方式，世界模型不仅能够预测“下一步最可能发生什么”（均值），还能输出“对预测结果有多大的把握”（方差/协方差）。
 
@@ -68,7 +62,6 @@ $$p(s_{t+1} \mid s_t, a_t) = \mathcal{N}(s_{t+1}; \boldsymbol{\mu}_\theta(s_t, a
 视觉模型 $V$ 的任务是将高维的观测图像 $o_t$ 压缩为一个低维的隐变量（Latent Variable）向量 $z_t$。在数学上，这可以视为一个推断过程：
 
 $$z_t \sim q_\phi(z \mid o_t)$$
-:eqlabel:eq_vision_model
 
 通常，我们使用变分自编码器（VAE）来实现这一组件。压缩后的隐向量 $z_t$ 滤除了图像中无关紧要的背景噪声，保留了对决策至关重要的核心特征（如物体的位置和姿态）。
 
@@ -79,12 +72,10 @@ $$z_t \sim q_\phi(z \mid o_t)$$
 为了有效地压缩历史信息，我们使用循环神经网络（RNN）。设 $h_t$ 为 RNN 在时刻 $t$ 的隐藏状态（Hidden State），它聚合了直到时刻 $t$ 的所有历史信息：
 
 $$h_t = \text{RNN}(h_{t-1}, z_t, a_t)$$
-:eqlabel:eq_rnn_hidden_state
 
 此时，记忆模型 $M$ 实际上是在对隐空间的概率分布进行建模：
 
 $$p_\theta(z_{t+1} \mid a_t, z_t, h_t)$$
-:eqlabel:eq_memory_model
 
 > **[类比提示]** 
 > 我们可以将这一预测过程类比为人类的“做梦”或“心理演练”。在睡眠时，人类的大脑切断了外部视觉输入（即闭上眼睛，没有新的 $o_t$ 产生）。但大脑内部的动力学模型（M 模型）依然在活跃，它利用当前的隐藏状态 $h_t$，结合潜意识产生的动作 $a_t$，自回归地（Autoregressively）生成下一个隐状态 $z_{t+1}$。通过反复将生成的 $z_{t+1}$ 喂给模型自身，大脑可以在毫无真实物理反馈的情况下，于内部“仿真”出连贯的梦境体验。这正是世界模型能够在隐空间内进行零样本策略规划的数学本质。
@@ -94,7 +85,6 @@ $$p_\theta(z_{t+1} \mid a_t, z_t, h_t)$$
 控制器 $C$ 就是智能体的策略（Policy）。它的目标是根据当前的世界状态，输出最优的动作 $a_t$ 以最大化累积奖励。在世界模型的框架下，控制器的输入不再是高维的原始图像，而是视觉模型的隐向量 $z_t$ 和记忆模型的历史状态 $h_t$ 的拼接：
 
 $$a_t = \pi_\psi(a_t \mid z_t, h_t)$$
-:eqlabel:eq_controller
 
 ## 1.2.5 代码实现：构建一个极简的世界模型组件
 
@@ -139,7 +129,7 @@ class VisionModel(nn.Module):
 ```
 
 (**定义记忆/动力学模型 M。**)
-M 模型接收当前的隐变量 $z_t$ 和动作 $a_t$，并结合自身的隐藏状态 $h_t$（在这里通过 GRU 维护），来预测下一个时刻隐变量分布的均值和对数方差。这正是对 :eqref:eq_memory_model 和 :eqref:eq_gaussian_dynamics 的直接代码翻译。
+M 模型接收当前的隐变量 $z_t$ 和动作 $a_t$，并结合自身的隐藏状态 $h_t$（在这里通过 GRU 维护），来预测下一个时刻隐变量分布的均值和对数方差。这正是对前文 RNN 记忆更新公式和高斯动力学公式的直接代码翻译。
 
 ```{.python .input}
 #@tab pytorch
@@ -191,7 +181,3 @@ class DynamicsModel(nn.Module):
     *提示：根据牛顿定律，速度只是位置的一阶导数。积分（即累加历史信息）是重构位置（底层真实状态）的必要数学手段。*
 3. 在我们的代码实现中，`DynamicsModel` 输出的是对数方差（`logvar_next`）而不是方差或标准差本身。从神经网络优化的数学角度来看，这样做有什么好处？
     *提示：方差必须严格大于 0。如果不使用对数，你需要使用什么激活函数来保证这一点？这又会带来哪些数值稳定性的问题？*
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

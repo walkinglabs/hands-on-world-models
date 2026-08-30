@@ -1,5 +1,4 @@
 # Dreamer V1：在潜在想象中学习
-:label:sec_dreamer_v1
 
 ## 引言与学术背景
 
@@ -26,15 +25,12 @@ $s_{t+1} = f(s_t, a_t)$
 
 1. **状态转移模型（Transition Model）**：描述在给定当前潜在状态和动作的情况下，环境如何向下一时刻演化。
    $$p(s_{t+1} \mid s_t, a_t)$$
-   :eqlabel:eq_dreamer_transition
 
 2. **观测模型（Observation Model / Decoder）**：从潜在状态重建当前观测值，其主要作用是提供重建损失以训练潜在空间，从而保证潜在状态蕴含了当前环境的所有视觉信息。
    $$q(o_t \mid s_t)$$
-   :eqlabel:eq_dreamer_obs
 
 3. **奖励模型（Reward Model）**：从潜在状态预测在当前时刻能够获得的奖励。
    $$q(r_t \mid s_t)$$
-   :eqlabel:eq_dreamer_reward
 
 值得注意的是，RSSM 将潜在状态 $s_t$ 分成了**确定性**（Deterministic）和**随机性**（Stochastic）两部分，这也就是为什么被称为“循环状态空间”。确定性部分通常由一个门控循环单元（GRU）维护，用于长期的历史记忆；随机部分则通常建模为多变量高斯分布（Gaussian Distribution），用于捕捉环境在某一时步发生的不可预测事件。为了保持符号的整洁，在接下来的价值推导中，我们依然将它们统称为 $s_t$。
 
@@ -54,14 +50,12 @@ $s_{t+1} = f(s_t, a_t)$
 如果不考虑后续的探索，直接使用一个**评论家网络（Critic）** $v_{\psi}(s)$（由参数 $\psi$ 参数化）来预测状态的价值，我们就可以得到所谓的单步（1-step）回报：
 
 $$V^{1}_{\tau} \approx \mathbb{E} \big[ r(s_\tau) + \gamma v_{\psi}(s_{\tau+1}) \big]$$
-:eqlabel:eq_dreamer_1step
 
 其中，奖励 $r(s_\tau)$ 是世界模型中奖励预测网络的直接输出（取期望均值），而 $s_{\tau+1}$ 则是状态转移模型推演出的下一个状态。
 
 单步回报极其依赖评论家网络的初始准确度。如果评论家由于训练不充分而存在严重偏差，行动者就会被误导。既然我们在想象空间中推演了 $H$ 步，为什么不多看几步呢？于是，我们可以将展开的步数扩展到 $k$ 步（$1 \leq k \leq H - (\tau - t)$）：
 
 $$V^{k}_{\tau} = \sum_{n=0}^{k-1} \gamma^n r(s_{\tau+n}) + \gamma^k v_{\psi}(s_{\tau+k})$$
-:eqlabel:eq_dreamer_kstep
 
 方程 :eqref:eq_dreamer_kstep 是一个非常优雅的表达。我们可以这样理解：前 $k$ 步的奖励都是我们在世界模型的“梦境”中**显式预测**出来的，它们往往比评论家给出的一个抽象概括要准确（在世界模型训练良好的前提下）。只有到了第 $k$ 步的尽头时，我们才无奈地使用评论家 $v_{\psi}(s_{\tau+k})$ 来对更遥远、甚至超出视野的未来进行“兜底”。
 
@@ -75,7 +69,6 @@ $$V^{k}_{\tau} = \sum_{n=0}^{k-1} \gamma^n r(s_{\tau+n}) + \gamma^k v_{\psi}(s_{
 我们正式定义 $\lambda$-回报（$\lambda$-return） $V^{\lambda}_{\tau}$。为了避免陷入复杂的连加符号迷宫中，让我们用一个极其简洁直观的递归公式来定义它：
 
 $$V^{\lambda}_{\tau} = r(s_\tau) + \gamma \Big( (1-\lambda) v_{\psi}(s_{\tau+1}) + \lambda V^{\lambda}_{\tau+1} \Big)$$
-:eqlabel:eq_dreamer_lambda
 
 这其实就是在说：站在状态 $s_\tau$ 的角度，下一步的回报期望是由两部分组成的混血儿。其中一部分是评论家的稳妥预测 $v_{\psi}(s_{\tau+1})$（权重为 $1-\lambda$），另一部分是我们将梦想继续延伸一步得到的更长远的 $\lambda$-回报估计 $V^{\lambda}_{\tau+1}$（权重为 $\lambda$）。这种递归形式在编程实现时极其高效，只需从时间轴末端（即 $\tau = t+H$）向前反推即可。
 
@@ -94,11 +87,9 @@ $$V^{\lambda}_{\tau} = r(s_\tau) + \gamma \Big( (1-\lambda) v_{\psi}(s_{\tau+1})
 行动者网络输出动作的分布参数（例如高斯分布的均值 $\mu_\phi$ 和标准差 $\sigma_\phi$）。我们将动作 $a_\tau$ 采样过程重写为：
 
 $$a_\tau = \mu_\phi(s_\tau) + \sigma_\phi(s_\tau) \cdot \xi, \quad \xi \sim \mathcal{N}(0, I)$$
-:eqlabel:eq_dreamer_action_reparam
 
 同样地，状态的随机转移也可以重参数化为一个可导的函数：
 $$s_{\tau+1} = f_\theta(s_\tau, a_\tau, \epsilon), \quad \epsilon \sim \mathcal{N}(0, I)$$
-:eqlabel:eq_dreamer_state_reparam
 
 此时，整个轨迹的回报 $V^{\lambda}_{\tau}$ 变成了一个巨大的、由可导算子组成的计算图，其叶子节点包含了行动者的参数 $\phi$。
 
@@ -107,7 +98,6 @@ $$s_{\tau+1} = f_\theta(s_\tau, a_\tau, \epsilon), \quad \epsilon \sim \mathcal{
 行动者网络的目标非常纯粹：最大化在想象轨迹中所有的初始状态 $s_\tau$ 上计算出的 $\lambda$-回报期望。因此，行动者的损失函数定义为回报的负值：
 
 $$\mathcal{L}_{\text{actor}}(\phi) = - \mathbb{E} \left[ \sum_{\tau=t}^{t+H-1} V^{\lambda}_{\tau} \right]$$
-:eqlabel:eq_dreamer_actor_loss
 
 在实际更新时，由于重参数化技巧，PyTorch 等深度学习框架的自动微分引擎可以直接从 $V^{\lambda}_{\tau}$ 出发，沿着时间维度穿过奖励模型、转移动力学模型，最终将精确的梯度 $\nabla_\phi \mathcal{L}_{\text{actor}}$ 流入行动者网络的参数 $\phi$ 中。
 
@@ -116,7 +106,6 @@ $$\mathcal{L}_{\text{actor}}(\phi) = - \mathbb{E} \left[ \sum_{\tau=t}^{t+H-1} V
 与此同时，评论家网络的作用是尽可能准确地预测状态价值，以帮助行动者计算回报。我们使用我们精心计算的 $\lambda$-回报作为它的回归目标（Target）。评论家的损失函数是预测值与 $\lambda$-回报目标之间的均方误差（MSE）：
 
 $$\mathcal{L}_{\text{critic}}(\psi) = \mathbb{E} \left[ \sum_{\tau=t}^{t+H-1} \frac{1}{2} \big( v_{\psi}(s_\tau) - \text{stop\_gradient}(V^{\lambda}_{\tau}) \big)^2 \right]$$
-:eqlabel:eq_dreamer_critic_loss
 
 注意公式中的 `stop_gradient` 操作。这意味着在训练评论家时，我们将 $V^{\lambda}_{\tau}$ 视为一个固定的真实标签，不需要通过它再去反向传播梯度。我们只更新评论家自身的参数 $\psi$。
 
@@ -270,14 +259,3 @@ def train_imagination_step(
 - **DreamerV1** 标志着基于模型的强化学习（Model-based RL）的一个重要转折点。它证明了纯粹在潜在空间中学习策略不仅是可行的，而且是极其高效的。
 - 通过引入**指数衰减的 $\lambda$-回报**，算法能在依赖模型自回归的“高方差推演”与直接依赖价值网络的“高偏差估计”之间寻找到理论上的最佳平衡。
 - 全程可微的世界模型赋予了我们使用**解析梯度（Analytic Gradients）**反向传播的能力。这意味着模型能够通过深层的网络动力学，直接告诉策略应该向哪个方向微调动作才能获得最丰厚的未来回报。这种通过想象学习的范式，深刻地模拟了智能生命规划未来的行为逻辑。
-
-## 练习
-
-1. 回顾方程 :eqref:eq_dreamer_lambda 描述的 $\lambda$-回报。如果我们强行将 $\lambda$ 设置为 0，这个等式会退化成什么？它在现实中意味着智能体将如何看待未来？
-   *提示：如果 $\lambda=0$，代入公式，看看结果还剩几项，这对应强化学习中的哪一种经典回报估计法？*
-2. 我们提到，推演的步数 $H$ 不能过大（如 $H=1000$）。请从**复合函数连乘求导（链式法则）**和**多变量高斯采样方差**的角度，论述过长的想象视野会对训练造成哪些毁灭性的影响。
-   *提示：联想循环神经网络（RNN）中的梯度消失/爆炸现象。世界模型每一步都会引入重参数化的随机噪声。*
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

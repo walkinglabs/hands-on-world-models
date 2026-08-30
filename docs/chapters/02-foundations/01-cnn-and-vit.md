@@ -1,5 +1,4 @@
 # 视觉基础模型：从卷积神经网络到视觉变换器
-:label:sec_vision_foundation_models
 
 ## 引言与历史追溯
 在计算机视觉的早期阶段，研究人员主要依赖于手工设计的特征提取器（如 SIFT 和 HOG）来处理图像数据。然而，这些方法在面对复杂的现实世界场景时，往往缺乏足够的表达能力。深度学习的引入彻底改变了这一局面。从由 Yann LeCun 等人提出、主要用于手写数字识别的早期卷积神经网络（LeNet） [LeCun et al., 1989]，到 2012 年在 ImageNet 竞赛中取得突破性进展的 AlexNet [Krizhevsky et al., 2012]，卷积神经网络（Convolutional Neural Networks, CNNs）确立了其在计算机视觉领域的统治地位。
@@ -11,7 +10,6 @@ CNN 的成功很大程度上归功于其内置的**归纳偏置**（Inductive Bi
 在本章中，我们将从最基础的数学定义出发，逐步推导并实现这两种奠定了现代视觉基础模型地位的核心架构。
 
 ## 卷积神经网络的数学原理
-:label:sec_cnn_math
 
 ### 从全连接层到卷积
 要理解卷积神经网络，我们首先需要考察为什么不能直接使用多层感知机（MLP）来处理图像。假设我们有一张尺寸为 $H \times W$ 的二维黑白图像，它可以自然地表示为一个矩阵 $\mathbf{X} \in \mathbb{R}^{H \times W}$。如果使用全连接层，我们需要将图像展平为一个长度为 $H \times W$ 的一维向量 $\mathbf{x}$。
@@ -20,7 +18,6 @@ CNN 的成功很大程度上归功于其内置的**归纳偏置**（Inductive Bi
 $$
 h_{i, j} = \sum_{k=1}^{H} \sum_{l=1}^{W} W_{i, j, k, l} x_{k, l} + b_{i, j}
 $$
-:eqlabel:eq_fc_image
 
 在这里，权重 $\mathbf{W}$ 是一个四阶张量，包含 $(H \times W) \times (H \times W)$ 个参数。对于一张仅仅是 $1000 \times 1000$ 像素的图像，这个全连接层的权重参数量将达到惊人的 $10^{12}$，这不仅会耗尽任何现代计算机的内存，更会导致模型极易过拟合。
 
@@ -33,7 +30,6 @@ $$
 $$
 h_{i, j} = \sum_{a=-\Delta}^{\Delta} \sum_{b=-\Delta}^{\Delta} V_{a, b} x_{i+a, j+b} + b
 $$
-:eqlabel:eq_cross_correlation
 
 这就是二维**互相关**（Cross-Correlation）运算的严格数学定义。在深度学习文献中，它通常被直接称为“卷积”（尽管在纯数学定义中，卷积要求对权重进行翻转，但这并不影响其在神经网络中的参数学习）。参数张量 $\mathbf{V}$ 被称为**卷积核**（Convolutional Kernel）或**滤波器**（Filter），其大小仅为 $(2\Delta + 1) \times (2\Delta + 1)$，且在图像的所有位置严格共享。
 
@@ -45,7 +41,6 @@ $$
 $$
 h_{d, i, j} = \sum_{c=1}^{C_{in}} \sum_{a=-\Delta}^{\Delta} \sum_{b=-\Delta}^{\Delta} V_{d, c, a, b} x_{c, i+a, j+b} + b_d
 $$
-:eqlabel:eq_multi_channel_conv
 
 此时，权重张量 $\mathbf{V}$ 的维度变为 $\mathbb{R}^{C_{out} \times C_{in} \times K_h \times K_w}$，其中 $K_h$ 和 $K_w$ 为卷积核的高度和宽度。这种多通道的卷积操作使得网络不仅能够捕获空间上的局部特征，还能够在通道维度融合更加抽象的信息。
 
@@ -70,7 +65,6 @@ print(f"权重形状: {conv_layer.weight.shape}")
 ```
 
 ## 经典 CNN 架构：残差网络 (ResNet)
-:label:sec_resnet
 
 随着网络层数的增加，梯度消失（Vanishing Gradient）和网络退化（Degradation）问题变得日益严重。He 等人在 2015 年提出了残差网络 [He et al., 2015]，巧妙地解决了极深网络的优化难题。
 
@@ -80,14 +74,12 @@ print(f"权重形状: {conv_layer.weight.shape}")
 $$
 \mathbf{y} = \mathcal{F}(\mathbf{x}) + \mathbf{x}
 $$
-:eqlabel:eq_residual
 
 在反向传播计算梯度时，假设最终的标量损失函数为 $\mathcal{L}$，根据链式法则，我们对其求导：
 
 $$
 \frac{\partial \mathcal{L}}{\partial \mathbf{x}} = \frac{\partial \mathcal{L}}{\partial \mathbf{y}} \frac{\partial \mathbf{y}}{\partial \mathbf{x}} = \frac{\partial \mathcal{L}}{\partial \mathbf{y}} \left( \frac{\partial \mathcal{F}(\mathbf{x})}{\partial \mathbf{x}} + \mathbf{I} \right)
 $$
-:eqlabel:eq_residual_grad
 
 这里的 $\mathbf{I}$ 是单位矩阵。公式 :eqref:eq_residual_grad 揭示了残差网络为何能够避免梯度消失的核心数学机制：由于加法项 $\mathbf{I}$ 的存在，即使在极深的网络中梯度 $\frac{\partial \mathcal{F}}{\partial \mathbf{x}}$ 趋近于零（即经过多次卷积导致信号衰减），由后方传来的梯度 $\frac{\partial \mathcal{L}}{\partial \mathbf{y}}$ 也总能通过单位矩阵直接、无损地传递回上一层，保证了底层网络参数的有效更新。
 
@@ -129,7 +121,6 @@ class ResidualBlock(nn.Module):
 ```
 
 ## 视觉变换器 (Vision Transformer, ViT)
-:label:sec_vit
 
 虽然卷积在提取局部特征上极其高效，但要捕获距离较远的两个像素之间的关联，CNN 需要堆叠非常深的层，使得其感受野（Receptive Field）能够扩大到覆盖整个图像。相比之下，视觉变换器（ViT）摒弃了局部性假设，通过自注意力机制一步到位地建立了全局依赖。
 
@@ -143,7 +134,6 @@ class ResidualBlock(nn.Module):
 $$
 \mathbf{z}_0 = [\mathbf{x}_{class}; \, \mathbf{x}_{p}^1 \mathbf{E}; \, \mathbf{x}_{p}^2 \mathbf{E}; \, \dots; \, \mathbf{x}_{p}^N \mathbf{E}] + \mathbf{E}_{pos}
 $$
-:eqlabel:eq_patch_embed
 
 在这里，$\mathbf{x}_{class} \in \mathbb{R}^{1 \times D}$ 是一个特殊的可学习向量，被称为分类标记（Class Token），它的最终输出状态将被用作整个图像的全局聚合表示。$\mathbf{E}_{pos} \in \mathbb{R}^{(N+1) \times D}$ 则是位置编码矩阵。与 CNN 固有的位置敏感性不同，Transformer 架构及其基于点积的注意力机制本身是对序列元素的绝对排列位置不可知的（Permutation Invariant）。如果不显式地注入位置信息，模型将无法分辨图像块的相对空间关系。
 
@@ -180,28 +170,24 @@ Transformer 架构的灵魂在于自注意力机制。为了建立其严谨的�
 $$
 s_{i,j} = \mathbf{q}_i \cdot \mathbf{k}_j^T = \sum_{d=1}^{D_h} q_{i,d} k_{j,d}
 $$
-:eqlabel:eq_attention_score
 
 由于内积的值域会随着特征维度 $D_h$ 的增加而呈指数级剧烈波动，这将导致后续的 Softmax 激活函数迅速进入梯度极小饱和区（即梯度趋近于零），因此我们必须引入缩放因子 $\sqrt{D_h}$。随后使用 Softmax 函数对得分进行概率归一化，得到注意力权重：
 
 $$
 \alpha_{i,j} = \frac{\exp(s_{i,j} / \sqrt{D_h})}{\sum_{m=1}^{N+1} \exp(s_{i,m} / \sqrt{D_h})}
 $$
-:eqlabel:eq_attention_weight
 
 最终，第 $i$ 个位置的输出特征是由所有位置的值向量 $\mathbf{v}_j = \mathbf{x}_j \mathbf{W}^V$ 按注意力权重概率进行加权线性组合而成：
 
 $$
 \mathbf{o}_i = \sum_{j=1}^{N+1} \alpha_{i,j} \mathbf{v}_j
 $$
-:eqlabel:eq_attention_output
 
 若我们将上述操作进行矢量化，转换为标准的矩阵形式，设查询、键、值矩阵分别为 $\mathbf{Q}, \mathbf{K}, \mathbf{V} \in \mathbb{R}^{(N+1) \times D_h}$，则全局注意力计算公式被优美而凝练地表达为：
 
 $$
 \text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{Softmax}\left(\frac{\mathbf{Q}\mathbf{K}^T}{\sqrt{D_h}}\right)\mathbf{V}
 $$
-:eqlabel:eq_attention_matrix
 
 多头注意力（Multi-Head Attention）则是将上述过程在多个并行的子空间中执行 $h$ 次，每次使用独立初始化的投影矩阵。最后将所有头输出的矩阵在隐藏维度上拼接，并通过一个线性层进行最终投影。
 
@@ -242,15 +228,3 @@ class ViTBlock(nn.Module):
 ## 小结
 
 在本章中，我们详尽探讨了现代计算机视觉中两大至关重要的基础模型架构。卷积神经网络（CNN）通过严格的局部卷积操作和权重空间共享，确立了强大的空间几何归纳偏置，在中小规模数据集的训练中具有极高的参数效率与稳定性。视觉变换器（ViT）则打破了局部网格感受野的限制，通过将连续图像离散化建模为词元序列，并施加全局自注意力矩阵乘法运算，在全局特征的融合上展现出了无与伦比的上限。
-
-## 练习
-
-1. 在二维卷积层中，假设输入形状为 $C_{in} \times H \times W$，卷积核大小为 $K_h \times K_w$，不使用填充且步幅为 $1$。推导计算处理单个样本前向传播过程所需的大致浮点运算次数 (FLOPs)。
-   - *提示*：考虑公式 :eqref:eq_multi_channel_conv 中输出特征图的空间尺寸，并对每个输出像素进行嵌套求和项计数，乘法和加法的次数分别是多少？
-2. 在 ViT 的自注意力矩阵乘法中，假设序列总长度为 $L=N+1$，隐藏维度为 $D$。分析公式 :eqref:eq_attention_matrix 的时间复杂度如何随输入图像分辨率的增大（即 $N$ 的急剧增加）而变化？
-   - *提示*：严格分析 $\mathbf{Q}\mathbf{K}^T$ 矩阵乘法的复杂度。当高分辨率图像导致 $N$ 成倍增长时，这里的计算量会呈线性增长还是呈现极具灾难性的二次方（$O(N^2)$）增长？
-3. 在代码实现中，`PatchEmbedding` 使用了 `stride=patch_size` 的不重叠二维卷积。请从数学公式上证明：这一张量操作严格等价于先将图像提取出无重叠的 $P \times P$ 小块，展平后再进行全连接层的权重矩阵乘法。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

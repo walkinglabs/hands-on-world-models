@@ -1,5 +1,4 @@
 # 8.7 Sim2Real 虚实迁移框架的简洁实现
-:label:`sec_sim2real_concise`
 
 在深度强化学习（Deep Reinforcement Learning, DRL）在机器人领域的应用中，我们面临一个根本性的矛盾：现代神经网络需要海量的试错数据来收敛，而在真实的物理世界中让机器人进行数百万次的试错不仅成本极其高昂，还伴随着严重的设备损坏风险。因此，在物理仿真环境（Simulation）中进行训练，随后将策略零样本（Zero-shot）部署到真实物理机器人（Reality）上，成为了当前具身智能的主流范式。这种技术路线被称为 **Sim2Real（虚实迁移）**。
 
@@ -18,32 +17,26 @@
 根据牛顿第二定律，我们可以写出该系统在标量空间下的动力学方程：
 
 $$ m \frac{dv(t)}{dt} = u(t) - c v(t) $$
-:eqlabel:`eq_sim2real_newton_scalar`
 
 在公式 :eqref:`eq_sim2real_newton_scalar` 中，等式左侧代表物体的惯性力，右侧代表物体所受的合外力。
 
 在数字控制系统中，控制器的时间是离散的。设定控制周期（时间步长）为 $\Delta t$。根据欧拉积分（Euler Integration）方法，我们可以将速度和位置 $p(t)$ 的导数进行离散化近似：
 
 $$ v_{t+1} = v_t + \Delta t \left( \frac{u_t - c v_t}{m} \right) $$
-:eqlabel:`eq_sim2real_euler_v`
 
 $$ p_{t+1} = p_t + \Delta t \cdot v_t $$
-:eqlabel:`eq_sim2real_euler_p`
 
 这两个极其简单的标量公式，实际上构成了环境状态转移的最基本单元。然而，在现代强化学习和最优控制中，我们需要以矩阵（张量）的形式来统一处理多维状态。令系统在 $t$ 时刻的状态向量为 $\mathbf{s}_t = [p_t, v_t]^\top$。我们可以将上述连续方程映射为经典的状态空间方程（State-Space Representation）：
 
 $$ \dot{\mathbf{s}}(t) = \mathbf{A}(\xi) \mathbf{s}(t) + \mathbf{B}(\xi) u(t) $$
-:eqlabel:`eq_sim2real_state_space`
 
 在这里，我们将系统的物理属性提取为一个**环境参数向量** $\xi = [m, c]^\top$。状态转移矩阵 $\mathbf{A}(\xi)$ 和输入矩阵 $\mathbf{B}(\xi)$ 严格依赖于这个参数向量：
 
 $$ \mathbf{A}(\xi) = \begin{bmatrix} 0 & 1 \\ 0 & -\frac{c}{m} \end{bmatrix}, \quad \mathbf{B}(\xi) = \begin{bmatrix} 0 \\ \frac{1}{m} \end{bmatrix} $$
-:eqlabel:`eq_sim2real_matrices`
 
 结合欧拉离散化，最终的离散状态转移方程（即强化学习中环境的 `step` 函数的核心数学模型）可以严格表达为：
 
 $$ \mathbf{s}_{t+1} = (\mathbf{I} + \mathbf{A}(\xi) \Delta t) \mathbf{s}_t + (\mathbf{B}(\xi) \Delta t) u_t $$
-:eqlabel:`eq_sim2real_discrete_matrix`
 
 至此，我们将一个具体的物理问题，严格地抽象成了一个**参数化马尔可夫决策过程（Parameterized MDP, Param-MDP）**。其状态转移概率分布 $\mathcal{P}(\mathbf{s}_{t+1} | \mathbf{s}_t, u_t; \xi)$ 完全由隐藏的物理参数 $\xi$ 决定。
 
@@ -56,7 +49,6 @@ $$ \mathbf{s}_{t+1} = (\mathbf{I} + \mathbf{A}(\xi) \Delta t) \mathbf{s}_t + (\m
 当我们把 $\theta^*$ 部署到真实的物理环境中时，真实世界的参数总是存在未知的偏差，即 $\xi_{real} = \xi_{sim} + \Delta \xi$。在标称参数附近，对价值函数 $J(\theta^*, \xi_{real})$ 进行二阶泰勒展开（Taylor Expansion）：
 
 $$ J(\theta^*, \xi_{real}) \approx J(\theta^*, \xi_{sim}) + \nabla_\xi J(\theta^*, \xi)^\top \Delta \xi + \frac{1}{2} \Delta \xi^\top \mathbf{H}_\xi \Delta \xi $$
-:eqlabel:`eq_sim2real_taylor`
 
 其中 $\mathbf{H}_\xi$ 是价值函数关于环境参数的海森矩阵（Hessian Matrix）。
 在纯粹固定的仿真环境 $\xi_{sim}$ 中训练的神经网络，为了追求极致的回报，往往会过度利用当前环境的特定动力学特性（即发生了过拟合）。在优化景观（Optimization Landscape）上，这就表现为一个极其尖锐的山峰——这意味着海森矩阵 $\mathbf{H}_\xi$ 具有非常大的负特征值。此时，即使 $\Delta \xi$ 极其微小，二次项 $\frac{1}{2} \Delta \xi^\top \mathbf{H}_\xi \Delta \xi$ 也会产生巨大的负面惩罚，导致策略在真实环境中瞬间崩溃。
@@ -64,7 +56,6 @@ $$ J(\theta^*, \xi_{real}) \approx J(\theta^*, \xi_{sim}) + \nabla_\xi J(\theta^
 **域随机化（Domain Randomization, DR）**技术的数学思想，就是改变优化的目标函数。我们不再针对单一的 $\xi_{sim}$ 进行优化，而是设定一个参数分布 $P_\Phi(\xi)$（例如均匀分布或高斯分布），并优化在该分布下的期望回报：
 
 $$ J_{DR}(\theta) = \mathbb{E}_{\xi \sim P_\Phi}[J(\theta, \xi)] = \int P_\Phi(\xi) \mathbb{E}_{\tau \sim \pi_\theta, \mathcal{P}_\xi} \left[ \sum_{t=0}^T \gamma^t r(\mathbf{s}_t, u_t) \right] d\xi $$
-:eqlabel:`eq_sim2real_dr_obj`
 
 通过引入对分布的积分，目标函数在参数空间中被强制进行了平滑（类似于数学中的卷积平滑）。优化器为了在宽广的分布上都能获得较高的平均回报，必须寻找一个宽阔而平缓的高原（即减小 $\mathbf{H}_\xi$ 的负特征值）。这样训练出的策略，即使面临 $\Delta \xi$ 的偏差，其性能下降也是平缓且可控的。
 
@@ -80,12 +71,10 @@ $$ J_{DR}(\theta) = \mathbb{E}_{\xi \sim P_\Phi}[J(\theta, \xi)] = \int P_\Phi(\
 在数学上，我们将过去 $k$ 步的状态与动作定义为历史轨迹窗口（History Trajectory Window）：
 
 $$ \mathbf{h}_t = (\mathbf{s}_{t-k}, u_{t-k}, \dots, \mathbf{s}_{t-1}, u_{t-1}, \mathbf{s}_t) $$
-:eqlabel:`eq_sim2real_history`
 
 我们引入一个历史编码器（通常是 RNN 或 Transformer）$f_\phi$，将高维的时序信息压缩为一个低维的隐变量（Latent Variable）$\mathbf{z}_t$：
 
 $$ \mathbf{z}_t = f_\phi(\mathbf{h}_t) $$
-:eqlabel:`eq_sim2real_latent`
 
 在训练时，编码器 $f_\phi$ 与策略网络 $\pi_\theta(u_t | \mathbf{s}_t, \mathbf{z}_t)$ 进行端到端的联合优化。网络被强制要求通过过去的动力学响应 $\mathbf{h}_t$ 去隐式地逆推出环境的真实参数分布，从而实现自适应的闭环控制。
 
@@ -326,7 +315,3 @@ print(f"Loss after one step: {train_sim2real_step(env, encoder, policy, optimize
 1. **尝试扩展物理模型**：在当前的滑块模型中，加入静摩擦力的非线性突变效应。提示：你需要使用阶跃函数或 `torch.sign()`，但请注意这可能会导致梯度在原点处不可导。思考在使用 DRL（无梯度黑盒优化）时，这个非线性特性会对策略学习产生什么影响？
 2. **探索海森矩阵的几何意义**：在公式 :eqref:`eq_sim2real_taylor` 中，如果海森矩阵 $\mathbf{H}_\xi$ 极其接近于零矩阵，这在优化景观上意味着什么？这种地形对于现实物理部署有什么独特的优势？
 3. **分析隐变量的分布**：如果在训练结束后，你将真实环境的质量 $m$ 从 0.5 连续调节至 1.5，并记录编码器输出的隐变量 $\mathbf{z}_t$ 的均值。你预计 $\mathbf{z}_t$ 的几何分布（如使用 PCA 降维）与真实的 $m$ 值会呈现出怎样的数学关联？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/sim2real-concise-implementation)
-:end_tab:

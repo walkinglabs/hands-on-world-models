@@ -1,5 +1,4 @@
 # 相机几何与三维视觉基础
-:label:sec_camera_geometry
 
 三维视觉是理解和重建物理世界的核心基础。在现代自动驾驶、机器人导航以及虚拟现实等领域，智能体需要从二维的图像观测中推断出三维世界的几何结构。要实现这一目标，我们首先必须理解物理世界中的三维点是如何被投影到二维图像平面上的。这种从三维到二维的降维映射过程，正是由相机的物理结构和几何光学所决定的。
 
@@ -8,7 +7,6 @@
 在本节中，我们将从最基础的中学几何光学出发，推导针孔相机模型。随后，我们将引入齐次坐标系，将非线性的透视除法转化为线性的矩阵乘积，最终构建出包含相机内参（Intrinsic Parameters）和外参（Extrinsic Parameters）的完整相机投影模型。
 
 ## 针孔相机模型
-:label:sec_pinhole_camera
 
 在探讨复杂的现代镜头之前，我们先回到最简单的成像装置——小孔成像（Camera Obscura）。根据几何光学的基本原理，光在均匀介质中沿直线传播。当三维空间中的光线穿过一个极小的孔（针孔）时，会在孔后方的屏幕上形成一个倒立的实像。
 
@@ -23,23 +21,18 @@
 根据相似三角形的比例关系，对应边的比值相等，我们立刻可以写出如下等式：
 
 $$ \frac{x}{f} = \frac{X}{Z} $$
-:eqlabel:eq_pinhole_x
 
 $$ \frac{y}{f} = \frac{Y}{Z} $$
-:eqlabel:eq_pinhole_y
 
 通过简单的代数变形，我们可以得到投影点 $p$ 的物理坐标 $(x, y)$ 与空间点 $P$ 的坐标 $(X, Y, Z)$ 之间的关系：
 
 $$ x = f \frac{X}{Z} $$
-:eqlabel:eq_proj_x
 
 $$ y = f \frac{Y}{Z} $$
-:eqlabel:eq_proj_y
 
 这就是最基础的针孔透视投影公式。:eqref:eq_proj_x 和 :eqref:eq_proj_y 清晰地揭示了透视投影的一个核心特征：**近大远小**。当一个物体的深度 $Z$ 增加时，其在图像上的投影尺寸 $x$ 和 $y$ 会反比例地缩小。
 
 ## 齐次坐标系与射影几何
-:label:sec_homogeneous_coordinates
 
 尽管 :eqref:eq_proj_x 和 :eqref:eq_proj_y 物理意义清晰，但从数学计算的角度来看，它们存在一个致命的缺陷：由于存在除以深度的操作（即 $\frac{1}{Z}$），这种变换在普通的欧几里得坐标（笛卡尔坐标）下是**非线性**的。在深度学习和三维视觉的矩阵运算中，非线性变换意味着我们无法使用单一的矩阵乘法来简洁地表达整个投影过程。
 
@@ -80,12 +73,10 @@ Z \\
 1
 \end{bmatrix}
 $$
-:eqlabel:eq_homo_proj
 
 请注意，等式左侧的向量 $(Z x, Z y, Z)^\top$ 根据齐次坐标的等价原则，完全等同于 $(x, y, 1)^\top$。如此一来，令人棘手的除以 $Z$ 的非线性操作，被巧妙地推迟到了从齐次坐标恢复为非齐次坐标的最后一步（又称透视除法，Perspective Division），而投影的主体过程被完美地转化为了一次纯粹的线性矩阵乘法。
 
 ## 相机内参矩阵 (Intrinsic Matrix)
-:label:sec_intrinsic_matrix
 
 到目前为止，我们计算出的 $(x, y)$ 是在相机物理成像平面上的坐标，单位通常是米或毫米。但在真实的计算机中，图像是由一个个离散的像素（Pixel）组成的，像素坐标系的原点通常位于图像的左上角，向右为 $u$ 轴正方向，向下为 $v$ 轴正方向。
 
@@ -99,18 +90,14 @@ $$
 将这些步骤结合起来，我们可以得到：
 
 $$ u = m_x x + c_x $$
-:eqlabel:eq_pixel_u
 
 $$ v = m_y y + c_y $$
-:eqlabel:eq_pixel_v
 
 将 :eqref:eq_proj_x 和 :eqref:eq_proj_y 代入上述方程，得到：
 
 $$ u = m_x f \frac{X}{Z} + c_x = f_x \frac{X}{Z} + c_x $$
-:eqlabel:eq_full_u
 
 $$ v = m_y f \frac{Y}{Z} + c_y = f_y \frac{Y}{Z} + c_y $$
-:eqlabel:eq_full_v
 
 这里，我们定义 $f_x = m_x f$ 和 $f_y = m_y f$ 为相机在 $u$ 和 $v$ 方向上的有效焦距（以像素为单位）。通常对于正方形像素，$f_x$ 和 $f_y$ 是非常接近的。
 
@@ -134,7 +121,6 @@ Y \\
 Z
 \end{bmatrix}
 $$
-:eqlabel:eq_intrinsic_matrix
 
 在 :eqref:eq_intrinsic_matrix 中，我们定义中间的 $3 \times 3$ 矩阵为**相机内参矩阵（Camera Intrinsic Matrix）**，通常记作 $\mathbf{K}$。
 
@@ -145,12 +131,10 @@ f_x & 0 & c_x \\
 0 & 0 & 1
 \end{bmatrix}
 $$
-:eqlabel:eq_K
 
 内参矩阵完全由相机自身的物理属性（焦距、感光元件尺寸、像素密度等）决定，一旦相机在出厂后参数固定，$\mathbf{K}$ 就是一个常数矩阵。
 
 ## 相机外参矩阵 (Extrinsic Matrix)
-:label:sec_extrinsic_matrix
 
 我们在前文中探讨的投影过程，都是建立在三维点 $P$ 是以**相机自身坐标系**（即以针孔为原点，光轴为 $Z$ 轴）来描述的前提下的。然而，在自动驾驶或三维重建中，我们通常需要在一个统一的**世界坐标系（World Coordinate System）**中描述所有物体。
 
@@ -161,7 +145,6 @@ $$
 设世界坐标系到相机坐标系的旋转矩阵为 $\mathbf{R} \in SO(3)$，平移向量为 $\mathbf{t} \in \mathbb{R}^3$。那么两个坐标系下同一个点的坐标关系为：
 
 $$ P_c = \mathbf{R} P_w + \mathbf{t} $$
-:eqlabel:eq_rigid_transform
 
 同样地，由于平移操作在向量加法中不是一个严格的线性算子（它破坏了零点映射到零点的性质），我们再次求助于齐次坐标。我们将 $P_w$ 和 $P_c$ 扩展为四维向量，那么上述变换就可以紧凑地写成一个 $4 \times 4$ 矩阵的乘法：
 
@@ -180,12 +163,10 @@ P_w \\
 1
 \end{bmatrix}
 $$
-:eqlabel:eq_extrinsic_matrix
 
 这里的 $\begin{bmatrix} \mathbf{R} & \mathbf{t} \\ \mathbf{0}^\top & 1 \end{bmatrix}$ 常常被称为相机的**外参矩阵（Extrinsic Matrix）**。它描述了相机在三维世界中的位姿（Pose），即相机“在哪里”以及“看向哪里”。与永远不变的内参不同，只要相机在移动，其外参随时都在发生改变。
 
 ## 完整的投影模型
-:label:sec_full_projection
 
 现在，让我们把积木拼接起来。给定一个世界坐标系下的三维点 $P_w$（齐次坐标下为 $[P_w^\top, 1]^\top$），它在二维图像上的像素位置（齐次坐标下为 $[u, v, 1]^\top$），可以通过依次应用外参变换和内参投影来获得。
 
@@ -197,12 +178,10 @@ Z_c \begin{bmatrix} u \\ v \\ 1 \end{bmatrix}
 \mathbf{K} \begin{bmatrix} \mathbf{R} & \mathbf{t} \end{bmatrix}
 \begin{bmatrix} X_w \\ Y_w \\ Z_w \\ 1 \end{bmatrix}
 $$
-:eqlabel:eq_full_cam_matrix
 
 其中，矩阵 $\mathbf{P} = \mathbf{K} \begin{bmatrix} \mathbf{R} & \mathbf{t} \end{bmatrix}$ 是一个 $3 \times 4$ 的矩阵，被称为**相机投影矩阵（Camera Projection Matrix）**。它直接将三维齐次坐标映射到二维齐次坐标，涵盖了从三维世界到数字图像的完整物理信息降维过程。
 
 ## 代码实现
-:label:sec_cam_code
 
 理解了上述严密的数学推导后，我们可以非常轻松地用深度学习框架来实现这一投影过程。在批量处理数据时，张量（Tensor）运算可以极大地加速矩阵乘法。
 
@@ -279,16 +258,3 @@ print(uv_coords)
 * 相机内参矩阵 $\mathbf{K}$ 描述了从物理焦平面到数字像素坐标系的缩放与平移，仅与相机硬件相关。
 * 相机外参包含了旋转矩阵 $\mathbf{R}$ 和平移向量 $\mathbf{t}$，描述了相机在三维世界中的位置与朝向。
 * 完整的相机投影矩阵是内参和外参的乘积，是连接三维空间物理点与二维图像像素点之间的核心数学桥梁。
-
-## 练习
-
-1. 在 :eqref:eq_full_cam_matrix 的完整投影方程中，如果相机的外参仅发生纯粹的平移变换（即旋转矩阵 $\mathbf{R}$ 是单位矩阵），推导此时图像平面上的点 $(u, v)$ 会发生怎样的变化？这与相机仅发生纯粹旋转时的图像变化有何本质不同？
-   * 提示：尝试写出平移和旋转单独作用时的代数展开式，观察深度 $Z_w$ 是否在最终的公式中发挥作用。
-2. 假设你的相机内参中的焦距 $f_x$ 和 $f_y$ 突然减半，这对最终投影出的二维图像会产生什么样的影响？
-   * 提示：结合公式思考图像的视野范围（Field of View）与焦距的关系。
-3. 如果三维空间中的某个点恰好位于相机的成像中心背后（即 $Z_c < 0$），在我们的矩阵乘法模型中，它依然会被投影出一个 $(u, v)$ 坐标。在真实世界的物理实现中，这合理吗？在实际编写渲染引擎或深度学习预处理程序时，我们应该如何过滤这些点？
-   * 提示：考虑齐次坐标除法（透视除法）的正负号，以及几何光学的基本前提。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

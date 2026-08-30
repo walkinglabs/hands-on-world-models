@@ -1,8 +1,6 @@
 # 域随机化
-:label:sec_domain_randomization
 
 ## 现实鸿沟与学术渊源
-:label:sec_dr_history
 
 强化学习与机器人学长期面临一个核心悖论：直接在物理世界中训练机器人成本高昂、危险且极其耗时；而在仿真环境中训练虽然廉价且高效，但仿真世界与真实物理世界之间不可避免地存在差异。这一差异被称为**现实鸿沟**（Reality Gap）。
 
@@ -11,7 +9,6 @@
 为了跨越这一鸿沟，Tobin等人在2017年的经典论文 `[Tobin et al., 2017]` 中提出了**域随机化**（Domain Randomization, DR）的思想。其核心学术理念极具启发性：与其耗费巨资去建立一个无限逼近真实世界的完美仿真器，不如**主动引入不确定性，将仿真环境泛化为一个包含无数个可能物理世界的分布**。只要真实世界（Real World）的参数落在我们随机生成的仿真世界分布之内，那么在整个分布上训练出来的神经网络，就能天然地对真实世界的微小偏差免疫。随后，OpenAI与Peng等人 `[Peng et al., 2018]` 进一步将这一理念从视觉拓展到动力学，使得机器灵巧手等复杂控制任务的“Sim-to-Real”无缝迁移成为现实。
 
 ## 从牛顿力学到参数化马尔可夫过程
-:label:sec_dr_math
 
 为了深刻理解域随机化背后的数学本质，我们首先回归到高中阶段最基础的物理模型：一个质量为 $m$ 的滑块放置在水平桌面上，桌面与滑块之间的动摩擦因数为 $\mu$。此时，我们通过外力 $F$ 去推动这个滑块。
 
@@ -20,14 +17,12 @@
 $$
 a = \frac{F - \mu m g}{m}
 $$
-:eqlabel:eq_newton_block
 
 假设我们在离散时间 $\Delta t$ 内对其进行积分（欧拉法），已知当前时刻的速度为 $v_t$，那么下一时刻的速度 $v_{t+1}$ 为：
 
 $$
 v_{t+1} = v_t + \left(\frac{F_t}{m} - \mu g\right) \Delta t
 $$
-:eqlabel:eq_euler_velocity
 
 在这个微型物理系统中，决定其动力学演化的隐藏物理参数可以写成一个向量 $\boldsymbol{\xi} = [m, \mu]^\top$。
 
@@ -40,19 +35,16 @@ $$
 $$
 J(\theta; \boldsymbol{\xi}) = \mathbb{E}_{\tau \sim \pi_\theta, \mathcal{P}_{\boldsymbol{\xi}}} \left[ \sum_{t=0}^T \gamma^t \mathcal{R}_{\boldsymbol{\xi}}(s_t, a_t) \right]
 $$
-:eqlabel:eq_standard_rl
 
 而在**域随机化**中，我们将参数 $\boldsymbol{\xi}$ 视为服从某种先验分布 $P_{\Xi}$ 的随机变量。我们的新优化目标 $J_{DR}(\theta)$ 变为了在该分布下的双重期望：
 
 $$
 J_{DR}(\theta) = \mathbb{E}_{\boldsymbol{\xi} \sim P_{\Xi}} \left[ \mathbb{E}_{\tau \sim \pi_\theta, \mathcal{P}_{\boldsymbol{\xi}}} \left[ \sum_{t=0}^T \gamma^t \mathcal{R}_{\boldsymbol{\xi}}(s_t, a_t) \right] \right]
 $$
-:eqlabel:eq_dr_objective
 
 通过公式 :eqref:eq_dr_objective 可以清晰地看出，策略 $\pi_\theta$ 必须在**所有可能被采样出来的物理世界中**都表现良好。这在数学上等价于一种针对模型参数不确定性的鲁棒优化（Robust Optimization）。
 
 ## 动力学随机化与方差挑战
-:label:sec_dynamics_dr
 
 在真正的机器人控制中，我们通常需要随机化（Dynamics Randomization）的参数远不止质量和摩擦力。一个典型的机器人关节包括电机、减速器和连杆。因此，分布 $P_{\Xi}$ 包含的维度通常高达数十甚至数百维：
 
@@ -66,12 +58,10 @@ $$
 $$
 \nabla_\theta J_{DR}(\theta) = \mathbb{E}_{\boldsymbol{\xi} \sim P_{\Xi}} \left[ \mathbb{E}_{\tau} \left[ \sum_{t=0}^T \nabla_\theta \log \pi_\theta(a_t|s_t) \hat{A}(s_t, a_t; \boldsymbol{\xi}) \right] \right]
 $$
-:eqlabel:eq_dr_gradient
 
 公式 :eqref:eq_dr_gradient 深刻揭示了域随机化在工程训练中的一个核心痛点：**极高的梯度方差**。传统的强化学习梯度方差仅仅来源于策略网络本身的随机动作采样；而在域随机化中，外部物理环境参数 $\boldsymbol{\xi}$ 的随机采样强行引入了一层额外的方差。如果分布 $P_{\Xi}$ 设置得过于宽泛，导致某些环境下的轨迹完全发散，其优势函数 $\hat{A}$ 剧烈波动，整个神经网络的梯度将被噪声淹没从而无法收敛。因此，精心设计 $P_{\Xi}$ 的分布形状与上下界，是成功应用域随机化的命脉所在。
 
 ## 视觉域随机化与特征不变性
-:label:sec_visual_dr
 
 除了上述的物理动力学参数，对于基于摄像头的端到端控制系统，如何跨越**渲染图像与真实相机图像之间的鸿沟**同样至关重要。
 
@@ -80,7 +70,6 @@ $$
 $$
 \mathbf{I}_t = f_{render}(\mathbf{s}_t; \boldsymbol{\xi}_{vis})
 $$
-:eqlabel:eq_rendering
 
 这里，$\boldsymbol{\xi}_{vis}$ 表示与物体核心几何结构无关的渲染参数，例如光源的位置和光线颜色、摄像机的内参（焦距）与外参（位姿）、背景甚至干扰物的纹理贴图。
 
@@ -89,12 +78,10 @@ $$
 $$
 f_\phi\left( f_{render}(\mathbf{s}_t; \boldsymbol{\xi}_{vis}^{(1)}) \right) \approx f_\phi\left( f_{render}(\mathbf{s}_t; \boldsymbol{\xi}_{vis}^{(2)}) \right)
 $$
-:eqlabel:eq_feature_invariance
 
 这表明神经网络成功地屏蔽了光影、纹理等外在干扰，真正理解并提纯了目标物体的纯粹几何结构空间。
 
 ## 隐式系统辨识：记忆的贝叶斯推断
-:label:sec_dr_memory
 
 在前面的小节中，我们探讨的策略均是无记忆的前馈神经网络 $\pi_\theta(a_t | \mathbf{s}_t)$。然而，仅仅依靠当前时刻的一帧观测来输出动作，往往会使策略变得过于保守（Conservative）。因为网络在时间步 $t$ 并不知道当前环境的滑块质量究竟是 $0.5$ 还是 $1.5$，为了不计算出导致系统崩溃的极端控制力，它只能输出一个妥协的、平均化的微小推力。
 
@@ -107,12 +94,10 @@ $$
 $$
 \hat{P}(\boldsymbol{\xi} | \mathbf{s}_1, a_1, \mathbf{s}_2, a_2, \dots, \mathbf{s}_t)
 $$
-:eqlabel:eq_posterior_estimation
 
 这就是学术界常说的**隐式系统辨识**（Implicit System Identification）。依靠这一强大的机制，机器人在与物理世界接触的前零点几秒内，便能迅速摸清真实的物理法则，并实时切换到对应的最优控制流形上。
 
 ## 实现一个带域随机化的物理环境
-:label:sec_dr_code
 
 [**我们将通过代码具体实现上文推导的滑块物理系统，并在每次重置时对其动力学参数进行域随机化。**] 我们将使用均匀分布对滑块质量和桌面摩擦系数进行采样，并采用一阶欧拉积分来更新连续物理状态。
 
@@ -274,19 +259,8 @@ print(f"宇宙B (质量={m2:.2f}, 摩擦={f2:.2f}) 20步后的最终位移: {pos
 由于物理参数 $\boldsymbol{\xi}$ 是在每轮实验（Episode）开始前从我们预设的均匀分布中严格独立采样的，因此，即使神经网络策略输出完全相同的推力张量序列，其反馈的观测空间也会表现出极大的数值分歧。这从代码侧面上印证了前文我们针对高梯度方差的严密理论分析。
 
 ## 小结
-:label:sec_dr_summary
 
 * **域随机化（Domain Randomization）** 是一种通过向仿真器引入宏观随机性，使得在其中训练的强化学习策略能够零样本（Zero-shot）跨越“现实鸿沟”迁移至真实机器人的核心技术。
 * 从数学角度看，域随机化将标准的马尔可夫决策过程拓展为了**参数化马尔可夫决策过程**，迫使策略网络必须在物理参数分布 $\boldsymbol{\xi} \sim P_{\Xi}$ 的双重期望下最大化累积回报。
 * **视觉随机化**从分布上抹除了不相关的干扰渲染参数，强制卷积神经网络学习纯粹的几何特征；而**动力学随机化**确保控制器不会过拟合到某一套脆弱的动力学方程中。
 * 为了避免前馈网络的性能受制于“保守策略”陷阱，算法实现中往往搭配循环神经网络，通过记忆历史序列来进行**隐式的系统辨识**（Implicit System Identification），赋予了模型在毫秒级自适应真实物理世界的能力。
-
-## 练习
-
-1. **分布敏感性探讨**：请结合公式 :eqref:eq_dr_gradient，在数学上推演一下，如果我们把滑块质量 $m$ 的随机采样范围极其激进地扩大到 $(0.001, 1000.0)$，在计算策略梯度 $\nabla_\theta \log \pi_\theta(a_t|s_t)$ 时会遇到怎样的严重数值稳定性灾难？
-2. **拓展环境实现**：在目前的 `RandomizedBlockEnv` 代码框架中，物理系统是严格瞬时演化的。请尝试修改 `step` 函数的代码，引入一种名为**动作延迟（Action Delay）**的随机化参数，使得神经网络当前输出的力 $F$ 在经过固定的 $d$ 个时间步之后，才会真正作用于牛顿积分方程上。（提示：考虑使用Python内部的数据结构如循环队列或列表来缓存历史动作流）。
-3. **贝叶斯推断的显式监督**：如果允许你向策略网络中额外挂载一个监督学习的损失函数层，你将如何利用环境每步向外吐出的历史观测数据序列 $[\mathbf{s}_0, a_0, \mathbf{s}_1, a_1, \dots, \mathbf{s}_t]$，显式地强迫神经网络将隐状态映射为预测出的确切质量 $m$ 与摩擦因数 $\mu$ 标量？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

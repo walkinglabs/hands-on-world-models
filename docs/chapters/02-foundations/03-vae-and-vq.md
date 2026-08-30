@@ -1,5 +1,4 @@
 # 空间离散化：VAE与VQ
-:label:sec_vae_vq
 
 在深度学习的发展历程中，如何有效地学习数据的高维连续表征一直是一个核心问题。从早期的主成分分析（PCA）到深层自编码器（Autoencoder），研究者们试图将复杂的现实世界数据（如图像、音频）压缩到一个低维的潜在空间（Latent Space）中。然而，传统的自编码器往往缺乏对潜在空间的概率约束，导致生成的特征空间存在大量“空洞”，无法用于生成新样本。
 
@@ -8,21 +7,18 @@
 在本节中，我们将从最基础的概率法则出发，逐步推导 VAE 的数学基础，并在此基础上深入探讨 VQ-VAE 是如何实现空间离散化的。我们将剥开所有复杂的数学外衣，用高中数学的直觉来理解这些强大的生成模型。
 
 ## 隐变量模型与极大似然的困境
-:label:sec_latent_variable
 
 在高中概率论中，我们学习过条件概率和全概率公式。假设我们观察到了一系列数据 $x$（例如，一堆人脸图片）。我们假设这些数据的生成是由一些隐含的、我们无法直接观测到的因素 $z$（例如，性别、表情、光照）决定的。这种变量 $z$ 被称为**隐变量**（Latent Variable）。
 
 我们希望找到一个模型参数 $\theta$，使得该模型生成观测数据 $x$ 的概率最大化。这在统计学中被称为极大似然估计（Maximum Likelihood Estimation）。数据 $x$ 的边际概率 $P_\theta(x)$ 可以通过对所有可能的隐变量 $z$ 积分求得：
 
 $$ P_\theta(x) = \int P_\theta(x|z) P(z) dz $$
-:eqlabel:eq_marginal_prob
 
 这里，$P(z)$ 是隐变量的先验分布（通常我们假设它是一个标准正态分布），而 $P_\theta(x|z)$ 是给定隐变量 $z$ 时生成数据 $x$ 的条件概率，在深度学习中，这通常由一个神经网络（即解码器）来建模。
 
 **困境在于积分的计算**：在高维空间中，隐变量 $z$ 可能包含数百个维度。要在整个高维空间上对上述积分进行精确计算，其计算量是指数级增长的，这在现实中是完全不可解（Intractable）的。既然无法直接最大化 $P_\theta(x)$，我们需要寻找一种替代方案。
 
 ## 变分下界（ELBO）的严格推导
-:label:sec_elbo
 
 既然直接计算含有积分的似然函数行不通，数学家们采取了一种极其巧妙的迂回策略：我们不去直接最大化对数似然 $\log P_\theta(x)$，而是去最大化它的一个**下界**（Lower Bound）。只要这个下界被不断抬高，真实的对数似然也会随之增大。
 
@@ -33,46 +29,38 @@ $$ P_\theta(x) = \int P_\theta(x|z) P(z) dz $$
 首先，根据条件概率的定义 $P(x, z) = P(x|z)P(z) = P(z|x)P(x)$，我们可以写出：
 
 $$ \log P_\theta(x) = \log P_\theta(x, z) - \log P_\theta(z|x) $$
-:eqlabel:eq_log_px_split
 
 这个等式对于任意的 $z$ 都成立。接下来，我们在等式两边同时对分布 $Q_\phi(z|x)$ 求期望（即乘以 $Q_\phi(z|x)$ 并对 $z$ 积分）。因为等式左边的 $\log P_\theta(x)$ 并不包含变量 $z$，所以它对任何关于 $z$ 的分布求期望都等于它本身：
 
 $$ \log P_\theta(x) = \mathbb{E}_{z \sim Q_\phi(z|x)} [ \log P_\theta(x, z) - \log P_\theta(z|x) ] $$
-:eqlabel:eq_log_px_expectation
 
 接下来，我们在期望的方括号内部，巧妙地加上并减去同一项 $\log Q_\phi(z|x)$：
 
 $$ \log P_\theta(x) = \mathbb{E}_{z \sim Q_\phi(z|x)} [ \log P_\theta(x, z) - \log Q_\phi(z|x) + \log Q_\phi(z|x) - \log P_\theta(z|x) ] $$
-:eqlabel:eq_log_px_add_sub
 
 然后，我们将期望拆分成两部分：
 
 $$ \log P_\theta(x) = \underbrace{\mathbb{E}_{z \sim Q_\phi(z|x)} \left[ \log \frac{P_\theta(x, z)}{Q_\phi(z|x)} \right]}_{\text{ELBO}} + \underbrace{\mathbb{E}_{z \sim Q_\phi(z|x)} \left[ \log \frac{Q_\phi(z|x)}{P_\theta(z|x)} \right]}_{\text{KL Divergence}} $$
-:eqlabel:eq_elbo_and_kl
 
 在这个等式中，右侧的第二项正是分布 $Q_\phi(z|x)$ 和真实后验分布 $P_\theta(z|x)$ 之间的 KL 散度（Kullback-Leibler Divergence），记为 $D_{\text{KL}}(Q_\phi(z|x) \| P_\theta(z|x))$。根据信息论的基本定理，KL 散度衡量了两个概率分布之间的差异，它永远是非负的（$\ge 0$）。
 
 既然 KL 散度非负，那么等式右侧的第一项必然小于或等于左侧的对数似然 $\log P_\theta(x)$。因此，这第一项被称为**证据下界**（Evidence Lower BOund, ELBO）：
 
 $$ \log P_\theta(x) \ge \text{ELBO} = \mathbb{E}_{z \sim Q_\phi(z|x)} [ \log P_\theta(x, z) - \log Q_\phi(z|x) ] $$
-:eqlabel:eq_elbo_inequality
 
 至此，我们将一个不可解的积分问题，转化为了一个优化问题：通过调整神经网络的参数 $\phi$（编码器）和 $\theta$（解码器），最大化 ELBO。当 ELBO 最大化时，我们既抬高了数据似然 $\log P_\theta(x)$，又迫使近似后验 $Q_\phi(z|x)$ 逼近真实的后验 $P_\theta(z|x)$。
 
 我们可以将 ELBO 进一步展开，使其具有更明确的物理意义。利用 $P_\theta(x, z) = P_\theta(x|z)P(z)$，我们可以写出：
 
 $$ \text{ELBO} = \mathbb{E}_{z \sim Q_\phi(z|x)} [ \log P_\theta(x|z) ] - \mathbb{E}_{z \sim Q_\phi(z|x)} \left[ \log \frac{Q_\phi(z|x)}{P(z)} \right] $$
-:eqlabel:eq_elbo_final
 
 $$ \text{ELBO} = \mathbb{E}_{z \sim Q_\phi(z|x)} [ \log P_\theta(x|z) ] - D_{\text{KL}}(Q_\phi(z|x) \| P(z)) $$
-:eqlabel:eq_elbo_kl_prior
 
 这个最终形态极其优雅。它表明，要最大化下界，我们的模型需要做到两点：
 1. **最大化重构项** $\mathbb{E}_{z \sim Q_\phi(z|x)} [ \log P_\theta(x|z) ]$：即给定编码器提取的特征 $z$，解码器能够极高概率地还原出原始数据 $x$。
 2. **最小化正则项** $D_{\text{KL}}(Q_\phi(z|x) \| P(z))$：即编码器输出的分布 $Q_\phi(z|x)$ 应当尽可能接近我们事先设定的先验分布 $P(z)$（通常是标准正态分布 $\mathcal{N}(0, I)$）。
 
 ## 重参数化技巧与 VAE 实现
-:label:sec_reparameterization
 
 在具体的实现中，编码器神经网络 $Q_\phi(z|x)$ 会输出一个高斯分布的均值 $\mu$ 和方差 $\sigma^2$。然后，我们需要从这个高斯分布 $\mathcal{N}(\mu, \sigma^2)$ 中采样出一个向量 $z$，再将其输入给解码器。
 
@@ -83,7 +71,6 @@ Kingma 和 Welling 提出的**重参数化技巧**（Reparameterization Trick）
 我们可以先从一个固定的**标准正态分布** $\epsilon \sim \mathcal{N}(0, 1)$ 中采样出一个噪声数值，然后对其进行简单的线性平移和缩放：
 
 $$ z = \mu + \sigma \cdot \epsilon $$
-:eqlabel:eq_reparam_1d
 
 在这个公式中，随机性全部被隔离在了 $\epsilon$ 中。而 $\mu$ 和 $\sigma$ 是由神经网络确定性地计算出来的，它们参与了简单的加法和乘法运算。因此，关于 $\mu$ 和 $\sigma$ 的导数可以畅通无阻地向后传播。对于多维向量，这个操作只是对每个维度独立进行。
 
@@ -153,7 +140,6 @@ def vae_loss_function(recon_x, x, mu, logvar):
 ```
 
 ## 向量量化（VQ）：走向离散表征
-:label:sec_vq
 
 VAE 虽然在数学上极其优美，但它强迫隐空间服从连续的正态分布。然而，现实世界中的许多概念是天然离散的。例如，在语言中，句子是由离散的单词（词表中的条目）组成的，不存在处于“猫”和“狗”之间某个连续坐标的“半猫半狗”的中间词。
 
@@ -164,7 +150,6 @@ VAE 虽然在数学上极其优美，但它强迫隐空间服从连续的正态�
 编码器输出一个连续的特征向量 $z_e(x)$。接下来，我们不使用重参数化技巧来采样，而是直接在码本 $E$ 中寻找距离 $z_e(x)$ 最近的那一个向量 $e_k$。这个寻找最近邻的过程被称为**向量量化**（Vector Quantization）：
 
 $$ z_q(x) = e_k, \quad \text{where} \quad k = \arg\min_j \| z_e(x) - e_j \|_2 $$
-:eqlabel:eq_vq_quantize
 
 这一步将连续的 $z_e$ 强行对齐到了离散的码本空间，输出量化后的向量 $z_q(x)$，随后 $z_q(x)$ 被送入解码器以重构图像。
 
@@ -175,7 +160,6 @@ $$ z_q(x) = e_k, \quad \text{where} \quad k = \arg\min_j \| z_e(x) - e_j \|_2 $$
 在反向传播时，我们直接将解码器关于量化后向量 $z_q(x)$ 的梯度，原封不动地复制给编码器的输出 $z_e(x)$。也就是我们欺骗网络，假装前向传播时 $z_q(x)$ 就是 $z_e(x)$ 本身。
 
 $$ \nabla_{z_e(x)} L \approx \nabla_{z_q(x)} L $$
-:eqlabel:eq_ste
 
 **VQ-VAE 的损失函数**
 
@@ -188,7 +172,6 @@ $$ \nabla_{z_e(x)} L \approx \nabla_{z_q(x)} L $$
 完整的损失函数如下：
 
 $$ L = \underbrace{\| x - D(z_q) \|_2^2}_{\text{Reconstruction}} + \underbrace{\| \text{sg}[z_e(x)] - e \|_2^2}_{\text{Codebook Loss}} + \beta \underbrace{\| z_e(x) - \text{sg}[e] \|_2^2}_{\text{Commitment Loss}} $$
-:eqlabel:eq_vqvae_loss
 
 其中 $\beta$ 是承诺损失的超参数，通常设为一个较小的值，如 $0.25$。
 
@@ -257,19 +240,5 @@ class VectorQuantizer(nn.Module):
 这段代码精准地展示了 VQ 机制如何在保持前向离散化查找的同时，利用 `.detach()` 巧妙地解决了梯度断裂问题。通过离散化，模型不仅能够压缩信息，更能够学到诸如物理实体的类别、文本的单词等天然的离散语义单元。
 
 ## 小结
-:label:sec_vae_vq_summary
 
 在本节中，我们从最基本的概率论出发，详尽地推导了变分自编码器（VAE）如何利用变分下界（ELBO）和重参数化技巧，在连续高维空间中寻找概率意义上的最优解。随后，我们探讨了为何离散表征在特定场景下更为重要，并引出了向量量化变分自编码器（VQ-VAE），详细解析了最近邻查找与直通估计器（STE）的具体数学和代码实现。从连续到离散，这不仅是数学形式的转换，更是深层表征学习对不同世界运作模式的逼近尝试。
-
-## 练习
-
-1. 在推导 ELBO 时，我们利用了 KL 散度非负的性质。如果 $Q_\phi(z|x)$ 完全等同于 $P_\theta(z|x)$，ELBO 与真实的对数似然 $\log P_\theta(x)$ 之间是什么关系？此时模型的重构能力是否达到了绝对最优？
-    > **提示**：回想 KL 散度在什么条件下等于零。思考当后验分布被完美拟合时，解码器的优化空间在哪里。
-2. 在 VQ-VAE 的实现中，直通估计器（STE）为什么只被用于梯度传递，而不直接在计算图中用真实的导数替代？
-    > **提示**：思考 `argmin` 操作的导数在数学上是什么形式（在极值点之外），它对基于梯度的优化算法有何影响。
-3. 尝试修改 VAE 的实现，将隐变量的先验分布从标准正态分布改为拉普拉斯分布（Laplace distribution），损失函数中的 KL 散度项需要重新推导吗？为什么？
-    > **提示**：查阅两个拉普拉斯分布，或者拉普拉斯分布与高斯分布之间 KL 散度的计算公式，注意其解析解的变化。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

@@ -1,5 +1,4 @@
 # 7.6 动作分块与ACT模型
-:label:sec_action_chunking_act
 
 在之前的章节中，我们深入探讨了基于马尔可夫决策过程（MDP）的传统强化学习与模仿学习框架。在最基础的行为克隆（Behavior Cloning, BC）设定中，策略（Policy）网络通常被建模为一个函数映射 $\pi(o_t) \rightarrow a_t$，即在时间步 $t$ 根据当前观测 $o_t$ 预测下一个离散或连续的动作 $a_t$。然而，当我们试图将这些算法部署到拥有几十个自由度的双臂机器人，并执行诸如穿针引线、剥大蒜等高精度微操时，传统的单步预测模型往往会遭遇灾难性的失败。
 
@@ -8,7 +7,6 @@
 在本节中，我们将从最基础的误差累积几何直觉出发，严格推导动作分块与时间集成的数学表达，并详细解析 ACT 模型的 CVAE-Transformer 混合架构及其变分下界推导。
 
 ## 7.6.1 复合误差与动作分块的几何直觉
-:label:subsec_compounding_errors
 
 为了理解为何要进行“动作分块”，我们暂且抛开复杂的机器人视觉输入，将问题降维到一个最基础的高中运动学场景：假设我们需要控制一辆小车沿着一条光滑的二次曲线轨道 $y = -x^2$ 行驶。
 
@@ -19,7 +17,6 @@
 $$
 \mathcal{L}_{\text{BC}} = \mathbb{E}_{(s_t^*, a_t^*) \sim \tau^*} \left[ \| a_t^* - \pi_\theta(s_t^*) \|^2 \right]
 $$
-:eqlabel:eq_bc_loss
 
 在这个损失函数下，动作 $a_t^*$ 被视为一个孤立的标量或向量。动作分块（Action Chunking）的思想极其朴素但有效：既然单步预测容易受到高频噪声和局部偏离的干扰，我们何不让模型在每个时间步 $t$，直接预测未来 $k$ 个时间步的完整轨迹片段？
 
@@ -28,12 +25,10 @@ $$
 $$
 A_t = [a_t, a_{t+1}, \dots, a_{t+k-1}] \in \mathbb{R}^{k \times d}
 $$
-:eqlabel:eq_action_chunk
 
 其中 $d$ 为单步动作的维度。此时，策略网络的映射关系变为 $\pi(o_t) \rightarrow A_t$。在小车沿着 $y = -x^2$ 行驶的例子中，这就好比模型不再只指示“下一步往左转一小点”，而是直接抛出一条平滑的“未来一秒的参考运动轨迹”。即便小车当前存在微小偏离，接下来的一组连续动作也能强行将其拉回预定的宏观航线上，从而极大地抑制了高频的抖动和误差的短期爆发。
 
 ## 7.6.2 时间集成（Temporal Ensembling）机制
-:label:subsec_temporal_ensembling
 
 一旦引入了动作分块，一个直观的冲突便随之产生。在时间步 $t$，模型观测到 $o_t$，并预测出动作块 $A_t$。在传统的执行方式下，机器人会开环（Open-loop）地连续执行这 $k$ 个动作，直到时间步 $t+k$ 才进行下一次观测。这种开环执行放弃了中间 $k-1$ 步的反馈，显然是不安全的。
 
@@ -50,19 +45,16 @@ $k$. 在 $t$ 时刻，预测的 $A_t$ 中的第一个动作：$\hat{a}_t^{(t)}$
 $$
 a_t^{\text{exec}} = \sum_{i=0}^{k-1} w_i \hat{a}_t^{(t-i)}
 $$
-:eqlabel:eq_temporal_ensemble_scalar
 
 在实际工程应用中，通常我们更信任距离当前时刻越近的观测所做出的预测。因此，权重 $w_i$ 通常被设计为指数衰减的指数权重（Exponential Weighting）：
 
 $$
 w_i = \frac{e^{-m \cdot i}}{\sum_{j=0}^{k-1} e^{-m \cdot j}}
 $$
-:eqlabel:eq_ensemble_weights
 
 其中 $m$ 衰减系数，$i$ 表示预测发生的相对时间差（$i=0$ 表示当前步的预测，$i=k-1$ 表示最旧的预测）。这种简单的加权求和，不仅利用了长程轨迹的平滑性，又兼顾了当前最新观测的瞬时响应能力，成为了 ACT 能够在复杂物理交互中保持丝滑动作的核心关键。
 
 ## 7.6.3 应对多模态分布：条件变分自编码器（CVAE）
-:label:subsec_act_architecture
 
 尽管动作分块与时间集成极大缓解了复合误差，但我们在模仿学习中还面临另一个致命威胁：**人类专家数据的多模态性（Multimodality）**。
 
@@ -88,14 +80,12 @@ $$
 $$
 \log p_\theta(A | O) = \mathbb{E}_{Z \sim q_\phi} \left[ \log \frac{p_\theta(A, Z | O)}{q_\phi(Z | A, O)} \right] + \mathbb{E}_{Z \sim q_\phi} \left[ \log \frac{q_\phi(Z | A, O)}{p_\theta(Z | A, O)} \right]
 $$
-:eqlabel:eq_elbo_derivation_1
 
 由于等式右侧第二项恰好是 KL 散度（Kullback-Leibler Divergence） $D_{KL}(q_\phi(Z | A, O) \parallel p_\theta(Z | A, O))$，且 KL 散度非负。因此，等式右侧第一项构成了对数似然的证据下界（Evidence Lower Bound, ELBO）：
 
 $$
 \mathcal{L}_{\text{ELBO}} = \mathbb{E}_{Z \sim q_\phi} \left[ \log p_\theta(A | Z, O) \right] - D_{KL}(q_\phi(Z | A, O) \parallel p(Z | O))
 $$
-:eqlabel:eq_elbo_final
 
 在 ACT 中，先验分布被极度简化为一个与观测无关的标准正态分布 $p(Z | O) = \mathcal{N}(0, I)$。
 因此，ACT 的总体训练损失函数转化为最小化负的 ELBO：
@@ -103,7 +93,6 @@ $$
 2. **正则化损失（Regularization Loss）**：$D_{KL}(q_\phi(Z | A, O) \parallel \mathcal{N}(0, I))$。迫使编码器输出的均值 $\mu$ 和方差 $\sigma^2$ 贴近标准正态分布。
 
 ## 7.6.4 Transformer 在 ACT 中的信息流
-:label:subsec_transformer_in_act
 
 在明确了 CVAE 的宏观数学目标后，我们来观察 ACT 是如何通过 Transformer 架构实体化公式 :eqref:eq_elbo_final 的。
 
@@ -123,7 +112,6 @@ ACT 的网络结构严格分为两条支路：
 这种将时序动作直接映射到 Transformer `Query` 序列上的设计，彻底抛弃了自回归（Autoregressive）生成的耗时问题，使得模型能够在一瞬间并行输出高频控制所需的动作流。
 
 ## 7.6.5 核心代码实现
-:label:subsec_act_code
 
 下面，我们将通过代码展示 ACT 模型中最关键的变分编码器和基于查询机制的 Transformer 解码器的前向传播过程。
 
@@ -322,7 +310,6 @@ print(f"TensorFlow 预测动作维度: {pred_a.shape}")
 ```
 
 ## 7.6.6 小结
-:label:subsec_act_summary
 
 * 单步行为克隆面临严重的复合误差问题，微小的传感器噪声极易导致系统崩溃。
 * **动作分块（Action Chunking）** 通过单次预测未来连续 $k$ 个时间步的轨迹，迫使系统保持局部的平滑性。
@@ -331,7 +318,6 @@ print(f"TensorFlow 预测动作维度: {pred_a.shape}")
 * 在 ACT 架构中，Transformer 解码器利用并行生成的 Query 直接向包含视觉观测与隐意图的 Memory 索取信息，优雅且高效地完成了多模态轨迹的生成。
 
 ## 7.6.7 练习
-:label:subsec_act_exercises
 
 1. 考虑式 :eqref:eq_temporal_ensemble_scalar 中的时间集成权重。如果我们将衰减系数 $m$ 设为极大的正数（例如趋近于无穷大），模型在推理时对同一时刻动作的决策将如何表现？这等价于哪种传统的控制策略？
    - *提示：观察当 $m \to \infty$ 时，$e^{-m \cdot i}$ 对于不同的 $i$ 衰减速度有多快。这会导致只有哪个特定的预测对最终动作起主导作用？*
@@ -339,7 +325,3 @@ print(f"TensorFlow 预测动作维度: {pred_a.shape}")
    - *提示：考虑如果机器人需要跟踪一个高速随机移动的目标物体（例如飞出的乒乓球），开环执行 $k$ 步（例如0.5秒）会产生什么后果。*
 3. 在式 :eqref:eq_elbo_final 中，如果我们将 KL 散度的正则化系数（又称 $\beta$-VAE 的超参数）设置得非常大，会导致编码器学到的 $\mu$ 和 $\sigma$ 发生什么退化现象？这会对解码器重构多模态专家的动作造成什么影响？
    - *提示：回忆 KL 散度极小化时，后验分布 $q_\phi$ 将无限趋近于先验 $\mathcal{N}(0, I)$。这意味着隐变量 $Z$ 将不再包含任何关于具体动作流派的信息。*
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/7-6-act)
-:end_tab:

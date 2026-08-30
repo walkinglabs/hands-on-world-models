@@ -1,5 +1,4 @@
 # 三维占据网格预测（Occupancy Prediction）的从零开始实现
-:label:`sec_occupancy_scratch`
 
 在前面的章节中，我们深入探讨了如何将多视角的二维图像特征投影到俯视图（Bird's Eye View, BEV）空间，从而实现对周围环境的二维感知。然而，真实的物理世界是三维的。在自动驾驶和机器人导航等复杂场景中，仅仅知道“地面上哪里有物体”是远远不够的。例如，立交桥的悬挑结构、路边伸出的树枝、或者是形状不规则的大型工程车辆，它们在二维 BEV 投影下往往会丢失关键的几何信息，甚至导致危险的碰撞误判。
 
@@ -8,7 +7,6 @@
 在本节中，我们将从最基础的几何投影原理出发，一步步推导并实现一个极简但完整的三维占据网格预测网络。
 
 ## 三维体素空间的几何定义
-:label:`sec_occupancy_geometry`
 
 要预测三维空间中的占据状态，我们首先需要对连续的物理世界进行离散化。最自然的方式是使用**体素**（Voxel），即三维空间中的像素。
 
@@ -17,14 +15,12 @@
 令空间范围的边界为 $[x_{\min}, x_{\max}]$，$[y_{\min}, y_{\max}]$，$[z_{\min}, z_{\max}]$。我们可以计算出每个维度上体素的数量：
 
 $$W = \frac{x_{\max} - x_{\min}}{\Delta x}, \quad H = \frac{y_{\max} - y_{\min}}{\Delta y}, \quad D = \frac{z_{\max} - z_{\min}}{\Delta z}$$
-:eqlabel:`eq_voxel_dims`
 
 这样，我们将原本连续的三维坐标 $(x, y, z)$ 映射到了一个离散的三维张量网格索引 $(u, v, w)$ 中。对于任意一个体素网格中的索引 $(u, v, w)$，它所代表的三维物理空间中心坐标可以通过以下线性变换得出：
 
 $$x_c = x_{\min} + (u + 0.5) \cdot \Delta x$$
 $$y_c = y_{\min} + (v + 0.5) \cdot \Delta y$$
 $$z_c = z_{\min} + (w + 0.5) \cdot \Delta z$$
-:eqlabel:`eq_voxel_to_world`
 
 **(**我们首先定义三维体素网格的基本参数，并生成其在物理空间中的三维坐标网格。**)**
 
@@ -66,7 +62,6 @@ print("体素网格形状:", voxel_grid.shape) # 预期: (10, 10, 4, 3)
 ```
 
 ## 二维到三维的特征投影（2D-to-3D Lifting）
-:label:`sec_occupancy_lifting`
 
 我们已经定义了三维体素网格。现在的核心难点在于：如何将二维图像提取到的特征，填充到这个三维的网格中？
 
@@ -93,7 +88,6 @@ R & \mathbf{t} \\
 X \\ Y \\ Z \\ 1
 \end{bmatrix}
 $$
-:eqlabel:`eq_extrinsics`
 
 接着，我们将相机坐标系下的三维点投影到二维像素平面上。这一步通过相机内参矩阵（Intrinsics）$K \in \mathbb{R}^{3 \times 3}$ 完成。内参矩阵包含了焦距 $f_x, f_y$ 和光心偏移 $c_x, c_y$。投影公式为：
 
@@ -113,7 +107,6 @@ f_x & 0 & c_x \\
 X_c \\ Y_c \\ Z_c
 \end{bmatrix}
 $$
-:eqlabel:`eq_intrinsics`
 
 其中 $(u, v)$ 就是该三维点在图像上的像素坐标。需要注意的是，由于除以了深度 $Z_c$，这是一个非线性的归一化过程。
 
@@ -221,7 +214,6 @@ class VolumeFeatureLifting(nn.Module):
 > 在真实的复杂模型中，上述特征融合过程往往还会结合变形注意力机制（Deformable Attention），让体素不仅采样投影中心点的特征，还能自适应地学习周边区域的关键特征，从而克服由深度估计不准带来的投影偏差。
 
 ## 三维特征聚合与语义占据预测网络
-:label:`sec_occupancy_network`
 
 在获取了初步的、填充好的三维特征空间后，我们得到了一个张量，其形状为 `(B, C, X, Y, Z)`。这是一个不折不扣的四维时空张量（若将批次 $B$ 忽略，仅看特征通道和三个空间维度）。
 
@@ -267,14 +259,12 @@ class OccupancyPredictionNetwork(nn.Module):
 ```
 
 ## 损失函数：处理极度不平衡的三维空间
-:label:`sec_occupancy_loss`
 
 有了网络的输出逻辑回归值 $y \in \mathbb{R}^{C \times W \times H \times D}$ 和真实的占据网格标签 $\hat{y} \in \{0, 1, \dots, C-1\}^{W \times H \times D}$，其中 $C$ 代表类别数，类别 0 通常保留给“空闲空间（Free Space）”。
 
 乍看之下，我们可以简单地将多维张量展平，并在所有体素上计算标准的多类别交叉熵损失（Cross-Entropy Loss）：
 
 $$L_{\text{CE}} = - \frac{1}{W H D} \sum_{u=1}^{W} \sum_{v=1}^{H} \sum_{w=1}^{D} \log p(\hat{y}_{u,v,w} \mid x)$$
-:eqlabel:`eq_occ_ce_loss`
 
 其中 $p$ 是经过 Softmax 函数后的模型预测概率分布。
 
@@ -330,14 +320,3 @@ print(f"训练步骤的体素分类损失: {loss.item():.4f}")
 4. 我们剖析了空间极度稀疏性和类别不平衡所带来的挑战，并引入了加权损失来引导模型的优化方向。
 
 这套基础架构不仅是当代纯视觉三维占据预测的核心基石，也为理解复杂的三维场景生成和重建技术铺平了道路。
-
-## 练习
-
-1. **投影深度的思考**：在 `VolumeFeatureLifting` 模块中，我们直接根据三维体素中心反投影并采样像素特征。这种做法忽略了图像中像素自身的真实深度。如果某个像素真实对应着距离相机 5 米的物体，那么 10 米远处的体素投射到该像素上时，也会不加区分地采样到该物体的特征。我们该如何修改网络架构或特征提取流程，来缓解这种深度歧义带来的错误填充？
-   *提示：思考如何在前段二维图像主干网络上加入深度预测分布，并利用截断体素（Truncated Voxel）的思想。*
-2. **多尺度体素与显存爆炸**：如果我们希望感知的范围扩大到自车周围 100 米，且要求 0.2 米的极高精细度，直接应用上述的均匀网格划分，张量尺寸会变成多大？你认为可以利用什么样的稀疏数据结构或分层架构（Coarse-to-Fine）来优化计算开销？
-   *提示：可以参考八叉树（Octree）思想或者稀疏卷积（Sparse Convolution）机制。*
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/occupancy-prediction-scratch)
-:end_tab:

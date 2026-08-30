@@ -1,5 +1,4 @@
 # 5.3 扩散模型在视频生成中的应用（以 Sora 为例）
-:label:sec_diffusion_video_sora
 
 在前面的章节中，我们已经探讨了生成模型在离散文本和静态图像领域的突破。然而，当我们试图将这些成功经验向视频领域迁移时，往往会遭遇前所未有的阻力。视频并非仅仅是图像在时间轴上的简单堆叠，它包含了复杂的物理规律、物体间的时空交互，以及长程的因果一致性。近年来，以 Sora 为代表的视频生成模型向我们展示了惊人的物理世界模拟能力。本节将从最基础的标量扩散过程起步，抽丝剥茧地推导扩散模型（Diffusion Models）是如何与 Transformer 架构深度融合，最终演化为能够处理复杂时空张量的视频生成范式的。
 
@@ -18,29 +17,24 @@
 在每一个离散的时间步 $t \in \{1, 2, \dots, T_{diff}\}$，我们定义状态更新的线性递推公式为：
 
 $$x_t = \sqrt{1 - \beta_t} x_{t-1} + \sqrt{\beta_t} \epsilon_t$$
-:eqlabel:eq_diffusion_step_scalar
 
 其中，$\beta_t \in (0, 1)$ 是预先设定的方差超参数（也称为噪声表，Noise Schedule），而 $\epsilon_t \sim \mathcal{N}(0, 1)$ 是从标准正态分布中采样的高斯噪声。这个公式非常直观：当前状态 $x_t$ 是前一状态 $x_{t-1}$ 的衰减版本与新加入噪声的线性组合。
 
 为了能够在训练时直接跳跃到任意时间步 $t$，我们需要将递推公式展开。令 $\alpha_t = 1 - \beta_t$，上述递推公式可以写为 $x_t = \sqrt{\alpha_t} x_{t-1} + \sqrt{1 - \alpha_t} \epsilon_t$。将其向回展开一步，可以得到：
 
 $$x_t = \sqrt{\alpha_t} (\sqrt{\alpha_{t-1}} x_{t-2} + \sqrt{1 - \alpha_{t-1}} \epsilon_{t-1}) + \sqrt{1 - \alpha_t} \epsilon_t$$
-:eqlabel:eq_diffusion_expand_scalar
 
 $$x_t = \sqrt{\alpha_t \alpha_{t-1}} x_{t-2} + \sqrt{\alpha_t (1 - \alpha_{t-1})} \epsilon_{t-1} + \sqrt{1 - \alpha_t} \epsilon_t$$
-:eqlabel:eq_diffusion_expand_grouped
 
 此时，我们需要借助高中数学中独立正态变量相加的方差可加性原理。由于 $\epsilon_{t-1}$ 和 $\epsilon_t$ 是独立且服从标准正态分布的变量，它们线性组合的方差等于各自系数平方的和：$\alpha_t (1 - \alpha_{t-1}) + (1 - \alpha_t) = 1 - \alpha_t \alpha_{t-1}$。因此，后两项可以合并为一个新的高斯噪声。通过不断向回递归，令 $\bar{\alpha}_t = \prod_{i=1}^t \alpha_i$，我们可以严谨推导出最终的解析表达式：
 
 $$x_t = \sqrt{\bar{\alpha}_t} x_0 + \sqrt{1 - \bar{\alpha}_t} \epsilon$$
-:eqlabel:eq_diffusion_closed_scalar
 
 其中 $\epsilon \sim \mathcal{N}(0, 1)$。由于 $\bar{\alpha}_t$ 随着 $t$ 的增大逐渐趋近于 0，标量 $x_t$ 最终将完全退化为纯粹的随机噪声。
 
 当我们从单一像素过渡到宏观的视频序列时，上述标量公式可以直接推广到高维张量。定义原始视频为张量 $\mathbf{V}_0 \in \mathbb{R}^{C \times T \times H \times W}$，其中 $C$ 为通道数（例如 RGB 图像为 3），$T$ 为视频帧数，$H$ 和 $W$ 分别为单帧图像的高度和宽度。此时，视频扩散模型的前向过程严谨地表达为：
 
 $$\mathbf{V}_t = \sqrt{\bar{\alpha}_t} \mathbf{V}_0 + \sqrt{1 - \bar{\alpha}_t} \mathbf{E}$$
-:eqlabel:eq_diffusion_video_tensor
 
 这里，噪声张量 $\mathbf{E}$ 具有与 $\mathbf{V}_0$ 完全相同的多维形状，且其内部的每一个元素均独立服从标准正态分布。去噪模型（即我们要训练的神经网络）的任务就是接收带噪张量 $\mathbf{V}_t$ 和时间步 $t$，预测出被加入的噪声 $\mathbf{E}$。
 
@@ -55,7 +49,6 @@ Sora 突破这一瓶颈的核心机制在于引入了时空补丁（Spacetime Pa
 通过这种严格的几何切分，整个庞大的视频张量被降维并转换为一个由局部补丁组成的序列，其最终的序列长度 $N$（即序列中的元素个数）被大幅缩减为：
 
 $$N = \left( \frac{T}{t_p} \right) \times \left( \frac{H}{h_p} \right) \times \left( \frac{W}{w_p} \right)$$
-:eqlabel:eq_patch_sequence_length
 
 每一个被切分出来的时空补丁首先会被展平（Flatten）为一维向量，随后通过一个线性投影矩阵 $\mathbf{W}_{proj}$ 映射为隐藏层维度为 $D$ 的潜在向量（Latent Vector），并加上空间与时间的三维位置编码（3D Positional Encoding），以向模型保留该补丁在原始长方体张量中的绝对位置信息。
 
@@ -128,12 +121,10 @@ class SpacetimePatchEmbedding(tf.keras.layers.Layer):
 在多头自注意力（Multi-Head Self-Attention, MHSA）的严格数学定义中，序列张量 $\mathbf{Z} \in \mathbb{R}^{N \times D}$ 中的每个补丁都会被一组权重矩阵映射为查询（Query）、键（Key）和值（Value）：
 
 $$\mathbf{Q} = \mathbf{Z} \mathbf{W}_Q, \quad \mathbf{K} = \mathbf{Z} \mathbf{W}_K, \quad \mathbf{V} = \mathbf{Z} \mathbf{W}_V$$
-:eqlabel:eq_qkv_projection
 
 注意力的全局交互权重分配由点积操作计算得出，公式如下：
 
 $$\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{d_k}}\right) \mathbf{V}$$
-:eqlabel:eq_self_attention
 
 > 💡 **精炼类比：**
 > 我们可以将这种联合时空注意力机制视为一间“多维度的高级会议室”。在这个会议室里，每一个“与会者”（代表局部时空信息的补丁向量）不仅能实时听到身边邻座（即在空间上相邻的图像补丁）的发言，还能同步调取并聆听昨天或明天同一座位（即在时间轴上相邻的帧补丁）的录音记录。通过这种不遗漏任何方向的全局信息交换，模型能够在生成画面中一只奔跑的猎犬时，既保证它在当前帧的四肢比例精准协调（空间结构的物理保真），又能确保它在后续帧中的奔跑轨迹严格符合重力加速度和骨骼肌肉的运动学规律（时间连贯的物理保真）。
@@ -145,14 +136,12 @@ $$\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\fr
 在视频领域，这一技术表现为预先训练一个极度强大的三维视频变分自编码器（Video VAE）。对于极高维度的输入像素视频 $\mathbf{V}_{pixel}$，编码器 $\mathcal{E}$ 将其降采样映射到一个更为紧凑和密集的潜在空间（Latent Space）：
 
 $$\mathbf{Z}_0 = \mathcal{E}(\mathbf{V}_{pixel})$$
-:eqlabel:eq_vae_encoder
 
 例如，编码器可能在空间维度上进行 8 倍的降采样，在时间维度上进行 4 倍的降采样。这意味着原本庞大的视觉冗余信息被极大地剥离，留下了高度语义化的核心特征表示。我们在前面公式 :eqref:`eq_diffusion_video_tensor` 中描述的所有前向加噪、网络去噪过程，都完全发生在这个小尺寸的潜在张量 $\mathbf{Z}_0$ 上。
 
 只有当扩散模型完全去噪，在潜在空间生成了清晰干净的潜在表示 $\hat{\mathbf{Z}}_0$ 后，解码器 $\mathcal{D}$ 才会出马，将其高保真地渲染回人类可见的像素长方体：
 
 $$\hat{\mathbf{V}}_{pixel} = \mathcal{D}(\hat{\mathbf{Z}}_0)$$
-:eqlabel:eq_vae_decoder
 
 这种两阶段的分离设计，是视频模型能够在有限算力下逼近物理世界模拟的工程基石。
 
@@ -254,7 +243,3 @@ class VideoDiTBlock(tf.keras.layers.Layer):
     - **提示**：找到文章中给出的数学公式 :eqref:`eq_patch_sequence_length`，并直接代入已知数值进行除法和连乘运算。
 3. 为什么在处理视频张量的扩散模型中，通常需要在自注意力层的输入阶段，强行同时注入“空间位置编码”和“时间位置编码”？如果你作为架构师，鲁莽地去掉了时间位置编码，模型在生成视频时，画面可能会出现什么极为怪异的现象？
     - **提示**：核心思考点在于标准 Transformer 中自注意力机制（Self-Attention）本身是具备排列不变性（Permutation Invariance）的。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

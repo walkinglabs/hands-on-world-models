@@ -1,5 +1,4 @@
 # 9.5 自动驾驶世界模型
-:label:sec_driving_world_models
 
 在探讨了通用的空间与视频生成模型之后，我们自然而然地会将目光投向当前具身智能（Embodied AI）最具挑战性、也是商业化落地最迫切的领域——自动驾驶。传统自动驾驶系统通常被拆解为感知（Perception）、预测（Prediction）、规划（Planning）和控制（Control）等多个独立模块。尽管这种模块化设计在工程上便于调试，但由于信息在模块间传递时的不可避免的丢失与误差累积，系统往往难以应对长尾（Long-tail）的复杂边缘场景（Corner Cases）。
 
@@ -12,7 +11,6 @@
 在正式引入复杂的深度学习框架之前，让我们先回到最熟悉的高中物理——直线运动学。假设一辆汽车在 $t$ 时刻的位置为 $x_t$，速度为 $v_t$。如果我们对汽车施加一个恒定的加速度 $a_t$（可以视为“动作”或“控制指令”），那么经过一个极小的时间间隔 $\Delta t$ 后，汽车在 $t+1$ 时刻的物理状态可以通过以下经典公式完全确定：
 
 $$x_{t+1} = x_t + v_t \Delta t + \frac{1}{2} a_t \Delta t^2$$
-:eqlabel:eq_kinematics
 
 在上述理想化的物理系统中，世界是**确定性的（Deterministic）**。只要我们知道当前状态（$x_t, v_t$）和控制指令（$a_t$），未来的状态就是唯一确定的。
 
@@ -21,12 +19,10 @@ $$x_{t+1} = x_t + v_t \Delta t + \frac{1}{2} a_t \Delta t^2$$
 令 $s_t$ 表示 $t$ 时刻驾驶世界的完整状态（包括自车状态、环境视觉、其他交通参与者等），$a_t$ 表示 $t$ 时刻自车采取的动作。我们将预测未来视为一个计算条件概率分布的问题：
 
 $$P(s_{t+1} \mid s_t, a_t)$$
-:eqlabel:eq_prob_transition
 
 更一般地，如果我们要预测未来 $T$ 个时间步的状态序列，并考虑到历史状态的影响以及可能的额外上下文信息 $c$（例如天气提示文本、导航路线），根据概率论的链式法则，整个未来序列的联合概率分布可以分解为：
 
 $$P(s_{t+1:t+T} \mid s_{1:t}, a_{1:t+T-1}, c) = \prod_{k=1}^{T} P(s_{t+k} \mid s_{1:t+k-1}, a_{1:t+k-1}, c)$$
-:eqlabel:eq_autoregressive_prob
 
 这正是自回归世界模型（如 GAIA-1）的核心数学基础。通过最大化真实驾驶数据在此分布下的似然，模型被迫学习驾驶世界中极其复杂的因果关系与演化规律。
 
@@ -43,12 +39,10 @@ $$P(s_{t+1:t+T} \mid s_{1:t}, a_{1:t+T-1}, c) = \prod_{k=1}^{T} P(s_{t+k} \mid s
 (**对于 $z_e$ 中的每一个空间位置的 $D$ 维向量 $z_e^{(i,j)}$，我们在编码本中寻找与其欧氏距离最近的项：**)
 
 $$z_q^{(i,j)} = e_k, \quad \text{其中 } k = \mathop{\mathrm{argmin}}_{j \in \{1, \dots, K\}} \| z_e^{(i,j)} - e_j \|_2$$
-:eqlabel:eq_vq_quantize
 
 量化后的特征图 $z_q$ 被送入解码器 $D$ 重构原图。由于 $\mathop{\mathrm{argmin}}$ 操作不可导，我们通常使用直通估计器（Straight-Through Estimator）将解码器的梯度直接复制给编码器，并结合承诺损失（Commitment Loss）更新编码本：
 
 $$\mathcal{L}_{\text{VQ}} = \| I_t - D(z_q) \|_2^2 + \beta \| z_e - \text{sg}(z_q) \|_2^2 + \| \text{sg}(z_e) - z_q \|_2^2$$
-:eqlabel:eq_vq_loss
 
 其中 $\text{sg}(\cdot)$ 表示停止梯度（Stop-Gradient）操作，第一项是重建损失，后两项分别约束编码器输出靠近编码本，以及编码本靠近编码器输出。通过这种方式，我们将一帧复杂的驾驶图像，严谨地映射为了一个离散的整数索引网格 $S_t \in \{1, \dots, K\}^{h \times w}$，即图像的 Token 序列。
 
@@ -61,7 +55,6 @@ $$\mathcal{L}_{\text{VQ}} = \| I_t - D(z_q) \|_2^2 + \beta \| z_e - \text{sg}(z_
 在自回归 Transformer 中，预测下一个 Token $z_i$ 的对数概率可以写为：
 
 $$\log P(Z_t \mid Z_{<t}, A_{<t}, C) = \sum_{i=1}^{|Z_t|} \log P(z_i \mid z_{<i}, Z_{<t}, A_{<t}, C)$$
-:eqlabel:eq_gaia1_transformer
 
 为了实现这一点，GAIA-1 架构将过去的信息 $Z_{<t}$ 和 $A_{<t}$ 作为 Context，通过因果注意力掩码（Causal Attention Mask），保证在预测 $t$ 时刻的未来状态时，模型只能看到时刻 $t$ 之前以及时刻 $t$ 之前发生的操作。
 
@@ -69,12 +62,10 @@ $$\log P(Z_t \mid Z_{<t}, A_{<t}, C) = \sum_{i=1}^{|Z_t|} \log P(z_i \mid z_{<i}
 假设我们在自回归模型中输入了长度为 $L$ 的序列表示 $X \in \mathbb{R}^{L \times d_{\text{model}}}$。在线性投影得到 Query, Key, Value 矩阵后：
 
 $$Q = X W_Q, \quad K = X W_K, \quad V = X W_V$$
-:eqlabel:eq_qkv
 
 因果注意力机制的输出计算严格遵循：
 
 $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^\top}{\sqrt{d_k}} + M\right) V$$
-:eqlabel:eq_causal_attn
 
 其中掩码矩阵 $M \in \mathbb{R}^{L \times L}$ 满足：如果 $i < j$（即试图看向未来的信息），则 $M_{i,j} = -\infty$，否则 $M_{i,j} = 0$。这在数学上绝对保证了时间流动的单向性。
 
@@ -85,12 +76,10 @@ $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^\top}{\sqrt{d_k}} + 
 假设 $z_0$ 为未来驾驶视频的真实隐状态。扩散过程向其中逐步添加高斯噪声，在步数 $n$ 的边缘分布满足：
 
 $$q(z_n \mid z_0) = \mathcal{N}(z_n; \sqrt{\bar{\alpha}_n} z_0, (1 - \bar{\alpha}_n)\mathbf{I})$$
-:eqlabel:eq_diffusion_forward
 
 而在逆向生成（去噪）阶段，神经网络 $\epsilon_\theta$ 的目标是预测添加的噪声。为了让世界模型理解**动作指令**和**历史状态**，我们将它们作为额外的条件注入到网络中：
 
 $$\mathcal{L}_{\text{Diffusion}} = \mathbb{E}_{z_0, \epsilon, n} \left[ \| \epsilon - \epsilon_\theta(z_n, n, C_{\text{text}}, C_{\text{action}}, Z_{<t}) \|_2^2 \right]$$
-:eqlabel:eq_diffusion_backward
 
 通过交叉注意力（Cross-Attention），特征空间被调制，使得去噪出的新一帧视频严丝合缝地遵循驾驶员（或系统）下达的动作指令（如左转、加速）。
 
@@ -252,7 +241,3 @@ print("Logits shape:", logits.shape)
 2. 我们在代码中使用加法（`tok_embeddings + act_embeddings`）来融合状态和动作。除此之外，还有哪些将额外条件注入 Transformer 的数学方法？
    *提示：可以回顾我们在之前的章节中提到的 Cross-Attention 机制（如在扩散模型中被广泛应用），或者考虑特征的通道拼接（Concatenation）。*
 3. 假设我们要用该世界模型评估当前驾驶策略的安全性，你会如何利用它输出的对数概率分布来计算某个危险动作引发碰撞的“风险期望”？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

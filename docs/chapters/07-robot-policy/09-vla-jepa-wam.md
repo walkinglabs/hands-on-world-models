@@ -1,5 +1,4 @@
 # 基于 JEPA 的视觉-语言-动作模型（VLA-JEPA/WAM）
-:label:`sec_vla_jepa_wam`
 
 在具身智能（Embodied AI）与机器人控制的演进历程中，如何让系统不仅能“感知”当前状态，还能理解物理世界的运作规律并据此做出精准的“动作预测”，一直是学术界的核心难题。传统端到端行为克隆（Behavior Cloning）往往缺乏对环境未来动态的前瞻能力，而基于生成式模型（如扩散模型或自动编码器）的世界模型则倾向于在像素级别进行严苛的重构验证。然而，真实世界充满了高度的偶然认知不确定性（Aleatoric Uncertainty）——风吹动的树叶、水面的反光、相机镜头的噪点。将宝贵的网络容量和算力浪费在预测这些与任务本身毫无关联的视觉高频细节上，从信息论的角度看是极为低效的。
 
@@ -18,7 +17,6 @@
 $$
 \mathbf{p}_1 = \mathbf{p}_0 + \mathbf{v}_0 \Delta t + \frac{1}{2} \left( \mathbf{g} + \frac{\mathbf{F}}{m} \right) \Delta t^2
 $$
-:eqlabel:`eq_kinematics_vector`
 
 在公式 :eqref:`eq_kinematics_vector` 中，$(\mathbf{p}_0, \mathbf{v}_0, m)$ 构成了这个物理系统的一组**完备的隐状态抽象**。在这个低维度的流形（Manifold）上，未来的演变仅仅是当前状态与外部动作的代数函数，而无需关心质点表面的微观纹理。
 
@@ -37,7 +35,6 @@ VLA-JEPA 的核心思想，正是利用深层神经网络作为非线性映射�
 $$
 \mathbf{s}_t = E_\theta(\mathbf{X}_t, \mathbf{l}), \quad \mathbf{s}_t \in \mathbb{R}^{D_s}
 $$
-:eqlabel:`eq_context_encoder`
 
 这里，$D_s$ 表示隐空间的特征维度。$\mathbf{s}_t$ 是一个高度浓缩的张量，它剔除了所有无助于任务规划的背景高频噪声，仅保留了物体的位姿、机械臂的空间距离以及语义交互焦点。
 
@@ -46,7 +43,6 @@ $$
 $$
 \bar{\mathbf{s}}_{t+1} = E_{\bar{\theta}}(\mathbf{X}_{t+1}, \mathbf{l}), \quad \bar{\mathbf{s}}_{t+1} \in \mathbb{R}^{D_s}
 $$
-:eqlabel:`eq_target_encoder`
 
 (**请严谨区分目标编码器参数 $\bar{\theta}$ 与上下文编码器参数 $\theta$**)。在 VLA-JEPA 中，由于其非对比学习的底层逻辑，$\bar{\theta}$ 绝不是通过梯度反向传播直接优化的独立变量。
 
@@ -57,7 +53,6 @@ $$
 $$
 \hat{\mathbf{s}}_{t+1} = P_\phi(\mathbf{s}_t, \mathbf{a}_t), \quad \hat{\mathbf{s}}_{t+1} \in \mathbb{R}^{D_s}
 $$
-:eqlabel:`eq_predictor`
 
 ## 打破特征坍缩博弈：不对称结构与指数移动平均
 
@@ -66,7 +61,6 @@ $$
 $$
 \mathcal{L}_{MSE}(\theta, \phi) = \frac{1}{D_s} \sum_{i=1}^{D_s} \left( \hat{\mathbf{s}}_{t+1}^{(i)} - \bar{\mathbf{s}}_{t+1}^{(i)} \right)^2 = \left\| P_\phi(E_\theta(\mathbf{X}_t, \mathbf{l}), \mathbf{a}_t) - E_{\bar{\theta}}(\mathbf{X}_{t+1}, \mathbf{l}) \right\|_2^2
 $$
-:eqlabel:`eq_mse_loss`
 
 然而，在公式 :eqref:`eq_mse_loss` 中潜藏着一个致命的优化陷阱，学术界称之为**特征坍缩（Feature Collapse）**。
 
@@ -81,14 +75,12 @@ $$
 $$
 \theta \leftarrow \theta - \eta \nabla_\theta \mathcal{L}_{MSE}, \quad \phi \leftarrow \phi - \eta \nabla_\phi \mathcal{L}_{MSE}
 $$
-:eqlabel:`eq_gradient_update`
 
 而**目标编码器 $\bar{\theta}$ 必须通过上下文编码器历史参数的指数移动平均（Exponential Moving Average, EMA）进行平滑更新**，其更新过程彻底阻断了由于当前 Batch 的 MSE 损失所产生的任何即时梯度：
 
 $$
 \bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta
 $$
-:eqlabel:`eq_ema_update`
 
 其中衰减率参数 $\tau \in [0.99, 1)$。由于 $\bar{\theta}$ 提供了随时间缓慢变化且不可通过即时捷径篡改的目标锚点（Anchor），它在数学上有效对抗了特征坍缩。这也是 JEPA 家族能摆脱传统对比学习（Contrastive Learning，需要构建海量负样本）的重要基石。
 
@@ -102,7 +94,6 @@ $$
 $$
 \mathcal{S} = \text{Softmax}\left( \frac{\mathcal{Q} \mathcal{K}^T}{\sqrt{d_k}} \right) \mathcal{V}
 $$
-:eqlabel:`eq_attention`
 
 其中 $\mathcal{Q}$ 通常来自于视觉 Token，而 $\mathcal{K}, \mathcal{V}$ 则由视觉与语言 Token 的联合拼接提供。经过多层 Transformer 块处理后，输出的时空融合状态 $\mathbf{S}_t \in \mathbb{R}^{N \times D_s}$ 成为隐空间的严谨表达。
 同理，预测器 $P_\phi$ 也是一个多层因果 Transformer。连续动作向量 $\mathbf{a}_t$ 首先经过多层感知机（MLP）编码为动作 Token，并作为额外的序列元素前置于状态序列 $\mathbf{S}_t$。因果掩码（Causal Mask）保证了模型只能严格利用 $t$ 及之前的状态和动作来推演 $t+1$ 时刻的隐状态分布。
@@ -322,18 +313,3 @@ class VLA_JEPA(models.Model):
 ## 小结
 
 在本节中，我们详尽推导了基于 JEPA 架构的视觉-语言-动作模型。不同于传统的端到端控制或者深度依赖像素重构的扩散生成模型，VLA-JEPA 坚守了“在高度抽象的隐空间内预测事物物理本质”的设计信念。通过精心引入参数的不对称 EMA 更新机制，该架构从纯数学角度严谨地规避了表征空间的特征坍缩问题，构建了一个极具鲁棒性的世界模型。对于面临复杂随机环境的具身智能体而言，这种机制使其能够果断剔除无关的高频环境噪声，将最为核心的网络计算资源全部投入到环境语义与系统动力学的核心规律学习中。
-
-## 练习
-
-1. 在公式 :eqref:`eq_ema_update` 中，如果我们在训练伊始强行将动量衰减系数设定为 $\tau = 0.0$，这等价于什么样的一级网络结构？在梯度下降的过程中，特征空间会发生怎样确切的数学退化？
-   > *提示：结合非对比学习中的特征坍缩（Feature Collapse）现象，思考当目标编码器随时随地向上下文编码器同步最新参数时，MSE 损失梯度为了达到绝对的 $0$ 平凡解（Trivial Solution），会如何雕刻网络的输出。*
-
-2. 仔细审视我们的 PyTorch 代码实现，由于 `TargetEncoder` 使用了 `requires_grad = False`，它的权重更新被放置在优化器（Optimizer）循环之外。请证明，如果撤去这个阻断，利用普通的 $\nabla_{\bar{\theta}}$ 计算，预测器 $P_\phi$ 将会退化为一个恒等映射函数（Identity Mapping）。
-   > *提示：考量目标网络为迎合任何粗劣的预测结果而自发调整的趋势。*
-
-3. 假设该机器人作业在一条传送带边，目标物体偶尔会被机械臂本体完全遮挡。如果我们想将 VLA-JEPA 与时空掩码（Spatio-Temporal Masking）技术结合，使模型在隐空间内拥有对抗物理遮挡的“对象持久性（Object Permanence）”能力，在上下文张量 $\mathcal{X}$ 或 注意力矩阵公式 :eqref:`eq_attention` 中应该做怎样的数学修正？
-   > *提示：在进入自注意力层之前，如何针对性地对输入 Token 添加伯努利分布的丢弃概率（Dropout），并分析掩码策略对预测器视野的强迫作用。*
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

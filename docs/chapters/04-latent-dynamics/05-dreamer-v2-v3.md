@@ -1,5 +1,4 @@
 # Dreamer V2 与 V3：向离散潜在空间与健壮性进化
-:label:`sec_dreamer_v2_v3`
 
 在前面的章节中，我们深入探讨了 DreamerV1 及其核心组件——循环状态空间模型（Recurrent State-Space Model, RSSM）。通过将连续的潜在状态与循环神经网络相结合，DreamerV1 在许多视觉控制任务上取得了令人瞩目的成就。然而，随着研究人员试图将世界模型应用于更加复杂、庞大且多样的环境（如雅达利游戏或三维导航任务）时，连续潜在空间的局限性开始逐渐显露。
 
@@ -8,7 +7,6 @@
 我们将从最基础的概率论概念起步，逐步推导出离散空间的梯度反向传播技巧，并深入理解旨在解决值域缩放问题的对数变换技巧。
 
 ## 连续空间的局限性与离散表征的崛起
-:label:`subsec_limits_of_continuous`
 
 在 DreamerV1 的 RSSM 中，我们使用多维的高斯分布（Gaussian distribution）来表示随机状态分量。高斯分布的数学性质非常优美：它完全由均值向量和协方差矩阵决定，并且利用重参数化技巧（Reparameterization trick），我们可以非常自然地让梯度穿过随机采样节点。
 
@@ -20,14 +18,12 @@
 
 假设我们有一个离散随机变量 $z$，它可以取 $C$ 个可能的状态，即 $z \in \{1, 2, \dots, C\}$。该变量服从分类分布（Categorical distribution），其概率质量函数可以由一个概率向量 $\mathbf{p} = [p_1, p_2, \dots, p_C]^\top$ 来参数化，其中：
 $$p_i \ge 0, \quad \sum_{i=1}^C p_i = 1.$$
-:eqlabel:`eq_categorical_prob`
 
 当我们对 $z$ 进行采样时，最标准的形式是生成一个“独热”（One-hot）向量。独热向量 $\mathbf{x} = [x_1, x_2, \dots, x_C]^\top$ 定义为：如果采样结果是类别 $k$，则 $x_k = 1$，其余位置 $x_i = 0\ (i \neq k)$。
 
 这种表征方式非常纯粹。但在神经网络中，直接采样独热向量会带来一个致命的问题：独热采样操作是一个阶跃函数（即在某个特定的实数阈值上发生突变），其导数在几乎所有地方都是 $0$，在突变点处则是无穷大。这意味着，传统的梯度下降算法无法计算梯度并更新采样器之前的神经网络权重。
 
 ## 解决梯度回传：直通估计器 (Straight-Through Estimator)
-:label:`subsec_ste`
 
 在微积分中，如果一个函数的导数处处为零，我们就无法通过它来回传任何有用的误差信号。这正是深度学习在面对离散变量时长期以来的痛点。
 
@@ -38,11 +34,9 @@ $$p_i \ge 0, \quad \sum_{i=1}^C p_i = 1.$$
 
 让我们用数学语言更精确地描述它。假设神经网络输出了一组未归一化的对数概率（Logits），记为 $\mathbf{l} = [l_1, l_2, \dots, l_C]^\top$。我们可以通过 Softmax 函数获得归一化的概率向量 $\mathbf{p}$：
 $$\mathbf{p} = \text{Softmax}(\mathbf{l}) \quad \text{其中} \quad p_i = \frac{\exp(l_i)}{\sum_{j=1}^C \exp(l_j)}.$$
-:eqlabel:`eq_softmax`
 
 然后，我们根据 $\mathbf{p}$ 采样出一个独热向量 $\mathbf{z}_{\text{one-hot}}$。在 PyTorch 等框架中，STE 的实现通常利用了一个巧妙的代数恒等式。我们构造一个新的变量 $\tilde{\mathbf{z}}$：
 $$\tilde{\mathbf{z}} = \mathbf{z}_{\text{one-hot}} - \mathbf{p} + \mathbf{p}.$$
-:eqlabel:`eq_ste_trick`
 
 如果我们在反向传播时切断（Detach） $\mathbf{z}_{\text{one-hot}} - \mathbf{p}$ 的梯度，那么：
 - 在前向计算时，由于 $\mathbf{p}$ 和 $-\mathbf{p}$ 相互抵消，计算图的实际值为 $\mathbf{z}_{\text{one-hot}}$，保证了输出是严格离散的独热向量。
@@ -80,13 +74,11 @@ def straight_through_sample(logits, num_classes):
 通过这一巧妙的技术，DreamerV2 得以在保持端到端可导的同时，在内部维护一个离散的隐状态表示。由多个分类分布构成的离散状态具有强大的组合泛化能力。例如，如果使用 $G=32$ 组，每组 $C=32$ 个类别的分类分布，模型可以表示多达 $32^{32}$ 种不同的状态，这远远超过了复杂游戏环境的实际状态数。
 
 ## KL 散度平衡 (KL Balancing)
-:label:`subsec_kl_balancing`
 
 在变分自编码器架构中，我们需要计算后验分布（由编码器结合当前观测得出）与先验分布（由动力学模型基于过去状态预测得出）之间的 KL 散度（Kullback-Leibler divergence）。在优化过程中，我们希望这两个分布相互靠近。
 
 对于一般的损失函数：
 $$ \mathcal{L}_{\text{KL}} = \text{KL}(q(z_t \mid \dots) \parallel p(z_t \mid \dots)) $$
-:eqlabel:`eq_kl_standard`
 
 在这个极小化过程中，存在两个变量：先验 $p$ 和后验 $q$。由于后验 $q$ 能够直接看到当前时刻真实的观测图像，它通常能够更快地收敛到一个合理的分布。而先验 $p$ 只能依赖历史信息进行猜测，它的训练难度更大。如果直接联合优化，强大的 $q$ 可能会为了迎合弱小的 $p$ 而降低自身提取信息的质量。
 
@@ -94,12 +86,10 @@ $$ \mathcal{L}_{\text{KL}} = \text{KL}(q(z_t \mid \dots) \parallel p(z_t \mid \d
 
 这一策略通过对 KL 散度进行切断分离（Stop-gradient，在数学中通常表示为 $\text{sg}[\cdot]$）来实现：
 $$ \mathcal{L}_{\text{KL}} = \alpha \text{KL}(\text{sg}[q] \parallel p) + (1-\alpha) \text{KL}(q \parallel \text{sg}[p]) $$
-:eqlabel:`eq_kl_balancing`
 
 其中 $\alpha$ 是一个大于 0.5 的常数（通常取 0.8）。这使得网络花费 80% 的“力气”来更新动力学先验模型，而只用 20% 的“力气”去修改基于视觉特征的后验表征。
 
 ## DreamerV3：走向通用与健壮性
-:label:`subsec_dreamerv3_robustness`
 
 如果说 DreamerV2 确立了离散表征在世界模型中的主导地位，那么 DreamerV3 解决的则是另一个极其棘手的工程与数学难题：多个环境之间数值尺度的巨大差异。
 
@@ -115,7 +105,6 @@ $$ \mathcal{L}_{\text{KL}} = \alpha \text{KL}(\text{sg}[q] \parallel p) + (1-\al
 
 为了应对这两个问题，DreamerV3 引入了对称对数（Symlog）函数。对于任意实数 $x$，它的定义如下：
 $$\text{symlog}(x) = \text{sign}(x) \ln(|x| + 1)$$
-:eqlabel:`eq_symlog`
 
 让我们仔细拆解这个巧妙的公式：
 - 绝对值加上 1（即 $|x|+1$）保证了对数函数的输入永远大于等于 1。因此，当 $x=0$ 时，$\ln(1) = 0$。这完美解决了零点附近的发散问题。
@@ -123,7 +112,6 @@ $$\text{symlog}(x) = \text{sign}(x) \ln(|x| + 1)$$
 
 相应的逆变换（Symexp）为：
 $$\text{symexp}(y) = \text{sign}(y) (\exp(|y|) - 1)$$
-:eqlabel:`eq_symexp`
 
 通过这种变换，无论是正负数，无论其绝对值有多大，都会被压缩到一个增长极其缓慢的尺度中。例如，$x = 1,000,000$ 经过 symlog 后仅为约 $13.8$。这极大降低了价值网络和奖励预测网络的拟合难度。
 
@@ -137,16 +125,13 @@ $$\text{symexp}(y) = \text{sign}(y) (\exp(|y|) - 1)$$
 
 令相邻点之间距离为 $\Delta = v_{k+1} - v_k$。我们赋予右侧桶 $v_{k+1}$ 的概率为：
 $$ p_{k+1} = \frac{y - v_k}{\Delta} $$
-:eqlabel:`eq_twohot_right`
 
 赋予左侧桶 $v_k$ 的概率为：
 $$ p_k = \frac{v_{k+1} - y}{\Delta} $$
-:eqlabel:`eq_twohot_left`
 
 其余所有桶的概率均为 0。这样，连续的实数值被无损地转化为一个离散的概率分布。随后，网络只需输出 $B$ 维的分类对数（Logits），利用交叉熵损失（Cross-Entropy Loss）进行优化。交叉熵损失的梯度最大被限制在 $\pm 1$ 之间，从而从根本上避免了任何形式的梯度爆炸。
 
 ## 代码实现：健壮的世界模型组件
-:label:`subsec_code_robustness`
 
 (**我们将把上述理论转化为实际的代码实现**)。这段代码展示了 Symlog 变换和 Two-hot 编码的核心逻辑，它们是构建具备高度泛化能力的 DreamerV3 模型的基石。
 
@@ -212,16 +197,3 @@ def two_hot_encode(target, min_val=-20.0, max_val=20.0, num_bins=255):
 * 直通估计器（Straight-Through Estimator, STE）巧妙地化解了离散采样不可导的难题，使得计算图既能在前向传播中保持纯粹的离散状态，又能在反向传播中提供高质量的梯度信号。
 * KL 平衡（KL Balancing）解决了先验分布难以优化的问题，使得序列模型的动力学推演更加稳定。
 * DreamerV3 彻底革新了数值处理机制。对称对数变换（Symlog）将各种规模的奖励和价值压缩到紧凑区间内；双热编码（Two-hot Encoding）则将回归问题优雅地转化为分类问题，彻底根除了大尺度误差带来的梯度爆炸现象，为世界模型的通用化奠定了坚实的工程与数学基础。
-
-## 练习
-
-1. **STE梯度的探讨**：直通估计器中截断梯度的操作 $\tilde{\mathbf{z}} = \mathbf{z}_{\text{one-hot}} - \mathbf{p} + \mathbf{p}$，是否会导致反向传播得到的梯度不再是真实损失函数期望梯度的无偏估计？为什么这种有偏的梯度估计在深度学习中依然奏效？
-   * 提示：考虑梯度方差（Variance）与偏置（Bias）之间的权衡，以及多层神经网络本身的自适应能力。
-2. **Symlog的极限性质**：证明当 $x \to 0$ 时，$\text{symlog}(x) \approx x$。这一性质对于靠近 0 附近的细微信号有何重要意义？
-   * 提示：可以使用泰勒展开（Taylor expansion）对 $\ln(1+x)$ 在 $x=0$ 处进行近似。
-3. **Two-hot编码的期望恢复**：给定一个双热编码表示的概率向量 $\mathbf{p} = [p_1, \dots, p_B]^\top$ 以及对应的网格点向量 $\mathbf{v} = [v_1, \dots, v_B]^\top$，写出计算恢复后期望实数值 $\hat{y}$ 的公式。
-   * 提示：将概率分布看作随机变量的分布，通过计算离散随机变量的数学期望即可。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

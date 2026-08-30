@@ -1,12 +1,10 @@
 # 1.3 经典世界模型理论回顾
-:label:sec_classic_world_models
 
 我们所处的世界是高维、充满噪声且遵循着复杂物理规律的。人类之所以能够在这样的世界中迅速学会驾驶汽车、打网球甚至在月球上行走，是因为我们在大脑中构建了一个抽象的“世界模型”。在这个内部模型中，我们能够预测动作的结果，并在想象中进行规划。
 
 在本节中，我们将严格追溯这一思想在深度学习领域的工程实现。我们将从学术脉络出发，逐步推导 Ha 和 Schmidhuber 于 2018 年提出的经典世界模型架构 [Ha et al., 2018]。我们会深入剖析该架构的核心数学原理，将复杂的张量运算拆解为高中物理和基础统计学的直观概念，并最终在代码层面构建这一经典系统。
 
 ## 1.3.1 学术脉络与时代背景
-:label:subsec_academic_context
 
 利用内部模型来进行学习和预测的思想，并非深度学习时代的产物。早在 1990 年，强化学习领域的先驱 Richard Sutton 就提出了著名的 Dyna 架构 [Sutton, 1990]。Dyna 架构的核心理念是：智能体不仅应该通过与真实环境的交互来学习（无模型强化学习），还应该利用已经学到的经验来构建一个关于环境的转移模型（Model），进而在这个“虚拟环境”中进行规划和策略更新。
 
@@ -20,7 +18,6 @@
 这种解耦不仅极大地降低了动力学建模的难度，还赋予了智能体在“梦境”（闭环想象）中训练自身策略的能力。接下来，我们将沿着数据流动的方向，逐一拆解这些模块的数学本质。
 
 ## 1.3.2 V模型：从高维观测到低维潜空间表示
-:label:subsec_v_model
 
 考虑一个简单的物理场景：一辆汽车在一条直线上行驶。要描述这辆汽车的瞬时位置，我们只需要一个标量坐标 $z \in \mathbb{R}$。然而，自动驾驶系统接收到的观测数据 $x$，却是包含汽车、树木、天空和道路的数万个像素点构成的图像。V模型的作用，就是找到一个映射关系，将这数万维的冗余图像 $x$ 重新映射回能够刻画系统本质属性的低维状态 $z$。
 
@@ -30,7 +27,6 @@
 $$
 p(z | x) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp \left( -\frac{(z - \mu)^2}{2\sigma^2} \right)
 $$
-:eqlabel:eq_scalar_gaussian
 
 在这个公式中，$\mu$ 代表了我们对汽车位置的**最可能估计**，而 $\sigma^2$ 代表了我们对这个估计的**不确定度**。
 
@@ -42,18 +38,15 @@ $$
 $$
 z = \mu + \sigma \cdot \epsilon \quad \text{其中} \quad \epsilon \sim \mathcal{N}(0, 1)
 $$
-:eqlabel:eq_reparam_scalar
 
 由于推导过程严丝合缝，我们可以自然地将其推广到 $D$ 维向量形式。此时 $\boldsymbol{\mu}$ 和 $\boldsymbol{\sigma}$ 为向量，$\odot$ 表示逐元素相乘：
 $$
 \mathbf{z} = \boldsymbol{\mu} + \boldsymbol{\sigma} \odot \boldsymbol{\epsilon} \quad \text{其中} \quad \boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})
 $$
-:eqlabel:eq_reparam_vector
 
 通过上述推导，V模型将高维图像成功转化为低维的、连续的且包含不确定性的状态向量 $\mathbf{z}$，为后续的时间序列建模提供了高质量的原材料。
 
 ## 1.3.3 M模型：混合密度网络与时间演化
-:label:subsec_m_model
 
 拥有了低维表示 $\mathbf{z}_t$ 后，我们来到了世界模型中最核心、也最体现物理本质的部分：预测未来。
 
@@ -71,7 +64,6 @@ $$
 $$
 P(z_{t+1} | z_t, a_t) = \sum_{k=1}^{K} \pi_{k} \mathcal{N}(z_{t+1} | \mu_k, \sigma_k^2)
 $$
-:eqlabel:eq_mdn_scalar
 
 在这里，每个 $k$ 代表一种可能的“宏观物理演化路径”（例如 $k=1$ 代表向左侧滑，$k=2$ 代表向右侧滑）。
 - $\pi_k$ 是**混合权重**，代表了第 $k$ 种路径发生的概率，且必须满足 $\sum_{k=1}^K \pi_k = 1$。
@@ -88,30 +80,25 @@ $$
 $$
 \mathbf{h}_t = f_{\text{RNN}}(\mathbf{h}_{t-1}, [\mathbf{z}_t, \mathbf{a}_t])
 $$
-:eqlabel:eq_rnn_update
 
 随后，使用简单的线性映射层，从当前的隐藏状态 $\mathbf{h}_t$ 中提取出多元混合高斯分布所需的参数（对于维度为 $D$ 的状态，且有 $K$ 个混合成分）：
 $$
 \boldsymbol{\pi}_t, \boldsymbol{\mu}_t, \boldsymbol{\sigma}_t = \text{Linear}(\mathbf{h}_t)
 $$
-:eqlabel:eq_mdn_params
 
 这里的预测概率密度扩展到多维向量空间，在各维度独立的假设下，表示为：
 $$
 P(\mathbf{z}_{t+1} | \mathbf{a}_t, \mathbf{z}_t, \mathbf{h}_t) = \sum_{k=1}^{K} \pi_{t}^{(k)} \prod_{d=1}^{D} \mathcal{N} \left( z_{t+1}^{(d)} | \mu_{t}^{(k, d)}, \left( \sigma_{t}^{(k, d)} \right)^2 \right)
 $$
-:eqlabel:eq_mdn_vector
 
 这就构成了经典世界模型中最关键的时间演化引擎。
 
 ## 1.3.4 C模型：基于内部想象的决策与训练
-:label:subsec_c_model
 
 当 V 模型提供了状态的抽象压缩，M 模型掌握了世界演化的规律后，控制策略的任务就变得惊人地简单。在 Ha 和 Schmidhuber 的设计中，C 模型仅仅是一个极简的单层线性网络（后接激活函数）：
 $$
 \mathbf{a}_t = \text{tanh} \left( \mathbf{W}_c [\mathbf{z}_t, \mathbf{h}_t] + \mathbf{b}_c \right)
 $$
-:eqlabel:eq_c_model
 
 为什么在如此复杂的自动驾驶或游戏中，控制器可以设计得如此简陋？因为感知（V）和预测（M）这两个最消耗算力和参数量的任务已经被前置解决。控制器的输入不再是杂乱无章的像素，而是经过高度结构化的当前物理状态 $\mathbf{z}_t$ 和历史动态趋势 $\mathbf{h}_t$。
 
@@ -123,7 +110,6 @@ $$
 由于 M 模型能够根据动作 $a_t$ 生成逼真的下一状态 $z_{t+1}$，我们可以让 C 模型完全在 M 模型的展开序列中进行训练。这种无需与真实环境反复交互的范式，极大地推动了样本效率（Sample Efficiency）的提升。
 
 ## 1.3.5 代码实现：构建经典的M模型 (MDN-RNN)
-:label:subsec_mdn_rnn_code
 
 基于我们在 :numref:`subsec_m_model` 中的理论推导，(**我们将构建一个MDN-RNN模块**)。在这个模块中，我们将明确标注所有的张量形状，特别是当融合了批次（Batch Size）、混合成分（Num Mixtures）和潜空间维度（Z Dim）时带来的多维张量变换。
 
@@ -230,13 +216,9 @@ class MDNRNN(tf.keras.Model):
 上述代码精确再现了核心的推导逻辑，不仅处理了时序上的传递，更通过合理的张量重塑（Reshape/View）将多模态不确定性参数化。
 
 ## 1.3.6 练习
-1. 在推导 :eqref:`eq_mdn_vector` 时，我们假设了潜状态各个维度在给定条件下是相互独立的。如果这一假设不成立，我们应该如何修改协方差的表示？
+1. 在推导前文的向量形式混合密度公式时，我们假设了潜状态各个维度在给定条件下是相互独立的。如果这一假设不成立，我们应该如何修改协方差的表示？
    - *提示：思考高中统计中关于相关系数和协方差矩阵对角化的问题。*
 2. 请结合张量维度解释，为什么 `fc_mu` 和 `fc_sigma` 的输出维度必须是 `num_mixtures * z_dim`？
    - *提示：如果一个物体在 3 维空间运动，且未来有 5 种不同的走向（模态），那么共需要多少个坐标值来完整描述这些走向的中心位置？*
 3. 在代码实现中，我们计算标准差时使用了 `exp` 函数：`torch.exp(self.fc_sigma(hx))`。除了 `exp` 之外，还有什么操作既能保证网络输出大于零，又能提供更平稳的梯度？
    - *提示：可以参考 Softplus 函数。*
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

@@ -1,5 +1,4 @@
 # 潜在动力学（RSSM）的从零开始实现
-:label:sec_rssm_scratch
 
 在前几章中，我们探讨了如何通过自编码器将高维观测（如图像）压缩为低维的潜在表示（Latent Representation），并初步介绍了如何使用循环神经网络（RNN）在时间维度上建模这些状态的演化。然而，真实的物理世界充满了不确定性。一个纯粹确定性的动力学模型（如标准的RNN）在面对多条可能的未来分支时，往往会产生模糊的预测，或者因为微小的误差而在长程预测中彻底崩溃。
 
@@ -23,7 +22,6 @@ Hafner 敏锐地洞察到了这一矛盾。在 [Hafner et al., 2019] 中，他�
 
 在一个简化的、一维的离散时间系统中，网球的速度 $v_t$ 可以近似写为：
 $$v_t = v_{t-1} + a \cdot \Delta t + \epsilon_t$$
-:eqlabel:eq_simple_dynamics_scalar
 
 其中，$a$ 是你施加的加速度，$\epsilon_t$ 则是代表阵风影响的随机噪声。我们可以敏锐地发现，等式的右边由两部分组成：
 1. **确定性部分**（$v_{t-1} + a \cdot \Delta t$）：它精确记录了系统在此前的状态以及受控输入，这部分是完全可以被物理法则（或网络权重）确定的。
@@ -35,7 +33,6 @@ $$v_t = v_{t-1} + a \cdot \Delta t + \epsilon_t$$
 
 确定性状态 $h_t$ 必须融合上一时刻的记忆 $h_{t-1}$、上一时刻的具体遭遇 $z_{t-1}$ 以及上一时刻的动作 $a_{t-1}$。这是一个纯粹的非线性映射：
 $$h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})$$
-:eqlabel:eq_deterministic_update
 
 这里，$f_\theta$ 通常被实现为一个门控循环单元（GRU）。需要极其注意的是，$h_t$ 的更新**不依赖**当前时刻 $t$ 的任何新观测，它仅仅是对过去的总结。
 
@@ -43,7 +40,6 @@ $$h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})$$
 
 在没有看到时刻 $t$ 真实发生的画面之前，我们需要基于我们对世界的理解（即 $h_t$），去“想象”当前时刻可能发生什么。这就是**先验分布**。为了数学上的可计算性，我们通常假设它服从多变量高斯分布：
 $$p_\theta(z_t \mid h_t) = \mathcal{N}(\mu_\theta(h_t), \Sigma_\theta(h_t))$$
-:eqlabel:eq_prior_dynamics
 
 先验动力学网络通过多层感知机（MLP）输出均值 $\mu_\theta$ 和协方差矩阵（通常被限制为对角阵）$\Sigma_\theta$。
 
@@ -51,7 +47,6 @@ $$p_\theta(z_t \mid h_t) = \mathcal{N}(\mu_\theta(h_t), \Sigma_\theta(h_t))$$
 
 当我们睁开眼睛，切实看到了时刻 $t$ 的画面（观测 $x_t$）后，我们需要更新我们的认知。结合过去的记忆 $h_t$ 和当前的观测特征，我们提取出当前真实的随机状态 $z_t$。这就是**后验分布**：
 $$q_\phi(z_t \mid h_t, x_t) = \mathcal{N}(\mu_\phi(h_t, x_t), \Sigma_\phi(h_t, x_t))$$
-:eqlabel:eq_posterior_inference
 
 后验推断由编码器提供支持，其分布必须在训练阶段作为先验分布试图逼近的目标（Target）。
 

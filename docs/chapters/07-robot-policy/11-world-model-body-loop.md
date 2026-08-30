@@ -1,5 +1,4 @@
 # 世界模型与具身控制的闭环
-:label:sec_world_model_body_loop
 
 具身智能（Embodied AI）的核心挑战在于，智能体必须在一个高度复杂、充满不确定性且代价高昂的物理世界中进行连续的感知与决策。传统的无模型强化学习（Model-Free RL）方法依赖于在真实环境中的海量试错，这在硬件磨损、安全风险以及数据采集效率等方面均存在不可逾越的瓶颈。
 
@@ -8,7 +7,6 @@
 本节我们将深入探讨世界模型是如何在具身控制中形成闭环的。我们将从最基础的物理运动学出发，逐步推导出隐空间中的状态转移概率，最终在可微的“梦境”中实现策略的精确求解。
 
 ## 从真实物理世界到隐空间投影
-:label:sec_world_model_projection
 
 在任何控制问题中，我们首先需要理解环境是如何随着时间演化的。假设我们在高中的物理课上研究一个在光滑水平面上做直线运动的滑块。
 
@@ -20,14 +18,12 @@ v_{t+1} &= v_t + a_t \Delta t \\
 x_{t+1} &= x_t + v_t \Delta t + \frac{1}{2} a_t \Delta t^2
 \end{aligned}
 $$
-:eqlabel:eq_high_school_physics
 
 在这个简单的系统中，滑块的真实物理状态是由位置和速度完全描述的。我们可以将这两个标量组合成一个状态向量 $\mathbf{s}_t = [x_t, v_t]^\top$。此时，上述物理规律可以抽象为一个确定性的转移函数 $f$：
 
 $$
 \mathbf{s}_{t+1} = f(\mathbf{s}_t, \mathbf{a}_t)
 $$
-:eqlabel:eq_deterministic_transition
 
 然而，在具身控制的真实场景（例如四足机器人或多自由度机械臂）中，系统的状态极其庞杂。更严峻的是，智能体通常无法直接获得完美的真实物理状态 $\mathbf{s}_t$。它所能依赖的，只有传感器（如RGB摄像头）传回的极其高维、充满噪声的观测数据（Observation）$\mathbf{o}_t$。
 
@@ -36,12 +32,10 @@ $$
 $$
 \mathbf{z}_t \sim q_\phi(\mathbf{z}_t \mid \mathbf{o}_t)
 $$
-:eqlabel:eq_encoder_posterior
 
 这里，$\mathbf{z}_t$ 就是智能体大脑中对当前世界局势的“抽象表征”。它不再是具体的像素，而是环境关键物理属性（如物体的相对位置、姿态及其不确定性）的低维概率分布。
 
 ## 循环状态空间模型（RSSM）：梦境的引擎
-:label:sec_rssm_engine
 
 既然有了隐状态 $\mathbf{z}_t$，我们是否可以直接在隐空间中构建简单的马尔可夫转移函数 $\mathbf{z}_{t+1} = f(\mathbf{z}_t, \mathbf{a}_t)$ 呢？
 
@@ -57,30 +51,25 @@ RSSM 的内部动力学机制可以通过以下严谨的概率模型定义：
    $$
    \mathbf{h}_t = f_\theta(\mathbf{h}_{t-1}, \mathbf{z}_{t-1}, \mathbf{a}_{t-1})
    $$
-   :eqlabel:eq_rssm_sequence
 
 2. **先验动态模型（Dynamics Predictor）**：在没有接收当前真实物理观测的情况下，仅凭大脑中的历史记忆推测当前的随机状态：
    $$
    \hat{\mathbf{z}}_t \sim p_\theta(\hat{\mathbf{z}}_t \mid \mathbf{h}_t)
    $$
-   :eqlabel:eq_rssm_prior
 
 3. **后验表征模型（Representation Model）**：当接收到当前真实的视觉观测 $\mathbf{o}_t$ 后，结合历史记忆，得出对当前真实世界更精准的概率认知（用于修正内部模型和现实对齐）：
    $$
    \mathbf{z}_t \sim q_\phi(\mathbf{z}_t \mid \mathbf{h}_t, \mathbf{o}_t)
    $$
-   :eqlabel:eq_rssm_posterior
 
 除此之外，具身控制还必须衡量行为的优劣，世界模型需要预测基于当前状态所能获得的奖励（Reward）：
 $$
 r_t \sim p_\theta(r_t \mid \mathbf{h}_t, \mathbf{z}_t)
 $$
-:eqlabel:eq_rssm_reward
 
 在世界模型的离线训练阶段，目标是使得未见观测的“先验预测”尽可能逼近包含观测事实的“后验认知”。因此，不仅要最小化图像重建和奖励预测的误差，还需要最小化先验分布和后验分布之间的 KL 散度（Kullback-Leibler Divergence）。
 
 ## 隐空间中的想象与解析梯度优化
-:label:sec_latent_imagination
 
 一旦世界模型（引擎）收敛，智能体就可以切断与真实世界传感器的连接，闭上眼睛在“梦境”中学习如何决策。这是闭环的最后一块拼图。
 
@@ -96,7 +85,6 @@ $$
 $$
 V(\mathbf{z}_\tau, \mathbf{h}_\tau) \approx \mathbb{E}_{p_\theta, \pi_\psi} \left[ \sum_{k=0}^{H-\tau} \gamma^k r_{\tau+k} + \gamma^{H-\tau+1} v_\xi(\hat{\mathbf{z}}_{t+H+1}, \mathbf{h}_{t+H+1}) \right]
 $$
-:eqlabel:eq_value_function_expanded
 
 公式 :eqref:eq_value_function_expanded 中尾部的 $v_\xi$ 是一个独立训练的价值网络，用于在截断视野 $H$ 之外近似无穷远处的长尾收益。
 
@@ -109,7 +97,6 @@ $$
 $$
 \nabla_\psi \mathbb{E}[V] = \mathbb{E} \left[ \sum_{k=0}^{H} \gamma^k \nabla_{\mathbf{a}} r_{\tau+k} \cdot \nabla_\psi \pi_\psi(\mathbf{a}_{\tau+k}) \right]
 $$
-:eqlabel:eq_analytic_gradient
 
 [**我们将这种求解范式称为解析梯度（Analytic Gradient）。在实现时，我们只需通过深度学习框架的自动微分引擎，反向传播穿越“梦境”（即世界模型的连续演化计算图），直接更新策略网络（Actor）的权重参数。**]
 
@@ -244,14 +231,3 @@ print("梦境推演与策略反向传播完成！")
 * 具身控制的世界模型闭环完整涵盖了观测降维、序列动态预测以及隐空间内的极速策略规划三个步骤。
 * 循环状态空间模型（RSSM）通过结构上解耦确定性历史状态传递与随机状态建模，完美契合了复杂物理系统的动态时序规律。
 * 将环境转移严格建模为可微分的网络架构的最大红利在于，在策略求解阶段，算法脱离了方差巨大的采样估算，实现了微积分层面的“解析梯度”反向传播，极大提升了训练样本效率。
-
-## 练习
-
-1. 在公式 :eqref:eq_rssm_sequence 中，为什么更新序列确定性状态 $\mathbf{h}_t$ 时，不仅需要上一步的 $\mathbf{h}_{t-1}$，还必须额外传入上一步的隐状态 $\mathbf{z}_{t-1}$？
-   *提示*：如果在上一个物理时刻发生了一次不可预见的随机扰动或突发事件（其信息仅被编码在 $\mathbf{z}_{t-1}$ 中），这种事件是否应当影响并修正系统对未来宏观确定性演化的预判？
-2. 仔细检查代码实现，在利用先验网络计算随机状态 $\mathbf{z}_t$ 时使用了 `dist.rsample()`。请结合微积分中的链式法则（Chain Rule），证明为什么这种重参数化（Reparameterization）技巧是能够在长视野梦境中应用策略反向优化的充要条件。如果误用了不可导的 `dist.sample()` 会发生什么？
-3. 如果当前智能体部署的物理环境是一个绝对确定性且完全可观测的静态棋盘游戏，请分析 RSSM 的四个核心概率组件中，哪些部分会在数学上退化？模型结构应该如何进行简化剪枝？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

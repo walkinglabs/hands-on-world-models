@@ -1,5 +1,4 @@
 # 基础模块的从零开始实现
-:label:`sec_basic_components_scratch`
 
 在前面的章节中，我们已经探讨了深度学习的数学基础与自动微分的原理。然而，现代深度学习框架（如PyTorch或TensorFlow）的高度封装，往往会掩盖模型内部的数学本质与工程细节。为了真正掌握深度学习的核心机制，我们必须剥开这些高级API的外衣。
 
@@ -8,7 +7,6 @@
 我们将不依赖任何框架的高层API（如 `torch.nn`），仅使用基础的张量运算与自动微分功能，从零开始实现线性层（全连接层）、非线性激活函数、损失函数以及优化算法。这种“造轮子”的硬核过程，是深刻理解世界模型（World Models）中复杂架构（如Transformer和状态空间模型）不可或缺的基石。
 
 ## 线性层：仿射变换的几何与代数
-:label:`subsec_linear_layer_scratch`
 
 神经网络中最基础的积木是线性层（Linear Layer），也称为全连接层（Fully Connected Layer）或稠密层（Dense Layer）。在多层感知机（MLP）提出之前，简单的线性分类器就是由单层线性层构成的。
 
@@ -19,7 +17,6 @@
 $$
 y = w x + b
 $$
-:eqlabel:`eq_scalar_linear`
 
 其中，$x$ 是输入，$w$ 是权重（斜率），$b$ 是偏置（截距），$y$ 是输出。这个方程描述了一个一维空间中的仿射变换（Affine Transformation）：先进行缩放（乘以 $w$），再进行平移（加上 $b$）。
 
@@ -32,7 +29,6 @@ $$
 $$
 y = \mathbf{w}^\top \mathbf{x} + b = \sum_{i=1}^d w_i x_i + b
 $$
-:eqlabel:`eq_vector_linear`
 
 这仅仅是单个输出节点的计算。在神经网络的隐藏层中，我们通常需要计算多个输出节点。假设我们希望将 $d$ 维的输入向量映射到 $q$ 维的输出向量 $\mathbf{y} \in \mathbb{R}^{q \times 1}$。对于每一个输出节点 $j \in \{1, 2, \ldots, q\}$，我们需要一个独立的权重向量 $\mathbf{w}_j$ 和一个独立的偏置 $b_j$：
 
@@ -47,7 +43,6 @@ $$
 $$
 \mathbf{y} = \mathbf{W} \mathbf{x} + \mathbf{b}
 $$
-:eqlabel:`eq_matrix_vector_linear`
 
 ### 小批量计算的张量扩展
 
@@ -60,7 +55,6 @@ $$
 $$
 \mathbf{Y} = \mathbf{X} \mathbf{W} + \mathbf{b}
 $$
-:eqlabel:`eq_minibatch_linear`
 
 这里，$\mathbf{X} \mathbf{W}$ 的结果维度是 $n \times q$。根据线性代数规则，直接将 $n \times q$ 的矩阵与 $1 \times q$ 的行向量相加在数学上是未定义的。但在计算机张量运算中，这里触发了**广播机制**（Broadcasting）：偏置向量 $\mathbf{b}$ 会被隐式地复制 $n$ 次，以匹配矩阵的形状，从而实现对每一个样本的输出都加上相同的偏置。
 
@@ -81,7 +75,6 @@ def linreg(X, w, b):
 ```
 
 ## 激活函数：引入非线性
-:label:`subsec_activation_scratch`
 
 仅仅依靠线性层是远远不够的。根据线性代数的性质，无论我们堆叠多少个线性层，多层仿射变换的组合最终仍然等价于一个单一的仿射变换。即：
 
@@ -96,7 +89,6 @@ $$
 $$
 \sigma(x) = \frac{1}{1 + \exp(-x)}
 $$
-:eqlabel:`eq_sigmoid`
 
 然而，在反向传播 `[Rumelhart et al., 1986]` 过程中，当输入 $x$ 的绝对值较大时，Sigmoid 函数的梯度会迅速趋近于零，导致“梯度消失”（Vanishing Gradient）问题。
 
@@ -105,7 +97,6 @@ $$
 $$
 \text{ReLU}(x) = \max(x, 0)
 $$
-:eqlabel:`eq_relu`
 
 ReLU 不仅计算极快（仅需比较操作），而且在正半轴上的梯度恒为 1，极大缓解了梯度消失问题。
 
@@ -123,7 +114,6 @@ def relu(X):
 ```
 
 ## 损失函数：量化模型的误差
-:label:`subsec_loss_scratch`
 
 模型能够输出预测值后，我们需要一种机制来评估预测值 $\hat{\mathbf{y}}$ 与真实标签 $\mathbf{y}$ 之间的差距。这个衡量差距的函数被称为**损失函数** (Loss Function) 或目标函数 (Objective Function)。
 
@@ -136,7 +126,6 @@ def relu(X):
 $$
 l^{(i)} = \frac{1}{2} \left( \hat{y}^{(i)} - y^{(i)} \right)^2
 $$
-:eqlabel:`eq_squared_loss`
 
 公式中常数 $\frac{1}{2}$ 的作用是，在对损失函数求导时，二次项的系数 2 会与 $\frac{1}{2}$ 抵消，使得梯度的数学表达式更加简洁。
 
@@ -145,7 +134,6 @@ $$
 $$
 L(\mathbf{W}, \mathbf{b}) = \frac{1}{n} \sum_{i=1}^n \frac{1}{2} \left( \hat{y}^{(i)} - y^{(i)} \right)^2
 $$
-:eqlabel:`eq_mse`
 
 (**接下来，我们实现平方损失函数。**) 在实现中，我们需要确保预测张量 $\hat{\mathbf{y}}$ 和真实标签张量 $\mathbf{y}$ 的形状完全一致，避免由于广播机制导致意外的矩阵扩展。
 
@@ -171,12 +159,10 @@ def squared_loss(y_hat, y):
 $$
 l(\mathbf{y}, \hat{\mathbf{y}}) = - \sum_{j=1}^q y_j \log \hat{y}_j
 $$
-:eqlabel:`eq_cross_entropy`
 
 在世界模型的基础架构讲解中，我们将在后续关于 Softmax 层的章节深入探讨交叉熵的数值稳定实现，目前我们暂且聚焦于基础张量运算体系的跑通。
 
 ## 优化算法：小批量随机梯度下降 (Minibatch SGD)
-:label:`subsec_optimization_scratch`
 
 有了模型（前向传播）和损失函数（评估误差），接下来的核心任务是：如何调整模型参数（权重 $\mathbf{W}$ 和偏置 $\mathbf{b}$）以最小化损失函数？
 
@@ -193,12 +179,10 @@ $$
 $$
 \mathbf{W} \leftarrow \mathbf{W} - \eta \frac{1}{n} \sum_{i=1}^n \nabla_{\mathbf{W}} l^{(i)}(\mathbf{W}, \mathbf{b})
 $$
-:eqlabel:`eq_sgd_w`
 
 $$
 \mathbf{b} \leftarrow \mathbf{b} - \eta \frac{1}{n} \sum_{i=1}^n \nabla_{\mathbf{b}} l^{(i)}(\mathbf{W}, \mathbf{b})
 $$
-:eqlabel:`eq_sgd_b`
 
 这里的物理量解释极其重要：
 - $\leftarrow$ 表示赋值操作，即用更新后的值替换当前值。
@@ -225,7 +209,6 @@ def sgd(params, lr, batch_size):
 ```
 
 ## 组装一切：训练循环的解剖
-:label:`subsec_training_loop_scratch`
 
 现在，所有的基础零部件都已经准备就绪：我们拥有了线性模型 `linreg`、损失函数 `squared_loss` 以及优化器 `sgd`。接下来，我们需要编写一个**训练循环** (Training Loop)，将这些模块精密地咬合在一起，驱动模型开始学习。
 
@@ -247,16 +230,3 @@ def sgd(params, lr, batch_size):
 - 我们使用均方误差量化了回归问题的预测偏差，并讨论了交叉熵在分类任务中的物理意义。
 - 我们通过微积分推导了小批量随机梯度下降 (SGD) 的更新公式，并手工编写了参数的梯度更新与清零逻辑。
 - 这些从零开始构建的基础组件，构成了任何复杂深度学习架构（包括现代生成式世界模型）最核心的基因。
-
-## 练习
-
-1. 在 `sgd` 函数中，为什么我们需要使用 `param -= lr * param.grad / batch_size` 而不是直接乘以学习率而不除以 `batch_size`？
-   - *提示*：回想我们在公式 :eqref:`eq_sgd_w` 中计算的是“平均梯度”还是“总和梯度”，并思考这与损失函数 `squared_loss` 中未做均值处理的联系。
-2. 如果我们将激活函数 ReLU 替换为线性函数 $f(x) = c \cdot x$（$c$ 为常数），整个包含两层隐藏层的多层感知机能否拟合非线性数据？
-   - *提示*：尝试在草稿纸上写出 $\mathbf{Y} = c (\mathbf{X} \mathbf{W}_1 + \mathbf{b}_1) \mathbf{W}_2 + \mathbf{b}_2$，看看最终的代数形式是否依然是一个单一的仿射变换。
-3. 在代码实现中，如果我们忘记在 `sgd` 函数的末尾调用 `param.grad.zero_()`，会发生什么？
-   - *提示*：查阅自动微分章节中关于梯度累加机制的设计初衷。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

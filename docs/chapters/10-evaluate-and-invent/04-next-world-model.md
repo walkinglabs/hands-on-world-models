@@ -1,12 +1,10 @@
 # 探索下一个世界模型：前沿与未来
-:label:`sec_next_world_model`
 
 在前面几章中，我们已经深入探讨了基于循环神经网络（RNN）、变分自编码器（VAE）、生成对抗网络（GAN）以及扩散模型（Diffusion Models）构建的世界模型。通过不断迭代，这些模型在模拟环境动态演化、辅助强化学习智能体进行规划方面取得了令人瞩目的成就。然而，正如科学史上的每一次范式转移一样，现有方法的瓶颈往往是通向下一个里程碑的起点。当前基于像素级预测的自回归或扩散生成世界模型，在面对物理世界的极高信息熵、长序列规划的复合误差（Compounding Errors）时，暴露出计算效率低下和泛化能力不足的致命弱点 `[LeCun, 2022]`。
 
 在本节中，我们将把目光投向地平线之外，探索有望定义“下一个时代”世界模型的前沿架构与理论基石。我们将从联合嵌入预测架构（JEPA）的能量模型视角出发，推演放弃像素级重建的数学必然性；随后，我们将引入理论神经科学中的变分自由能原则（Free Energy Principle, FEP），探讨主动推断（Active Inference）如何统一预测与决策；最后，我们将利用连续时间的状态空间模型（State Space Models, SSMs）突破离散时间步长的桎梏。这些前沿探索不仅是工程架构的革新，更是对“智能系统如何认知物理世界”这一哲学命题的严密数学重构。
 
 ## 联合嵌入预测架构（JEPA）的数学必然性
-:label:`subsec_jepa`
 
 现有的多数世界模型（如基于 Transformer 或 VAE 的架构）通常致力于在观察空间（如图像像素）中预测下一个状态。假设当前状态为 $\mathbf{x}_t$，动作为 $\mathbf{a}_t$，预测目标往往是 $\mathbf{x}_{t+1}$。然而，物理世界充满了不可预测的细微噪音（例如风中摇曳的树叶像素变化）。强迫模型耗费巨大的模型容量去拟合这些对高级决策毫无意义的高频细节，是不理智的。
 
@@ -17,7 +15,6 @@ Yann LeCun 在其标志性的论文 `[LeCun, 2022]` 中正式提出了联合嵌�
 要理解 JEPA，我们首先回顾基础的自编码器重建逻辑。设观测值 $\mathbf{x} \in \mathbb{R}^N$，编码器 $E_\theta$ 将其映射为隐变量 $\mathbf{z} \in \mathbb{R}^d$（其中 $d \ll N$），解码器 $D_\phi$ 重建观测。这种范式的损失函数通常是均方误差（MSE）：
 
 $$L_{\text{recon}} = \|\mathbf{x} - D_\phi(E_\theta(\mathbf{x}))\|_2^2$$
-:eqlabel:`eq_ae_loss`
 
 在预测任务中，引入动作变量 $\mathbf{a}$，我们得到传统的隐变量预测模型：
 
@@ -26,12 +23,10 @@ $$L_{\text{pred}} = \|\mathbf{x}_{t+1} - D_\phi(P_\psi(E_\theta(\mathbf{x}_t), \
 这种做法依然依赖于 $D_\phi$ 将低维向量强行映射回高维的 $N$ 维像素空间。JEPA 则完全移除了生成组件 $D_\phi$。给定初始状态 $\mathbf{x}$ 和目标状态 $\mathbf{y}$，分别计算它们的表征 $\mathbf{s}_x = E_\theta(\mathbf{x})$ 和 $\mathbf{s}_y = E_\theta(\mathbf{y})$。预测器 $P_\psi$ 仅在表征空间内工作：
 
 $$\hat{\mathbf{s}}_y = P_\psi(\mathbf{s}_x, \mathbf{a})$$
-:eqlabel:`eq_jepa_pred`
 
 此时的损失函数直接定义在隐空间之上。我们可以将其视为一种能量函数（Energy Function） $F(\mathbf{x}, \mathbf{y}, \mathbf{a})$，衡量输入变量配置的不兼容程度：
 
 $$F(\mathbf{x}, \mathbf{y}, \mathbf{a}) = \|\hat{\mathbf{s}}_y - \mathbf{s}_y\|_2^2 = \|P_\psi(E_\theta(\mathbf{x}), \mathbf{a}) - E_\theta(\mathbf{y})\|_2^2$$
-:eqlabel:`eq_jepa_energy`
 
 ### 表征坍塌与 VICReg 正则化
 
@@ -42,19 +37,16 @@ $$F(\mathbf{x}, \mathbf{y}, \mathbf{a}) = \|\hat{\mathbf{s}}_y - \mathbf{s}_y\|_
 对于隐空间中的一个批次（Batch）样本，设特征矩阵为 $\mathbf{S} \in \mathbb{R}^{B \times d}$，其中 $B$ 为批次大小，$d$ 为表征维度。对于第 $j$ 个特征维度（列向量 $\mathbf{s}_{*, j}$），我们希望它在不同样本间具有区分度，即方差不能太小。方差损失项定义为：
 
 $$v(\mathbf{S}) = \frac{1}{d} \sum_{j=1}^d \max\left(0, \gamma - \sqrt{\text{Var}(\mathbf{s}_{*, j}) + \epsilon}\right)$$
-:eqlabel:`eq_vicreg_var`
 
 其中 $\gamma$ 是目标标准差，我们强迫每个特征维度的标准差至少为 $\gamma$。
 
 同时，我们希望这 $d$ 个特征维度彼此独立，不要编码冗余的信息。这在几何上等价于要求特征的协方差矩阵除了对角线之外的元素尽可能为零。去均值化后的特征矩阵 $\mathbf{S}'$ 的协方差矩阵为 $\mathbf{C} = \frac{1}{B-1} (\mathbf{S}')^\top \mathbf{S}'$。协方差损失定义为非对角线元素的平方和：
 
 $$c(\mathbf{S}) = \frac{1}{d} \sum_{i \neq j} C_{i, j}^2$$
-:eqlabel:`eq_vicreg_cov`
 
 通过组合不变性（预测与目标的距离）、方差（保持信息量）和协方差（去相关性），JEPA 实现了一个无需在像素层面生成、且具有严格数学保障的抽象世界模型。这种架构为处理高维复杂物理系统铺平了道路。
 
 ## 主动推断与变分自由能
-:label:`subsec_active_inference`
 
 仅仅能够准确预测未来是不够的，真正的世界模型最终必须指导决策。传统的强化学习将“状态转移预测”（环境动力学）与“策略优化”（最大化奖励）视为两个独立甚至对立的目标。神经科学家 Karl Friston 提出的变分自由能原则（Free Energy Principle, FEP） `[Friston, 2010]` 为这两者提供了一个极其优雅的统一数学框架。
 
@@ -65,7 +57,6 @@ $$c(\mathbf{S}) = \frac{1}{d} \sum_{i \neq j} C_{i, j}^2$$
 设智能体的生成模型（世界模型）为联合概率分布 $P(\mathbf{o}, \mathbf{s})$，其中 $\mathbf{o}$ 是观测变量，$\mathbf{s}$ 是隐状态。由于物理环境 $\mathbf{s}$ 是不可直接观测的，智能体只能推断其后验分布 $P(\mathbf{s} \mid \mathbf{o})$。惊讶度定义为边缘似然的负对数：
 
 $$\mathcal{I}(\mathbf{o}) = -\log P(\mathbf{o}) = -\log \int P(\mathbf{o}, \mathbf{s}) d\mathbf{s}$$
-:eqlabel:`eq_surprisal`
 
 在一般情况下，上述积分对于高维连续状态空间是无法解析求解的。因此，我们引入一个由神经网络参数化的近似后验分布 $Q(\mathbf{s} \mid \mathbf{o})$。
 
@@ -83,7 +74,6 @@ $$
 &\le \mathbb{E}_{Q} \left[ -\log \frac{P(\mathbf{o}, \mathbf{s})}{Q(\mathbf{s} \mid \mathbf{o})} \right] \quad \text{(根据 Jensen 不等式)}
 \end{aligned}
 $$
-:eqlabel:`eq_fep_derivation`
 
 不等式右侧的量即为**变分自由能（Variational Free Energy, VFE）** $\mathcal{F}$。由于 $\mathcal{F}$ 是惊讶度的上界（Upper Bound），最小化自由能即可隐式地最小化惊讶度（避免系统陷入意外的高熵态）。
 
@@ -95,7 +85,6 @@ $$
 &= \underbrace{-\mathbb{E}_{Q}[\log P(\mathbf{o} \mid \mathbf{s})]}_{\text{预期惊讶 (不准确性)}} + \underbrace{D_{KL}(Q(\mathbf{s} \mid \mathbf{o}) \| P(\mathbf{s}))}_{\text{复杂性惩罚}}
 \end{aligned}
 $$
-:eqlabel:`eq_vfe_kl`
 
 公式 :eqref:`eq_vfe_kl` 表明，一个优秀的世界模型既需要能够准确解释观测结果（最小化第一项，即重构误差），又必须保持自身的简约性（最小化第二项，使推断的后验分布不要偏离先验分布太多）。
 
@@ -108,7 +97,6 @@ $$
 在主动推断框架中，策略的选择完全转化为对**期望自由能（Expected Free Energy, EFE）**的最小化。这种统一，消除了强化学习中外在奖励信号的绝对必要性，使得探索（降低模型不确定性）和利用（实现预期目标）被同等地编码在同一个公式中。这是迈向“通用世界模型”的重要理论基石。
 
 ## 连续时间与状态空间模型（SSMs）
-:label:`subsec_ssm`
 
 我们目前探讨的世界模型大多建立在离散的时间步 $t, t+1, t+2$ 之上。然而，真实的物理世界是连续流动的。对连续动态的离散化往往会导致信息丢失，并且在跨越多时间尺度的长序列预测时，循环网络或 Transformer 面临着灾难性的遗忘或平方级的计算复杂度。
 
@@ -124,7 +112,6 @@ $$
 y(t) &= \mathbf{C}\mathbf{x}(t) + \mathbf{D}u(t)
 \end{aligned}
 $$
-:eqlabel:`eq_continuous_ssm`
 
 其中，矩阵 $\mathbf{A} \in \mathbb{R}^{N \times N}$ 编码了系统的演化动态，$\mathbf{B} \in \mathbb{R}^{N \times 1}$ 定义了输入如何驱动状态演变，$\mathbf{C} \in \mathbb{R}^{1 \times N}$ 定义了状态如何映射为输出。由于我们关注时间动态，通常省略直通项令 $\mathbf{D} = 0$。
 
@@ -139,7 +126,6 @@ $$
 $$
 \mathbf{x}_k = \mathbf{x}(k\Delta) = e^{\mathbf{A}\Delta}\mathbf{x}_{k-1} + \left( \int_{0}^{\Delta} e^{\mathbf{A}\tau} d\tau \right) \mathbf{B}u_k
 $$
-:eqlabel:`eq_zoh_integral`
 
 令离散化的参数矩阵为 $\bar{\mathbf{A}} = e^{\mathbf{A}\Delta}$，以及 $\bar{\mathbf{B}} = (\mathbf{A}^{-1}(e^{\mathbf{A}\Delta} - \mathbf{I}))\mathbf{B}$，我们得到了类似于 RNN 的严格离散递归表示：
 
@@ -149,7 +135,6 @@ $$
 y_k &= \mathbf{C}\mathbf{x}_k
 \end{aligned}
 $$
-:eqlabel:`eq_discrete_ssm`
 
 与普通 RNN 使用启发式的非线性门控机制（如 LSTM）不同，公式 :eqref:`eq_discrete_ssm` 具有极其优美的解析性质。结合特定的矩阵 $\mathbf{A}$ 构造（如 HiPPO 矩阵，旨在正交多项式基上记忆完整的历史记录），SSMs 在进行物理动态的时序预测时，展现出极其优秀的数学收敛性和无需注意力机制的线性时间复杂度。这使得 SSMs 成为模拟长周期复杂物理动态现象的绝佳候选架构。
 
@@ -238,13 +223,3 @@ print(f"Similarity Loss: {sim.item():.4f}, Variance Loss: {var.item():.4f}, Cova
 * **JEPA** 证明了对于高熵现实世界，我们必须在抽象的隐变量空间进行预测，并通过方差与协方差正则化等手段对抗信息坍塌。
 * **主动推断与自由能原则** 将控制论与生成模型统一，使模型不再满足于单纯的未来猜测，而是主动通过行动降低环境的不可预测性。
 * **连续状态空间模型** 利用微分方程重新审视序列建模，为物理规律中的长程、多尺度依赖提供了理论上完美的框架。
-
-## 练习
-
-1. **变分自由能证明拓展**：在推导变分自由能上界 :eqref:`eq_fep_derivation` 时，我们应用了 Jensen 不等式。试在假定 $Q(\mathbf{s} \mid \mathbf{o}) = P(\mathbf{s} \mid \mathbf{o})$ 的情况下，证明该不等式取等号，并解释这在优化世界模型时的物理含义。（*提示：仔细推导当 KL 散度为零时，变分下界与边缘似然的关系。*）
-2. **VICReg 的几何意义**：如果将批次样本在隐变量空间中的表征视为一个 $d$ 维的高斯分布散点云，请问增加方差损失项 $v(\mathbf{S})$ 且最小化协方差损失 $c(\mathbf{S})$，对这个散点云的几何形态会产生怎样的影响？
-3. **SSM 的离散化实现**：在连续状态空间模型中，假设系统处于标量状态（$N=1$），$\mathbf{A} = -0.5, \mathbf{B} = 1.0, \Delta = 0.1$。请根据精确离散化公式 :eqref:`eq_discrete_ssm`，手算或编写代码计算离散时间矩阵 $\bar{\mathbf{A}}$ 和 $\bar{\mathbf{B}}$ 的数值。（*提示：带入积分公式 :eqref:`eq_zoh_integral` 并验证推导。*）
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

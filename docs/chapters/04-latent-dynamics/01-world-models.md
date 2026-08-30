@@ -1,5 +1,4 @@
 # 世界模型（World Models）绪论
-:label:sec_world_models_intro
 
 在深度强化学习（Deep Reinforcement Learning, DRL）的早期发展中，以无模型（Model-Free）方法为主导的算法在诸多游戏与连续控制任务中取得了令人瞩目的成就。例如，DQN 算法 `[Mnih et al., 2015]` 通过拟合动作价值函数，使得智能体首次能够直接从高维像素输入中学习控制策略。然而，无模型方法普遍面临着一个致命的瓶颈：极低的样本效率（Sample Inefficiency）。为了学到一个能平稳驾驶汽车的策略，智能体可能需要在仿真环境中“撞毁”数以百万计的车辆。
 
@@ -8,7 +7,6 @@
 本章我们将从最基础的物理规律出发，严谨推演世界模型的数学结构，并剖析其为何必须依赖潜空间（Latent Space）与序列生成模型。
 
 ## 从基础物理到状态转移：预测的本质
-:label:subsec_world_model_physics
 
 在正式引入深度学习框架之前，让我们先回到高中物理中关于运动学最基础的描述。这是理解一切“动态预测”模型的起点。
 
@@ -17,7 +15,6 @@
 $$
 x_{t+1} = x_t + v_t \Delta t
 $$
-:eqlabel:eq_kinematics_1d
 
 在公式 :eqref:eq_kinematics_1d 中，我们实际上构建了一个极简的**环境模型**。它包含三个核心要素：
 1. $x_t$：当前状态（State），在这里退化为一个标量。
@@ -29,19 +26,16 @@ $$
 $$
 \mathbf{s}_{t+1} = f(\mathbf{s}_t, \mathbf{a}_t)
 $$
-:eqlabel:eq_transition_deterministic
 
 然而，真实物理世界往往充满着观测噪声、隐藏变量（部分可观测性）以及环境本身的固有随机性。这就要求我们将确定性的函数映射升级为条件概率分布（Conditional Probability Distribution）。即在给定当前状态与动作的前提下，未来状态服从某一种概率分布：
 
 $$
 P(\mathbf{s}_{t+1} \mid \mathbf{s}_t, \mathbf{a}_t)
 $$
-:eqlabel:eq_transition_prob
 
 深度学习视角下的“世界模型”，本质上就是用神经网络来高精度地拟合公式 :eqref:eq_transition_prob 所描述的这个条件概率分布。
 
 ## 维度的诅咒与潜空间降维
-:label:subsec_world_model_latent
 
 如果我们将环境直接设定为一个自动驾驶的仿真画面，此时观测空间（状态） $\mathbf{s}_t$ 是一张 $64 \times 64$ 的 RGB 图像。那么该状态空间的维度是 $D = 64 \times 64 \times 3 = 12288$。
 
@@ -58,7 +52,6 @@ $$
 $$
 \mathcal{L}_{\text{VAE}} = \mathbb{E}_{q_\phi(\mathbf{z}|\mathbf{x})}[-\log p_\theta(\mathbf{x}|\mathbf{z})] + D_{\text{KL}}(q_\phi(\mathbf{z}|\mathbf{x}) \parallel \mathcal{N}(\mathbf{0}, \mathbf{I}))
 $$
-:eqlabel:eq_vae_elbo
 
 在公式 :eqref:eq_vae_elbo 中，第一项为重建损失（保证 $\mathbf{z}$ 包含了恢复原始图像必需的信息），第二项为 KL 散度（约束潜空间的分布形态）。通过训练完毕的编码器 $q_\phi$，我们可以将每一帧极其庞大的像素矩阵 $\mathbf{x}_t$ 压缩为几十维的向量 $\mathbf{z}_t$。
 
@@ -69,21 +62,18 @@ $$
 $$
 P(\mathbf{z}_{t+1} \mid \mathbf{z}_{\le t}, \mathbf{a}_{\le t})
 $$
-:eqlabel:eq_latent_transition
 
 这里的下标 $\le t$ 表示从 $0$ 时刻到 $t$ 时刻的完整历史轨迹。由于部分可观测性（单帧图像无法提供速度、加速度等时间衍生信息），我们需要利用循环神经网络（RNN）来压缩历史信息。设 RNN 在 $t$ 时刻的隐藏状态为 $\mathbf{h}_t \in \mathbb{R}^h$，它可以被视为对过去所有历史信息的聚合：
 
 $$
 \mathbf{h}_{t} = \text{RNN}(\mathbf{z}_{t}, \mathbf{a}_{t}, \mathbf{h}_{t-1})
 $$
-:eqlabel:eq_rnn_hidden_state
 
 此时，上述转移概率可近似被化简为仅依赖于当前隐藏状态的条件分布：
 
 $$
 P(\mathbf{z}_{t+1} \mid \mathbf{z}_{\le t}, \mathbf{a}_{\le t}) \approx P(\mathbf{z}_{t+1} \mid \mathbf{h}_{t})
 $$
-:eqlabel:eq_m_model_approx
 
 为了极其严密地建模 $P(\mathbf{z}_{t+1} \mid \mathbf{h}_{t})$，我们需要回答一个问题：这个分布应该长什么样？
 
@@ -97,14 +87,12 @@ $$
 $$
 \mathcal{N}(z \mid \mu, \sigma^2) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left( -\frac{(z - \mu)^2}{2\sigma^2} \right)
 $$
-:eqlabel:eq_1d_gaussian
 
 为了具备表达多模态（多种不同未来可能性）的能力，我们引入由 $K$ 个高斯分量叠加而成的高斯混合模型（Gaussian Mixture Model, GMM）：
 
 $$
 P(z) = \sum_{k=1}^K \pi_k \mathcal{N}(z \mid \mu_k, \sigma_k^2)
 $$
-:eqlabel:eq_gmm_1d
 
 其中混合权重满足 $\sum_{k=1}^K \pi_k = 1$ 且 $\pi_k \ge 0$。
 
@@ -113,21 +101,18 @@ $$
 $$
 P(\mathbf{z}_{t+1} \mid \mathbf{h}_t) = \sum_{k=1}^K \pi_{k, t} \prod_{i=1}^d \mathcal{N}(z_{t+1,i} \mid \mu_{k,i,t}, \sigma_{k,i,t}^2)
 $$
-:eqlabel:eq_gmm_md
 
 在上述公式 :eqref:eq_gmm_md 中，所有关于 $t$ 时刻的分布参数：混合权重 $\boldsymbol{\pi}_t$、各分量均值矩阵 $\boldsymbol{\mu}_t$ 以及方差矩阵 $\boldsymbol{\sigma}_t$，都必须由当前时刻的 RNN 隐藏状态 $\mathbf{h}_t$ 经过一个线性层严格映射得出：
 
 $$
 [\boldsymbol{\hat{\pi}}_t, \boldsymbol{\hat{\mu}}_t, \boldsymbol{\hat{\sigma}}_t] = W_o \mathbf{h}_t + \mathbf{b}_o
 $$
-:eqlabel:eq_mdn_linear
 
 在经过非线性激活以满足物理量约束（例如 $\pi$ 需要 Softmax 归一化，$\sigma$ 需要 Softplus 或 Exponential 保证严格为正）后，我们通过最小化负对数似然（Negative Log-Likelihood, NLL）来对 M 模型进行梯度下降优化：
 
 $$
 \mathcal{L}_{\text{MDN}} = \mathbb{E}_{t} \left[ -\log \left( \sum_{k=1}^K \pi_{k,t} \prod_{i=1}^d \frac{1}{\sqrt{2\pi\sigma_{k,i,t}^2}} \exp\left(-\frac{(z_{t+1,i} - \mu_{k,i,t})^2}{2\sigma_{k,i,t}^2}\right) \right) \right]
 $$
-:eqlabel:eq_mdn_nll
 
 ## 架构与核心代码实现：MDN-RNN
 
@@ -250,14 +235,3 @@ def mdn_loss(pi, mu, sigma, target_z):
 至此，我们已经详尽推演了世界模型在架构层面的基础逻辑与核心数学范式。从简单的一维状态迁移方程起步，我们将问题逐渐升维，直到触碰到原始高维像素空间所面临的巨大挑战，进而引入了通过 VAE（V模型）降维到连续潜空间，并利用混合密度神经网络 MDN-RNN（M模型）来进行多模态时序预测的整体思想。
 
 在下一节中，我们将深入探讨在获得了强大的“脑内模拟器”之后，控制器（Controller）如何利用进化的手段去优化最终的动作策略。
-
-## 练习
-
-1. 回顾公式 :eqref:eq_mdn_nll，请尝试从对数损失出发，严谨推导其对特定分量均值参数 $\mu_{k,i,t}$ 的偏导数 $\frac{\partial \mathcal{L}_{\text{MDN}}}{\partial \mu_{k,i,t}}$。
-    - **提示**：你会发现梯度的表达式中包含了该高斯分量在当前样本下的后验概率（即责任度 Responsibility）。
-2. 在代码实现中，我们假设了给定了混合簇 $k$ 的条件下，`latent_dim` 个维度之间是相互独立的。如果不做这个假设，且必须使用完整的协方差矩阵（Full Covariance Matrix），请问网络需要额外输出多少个预测参数？为什么在实际的深度学习强化模型中通常避免这样做？
-    - **提示**：回忆线性代数中多元高斯分布的定义，思考对称正定矩阵的自由度 $\mathcal{O}(d^2)$ 会带来怎样的训练负担与参数爆炸。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

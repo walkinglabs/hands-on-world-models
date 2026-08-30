@@ -1,5 +1,4 @@
 # JEPA 表征学习模块的从零开始实现
-:label:sec_jepa_scratch
 
 在深度学习的早期与中期，自监督学习（Self-Supervised Learning, SSL）主要依赖于两种范式：生成式（Generative）与对比式（Contrastive）。生成式方法（如掩码自编码器 MAE [He et al., 2021]）通过在像素级别重建缺失的输入来学习表征；然而，现实世界充满了不可预测的高频噪声（例如随风摇曳的树叶细节），在像素层面进行精确重建往往会浪费大量的模型容量。对比式方法（如 SimCLR、MoCo）试图在表征空间中拉近正样本、推远负样本，这极大地依赖于手工设计的图像数据增强策略，且在面对模态转换时泛化能力受限。
 
@@ -45,24 +44,20 @@ $$L = (\hat{s}_y - s_y)^2$$
 于是，我们得到矩阵形式的表征：
 $$\mathbf{S}_c = f_\theta(\mathbf{X}_c) \in \mathbb{R}^{N_c \times d}$$
 $$\mathbf{S}_y = f_{\bar{\theta}}(\mathbf{X}_y) \in \mathbb{R}^{N_y \times d}$$
-:eqlabel:eq_jepa_encoders
 
 其中 $d$ 是表征空间的维度。
 
 预测器 $g_\phi$ 由参数 $\phi$ 构成，它结合上下文表征 $\mathbf{S}_c$ 和目标区域的位置编码矩阵 $\mathbf{Z} \in \mathbb{R}^{N_y \times d}$，输出对目标表征的预测：
 $$\hat{\mathbf{S}}_y = g_\phi(\mathbf{S}_c, \mathbf{Z}) \in \mathbb{R}^{N_y \times d}$$
-:eqlabel:eq_jepa_predictor
 
 最终的损失函数在特征维度和目标块的数量上取均方误差：
 $$\mathcal{L}(\theta, \phi) = \frac{1}{N_y} \sum_{i=1}^{N_y} \|\hat{\mathbf{s}}_{y, i} - \mathbf{s}_{y, i}\|_2^2$$
-:eqlabel:eq_jepa_loss
 
 > [!CAUTION]
 > 在 JEPA 的优化过程中，这是一个极其核心的非对称操作：**损失函数 $\mathcal{L}$ 只对上下文编码器的参数 $\theta$ 和预测器的参数 $\phi$ 计算梯度并更新**。目标编码器的参数 $\bar{\theta}$ 被视为常数（Stop-Gradient），绝不能通过反向传播更新。这也是打破对称性、防止网络坍塌到平凡解（Trivial Solution）的根本保证。
 
 为了让目标编码器能够提供高质量、一致的表征目标，参数 $\bar{\theta}$ 采用指数移动平均（Exponential Moving Average, EMA）的方式，根据 $\theta$ 的历史值进行平滑更新：
 $$\bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta$$
-:eqlabel:eq_jepa_ema
 
 其中 $\tau \in [0, 1)$ 是动量衰减率，通常取接近 $1$ 的值（如 $0.996$）。
 
@@ -126,7 +121,7 @@ class MLPBlock(layers.Layer):
 
 ### 上下文与目标编码器
 
-接下来，我们基于上述基础模块构建编码器。正如公式 :eqref:eq_jepa_encoders 所示，输入数据首先映射到维度为 `d` 的表征空间。
+接下来，我们基于上述基础模块构建编码器。正如前文的编码器公式所示，输入数据首先映射到维度为 `d` 的表征空间。
 
 (**我们定义编码器架构。**)
 
@@ -402,15 +397,3 @@ print(f"训练步完成，表征预测损失: {loss.numpy():.4f}")
 * JEPA 提供了一种优雅的范式转移：不再直接预测原始空间的未知信息，而是在**高度抽象的特征空间**内基于给定的位置先验去预测目标区域的表征。
 * 非对称的架构设计是保证 JEPA 不发生表征坍塌的物理基石：对预测器和上下文编码器执行梯度下降，但对目标编码器严格使用**停止梯度**（Stop-Gradient）并配合**指数移动平均**（EMA）进行平滑更新。
 * 预测器不仅接收上下文信息，必须还要接收目标的位置条件变量 $Z$ 才能进行精准推断。
-
-## 练习
-
-1. 在公式 :eqref:eq_jepa_ema 中，如果我们将 $\tau$ 设置为 0，这等价于什么模型结构？网络是否容易发生表征坍塌？为什么？
-    * *提示*：将 $\tau=0$ 代入 EMA 公式，观察目标编码器和上下文编码器权重的关系，并思考当两侧梯度更新一致时，最小化公式 :eqref:eq_jepa_loss 的最快途径是什么。
-2. 在本文的简化实现中，我们将上下文字符串特征使用了简单的 `mean(dim=1)` 进行平均池化。在实际的图像处理应用中（如 I-JEPA 使用的 Vision Transformer），如果不使用平均池化，我们通常应该如何将不同块（Patch）的上下文信息组合起来供预测器使用？
-    * *提示*：考虑 Transformer 架构中的注意力机制（Attention），如何让预测器动态地从不同的上下文 Patch 提取需要的信息？
-3. 如果去除了预测器的位置编码输入 `z_target_pos`，模型的前向预测过程会发生怎样的变化？这在数学和几何直觉上会导致怎样的问题？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

@@ -1,5 +1,4 @@
 # 具身规划的从零开始实现
-:label:sec_embodied_planning_scratch
 
 在探讨深度学习与机器人学的交叉领域时，让智能体在复杂的物理世界中进行自主决策与行动，始终是该领域的核心命题。早期的研究主要依赖于经典的运动规划算法（例如A*搜索与快速随机搜索树RRT），或是基于严密解析数学模型的模型预测控制（Model Predictive Control, MPC） `[Camacho & Alba, 2013]`。然而，当机器人走出结构化的实验室，面对充满未知与噪声的开放世界时，构建完美且精确的物理动力学方程往往变得极其困难，甚至是不可能的。
 
@@ -17,17 +16,14 @@
 
 $$v_{t+1} = v_t + a_t \Delta t$$
 $$x_{t+1} = x_t + v_t \Delta t + \frac{1}{2} a_t (\Delta t)^2$$
-:eqlabel:eq_kinematics_scalar
 
 为了数学上的简洁与后续向量化的需要，我们通常会假设时间步长 $\Delta t$ 极小，从而忽略掉二次项 $\frac{1}{2} a_t (\Delta t)^2$。现在，我们定义系统的状态向量为 $\mathbf{s}_t = \begin{bmatrix} x_t \\ v_t \end{bmatrix}$，动作向量为 $\mathbf{u}_t = \begin{bmatrix} a_t \end{bmatrix}$。那么，上述标量方程可以顺理成章地重写为严谨的矩阵乘法形式：
 
 $$\begin{bmatrix} x_{t+1} \\ v_{t+1} \end{bmatrix} = \begin{bmatrix} 1 & \Delta t \\ 0 & 1 \end{bmatrix} \begin{bmatrix} x_t \\ v_t \end{bmatrix} + \begin{bmatrix} 0 \\ \Delta t \end{bmatrix} a_t$$
-:eqlabel:eq_kinematics_matrix
 
 更一般地，对于任何线性时不变系统，我们可以将其抽象为状态转移方程：
 
 $$\mathbf{s}_{t+1} = \mathbf{A} \mathbf{s}_t + \mathbf{B} \mathbf{u}_t$$
-:eqlabel:eq_linear_dynamics
 
 ## 泛化至非线性环境动力学模型
 
@@ -36,7 +32,6 @@ $$\mathbf{s}_{t+1} = \mathbf{A} \mathbf{s}_t + \mathbf{B} \mathbf{u}_t$$
 我们将真实世界中复杂的状态转移过程定义为一个未知的非线性函数 $\mathcal{F}$。通过收集大量机器人在环境中的历史转移数据 $\{(\mathbf{s}_t, \mathbf{u}_t, \mathbf{s}_{t+1})\}$，我们可以训练一个参数为 $\theta$ 的神经网络 $f_\theta$：
 
 $$\mathbf{s}_{t+1} = f_\theta(\mathbf{s}_t, \mathbf{u}_t)$$
-:eqlabel:eq_neural_dynamics
 
 这里的 $f_\theta$ 就是我们常说的**前向动力学模型**（Forward Dynamics Model），也是世界模型中最核心的组成部分。它赋予了智能体“预测未来”的能力：给定当前状态和我们即将采取的动作，模型能够推演出下一步的状态。
 
@@ -47,14 +42,12 @@ $$\mathbf{s}_{t+1} = f_\theta(\mathbf{s}_t, \mathbf{u}_t)$$
 延续一维轨道的场景，假设我们的目标是让机器人停靠在位置 $x_{goal}$ 处，并且希望它停下时不要过于剧烈地晃动（即速度 $v$ 应当接近0），同时为了节省电量，我们希望加速度（动作）越小越好。我们可以构建如下的单步代价函数：
 
 $$c(\mathbf{s}_t, \mathbf{u}_t) = w_1 (x_t - x_{goal})^2 + w_2 v_t^2 + w_3 a_t^2$$
-:eqlabel:eq_step_cost
 
 其中，$w_1, w_2, w_3$ 是调节各项重要性的权重常数。
 
 然而，具身规划不能只看眼前的一步。我们需要在一个规划视界（Planning Horizon） $H$ 内进行长远考虑。这就引出了规划的最终数学目标——寻找一条长度为 $H$ 的最优动作序列 $\mathbf{U}_{1:H}^* = \{\mathbf{u}_1, \mathbf{u}_2, \dots, \mathbf{u}_H\}$，使得累积代价 $J$ 最小化：
 
 $$\mathbf{U}_{1:H}^* = \mathop{\arg\min}_{\mathbf{U}_{1:H}} \sum_{k=1}^{H} c(\mathbf{s}_{t+k}, \mathbf{u}_{t+k})$$
-:eqlabel:eq_trajectory_cost
 
 约束条件为未来的状态必须由动力学模型 :eqref:eq_neural_dynamics 逐步生成。
 
@@ -70,15 +63,12 @@ $$\mathbf{U}_{1:H}^* = \mathop{\arg\min}_{\mathbf{U}_{1:H}} \sum_{k=1}^{H} c(\ma
 
 1. **采样（Sampling）**：从当前的分布 $\mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\Sigma})$ 中，独立同分布地采样 $N$ 条完整的动作序列轨迹（即 $N$ 发“炮弹”）：
    $$\mathbf{U}^{(i)} \sim \mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\Sigma}), \quad i \in \{1, 2, \dots, N\}$$
-   :eqlabel:eq_cem_sampling
 
 2. **评估与排序（Evaluation & Sorting）**：利用动力学模型 $f_\theta$ 展开（Rollout）这 $N$ 条序列，计算每一条序列的累积代价 $J(\mathbf{U}^{(i)})$。随后按代价从小到大排序。
 
 3. **更新（Updating）**：选取代价最低的前 $K$ 条序列作为“精英样本”（Elites），记作 $\mathbf{U}_{elite}$。利用这 $K$ 个精英样本的经验统计量，对高斯分布的均值和方差进行极大似然更新：
    $$\boldsymbol{\mu}_{new} = \frac{1}{K} \sum_{j=1}^K \mathbf{U}_{elite}^{(j)}$$
-   :eqlabel:eq_cem_mu_update
    $$\boldsymbol{\Sigma}_{new} = \frac{1}{K} \sum_{j=1}^K \left( \mathbf{U}_{elite}^{(j)} - \boldsymbol{\mu}_{new} \right) \left( \mathbf{U}_{elite}^{(j)} - \boldsymbol{\mu}_{new} \right)^\top$$
-   :eqlabel:eq_cem_sigma_update
 
 不断重复上述三个步骤 $M$ 次，分布的方差 $\boldsymbol{\Sigma}$ 会不断缩小，均值 $\boldsymbol{\mu}$ 会迅速逼近等式 :eqref:eq_trajectory_cost 的最优解。
 
@@ -214,15 +204,3 @@ class CEMPlanner:
 ```
 
 通过上述严密的设计，我们的机器人不再是盲目试错，而是具备了在“大脑”（世界模型）中预演无数种未来，并沿着代价最低的那条世界线坚定前行的能力。这也正是现代复杂具身智能体能够完成折叠衣服、灵巧抓取等惊艳操作的基石原理。
-
-## 练习
-
-1. 在 `CEMPlanner` 中，方差如果在前几轮迭代中迅速缩小到0，会导致什么现象？在实际的深度强化学习工程中，通常如何通过修改等式 :eqref:eq_cem_sigma_update 来缓解这个问题？
-2. 动力学模型 $f_\theta$ 的预测误差往往会随着时间视界 $H$ 的增加呈指数级放大。尝试推理，为什么我们在 `plan` 函数的末尾，仅仅返回了 `action_mu[0]` 而不是直接执行整个 `action_mu` 序列？
-3. 如果我们将单步代价函数 :eqref:eq_step_cost 中的 $w_3$（对动作的惩罚权重）设置为一个极大的值，机器人的规划行为会发生怎样的质变？
-
-*提示：对于问题1，思考一下方差变为0后，下一次迭代的公式 :eqref:eq_cem_sampling 会采出什么样的序列；对于问题2，回顾控制论中“开环控制”与“闭环控制”的本质区别。*
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

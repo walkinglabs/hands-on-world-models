@@ -1,5 +1,4 @@
 # Dreamer 智能体的简洁实现
-:label:sec_dreamer_concise
 
 在深度强化学习的发展历程中，智能体如何高效地从环境中获取经验一直是一个核心难题。早期的无模型（Model-Free）强化学习算法，虽然在特定任务上取得了超越人类的表现，但往往需要数以千万计的交互步数。这就好比一个完全不具备物理直觉的婴儿，必须通过无数次摔倒才能学会走路。为了打破这种对环境交互的极度依赖，研究者们将目光转向了基于模型的强化学习（Model-Based Reinforcement Learning）。
 
@@ -14,7 +13,6 @@
 $$
 p_{t+1} = p_t + v_t \Delta t + \frac{1}{2} a \Delta t^2
 $$
-:eqlabel:eq_kinematics
 
 在这里，$(p_t, v_t)$ 构成了这个物理系统的“状态”（State）。只要我们掌握了状态以及物理规律（转移函数），我们就能预测未来。然而，在强化学习面临的高维环境（例如连续的像素输入）中，我们无法直接获取这种完美的低维状态，只能得到包含大量冗余信息的观测值（Observation）$o_t$。
 
@@ -32,7 +30,6 @@ Dreamer 的核心世界模型被称为循环状态空间模型（RSSM）。RSSM 
 $$
 h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})
 $$
-:eqlabel:eq_deterministic_h
 
 在这里，$a_{t-1}$ 是智能体在上一时刻采取的动作。公式 :eqref:eq_deterministic_h 描述了系统底层的物理惯性。
 
@@ -41,14 +38,12 @@ $$
 $$
 z_t \sim q_\phi(z_t \mid h_t, o_t)
 $$
-:eqlabel:eq_posterior_z
 
 然而，在智能体做“梦”（即规划未来）的时候，它是无法看到未来的真实观测 $o_{t}$ 的。它只能完全依赖内部模型去猜测。这就引出了先验概率分布（Prior Distribution）$p_\theta(z_t \mid h_t)$：
 
 $$
 \hat{z}_t \sim p_\theta(z_t \mid h_t)
 $$
-:eqlabel:eq_prior_z
 
 > [!NOTE]
 > 想象你在一条熟悉的但没有路灯的走廊里蒙眼行走。确定性状态 $h_t$ 就像是你大脑中对之前走过步数的记忆和方向感；先验分布 $p_\theta(z_t \mid h_t)$ 是你根据记忆预测自己当前可能所处的位置分布。而当你稍微睁开一点眼睛，看到周围微弱的轮廓 $o_t$ 时，你结合记忆和所见，得出的更加确信的位置分布，就是后验分布 $q_\phi(z_t \mid h_t, o_t)$。Dreamer 训练世界模型的目标之一，就是让闭着眼睛的预测（先验）尽可能接近睁开眼睛的认知（后验）。
@@ -67,14 +62,12 @@ $$
 $$
 D_{\text{KL}}(q \parallel p) = \sum q(x) \log \frac{q(x)}{p(x)}
 $$
-:eqlabel:eq_kl_scalar
 
 将其推广到我们的序列多维隐状态，并结合重构项，我们可以写出 RSSM 在时间步 $t$ 的严谨目标函数（我们要最小化它的负值）：
 
 $$
 \mathcal{L}_t = \underbrace{-\ln p_\theta(o_t \mid h_t, z_t)}_{\text{观测重构}} \underbrace{-\ln p_\theta(r_t \mid h_t, z_t)}_{\text{奖励预测}} + \underbrace{\beta D_{\text{KL}}\left( q_\phi(z_t \mid h_t, o_t) \parallel p_\theta(z_t \mid h_t) \right)}_{\text{动力学约束}}
 $$
-:eqlabel:eq_rssm_loss
 
 公式 :eqref:eq_rssm_loss 中的三个项分别对应了图像解码器、奖励预测器和概率推断模块的优化目标。
 
@@ -89,7 +82,6 @@ $$
 $$
 V_t^\lambda = r_t + \gamma \left( (1 - \lambda) v_\xi(s_{t+1}) + \lambda V_{t+1}^\lambda \right)
 $$
-:eqlabel:eq_lambda_return
 
 公式 :eqref:eq_lambda_return 是一个后向递推公式，它结合了单步的奖励预测、对下一状态的价值估计，以及对更长远未来的展望。
 
@@ -97,13 +89,11 @@ Actor 网络 $\pi_\psi$ 的目标是最大化预期的价值：
 $$
 \mathcal{L}_{\text{actor}} = -\sum_{t=\tau}^{\tau+H} \mathbb{E}[V_t^\lambda]
 $$
-:eqlabel:eq_actor_loss
 
 Critic 网络 $v_\xi$ 的目标是使得其预测的价值逼近 $V_t^\lambda$：
 $$
 \mathcal{L}_{\text{critic}} = \frac{1}{2} \sum_{t=\tau}^{\tau+H} \left( v_\xi(s_t) - V_t^\lambda \right)^2
 $$
-:eqlabel:eq_critic_loss
 
 ## 极简代码实现
 
@@ -219,15 +209,3 @@ class RSSM(tf.keras.Model):
 * 基于模型的强化学习通过构建世界模型（如 RSSM）来摆脱对高频环境交互的依赖。
 * RSSM 分离了确定性状态与随机状态，完美契合了记忆与未来不确定性的物理和概率特性。
 * Dreamer 通过在隐空间中计算变分下界（ELBO）来联合训练编码器、解码器和动态模型，并在“梦境”内完成了类似于 $\lambda$-return 的价值估计和策略梯度更新。
-
-## 练习
-
-1. 回顾公式 :eqref:eq_deterministic_h 和 :eqref:eq_posterior_z。如果环境是完全确定性的（比如下棋），我们还需要 $z_t$ 和后验分布吗？
-    * *提示*：考虑随机变量退化为狄拉克 $\delta$ 函数的情形。
-2. 在计算公式 :eqref:eq_rssm_loss 中的 KL 散度时，如果直接让先验和后验的均值、方差完全相等，会导致什么后果？
-    * *提示*：模型是否还能从当前的观测 $o_t$ 中提取有用的新信息？这也就是常说的“后验坍塌”（Posterior Collapse）现象。
-3. 尝试在代码中扩展 `RSSM` 类，实现一个完整的循环过程，接收长度为 $T$ 的观测序列，并计算每一步的先验分布与后验分布之间的 KL 散度。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

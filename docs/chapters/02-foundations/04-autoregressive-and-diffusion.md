@@ -1,5 +1,4 @@
 # 2.4. 生成模型（自回归与扩散）
-:label:sec_autoregressive_and_diffusion
 
 生成模型（Generative Models）是无监督学习的核心研究方向之一。如果说判别模型（如图像分类器）旨在寻找决策边界以区分不同类别的数据，那么生成模型的终极目标则是**学习数据本身的真实概率分布**。当我们掌握了数据的真实分布，不仅能对现有数据进行密度估计，更能够从中采样，创造出前所未有的新样本。
 
@@ -8,7 +7,6 @@
 本节将从基础概率论出发，逐步剥离高维空间带来的复杂性，深入推导这两类生成模型的数学本质与工程实现。我们将秉持学术严谨性，不略过核心推导，同时以最直观的物理与几何视角解析其中看似晦涩的方程。
 
 ## 2.4.1. 自回归模型
-:label:subsec_autoregressive
 
 自回归模型的核心思想源于极其基础的概率论定理：**概率的链式法则（Chain Rule of Probability）**。早在 1948 年，香农（Claude Shannon）在创立信息论时提出的 $n$-gram 模型，本质上即是一种朴素的自回归生成框架。而在深度学习时代，Bengio 等人 [Bengio et al., 2003] 提出的神经语言模型，以及随后基于 Transformer 架构 [Vaswani et al., 2017] 的巨型模型，皆是这一古老思想在算力与数据加持下的现代重塑。
 
@@ -24,7 +22,6 @@ $$p(x_1, x_2, \dots, x_T) = p(x_1) \cdot p(x_2 | x_1) \cdot p(x_3 | x_1, x_2) \d
 
 将其写为连乘的形式：
 $$p(\mathbf{x}) = \prod_{t=1}^T p(x_t \mid x_{1:t-1})$$
-:eqlabel:eq_ar_chain_rule
 
 其中 $x_{1:t-1}$ 表示从序列起点到时刻 $t-1$ 的所有历史变量。公式 :eqref:eq_ar_chain_rule 即是自回归模型的**绝对核心**。它告诉我们：**生成一个高维复杂序列的任务，可以等价转化为一系列单步预测任务**——即在已知过去所有历史信息的条件下，预测下一个元素的概率分布。
 
@@ -34,7 +31,6 @@ $$p(\mathbf{x}) = \prod_{t=1}^T p(x_t \mid x_{1:t-1})$$
 
 假设我们使用一个具有参数 $\theta$ 的神经网络来拟合这个条件概率，记为 $p_\theta(x_t \mid x_{1:t-1})$。训练目标则是最大化真实数据分布在模型上的对数似然（Log-Likelihood）：
 $$\mathcal{L}(\theta) = \log p_\theta(\mathbf{x}) = \sum_{t=1}^T \log p_\theta(x_t \mid x_{1:t-1})$$
-:eqlabel:eq_ar_nll
 
 在工程实现上，我们通常采用固定长度的窗口（即马尔可夫假设）来截断历史信息，或者使用循环神经网络（RNN）将其压缩为隐状态，亦或是使用 Transformer 的因果注意力机制（Causal Attention）直接对历史序列进行并行化建模。为了使得推导过程更具象，我们将从一个最基础的一维时间序列预测任务入手。
 
@@ -110,7 +106,6 @@ for epoch in range(epochs):
 在这个简单的例子中，我们见证了自回归模型的核心逻辑：将复杂的序列生成任务拆解为一步步的条件概率预测。这种严格按照时序逐步推进的特性赋予了自回归模型极强的理论完备性，但也导致了其在生成阶段必须串行计算，从而带来推理效率的瓶颈。
 
 ## 2.4.2. 扩散模型
-:label:subsec_diffusion
 
 不同于自回归模型沿时间轴逐步生成数据，**扩散模型（Diffusion Models）**走的是另一条截然不同的路径。扩散模型从物理学中的非平衡热力学汲取灵感。最早由 Sohl-Dickstein 等人 [Sohl-Dickstein et al., 2015] 提出，随后在 Ho 等人 [Ho et al., 2020] 的去噪扩散概率模型（Denoising Diffusion Probabilistic Models, DDPM）中被大幅改进并成功应用于高分辨率图像生成。
 
@@ -125,7 +120,6 @@ for epoch in range(epochs):
 
 从高中统计学可知，一维正态分布的概率密度函数由均值和方差完全决定。在多维空间中，我们使用协方差矩阵。前向过程的单步转移概率定义为：
 $$q(\mathbf{x}_t \mid \mathbf{x}_{t-1}) = \mathcal{N}(\mathbf{x}_t; \sqrt{1 - \beta_t} \mathbf{x}_{t-1}, \beta_t \mathbf{I})$$
-:eqlabel:eq_diffusion_forward_step
 
 这里，$\beta_t \in (0, 1)$ 是预先设定好的**方差调度参数（Variance Schedule）**。通常，随着时间步 $t$ 从 $1$ 增加到 $T$，$\beta_t$ 会逐渐增大。
 
@@ -147,11 +141,9 @@ $$
 
 利用独立正态变量之和依旧服从正态分布的性质，其新方差为 $\alpha_t(1 - \alpha_{t-1}) + (1 - \alpha_t) = 1 - \alpha_t \alpha_{t-1}$。通过反复进行数学归纳（这一过程极其严密且美妙），我们最终得到：
 $$\mathbf{x}_t = \sqrt{\bar{\alpha}_t} \mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t} \boldsymbol{\epsilon}$$
-:eqlabel:eq_diffusion_forward_xt
 
 其中总噪声 $\boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$。相应地，边缘条件概率分布为：
 $$q(\mathbf{x}_t \mid \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{\bar{\alpha}_t} \mathbf{x}_0, (1 - \bar{\alpha}_t)\mathbf{I})$$
-:eqlabel:eq_diffusion_forward_marginal
 
 这一公式极其重要：它表明我们在训练时，**不需要**一步一步地模拟马尔可夫链，而是可以直接通过单次采样获得任意时间步 $t$ 对应的加噪图像。这极大提升了模型训练的并行效率。
 
@@ -163,7 +155,6 @@ $$q(\mathbf{x}_t \mid \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{\bar{\alph
 
 这就轮到深度学习登场了。我们构建一个由参数 $\theta$ 神经网络参数化的高斯分布，来近似这个未知的真实逆向分布：
 $$p_\theta(\mathbf{x}_{t-1} \mid \mathbf{x}_t) = \mathcal{N}\left(\mathbf{x}_{t-1}; \boldsymbol{\mu}_\theta(\mathbf{x}_t, t), \boldsymbol{\Sigma}_\theta(\mathbf{x}_t, t)\right)$$
-:eqlabel:eq_diffusion_reverse
 
 在实践中，特别是在 DDPM 框架下，方差 $\boldsymbol{\Sigma}_\theta$ 通常被固定为非学习的常数（例如 $\beta_t \mathbf{I}$），使得神经网络的唯一任务是学习均值 $\boldsymbol{\mu}_\theta$。
 
@@ -176,7 +167,6 @@ $$\mathcal{L}_{VLB} = \mathbb{E}_q \left[ \sum_{t>1} D_{KL} \big( q(\mathbf{x}_{
 
 Ho 等人在 DDPM 中提出了一个极其惊艳的观点。通过仔细代入公式 :eqref:eq_diffusion_forward_xt，发现预测图像 $\mathbf{x}_{t-1}$ 的均值，在数学上完全等价于预测注入图像的**那部分高斯噪声** $\boldsymbol{\epsilon}$。我们将神经网络重新参数化为噪声预测器 $\boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t)$，并去除目标函数前面繁琐的系数权重。这产生了一个极度简洁的训练损失：
 $$\mathcal{L}_{\text{simple}}(\theta) = \mathbb{E}_{t, \mathbf{x}_0, \boldsymbol{\epsilon}} \left[ \left\| \boldsymbol{\epsilon} - \boldsymbol{\epsilon}_\theta\left( \sqrt{\bar{\alpha}_t} \mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t} \boldsymbol{\epsilon}, \, t \right) \right\|^2 \right]$$
-:eqlabel:eq_diffusion_loss
 
 公式 :eqref:eq_diffusion_loss 深刻地揭示了扩散模型训练的本质：**给定任意时间步 $t$ 下被噪声污染的图像 $\mathbf{x}_t$，神经网络试图估计并剥离出最初添加到这幅图像上的纯噪声 $\boldsymbol{\epsilon}$。**
 
@@ -232,7 +222,6 @@ def q_sample(x_0, t, noise=None):
 由此可见，前向过程在代码层面只需几行张量运算即可实现，这种无需循环迭代的特性，使得扩散模型能够在 GPU 上以极高的批处理效率进行大规模并行训练。
 
 ## 2.4.3. 比较与联系
-:label:subsec_ar_vs_diffusion
 
 自回归模型与扩散模型虽然采用了迥异的数学视角，但它们之间存在深刻的联系。
 自回归模型依靠概率链式法则严格拟合序列数据的联合概率，在自然语言等具有强烈顺序依存关系的数据中表现无懈可击。但其逐个标记（Token）生成的串行特性成为了推理速度的天然瓶颈。
@@ -251,7 +240,3 @@ def q_sample(x_0, t, noise=None):
 2. 在公式 :eqref:eq_diffusion_forward_xt 的推导过程中，假设 $\alpha_t$ 和 $\alpha_{t-1}$ 分别为 0.9 和 0.8。此时 $\mathbf{x}_t$ 中来自真实数据 $\mathbf{x}_0$ 的方差占比以及来自噪声的方差占比分别是多少？验证它们的总和是否严格为 1。（提示：分别计算 $\bar{\alpha}_t$ 和 $1 - \bar{\alpha}_t$ 的数值。）
 3. 修改 2.4.1 节中的自回归代码，将其改写为一个具有单层 RNN（如 `nn.RNN`）的模型结构。观察其在正弦波预测任务上相比于简单的多层感知机是否有提升。
 4. 为什么我们在构建扩散模型的逆向网络时，通常选择预测噪声 $\boldsymbol{\epsilon}$ 而不是直接预测干净的图像 $\mathbf{x}_0$？（提示：结合图像在高度加噪时 $\mathbf{x}_0$ 信息的保留量，思考哪一种预测目标对神经网络的梯度优化更为平滑和稳定。）
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

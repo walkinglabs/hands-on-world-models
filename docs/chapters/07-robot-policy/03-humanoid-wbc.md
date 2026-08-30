@@ -1,10 +1,8 @@
 # 人形机器人与全身控制
-:label:sec_humanoid_wbc
 
 在本书的前几章中，我们探讨了强化学习和基于视觉的世界模型。然而，当这些高级的智能决策最终要转化为物理世界中机器人的动作时，我们必须面对一个残酷的现实：真实世界的机器人——特别是拥有数十个自由度的人形机器人（Humanoid）——受制于严格的物理定律。在这一章，我们将深入探讨传统机器人学中最为璀璨的明珠之一：全身控制（Whole-Body Control，简称 WBC）。
 
 ## 学术溯源与时代背景
-:label:sec_wbc_history
 
 在早期的工业机器人时代，机器人大多固定在地面上，且通常通过独立关节控制（Independent Joint Control）来实现运动。这种策略下，每个电机只负责跟踪自己关节的目标角度，完全忽略了机器人各个连杆之间的动力学耦合。
 
@@ -15,17 +13,14 @@
 在本章中，我们将从最基础的高中物理出发，一步步严谨地推导出人形机器人全身控制的数学本质。
 
 ## 浮动基座动力学：从牛顿第二定律到多刚体系统
-:label:sec_floating_base_dynamics
 
 在高中物理中，我们学过描述质点平移运动的牛顿第二定律：
 
 $$F = m a$$
-:eqlabel:eq_newton_2nd
 
 对于一个绕固定轴旋转的刚体，它的旋转动力学方程为：
 
 $$\tau = I \alpha$$
-:eqlabel:eq_euler_rotation
 
 其中，$\tau$ 是力矩，$I$ 是转动惯量，$\alpha$ 是角加速度。
 
@@ -34,14 +29,12 @@ $$\tau = I \alpha$$
 首先，我们定义机器人的广义坐标（Generalized Coordinates） $\mathbf{q}$。对于固定在地面上的机械臂，$\mathbf{q}$ 仅仅包含了各个关节的角度。但对于人形机器人，它的基座（通常是骨盆区）在空间中是自由浮动的。因此，我们将 $\mathbf{q}$ 拆分为两部分：
 
 $$\mathbf{q} = \begin{bmatrix} \mathbf{q}_{base} \\ \mathbf{q}_{joint} \end{bmatrix} \in \mathbb{R}^{n_b + n_j}$$
-:eqlabel:eq_generalized_coords
 
 其中，$\mathbf{q}_{base}$ 描述了浮动基座在三维空间中的位置和姿态（通常包含 3 个位置自由度和 3 个姿态自由度，即 $n_b=6$），而 $\mathbf{q}_{joint}$ 描述了 $n_j$ 个电机的关节角度。
 
 利用分析力学中的欧拉-拉格朗日方程（Euler-Lagrange Equations），我们可以推导出人形机器人的刚体动力学方程：
 
 $$\mathbf{M}(\mathbf{q})\ddot{\mathbf{q}} + \mathbf{C}(\mathbf{q}, \dot{\mathbf{q}})\dot{\mathbf{q}} + \mathbf{G}(\mathbf{q}) = \mathbf{S}^T \boldsymbol{\tau} + \mathbf{J}_c^T \mathbf{F}_c$$
-:eqlabel:eq_rigid_body_dynamics
 
 这是机器人学中最核心的公式之一。结合 :eqref:eq_newton_2nd 和 :eqref:eq_euler_rotation，让我们对 :eqref:eq_rigid_body_dynamics 中的每一个物理量进行极其严谨的维度和物理意义拆解：
 - $\mathbf{M}(\mathbf{q}) \in \mathbb{R}^{(n_b+n_j) \times (n_b+n_j)}$：质量惯性矩阵（Mass-Inertia Matrix）。它是质量 $m$ 与转动惯量 $I$ 的高维矩阵推广。这个矩阵是对称正定的，且会随着机器人的姿态 $\mathbf{q}$ 实时变化。
@@ -55,63 +48,52 @@ $$\mathbf{M}(\mathbf{q})\ddot{\mathbf{q}} + \mathbf{C}(\mathbf{q}, \dot{\mathbf{
 如果我们把 :eqref:eq_rigid_body_dynamics 的前 6 行单独提取出来，就会发现等式右侧没有 $\boldsymbol{\tau}$ 参与。这意味着人形机器人的质心和躯干运动完全不能由自身电机直接驱动，只能通过脚蹬地产生的环境接触力 $\mathbf{F}_c$ 来间接控制。这确立了人形机器人作为一种高阶欠驱动系统的数学本质。
 
 ## 雅可比矩阵：连接关节空间与任务空间的桥梁
-:label:sec_jacobian
 
 为了控制机器人的手到达目标位置，我们需要建立关节转动与手部移动之间的严格数学关系。
 
 假设有一个最简单的单连杆系统，长度为 $l$，单关节角度为 $\theta$。连杆末端在垂直方向的高度为：
 
 $$y = l \sin(\theta)$$
-:eqlabel:eq_1d_kinematics
 
 对时间求导，我们得到速度的正向映射关系：
 
 $$\dot{y} = l \cos(\theta) \dot{\theta}$$
-:eqlabel:eq_1d_jacobian
 
 这里的 $l \cos(\theta)$ 就是连接关节速度 $\dot{\theta}$ 和末端速度 $\dot{y}$ 的比例算子。
 
 对于高维机器人，设末端执行器在三维世界坐标系（我们称之为任务空间，Task Space）的位置和姿态为 $\mathbf{x} \in \mathbb{R}^m$。存在一个复杂的非线性正运动学映射 $\mathbf{x} = f(\mathbf{q})$。对其利用多元微积分的链式法则求时间导数，我们得到：
 
 $$\dot{\mathbf{x}} = \frac{\partial f(\mathbf{q})}{\partial \mathbf{q}} \dot{\mathbf{q}} = \mathbf{J}(\mathbf{q}) \dot{\mathbf{q}}$$
-:eqlabel:eq_jacobian_def
 
 这里，$\mathbf{J}(\mathbf{q}) \in \mathbb{R}^{m \times (n_b+n_j)}$ 即为大名鼎鼎的雅可比矩阵（Jacobian Matrix）。它是一个将高维关节空间的微小变化映射到低维任务空间变化的线性算子。
 
 进一步，对速度公式 :eqref:eq_jacobian_def 求时间微商，我们可以得到加速度层面的映射方程：
 
 $$\ddot{\mathbf{x}} = \mathbf{J}(\mathbf{q}) \ddot{\mathbf{q}} + \dot{\mathbf{J}}(\mathbf{q}) \dot{\mathbf{q}}$$
-:eqlabel:eq_jacobian_acc
 
 ## 任务空间控制（Operational Space Control）
-:label:sec_osc
 
 现在，我们的目标是让末端执行器追踪一个期望的空间轨迹 $\mathbf{x}_{des}$。在任务空间中，我们可以设计一个比例-微分（PD）控制器，计算产生所需运动的虚拟追踪力 $\mathbf{F}_{task}$：
 
 $$\mathbf{F}_{task} = \mathbf{K}_p (\mathbf{x}_{des} - \mathbf{x}) + \mathbf{K}_d (\dot{\mathbf{x}}_{des} - \dot{\mathbf{x}})$$
-:eqlabel:eq_pd_control
 
 然而在真实的机器人系统中，不存在物理意义上直接拉动末端执行器的力，我们仅能向各个关节的电机发送扭矩指令 $\boldsymbol{\tau}$。如何将 $\mathbf{F}_{task}$ 严格映射为 $\boldsymbol{\tau}$？
 
 根据分析力学中的虚功原理（Principle of Virtual Work），系统在任务空间做出的虚功必须等于在关节空间做出的虚功：
 
 $$\mathbf{F}_{task}^T \delta \mathbf{x} = \boldsymbol{\tau}_{task}^T \delta \mathbf{q}$$
-:eqlabel:eq_virtual_work
 
 在无穷小位移下，由于 $\delta \mathbf{x} = \mathbf{J} \delta \mathbf{q}$，代入上式即得：
 
 $$\mathbf{F}_{task}^T \mathbf{J} \delta \mathbf{q} = \boldsymbol{\tau}_{task}^T \delta \mathbf{q}$$
-:eqlabel:eq_virtual_work_sub
 
 由于公式 :eqref:eq_virtual_work_sub 对于任意合法位移 $\delta \mathbf{q}$ 均必须成立，我们提取等式两边的系数，可以得到静力学力矩映射的核心公式：
 
 $$\boldsymbol{\tau}_{task} = \mathbf{J}^T \mathbf{F}_{task}$$
-:eqlabel:eq_force_to_torque
 
 通过公式 :eqref:eq_force_to_torque，我们将抽象的三维空间追踪目标，转换为了具体每个电机需要输出的物理力矩。
 
 ## 零空间投影：多任务分层控制 (Null-Space Projection)
-:label:sec_null_space
 
 人形机器人的自由度往往远远大于完成单个任务所需的最小自由度，例如，控制一只手的位置和姿态最多需要 6 个自由度，而机器人全身可能有超过 30 个自由度。这种物理学上的冗余性（Redundancy）赋予了我们执行多任务的能力。
 
@@ -124,22 +106,18 @@ $$\boldsymbol{\tau}_{task} = \mathbf{J}^T \mathbf{F}_{task}$$
 结合动力学一致性原则 [Khatib, 1987]，投影矩阵 $\mathbf{N}$ 的推导依赖于机器人自身的惯性矩阵。我们首先定义动力学一致的伪逆（Dynamically Consistent Pseudo-inverse）矩阵 $\overline{\mathbf{J}}$：
 
 $$\overline{\mathbf{J}} = \mathbf{M}^{-1} \mathbf{J}^T (\mathbf{J} \mathbf{M}^{-1} \mathbf{J}^T)^{-1}$$
-:eqlabel:eq_dynamically_consistent_inverse
 
 此时，主任务在关节空间维度的干涉算子即为 $\overline{\mathbf{J}} \mathbf{J}$。从整个空间中剔除该干涉算子，我们即可得到次任务的零空间投影矩阵 $\mathbf{N}$：
 
 $$\mathbf{N} = \mathbf{I} - \overline{\mathbf{J}} \mathbf{J}$$
-:eqlabel:eq_null_space_projector
 
 结合 :eqref:eq_force_to_torque 和 :eqref:eq_null_space_projector，最终的多任务全身控制力矩分配法则为：
 
 $$\boldsymbol{\tau} = \mathbf{J}_1^T \mathbf{F}_1 + \mathbf{N}^T \boldsymbol{\tau}_2$$
-:eqlabel:eq_wbc_hierarchical
 
 在这里，$\mathbf{N}^T \boldsymbol{\tau}_2$ 项确保了无论次任务控制器需要产生多大的力矩 $\boldsymbol{\tau}_2$，它在空间中激发的动力学加速度，投射到主任务的工作空间内一定是 0。
 
 ## 基于二次规划的全身优化控制 (QP-based WBC)
-:label:sec_wbc_qp
 
 纯矩阵代数的零空间投影虽然在数学上无比优美，但在真实物理世界中遇到了不可逾越的鸿沟：它无法处理任何不等式约束（Inequality Constraints）。
 真实机器人有着苛刻的物理极值限制：
@@ -159,12 +137,10 @@ $$
 & \boldsymbol{\tau}_{min} \le \boldsymbol{\tau} \le \boldsymbol{\tau}_{max} \quad & (\text{扭矩极值约束})
 \end{aligned}
 $$
-:eqlabel:eq_wbc_qp
 
 在 :numref:sec_wbc_qp 节的框架下，通过公式 :eqref:eq_wbc_qp，所有的多任务竞争不再依赖生硬的代数投影，而是通过目标函数中的惩罚权重 $\mathbf{w}_i$ 进行软性博弈。现代 QP 求解器（如 OSQP）可以在亚毫秒级时间内计算出全局最优解，使得机器人能在极其恶劣的地形约束下维持动态平衡。
 
 ## 代码实现：构建任务空间投影引擎
-:label:sec_wbc_code
 
 为了将抽象的矩阵方程转化为具体的算法实现，我们将使用 PyTorch 编写一个简化版的多任务零空间投影计算引擎。PyTorch 原生的自动求导机制和高维张量运算非常适合还原这些数学公式的本来面貌。
 
@@ -253,15 +229,3 @@ print("下发给各个关节的最终力矩指令: \n", tau)
 - 雅可比矩阵作为最核心的线性算子，将笛卡尔任务空间的速度和受力，严谨地桥接到了高维的关节角度空间。
 - 零空间投影提供了一种基于纯代数几何的多任务分配机制，使次优先级任务产生的力矩投影能够严格落在主任务的工作空间之外。
 - 现代全身控制（WBC）框架彻底倒向了二次规划（QP），对动力学方程、接触摩擦力锥、关节扭矩极限等物理硬边界进行了最底层的约束与求解，这也是当前世界最顶级双足机器人保持稳健行走的数学基石。
-
-## 练习
-
-1. 在公式 :eqref:eq_rigid_body_dynamics 中，如果人形机器人双脚完全腾空脱离地面（例如在空中跳跃），此时的 $\mathbf{J}_c^T \mathbf{F}_c$ 项变为多少？根据牛顿物理定律，此时我们可以通过调整关节电机力矩 $\boldsymbol{\tau}$ 来改变机器人的质心在空中的平移轨迹吗？
-   *提示：思考外部接触力是否存在。回忆高中物理中关于不受外力作用时质心动量的守恒性质。*
-2. 零空间投影矩阵 $\mathbf{N}$ 在数学上的特征值有哪些可能的值？
-   *提示：$\mathbf{N}$ 本质上是一个向子空间投影的线性算子，考虑投影算子 $P^2 = P$ 的代数性质及其特征向量映射。*
-3. 尝试修改前文的 PyTorch 代码：如果 `J1` 是一个 $7 \times 7$ 的满秩方阵（即主任务约束满了机器人的所有自由度），此时的零空间投影矩阵 $\mathbf{N}$ 会变成什么样？此时次任务指令 $\boldsymbol{\tau}_2$ 还会生效吗？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

@@ -1,5 +1,4 @@
 # 6.3 目标网络（Target Network）与指数移动平均（EMA）
-:label:sec_target_network_ema
 
 在之前的章节中，我们探讨了如何让模型通过预测自身或部分遮蔽的输入来学习有用的表征。然而，当我们试图让一个神经网络去预测它自己的输出时，往往会遭遇一个极其致命的数学问题——**表征坍塌（Representation Collapse）**。为了解决这一问题，深度学习研究者们引入了“目标网络”（Target Network）以及“指数移动平均”（Exponential Moving Average, EMA）技术。本节将从基础代数出发，极其详尽地推导 EMA 的数学本质，并探究它如何在联合嵌入预测架构（JEPA）及各种自监督学习模型中起到定海神针般的作用。
 
@@ -17,7 +16,6 @@
 最直观的损失函数（Loss Function）可以定义为它们特征向量之间的均方误差（Mean Squared Error, MSE）：
 
 $$L(\\theta) = \\| f_\\theta(x_1) - f_\\theta(x_2) \\|^2$$
-:eqlabel:eq_naive_self_pred
 
 其中，$\\theta$ 是神经网络的参数。在高中代数中，如果要让等式 $(a - b)^2 = 0$ 成立，最平庸的解是什么？是 $a = b = 0$。或者 $a = b = C$，其中 $C$ 是任意常数。
 
@@ -34,7 +32,6 @@ $$L(\\theta) = \\| f_\\theta(x_1) - f_\\theta(x_2) \\|^2$$
 修改后的损失函数变为：
 
 $$L(\\theta) = \\| f_\\theta(x_1) - \\text{sg}(f_{\\theta'}(x_2)) \\|^2$$
-:eqlabel:eq_target_network_loss
 
 其中 $\\text{sg}(\\cdot)$ 表示停止梯度（Stop-Gradient）操作。此时，对于在线网络 $\\theta$ 来说，$f_{\\theta'}(x_2)$ 只是一个从外部传入的常数向量，它再也无法通过将 $\\theta$ 和 $\\theta'$ 同步归零来作弊了。
 
@@ -43,7 +40,6 @@ $$L(\\theta) = \\| f_\\theta(x_1) - \\text{sg}(f_{\\theta'}(x_2)) \\|^2$$
 在强化学习的 DQN 中，研究者的做法是**（硬更新（Hard Update））**：每隔 $K$ 个训练步骤，直接把在线网络的参数强行复制给目标网络：
 
 $$\\theta' \\leftarrow \\theta, \\quad \\text{every } K \\text{ steps}$$
-:eqlabel:eq_hard_update
 
 硬更新虽然有效，但会导致目标网络的行为呈现出剧烈的阶跃式变化（Step-function behavior），使得训练过程产生不必要的震荡。我们需要一种更加平滑、连续的参数同步机制。
 
@@ -54,7 +50,6 @@ $$\\theta' \\leftarrow \\theta, \\quad \\text{every } K \\text{ steps}$$
 在训练的第 $t$ 步，假设在线网络的参数为 $\\theta_t$，目标网络的参数为 $\\theta'_t$，EMA 的递推公式严格定义为：
 
 $$\\theta'_t = \\tau \\theta'_{t-1} + (1 - \\tau) \\theta_t$$
-:eqlabel:eq_ema_update
 
 这里的 $\\tau \\in [0, 1)$ 是一个极其关键的超参数，被称为动量系数（Momentum Coefficient）或衰减率（Decay Rate）。在实际的自监督学习模型（如 BYOL 或 JEPA）中，$\\tau$ 通常取一个非常接近 1 的值，例如 $\\tau = 0.99$ 或 $\\tau = 0.996$。
 
@@ -81,7 +76,6 @@ $$\\begin{aligned}
 根据数学归纳法，我们可以推导出第 $t$ 步时的目标网络参数通项公式：
 
 $$\\theta'_t = \\tau^t \\theta'_0 + (1 - \\tau) \\sum_{i=1}^t \\tau^{t-i} \\theta_i$$
-:eqlabel:eq_ema_expanded
 
 让我们运用高中数学中等比数列（几何级数）的知识来剖析这个公式。
 
@@ -204,15 +198,3 @@ for step in range(3):
 ## 6.3.6 小结
 
 在本节中，我们深入探究了自监督预测架构中最致命的缺陷——表征坍塌。通过回归基础的代数方程求解逻辑，我们论证了破坏系统完全对称性的必要性。引入截断梯度的目标网络，并在时间维度上施加指数移动平均（EMA），是目前维持表征空间稳定性的黄金标准。EMA 使得目标网络成为了在线网络所有历史状态的一个低通滤波器（Low-pass Filter），滤除了每一步梯度更新中的高频噪声，提供了一个缓慢但坚定进化的锚点（Anchor）。这一机制构成了后续理解 JEPA 和数据空间掩码建模不可或缺的理论基石。
-
-## 练习
-
-1. **极端情况推演**：如果我们将动量系数 $\\tau$ 设置为精确的 $1.0$，对于公式 :eqref:`eq_ema_expanded` 而言，系统的表现会是什么样？这在物理意义上代表着什么情况？
-    - *提示：将 $\\tau=1.0$ 代入公式，观察随时间推移 $\\theta'_t$ 对初始状态 $\\theta'_0$ 以及后续在线状态 $\\theta_i$ 的依赖关系。*
-2. **梯度截断实验**：如果在代码实现中，我们忘记了在 `target_proj = target_network(x2)` 外层包裹 `with torch.no_grad():`，并且在计算损失时允许梯度流向目标网络，最终会导致什么现象发生？请从优化器更新逻辑的角度进行分析。
-    - *提示：思考在同一张计算图中，$\\theta$ 和 $\\theta'$ 同时朝着减小 L2 距离的方向移动时，最优解的几何形态。*
-3. **步数动态衰减**：在 BYOL 的原论文中，动量系数 $\\tau$ 并不是常数，而是随着训练进程（使用余弦退火策略）从 $0.99$ 逐渐增加到 $1.0$。请尝试用自己的话解释，为什么在训练初期需要相对较小的 $\\tau$（例如 0.99），而在训练末期需要极其接近 1.0 的 $\\tau$？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

@@ -1,12 +1,10 @@
 # 2.2 序列模型：从循环神经网络到Transformer
-:label:sec_rnn_transformer
 
 在现实世界中，大量的数据不仅具有空间结构，更具备明确的时间先后顺序或序列依赖性。例如，金融市场的股票价格走势、一段完整的语音信号、自然语言中的句子，乃至于强化学习中智能体在环境中的连续状态轨迹。在这些场景中，经典统计机器学习中“独立同分布（Independent and Identically Distributed, i.i.d.）”的基础假设被打破了。当前时刻发生的事情，往往由过去的无穷多个历史瞬间所共同决定。如何从具备长程依赖关系的序列数据中提取有效表征，一直是深度学习历史上的核心难题。
 
 在本节中，我们将首先追溯序列建模的统计学起源，从基础的高中概率论出发，推导出处理序列数据的核心数学框架。接着，我们将回顾循环神经网络（Recurrent Neural Networks, RNN）`[Elman, 1990]` 的设计哲学，剖析其如何优雅地维持“隐状态”以记忆历史信息。然而，RNN由于其自回归的时序展开特性，在训练效率和长程梯度传播上面临巨大挑战`[Hochreiter & Schmidhuber, 1997]`。由此，我们将自然地过渡到如今主导大模型时代的革命性架构——Transformer `[Vaswani et al., 2017]`，深入探讨自注意力机制（Self-Attention）是如何通过几何投影与概率加权，彻底颠覆序列建模范式的。
 
 ## 2.2.1 序列数据的统计学视角
-:label:subsec_seq_stats
 
 ### 联合概率与条件概率的链式法则
 
@@ -17,7 +15,6 @@
 $$
 P(x_1, x_2, \ldots, x_T) = P(x_1) \cdot P(x_2 \mid x_1) \cdot P(x_3 \mid x_1, x_2) \cdots P(x_T \mid x_1, x_2, \ldots, x_{T-1})
 $$
-:eqlabel:eq_chain_rule
 
 这个公式的形式非常优美：它告诉我们，理解一个序列的整体分布，等价于学习在给定所有历史信息的情况下，预测下一步观测值 $x_t$ 的条件分布 $P(x_t \mid x_1, \ldots, x_{t-1})$。这也是当今所有自回归（Autoregressive）生成模型（包括 GPT 系列）的最基础理论基石。
 
@@ -30,12 +27,10 @@ $$
 $$
 P(x_t \mid x_1, \ldots, x_{t-1}) \approx P(x_t \mid x_{t-1})
 $$
-:eqlabel:eq_markov_assumption
 
 尽管马尔可夫假设使得模型变得可计算，但它的缺陷同样明显：它人为地切断了序列的长程依赖（Long-range Dependency）。例如，在句子“他来自法国，精通各种文学和艺术，并且能说一口流利的[填空]”中，要填出“法语”，模型必须回忆起远在句子开头的“法国”。固定的截断窗口 $\tau$ 无法处理这种跨越长距离的逻辑关联。我们需要一种能够动态维持并更新全局历史信息的机制。
 
 ## 2.2.2 循环神经网络（RNN）的数学推导
-:label:subsec_rnn_math
 
 为了打破固定窗口大小的限制，循环神经网络引入了一个极其深刻的数学概念：**隐状态（Hidden State）**。
 
@@ -48,14 +43,12 @@ $$
 $$
 \mathbf{h}_t = f(\mathbf{x}_t, \mathbf{h}_{t-1})
 $$
-:eqlabel:eq_rnn_hidden_state_general
 
 现在，我们通过严谨的矩阵运算来具体实例化这个非线性函数 $f$。假设在时间步 $t$，小批量输入 $\mathbf{X}_t \in \mathbb{R}^{n \times d}$（其中 $n$ 为批量大小，$d$ 为输入维度）。我们设上一时刻的隐状态为 $\mathbf{H}_{t-1} \in \mathbb{R}^{n \times h}$（其中 $h$ 为隐藏单元的数量）。循环神经网络的核心计算公式如下：
 
 $$
 \mathbf{H}_t = \phi(\mathbf{X}_t \mathbf{W}_{xh} + \mathbf{H}_{t-1} \mathbf{W}_{hh} + \mathbf{b}_h)
 $$
-:eqlabel:eq_rnn_step
 
 其中：
 * $\mathbf{W}_{xh} \in \mathbb{R}^{d \times h}$ 是输入到隐状态的权重矩阵；
@@ -68,7 +61,6 @@ $$
 $$
 \mathbf{O}_t = \mathbf{H}_t \mathbf{W}_{hq} + \mathbf{b}_q
 $$
-:eqlabel:eq_rnn_output
 
 这里 $\mathbf{W}_{hq} \in \mathbb{R}^{h \times q}$ 和 $\mathbf{b}_q \in \mathbb{R}^{1 \times q}$ 分别是隐状态到输出的权重矩阵和偏置参数。需要特别强调的是，RNN 的一个核心特性是**参数共享（Parameter Sharing）**：对于任意时间步 $t$，权重矩阵 $\mathbf{W}_{xh}, \mathbf{W}_{hh}, \mathbf{W}_{hq}$ 都是完全相同的。这种设计不仅极大地减少了模型参数量，还赋予了模型处理任意长度序列的能力。
 
@@ -81,7 +73,6 @@ $$
 $$
 \frac{\partial \mathbf{h}_T}{\partial \mathbf{h}_0} = \prod_{t=1}^T \frac{\partial \mathbf{h}_t}{\partial \mathbf{h}_{t-1}}
 $$
-:eqlabel:eq_bptt_chain
 
 由于 $\mathbf{h}_t = \phi(\mathbf{W}_{hh} \mathbf{h}_{t-1} + \dots)$，每一项偏导数 $\frac{\partial \mathbf{h}_t}{\partial \mathbf{h}_{t-1}}$ 都包含权重矩阵 $\mathbf{W}_{hh}$ 和激活函数的导数。这意味着，上述连乘相当于 $\mathbf{W}_{hh}$ 连续相乘了 $T$ 次。从线性代数的特征值分解角度来看，如果 $\mathbf{W}_{hh}$ 的最大特征值绝对值小于 $1$，经过 $T$ 次方后，梯度将呈指数级衰减至零，这被称为**梯度消失（Vanishing Gradient）**；反之，若大于 $1$，则会导致**梯度爆炸（Exploding Gradient）**。梯度消失使得 RNN 难以在训练中真正捕捉到相隔几十上百个时间步的长期依赖。
 
@@ -123,7 +114,6 @@ print(f"H_t shape: {H_t.shape}") # 预期输出: torch.Size([32, 256])
 ```
 
 ## 2.2.3 注意力机制与Transformer架构
-:label:subsec_transformer
 
 在长达几十年的时间里，为了解决传统 RNN 的长程依赖问题，研究者们提出了长短期记忆网络（LSTM, `[Hochreiter & Schmidhuber, 1997]`）和门控循环单元（GRU, `[Cho et al., 2014]`）。它们通过引入复杂的“门控”机制来控制信息流，极大缓解了梯度消失问题。然而，RNN 架构依然存在一个无法逾越的本质缺陷：**时序不可并行性**。由于计算当前状态 $h_t$ 必须依赖上一步状态 $h_{t-1}$，计算只能像挤牙膏一样一步步进行，完全无法充分利用现代 GPU 海量的并行计算资源。
 
@@ -147,21 +137,18 @@ print(f"H_t shape: {H_t.shape}") # 预期输出: torch.Size([32, 256])
 $$
 s_{i,j} = \mathbf{q}_i^\top \mathbf{k}_j
 $$
-:eqlabel:eq_attention_score
 
 为了将这些原始打分转化为概率分布（权重之和为1），我们对其施加 Softmax 函数。同时，当向量维度 $d_k$ 很大时，内积的值容易变得极大，导致 Softmax 函数进入梯度极小（饱和）的区域。因此，我们需要除以 $\sqrt{d_k}$ 进行缩放平滑。最终，元素 $i$ 注意到元素 $j$ 的概率权重为：
 
 $$
 a_{i,j} = \frac{\exp(s_{i,j} / \sqrt{d_k})}{\sum_{m=1}^T \exp(s_{i,m} / \sqrt{d_k})}
 $$
-:eqlabel:eq_attention_weight
 
 最后，元素 $i$ 的新表征 $\mathbf{z}_i$ 是全场所有值向量 $\mathbf{v}_j$ 的概率加权求和：
 
 $$
 \mathbf{z}_i = \sum_{j=1}^T a_{i,j} \mathbf{v}_j
 $$
-:eqlabel:eq_attention_output
 
 **从向量到矩阵：高度并行的威力**
 
@@ -170,7 +157,6 @@ $$
 $$
 \text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}}\right)\mathbf{V}
 $$
-:eqlabel:eq_scaled_dot_product_matrix
 
 由于矩阵乘法在现代 GPU 上被优化到了极致，这一公式使得 Transformer 能够在处理长序列时展现出比 RNN 惊人得多的计算效率。
 
@@ -188,7 +174,6 @@ PE_{(pos, 2i)} &= \sin(pos / 10000^{2i/d_{\text{model}}}) \\
 PE_{(pos, 2i+1)} &= \cos(pos / 10000^{2i/d_{\text{model}}})
 \end{aligned}
 $$
-:eqlabel:eq_positional_encoding
 
 这种极其精妙的三角函数设计，不仅通过不同频率的周期变化唯一确定了绝对位置，还利用三角函数的和差化积公式，在理论上使得相对位置的计算可以通过线性变换实现。
 
@@ -253,7 +238,6 @@ print(f"注意力输出形状: {context.shape}") # 预期输出: torch.Size([2, 
 ```
 
 ## 2.2.4 小结
-:label:subsec_seq_summary
 
 本节我们完成了一次从经典统计到现代深度学习的跨越。我们首先通过高中概率论的条件概率链式法则，建立了序列预测的基础理论框架，并指出了马尔可夫假设在建模长程依赖时的局限性。为了克服这些局限，循环神经网络（RNN）被提出，利用隐状态 $\mathbf{h}_t$ 持续累积历史信息。然而，RNN的自回归展开导致的反向传播梯度消失和无法并行化计算，成为了限制其规模扩张的核心瓶颈。
 
@@ -267,7 +251,3 @@ Transformer 架构以一种极其激进的视角重构了序列建模范式。�
    * **提示**：假设 $\mathbf{q}$ 和 $\mathbf{k}$ 的元素都是均值为 $0$、方差为 $1$ 的独立随机变量。利用高中统计学中独立变量乘积与求和的期望与方差公式，推导 $\mathbf{q}^\top \mathbf{k}$ 的方差变化，思考如果不除以 $\sqrt{d_k}$，随着维度增加，Softmax 函数的输入分布会发生怎样的严重偏移。
 3. 位置编码公式 :eqref:eq_positional_encoding 采用了三角函数。请尝试用高中数学的三角函数和差公式推导：对于任意固定的偏移量 $k$，$PE_{(pos+k)}$ 能否表示为 $PE_{(pos)}$ 的线性函数？
    * **提示**：展开 $\sin(\omega(pos+k))$ 和 $\cos(\omega(pos+k))$，寻找它们与 $\sin(\omega pos)$ 和 $\cos(\omega pos)$ 的线性关系。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:
