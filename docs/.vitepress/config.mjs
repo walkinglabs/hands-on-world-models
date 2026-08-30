@@ -47,6 +47,20 @@ export default defineConfig({
     ],
     sidebar: [
       {
+        text: "导览",
+        collapsed: false,
+        items: [
+          {
+            text: "绪论",
+            link: "/guide/world-model-intro",
+          },
+          {
+            text: "世界模型八十年",
+            link: "/guide/world-model-history",
+          },
+        ],
+      },
+      {
         text: "1. 为什么需要世界模型",
         collapsed: false,
         items: [
