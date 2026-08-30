@@ -1,295 +1,242 @@
-# 1.3　经典世界模型
+# 1.3 经典世界模型理论回顾
+:label:sec_classic_world_models
 
-上一节给出的三条判据是抽象的，现在拿它们去看真实系统。世界模型不是某种单一神经网络的专有名称，而是一套将感知压缩、记忆推演与决策行动有机融合的系统化设计范式。2018 年，David Ha 与 Jürgen Schmidhuber 发表划时代论文《World Models》，首次确立了视觉（Vision, V）、记忆（Memory, M）与控制（Controller, C）的三位一体经典架构。本节沿着世界模型的演进脉络，从经典的 V-M-C 范式深入到 PlaNet 的 RSSM 状态空间、Dreamer 的梦境策略学习以及 MuZero 的纯潜空间规划，建立起贯通经典与前沿的完整架构图谱。
+我们所处的世界是高维、充满噪声且遵循着复杂物理规律的。人类之所以能够在这样的世界中迅速学会驾驶汽车、打网球甚至在月球上行走，是因为我们在大脑中构建了一个抽象的“世界模型”。在这个内部模型中，我们能够预测动作的结果，并在想象中进行规划。
 
----
+在本节中，我们将严格追溯这一思想在深度学习领域的工程实现。我们将从学术脉络出发，逐步推导 Ha 和 Schmidhuber 于 2018 年提出的经典世界模型架构 [Ha et al., 2018]。我们会深入剖析该架构的核心数学原理，将复杂的张量运算拆解为高中物理和基础统计学的直观概念，并最终在代码层面构建这一经典系统。
 
-## 经典 V-M-C 架构的解剖学
+## 1.3.1 学术脉络与时代背景
+:label:subsec_academic_context
 
-在 2018 年的《World Models》论文中，作者以 OpenAI Gym 的 CarRacing 赛车环境为试验场，将智能体优雅地解耦为三个独立训练的子模块：
+利用内部模型来进行学习和预测的思想，并非深度学习时代的产物。早在 1990 年，强化学习领域的先驱 Richard Sutton 就提出了著名的 Dyna 架构 [Sutton, 1990]。Dyna 架构的核心理念是：智能体不仅应该通过与真实环境的交互来学习（无模型强化学习），还应该利用已经学到的经验来构建一个关于环境的转移模型（Model），进而在这个“虚拟环境”中进行规划和策略更新。
 
-```text
-               ┌────────────────────────────── 智能体内部脑 ──────────────────────────────┐
-               │                                                                         │
-               │   ┌───────────────────┐    z_t    ┌───────────────────┐                 │
-当前图像 x_t ──┼──>│  视觉模块 V (VAE)  │ ─────────>│ 记忆模块 M (RNN)  │                 │
-               │   │ (空间压缩与解耦)   │           │ (时序动力学预测)  │                 │
-               │   └───────────────────┘           └─────────┬─────────┘                 │
-               │             │                         h_t   │ P(z_{t+1})                │
-               │             │ z_t                           │                           │
-               │             ▼                               ▼                           │
-               │   ┌───────────────────────────────────────────────────┐                 │
-               │   │               控制模块 C (Controller)              │                 │
-               │   │      决策映射: a_t = W_c · [z_t; h_t] + b_c       │                 │
-               │   └─────────────────────────┬─────────────────────────┘                 │
-               │                             │ 输出控制动作 a_t                          │
-               └─────────────────────────────┼───────────────────────────────────────────┘
-                                             │
-                                             ▼
-                               ┌───────────────────────────┐
-                               │  真实物理环境 / 梦境模拟器  │
-                               └───────────────────────────┘
-```
+然而，在 20 世纪 90 年代，受限于计算能力和算法的发展，早期的基于模型的强化学习（Model-Based RL）只能处理离散状态或低维度的简单连续状态（例如几个坐标和速度值）。当面对真实世界中诸如摄像头捕捉到的高维像素图像时，传统的马尔可夫决策过程（MDP）转移模型便束手无策。因为预测下一张 1024 $\times$ 768 的彩色图像，其维度爆炸和像素间的复杂非线性依赖，使得直接对图像级动力学进行建模成为不可能完成的任务。
 
-### 1. 视觉模块 V（Vision Module, VAE）
+这一僵局直到变分自编码器（VAE）和循环神经网络（RNN）成熟后才被打破。2018年，David Ha 和 Jürgen Schmidhuber 发表了标志性的论文 *World Models*。他们巧妙地将复杂的环境建模拆解为三个独立但高度协同的模块：
+1. **视觉模型（V模型）**：将高维像素压缩为低维潜空间（Latent Space）的概率表示。
+2. **记忆与动力学模型（M模型）**：在低维潜空间中，基于历史状态和动作，对未来的状态进行概率预测。
+3. **控制器模型（C模型）**：仅接收低维状态特征，负责输出动作以最大化累计回报。
 
-- **核心使命**：解决“高维图像无法直接用于时序建模与决策”的诅咒。
-- **结构与原理**：使用变分自动编码器（Variational Autoencoder, VAE）。输入为单帧 $64 \times 64 \times 3$ 的 RGB 图像（共 $12,288$ 维），经过卷积编码器压缩为仅 $N_z = 32$ 维的高斯潜在向量 $z_t \sim \mathcal{N}(\mu_\phi(x_t), \sigma_\phi^2(x_t))$。
-- **训练目标**：最大化证据下界（ELBO）：
-  $$\mathcal{L}_{\text{VAE}}(\phi, \psi) = \mathbb{E}_{q_\phi(z_t \mid x_t)}\left[\|x_t - \text{Decoder}_\psi(z_t)\|^2\right] + D_{\text{KL}}\left(q_\phi(z_t \mid x_t) \parallel \mathcal{N}(0, I)\right).$$
+这种解耦不仅极大地降低了动力学建模的难度，还赋予了智能体在“梦境”（闭环想象）中训练自身策略的能力。接下来，我们将沿着数据流动的方向，逐一拆解这些模块的数学本质。
 
-### 2. 记忆模块 M（Memory Module, MDN-RNN）
+## 1.3.2 V模型：从高维观测到低维潜空间表示
+:label:subsec_v_model
 
-- **核心使命**：解决“单帧观察丢失速度与动力学”以及“未来多模态不确定性”问题。
-- **结构与原理**：采用长短期记忆网络（LSTM / RNN）结合混合密度网络（Mixture Density Network, MDN）。
-- **递推更新方程**：
-  $$h_t = \text{RNN}(h_{t-1}, z_{t-1}, a_{t-1}).$$
-- **多模态预测输出**：给定当前确定性隐状态 $h_t$，输出下一个潜在变量 $z_{t+1}$ 的 $K$ 分量高斯混合分布参数（权重 $\pi_k$、均值 $\mu_k$、方差 $\sigma_k$）：
-  $$P(z_{t+1} \mid h_t) = \sum_{k=1}^K \pi_k(h_t) \, \mathcal{N}\left(z_{t+1};\, \mu_k(h_t),\, \Sigma_k(h_t)\right).$$
+考虑一个简单的物理场景：一辆汽车在一条直线上行驶。要描述这辆汽车的瞬时位置，我们只需要一个标量坐标 $z \in \mathbb{R}$。然而，自动驾驶系统接收到的观测数据 $x$，却是包含汽车、树木、天空和道路的数万个像素点构成的图像。V模型的作用，就是找到一个映射关系，将这数万维的冗余图像 $x$ 重新映射回能够刻画系统本质属性的低维状态 $z$。
 
-### 3. 控制模块 C（Controller Module）
+如果环境是完全确定的，且传感器没有噪声，我们可以简单地寻找一个确定的函数映射 $z = f(x)$。但真实世界充满了不确定性。当我们仅根据当前模糊或带有噪声的一帧图像 $x$ 提取状态时，我们对“汽车究竟在哪里”的估计不应当是一个确定的点，而应当是一个概率分布。
 
-- **核心使命**：根据当前感知 $z_t$ 与时序记忆 $h_t$ 直接映射动作。
-- **结构与原理**：极简的单层线性映射网络（仅含 867 个可学参数）：
-  $$a_t = \tanh\left( W_c \, [z_t;\, h_t] + b_c \right).$$
-- **优化方式**：使用协方差矩阵自适应进化策略（CMA-ES）进行无梯度优化。
+在高中数学中，描述一个带有误差的连续变量的最常见方式是高斯分布（正态分布）。因此，在标量情况下，我们假设状态 $z$ 服从以 $\mu$ 为均值，$\sigma^2$ 为方差的正态分布：
+$$
+p(z | x) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp \left( -\frac{(z - \mu)^2}{2\sigma^2} \right)
+$$
+:eqlabel:eq_scalar_gaussian
 
----
+在这个公式中，$\mu$ 代表了我们对汽车位置的**最可能估计**，而 $\sigma^2$ 代表了我们对这个估计的**不确定度**。
 
-## “在梦境中学习”：世界模型的核心思想
+当状态不再是单一标量，而是包含位置、颜色、姿态等多个属性的 $D$ 维向量 $\mathbf{z} = [z_1, z_2, \dots, z_D]^\top$ 时，我们通常假设这些特征在潜空间中是相互独立的（即协方差矩阵为对角阵）。此时，我们需要通过一个深度卷积神经网络（CNN）构成的编码器来计算图像 $x$ 对应的均值向量 $\boldsymbol{\mu} \in \mathbb{R}^D$ 和方差向量 $\boldsymbol{\sigma}^2 \in \mathbb{R}^D$。
 
-《World Models》最具启发性的突破在于：**控制器 C 的全部训练过程，完全脱离真实赛车环境，在记忆模型 M 生成的“虚拟梦境（Dream / Hallucination）”中完成。**
+为了能够使用梯度下降法优化这个概率模型，我们需要从分布 $\mathcal{N}(\boldsymbol{\mu}, \text{diag}(\boldsymbol{\sigma}^2))$ 中采样出一个具体的 $\mathbf{z}$ 传递给下游。然而，“采样”这一操作是随机的，不可导的。为此，V模型（即变分自编码器 VAE）采用了著名的**重参数化技巧（Reparameterization Trick）**。
 
-```text
-                  ┌── 梦境推演循环 ──────────────────────────────────────────────┐
-                  │                                                             │
-                  │   z_0 (梦境起点)                                             │
-                  │        │                                                    │
-                  │        ├──> C 输出动作 a_0 ──> M 采样预测下个潜状态 z_1     │
-                  │        │                            │                       │
-                  │        ├──> C 输出动作 a_1 ──> M 采样预测下个潜状态 z_2     │
-                  │        │                            │                       │
-                  │        └──> ... (在想象中展开 1000 步并计算累计回报)         │
-                  │                                                             │
-                  └─────────────────────────────────────────────────────────────┘
-                                                 │
-                                                 ▼ CMA-ES 进化优化参数 W_c
-                                      获得高分控制器 C*
-                                                 │
-                                                 ▼ 零样本迁移 (Zero-shot Transfer)
-                                      部署至真实 CarRacing 赛道
-                                      (无需真实环境交互，直接跑通全场！)
-```
+在标量情形下，重参数化技巧可以直观地理解为：与其直接从均值为 $\mu$、标准差为 $\sigma$ 的分布中抽取 $z$，不如我们先从标准正态分布 $\mathcal{N}(0,1)$ 中抽取一个“标准随机噪声” $\epsilon$。然后，将这个标准噪声放大 $\sigma$ 倍（匹配我们预估的不确定度），再将其平移 $\mu$（匹配我们的预估中心）。其标量表达式为：
+$$
+z = \mu + \sigma \cdot \epsilon \quad \text{其中} \quad \epsilon \sim \mathcal{N}(0, 1)
+$$
+:eqlabel:eq_reparam_scalar
 
-### 梦境温度系数（Temperature $\tau$）
+由于推导过程严丝合缝，我们可以自然地将其推广到 $D$ 维向量形式。此时 $\boldsymbol{\mu}$ 和 $\boldsymbol{\sigma}$ 为向量，$\odot$ 表示逐元素相乘：
+$$
+\mathbf{z} = \boldsymbol{\mu} + \boldsymbol{\sigma} \odot \boldsymbol{\epsilon} \quad \text{其中} \quad \boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})
+$$
+:eqlabel:eq_reparam_vector
 
-在梦境中推演时，若模型完全按照均值生成，控制器很容易发现并利用模型的预测漏洞（例如虚假的无阻力捷径）。论文引入了**采样温度 $\tau$**：
+通过上述推导，V模型将高维图像成功转化为低维的、连续的且包含不确定性的状态向量 $\mathbf{z}$，为后续的时间序列建模提供了高质量的原材料。
 
-$$z_{t+1} \sim \mathcal{N}\left(\mu_k,\, \tau \cdot \sigma_k\right).$$
+## 1.3.3 M模型：混合密度网络与时间演化
+:label:subsec_m_model
 
-通过调高 $\tau > 1.0$，人为向梦境中注入适度的不确定性噪声，迫使控制器学会更加鲁棒、保守的驾驶策略，避免对特定预测路径过拟合。
+拥有了低维表示 $\mathbf{z}_t$ 后，我们来到了世界模型中最核心、也最体现物理本质的部分：预测未来。
 
----
+假设我们在时刻 $t$ 观察到了状态 $z_t$，并且执行了一个动作 $a_t$（例如踩下油门）。我们希望预测下一时刻的状态 $z_{t+1}$。如果这是经典的高中运动学问题，对于一个做匀加速直线的物体，我们有确定的位移公式。然而，智能体所处的环境往往是高度随机的：地面可能有摩擦力突变，侧面可能突然刮起大风。
 
-## 演进图谱：从 World Models 到 PlaNet、Dreamer 与 MuZero
+### 从单一高斯到混合高斯 (MDN)
+面对不确定性，我们第一反应是继续使用单一高斯分布来描述 $z_{t+1}$，即预测下一时刻均值 $\mu_{t+1}$ 和方差 $\sigma_{t+1}^2$。但这种假设在真实世界中会面临严重缺陷。
 
-2018 年至今，世界模型经历了四次关键的技术范式跃迁：
+设想这样一个场景：汽车行驶到了一个没有直行道路的 T 字路口。面对前方的墙壁，如果此时汽车的方向盘是回正的（直行），它在下一时刻将不可避免地向左滑动或向右滑动（概率各占 50%）。
+如果我们强制使用单一高斯分布来拟合这种未来，网络会计算出“向左滑动”和“向右滑动”的平均值——结果就是预测汽车将**直接穿墙而过（直行）**。这在物理上是荒谬的。
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                             世界模型技术演进四代图谱                         │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 1. 经典 V-M-C (2018) : VAE + MDN-RNN + 进化算法 (模块割裂，无端到端梯度)       │
-│ 2. PlaNet (2019)     : RSSM (确定性记忆 + 随机隐变量) + 在线 CEM 实时规划     │
-│ 3. Dreamer 系列      : RSSM + 可微想象空间 + Actor-Critic 梯度直通 (SOTA 标杆) │
-│ 4. MuZero (2020)     : 纯任务导向潜空间 (不重建图像，只预测 Value/Policy/Reward)│
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+为了解决这种**多模态（Multimodal）**的预测问题，我们需要引入混合密度网络（Mixture Density Network, MDN）。MDN 的核心思想是：未来的可能性不是由一个高斯钟形曲线描述的，而是由多个不同形状的高斯曲线叠加而成的。
 
-### 1. PlaNet (Hafner et al., 2019)：循环状态空间模型（RSSM）
+对于标量预测，具有 $K$ 个混合成分的概率密度函数表示为：
+$$
+P(z_{t+1} | z_t, a_t) = \sum_{k=1}^{K} \pi_{k} \mathcal{N}(z_{t+1} | \mu_k, \sigma_k^2)
+$$
+:eqlabel:eq_mdn_scalar
 
-经典 V-M-C 中 VAE 与 RNN 是分步训练的，视觉特征并未针对动力学优化。PlaNet 提出了 **RSSM（Recurrent State-Space Model）**，将状态显式拆解为：
+在这里，每个 $k$ 代表一种可能的“宏观物理演化路径”（例如 $k=1$ 代表向左侧滑，$k=2$ 代表向右侧滑）。
+- $\pi_k$ 是**混合权重**，代表了第 $k$ 种路径发生的概率，且必须满足 $\sum_{k=1}^K \pi_k = 1$。
+- $\mu_k$ 是第 $k$ 种路径下预测的具体均值。
+- $\sigma_k^2$ 是该路径下方差（微观物理不确定性）。
 
-- **确定性时序状态 $h_t$**：$h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})$（类似 RNN 记忆）；
-- **随机潜在状态 $z_t$**：$z_t \sim q_\phi(z_t \mid h_t, x_t)$（后验）或 $p_\theta(z_t \mid h_t)$（先验）。
+### 引入循环神经网络 (RNN)
+单独根据当前的一帧状态 $z_t$ 来预测 $z_{t+1}$ 是不够的。物理学告诉我们，要知道物体的下一时刻位置，我们不仅需要当前的位置，还需要当前的速度、加速度等高阶信息。由于 $z_t$ 仅是单帧图像的编码，它不包含速度。
 
-PlaNet 放弃了离线训练控制器，而是在每一步使用 **CEM（Cross-Entropy Method）** 在 RSSM 中实时在线规划 $H=12$ 步的最优动作序列。
+为了恢复动力学信息，我们需要在时间序列上引入历史记忆。RNN（或其变体 LSTM）就是用来累积这段历史的。在时刻 $t$，RNN 维护着一个隐藏状态 $\mathbf{h}_t$，它压缩了从 $0$ 到 $t$ 时刻的所有历史观察和动作序列。
 
-### 2. Dreamer 系列 (DreamerV1-V3, 2020–2023)：在想象中直通梯度
+我们将 RNN 与 MDN 结合，就得到了 M 模型的完整动力学方程：
+首先，通过 RNN 更新记忆：
+$$
+\mathbf{h}_t = f_{\text{RNN}}(\mathbf{h}_{t-1}, [\mathbf{z}_t, \mathbf{a}_t])
+$$
+:eqlabel:eq_rnn_update
 
-在线 CEM 规划计算代价过高。Dreamer 创造性地在 RSSM 的连续想象轨迹上，通过**重参数化技巧（Reparameterization Trick）** 直接将 Critic 价值评估对 Actor 策略网络求解析梯度：
+随后，使用简单的线性映射层，从当前的隐藏状态 $\mathbf{h}_t$ 中提取出多元混合高斯分布所需的参数（对于维度为 $D$ 的状态，且有 $K$ 个混合成分）：
+$$
+\boldsymbol{\pi}_t, \boldsymbol{\mu}_t, \boldsymbol{\sigma}_t = \text{Linear}(\mathbf{h}_t)
+$$
+:eqlabel:eq_mdn_params
 
-$$\nabla_\phi \mathbb{E}\left[\sum_{\tau=t}^{t+H} \gamma^{\tau-t} V_\psi\left(\hat{s}_\tau\right)\right].$$
+这里的预测概率密度扩展到多维向量空间，在各维度独立的假设下，表示为：
+$$
+P(\mathbf{z}_{t+1} | \mathbf{a}_t, \mathbf{z}_t, \mathbf{h}_t) = \sum_{k=1}^{K} \pi_{t}^{(k)} \prod_{d=1}^{D} \mathcal{N} \left( z_{t+1}^{(d)} | \mu_{t}^{(k, d)}, \left( \sigma_{t}^{(k, d)} \right)^2 \right)
+$$
+:eqlabel:eq_mdn_vector
 
-Actor-Critic 网络的梯度可以直接穿透整个动力学模型反向传播，实现了比无模型强化学习高出数倍至数十倍的数据效率。
+这就构成了经典世界模型中最关键的时间演化引擎。
 
-### 3. MuZero (Schrittwieser et al., DeepMind 2020)：非对齐的纯潜空间规划
+## 1.3.4 C模型：基于内部想象的决策与训练
+:label:subsec_c_model
 
-MuZero 提出了一个革命性质疑：**为了玩好雅达利或围棋，我们真的需要花费海量算力去逐像素重建背景的每朵云、每片树叶吗？**
+当 V 模型提供了状态的抽象压缩，M 模型掌握了世界演化的规律后，控制策略的任务就变得惊人地简单。在 Ha 和 Schmidhuber 的设计中，C 模型仅仅是一个极简的单层线性网络（后接激活函数）：
+$$
+\mathbf{a}_t = \text{tanh} \left( \mathbf{W}_c [\mathbf{z}_t, \mathbf{h}_t] + \mathbf{b}_c \right)
+$$
+:eqlabel:eq_c_model
 
-MuZero 彻底抛弃了图像解码器，直接在抽象潜空间中学习动力学，仅约束三项与任务直接相关的预测头：
+为什么在如此复杂的自动驾驶或游戏中，控制器可以设计得如此简陋？因为感知（V）和预测（M）这两个最消耗算力和参数量的任务已经被前置解决。控制器的输入不再是杂乱无章的像素，而是经过高度结构化的当前物理状态 $\mathbf{z}_t$ 和历史动态趋势 $\mathbf{h}_t$。
 
-1. 即时奖励预测：$\hat{r}_t = R(s_t, a_t)$；
-2. 策略先验预测：$\hat{p}_t = P(s_t)$；
-3. 状态价值预测：$\hat{v}_t = V(s_t)$。
+更为重要的是，世界模型赋予了智能体“脱离真实环境进行学习”的能力。
 
-通过结合蒙特卡洛树搜索（MCTS），MuZero 在完全不知晓游戏规则的前提下横扫了国际象棋、围棋与 57 款 Atari 游戏。
+> 在此，我们引入本章唯一的一个类比来帮助理解“内部世界想象”与“强化学习”的结合：
+> 想象一位即将在明天参加跨栏决赛的田径运动员。在比赛前夜，她闭上眼睛，在脑海中（潜空间）模拟起跑、奔跑、起跳的完整过程（M模型的时间展开）。在脑海中，她不需要真实地消耗体力或承担受伤的风险（无真实环境采样），但依然能够根据脑海中预判的跨栏位置（预测的未来状态）来调整自己的发力策略（C模型的参数更新）。这种在“梦境”中进行的训练，正是模型能够极大地减少真实环境交互次数的核心原因。
 
----
+由于 M 模型能够根据动作 $a_t$ 生成逼真的下一状态 $z_{t+1}$，我们可以让 C 模型完全在 M 模型的展开序列中进行训练。这种无需与真实环境反复交互的范式，极大地推动了样本效率（Sample Efficiency）的提升。
 
-## 核心架构横向对比矩阵
+## 1.3.5 代码实现：构建经典的M模型 (MDN-RNN)
+:label:subsec_mdn_rnn_code
 
-| 系统                        | 视觉编码 (V)        | 动力学记忆 (M)            | 规划/决策器 (C)   | 是否重建像素                | 训练优化方式                   |
-| :-------------------------- | :------------------ | :------------------------ | :---------------- | :-------------------------- | :----------------------------- |
-| **World Models** (2018)     | 离线 Conv-VAE       | MDN-RNN (LSTM)            | 线性 Controller   | 是 ($64\times 64$)          | VAE重构 + RNN似然 + CMA-ES进化 |
-| **PlaNet** (2019)           | 端到端 Conv-Encoder | RSSM (确定性+随机)        | 在线 MPC (CEM)    | 是 (辅助监督)               | 端到端 ELBO (重构 + KL)        |
-| **DreamerV3** (2023)        | Symlog-CNN / ViT    | RSSM (离散 Categorical)   | 想象 Actor-Critic | 是 (确保世界完整)           | 归一化 Actor-Critic + KL平衡   |
-| **MuZero** (2020)           | 残差网络表征函数    | 隐空间转移函数 $g_\theta$ | 树搜索 (MCTS)     | **否** (仅预测 $r, \pi, v$) | 价值与策略损失端到端回传       |
-| **Genie 2 / 3** (2024-2025) | 时空 ST-VQ / DiT    | 自回归 / 扩散 Transformer | 键盘/手柄交互按键 | 是 (高清 3D 渲染)           | 扩散去噪损失 / 交叉熵          |
-| **V-JEPA / V-JEPA 2-AC**    | ViT 特征            | 特征空间预测              | 探针 / 规划       | **否** (只预测特征)         | 掩码特征回归 + 防坍缩          |
-| **TD-MPC2**                 | 卷积 / 潜变量       | 潜空间转移 + 价值         | 短期 MPC          | 否（任务头为主）            | 联合训模型与 $V$               |
+基于我们在 :numref:`subsec_m_model` 中的理论推导，(**我们将构建一个MDN-RNN模块**)。在这个模块中，我们将明确标注所有的张量形状，特别是当融合了批次（Batch Size）、混合成分（Num Mixtures）和潜空间维度（Z Dim）时带来的多维张量变换。
 
----
+```{.python .input}
+#@tab pytorch
+import torch
+from torch import nn
+from torch.nn import functional as F
 
-## 五条设计路线落在哪一族
-
-1.7 的表是历史。本书后半把同一套接口拆成五条可动手的路线，不要把它们理解成「越新越好」：
-
-| 本书章节 | 骨干族                | 预测的是什么                 | 典型系统                        |
-| -------- | --------------------- | ---------------------------- | ------------------------------- |
-| 第 4 章  | RNN / RSSM / 隐式搜索 | latent 转移、reward、value   | PlaNet、Dreamer、MuZero、TD-MPC |
-| 第 5 章  | 词元自回归 / 扩散     | 下一帧或下一组 token         | IRIS、Genie、GameNGen           |
-| 第 6 章  | JEPA                  | 未来特征                     | I-JEPA、V-JEPA、V-JEPA 2-AC     |
-| 第 7 章  | 策略 + 后果模型       | 动作分布，以及动作的下一状态 | ACT、π₀、OpenVLA + checker      |
-| 第 8 章  | 场 / BEV / 占用       | 新视角、未来占用             | NeRF、3DGS、GAIA、DriveDreamer  |
-
-ACT、π₀、PPO 是**策略**。它们可以当控制器 C，但单独训练时没有学 $P(o_{t+1}\mid o_{\le t}, a_t)$。只有接上后果模型、视频世界模型或占用预测，才进入本课的主线。
-
-## 语言 grounding 与物理 grounding
-
-一个系统可以听懂「拿蓝杯」，却仍然把手指插进桌面。这是两件独立的事：
-
-- **语言 grounding**：换指令，动作必须变。第 7.3 节用同一画面换指令来检查。
-- **物理 grounding**：换动作，未来必须变。第 1.6 节把反事实分歧写成定义。
-
-LeCun 的 AMI 把世界模型、代价模块和行动器拆开，是这个区分的架构版：世界模型负责物理后果，代价负责「要不要这么做」，语言最多进入代价，不代替动力学。第 9 章要求两项指标分开报，不许用指令准确率给碰撞失败开脱。
-
----
-
-## 从零实现：经典 V-M-C 架构的推理数据流
-
-下面用纯 Python 与 NumPy 实现一个极简的 V-M-C 前向推理闭环，直观展示张量在视觉、记忆与控制器之间的流动：
-
-```python
-import numpy as np
-
-class TinyVAE:
-    """模拟视觉模块 V: 将 (64, 64, 3) 图像压缩至 32 维潜在向量"""
-    def __init__(self, latent_dim=32):
-        self.latent_dim = latent_dim
-
-    def encode(self, image: np.ndarray) -> np.ndarray:
-        # 教学模拟: 图像平均池化后投影
-        feat = np.mean(image, axis=(0, 1)) # (3,)
-        z = np.sin(np.linspace(0, np.pi, self.latent_dim)) * np.sum(feat)
-        return z.astype(np.float32)
-
-class TinyMDNRNN:
-    """模拟记忆模块 M: 维护隐藏状态 h，预测下一潜状态分布"""
-    def __init__(self, latent_dim=32, hidden_dim=64, action_dim=3):
+class MDNRNN(nn.Module):
+    def __init__(self, z_dim, action_dim, hidden_dim, num_mixtures):
+        super().__init__()
         self.hidden_dim = hidden_dim
-        self.h = np.zeros(hidden_dim, dtype=np.float32)
+        self.num_mixtures = num_mixtures
+        self.z_dim = z_dim
+        
+        # RNN 单元接收当前时刻的状态和动作
+        # 输入维度: z_dim + action_dim
+        self.rnn = nn.LSTMCell(input_size=z_dim + action_dim, hidden_size=hidden_dim)
+        
+        # MDN 线性输出层
+        # 输出 pi: 共有 num_mixtures 个权重
+        self.fc_pi = nn.Linear(hidden_dim, num_mixtures)
+        # 输出 mu: 每个混合成分需要预测 z_dim 维度的均值
+        self.fc_mu = nn.Linear(hidden_dim, num_mixtures * z_dim)
+        # 输出 sigma: 每个混合成分需要预测 z_dim 维度的标准差
+        self.fc_sigma = nn.Linear(hidden_dim, num_mixtures * z_dim)
 
-    def reset(self):
-        self.h = np.zeros(self.hidden_dim, dtype=np.float32)
-
-    def step(self, z_t: np.ndarray, a_t: np.ndarray):
-        # 拼接隐状态与动作更新: h_{t+1} = tanh(W_h * h_t + W_z * z_t + W_a * a_t)
-        combined = np.concatenate([self.h[:16], z_t[:16], a_t])
-        self.h = np.tanh(np.pad(combined, (0, self.hidden_dim - len(combined))))
-
-        # 预测下一潜在状态均值与方差
-        mu_next = np.roll(z_t, 1) * 0.95
-        sigma_next = np.ones_like(z_t) * 0.1
-        return self.h.copy(), mu_next, sigma_next
-
-class TinyController:
-    """模拟控制模块 C: 输入 [z_t; h_t]，输出 3 维动作 (转向, 油门, 刹车)"""
-    def __init__(self, latent_dim=32, hidden_dim=64, action_dim=3):
-        np.random.seed(42)
-        self.W = np.random.randn(action_dim, latent_dim + hidden_dim) * 0.1
-        self.b = np.zeros(action_dim)
-
-    def act(self, z_t: np.ndarray, h_t: np.ndarray) -> np.ndarray:
-        state_vec = np.concatenate([z_t, h_t])
-        raw_action = np.dot(self.W, state_vec) + self.b
-        # 赛车动作: [转向角 \in [-1, 1], 油门 \in [0, 1], 刹车 \in [0, 1]]
-        steering = np.tanh(raw_action[0])
-        gas = 1.0 / (1.0 + np.exp(-raw_action[1]))
-        brake = 1.0 / (1.0 + np.exp(-raw_action[2]))
-        return np.array([steering, gas, brake], dtype=np.float32)
-
-# 组装 V-M-C 闭环运行 3 步推理
-vae = TinyVAE(latent_dim=32)
-rnn = TinyMDNRNN(latent_dim=32, hidden_dim=64, action_dim=3)
-ctrl = TinyController(latent_dim=32, hidden_dim=64, action_dim=3)
-
-print("===== 启动 V-M-C 前向推理闭环 =====")
-rnn.reset()
-a_prev = np.zeros(3)
-
-for step in range(3):
-    # 1. 模拟收到一帧相机图像
-    raw_frame = np.random.uniform(0, 255, size=(64, 64, 3))
-
-    # 2. V 模块压缩图像 -> z_t
-    z_t = vae.encode(raw_frame)
-
-    # 3. M 模块结合历史与上一动作 -> 更新 h_t，预测下一步
-    h_t, mu_pred, _ = rnn.step(z_t, a_prev)
-
-    # 4. C 模块根据 [z_t; h_t] 决策当前动作 -> a_t
-    a_t = ctrl.act(z_t, h_t)
-    a_prev = a_t
-
-    print(f"步数 {step}: 图像输入 (64,64,3) -> z_t (dim={len(z_t)}) -> h_t (dim={len(h_t)}) -> 控制动作 [转向:{a_t[0]:+.2f}, 油门:{a_t[1]:.2f}, 刹车:{a_t[2]:.2f}]")
+    def forward(self, z, action, hidden_state):
+        """
+        参数:
+        z: (batch_size, z_dim) 当前时刻潜状态
+        action: (batch_size, action_dim) 当前时刻动作
+        hidden_state: (hx, cx) RNN的历史隐藏状态，两者形状均为 (batch_size, hidden_dim)
+        """
+        # 沿着特征维度拼接状态和动作
+        # rnn_input 形状: (batch_size, z_dim + action_dim)
+        rnn_input = torch.cat([z, action], dim=1)
+        
+        # 通过 LSTM 更新记忆
+        hx, cx = self.rnn(rnn_input, hidden_state)
+        
+        # 计算混合权重，使用 Softmax 保证其和为 1
+        # pi 形状: (batch_size, num_mixtures)
+        pi = F.softmax(self.fc_pi(hx), dim=-1)
+        
+        # 计算均值并重塑张量形状，将混合成分与空间维度分离
+        # mu 形状: (batch_size, num_mixtures, z_dim)
+        mu = self.fc_mu(hx).view(-1, self.num_mixtures, self.z_dim)
+        
+        # 计算标准差，利用 exp 函数保证标准差始终为正数
+        # sigma 形状: (batch_size, num_mixtures, z_dim)
+        sigma = torch.exp(self.fc_sigma(hx)).view(-1, self.num_mixtures, self.z_dim)
+        
+        return pi, mu, sigma, (hx, cx)
 ```
 
-运行输出：
+```{.python .input}
+#@tab tensorflow
+import tensorflow as tf
+from tensorflow.keras import layers
 
-```text
-===== 启动 V-M-C 前向推理闭环 =====
-步数 0: 图像输入 (64,64,3) -> z_t (dim=32) -> h_t (dim=64) -> 控制动作 [转向:-0.12, 油门:0.48, 刹车:0.49]
-步数 1: 图像输入 (64,64,3) -> z_t (dim=32) -> h_t (dim=64) -> 控制动作 [转向:+0.05, 油门:0.52, 刹车:0.47]
-步数 2: 图像输入 (64,64,3) -> z_t (dim=32) -> h_t (dim=64) -> 控制动作 [转向:-0.08, 油门:0.50, 刹车:0.51]
+class MDNRNN(tf.keras.Model):
+    def __init__(self, z_dim, action_dim, hidden_dim, num_mixtures):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.num_mixtures = num_mixtures
+        self.z_dim = z_dim
+        
+        # 定义 LSTM 单元
+        self.rnn_cell = layers.LSTMCell(hidden_dim)
+        
+        # MDN 的线性输出层
+        self.fc_pi = layers.Dense(num_mixtures)
+        self.fc_mu = layers.Dense(num_mixtures * z_dim)
+        self.fc_sigma = layers.Dense(num_mixtures * z_dim)
+
+    def call(self, z, action, states):
+        """
+        参数:
+        z: (batch_size, z_dim)
+        action: (batch_size, action_dim)
+        states: 包含 hx 和 cx 的列表
+        """
+        rnn_input = tf.concat([z, action], axis=-1)
+        
+        # 更新 LSTM 状态
+        # hx 为新隐藏状态, new_states 包含传给下一步的记忆
+        hx, new_states = self.rnn_cell(rnn_input, states)
+        
+        # pi 的计算
+        pi = tf.nn.softmax(self.fc_pi(hx), axis=-1)
+        
+        # 动态获取 batch_size 并调整形状
+        batch_size = tf.shape(hx)[0]
+        mu = tf.reshape(self.fc_mu(hx), [batch_size, self.num_mixtures, self.z_dim])
+        
+        # 保证 sigma 为正数
+        sigma = tf.exp(tf.reshape(self.fc_sigma(hx), [batch_size, self.num_mixtures, self.z_dim]))
+        
+        return pi, mu, sigma, new_states
 ```
 
----
+上述代码精确再现了核心的推导逻辑，不仅处理了时序上的传递，更通过合理的张量重塑（Reshape/View）将多模态不确定性参数化。
 
-## 自测与常见陷阱
+## 1.3.6 练习
+1. 在推导 :eqref:`eq_mdn_vector` 时，我们假设了潜状态各个维度在给定条件下是相互独立的。如果这一假设不成立，我们应该如何修改协方差的表示？
+   - *提示：思考高中统计中关于相关系数和协方差矩阵对角化的问题。*
+2. 请结合张量维度解释，为什么 `fc_mu` 和 `fc_sigma` 的输出维度必须是 `num_mixtures * z_dim`？
+   - *提示：如果一个物体在 3 维空间运动，且未来有 5 种不同的走向（模态），那么共需要多少个坐标值来完整描述这些走向的中心位置？*
+3. 在代码实现中，我们计算标准差时使用了 `exp` 函数：`torch.exp(self.fc_sigma(hx))`。除了 `exp` 之外，还有什么操作既能保证网络输出大于零，又能提供更平稳的梯度？
+   - *提示：可以参考 Softplus 函数。*
 
-### 自测题
-
-1. **问答题**：在经典 World Models 中，为什么控制器 C 可以只有区区 867 个参数却能学会复杂赛车？
-   - _解析_：因为高维视觉表征与复杂物理动力学的繁重特征提取工作，已经分别被 VAE 和 MDN-RNN 完成了；控制器 C 接收到的是高度凝练、富含时序导数的紧凑隐状态 $[z_t; h_t]$，因此只需简单的线性决策超平面即可完成高水准控制。
-2. **比较题**：Dreamer 与 MuZero 在对待“是否重建真实图像（Pixel Reconstruction）”这一问题上的根本分歧是什么？各自适用什么场景？
-   - _解析_：Dreamer 坚持重建像素（或特征），以确保世界模型拥有对环境全局规律的完整物理因果推演能力，适合连续控制、机器人与具身交互；MuZero 彻底抛弃像素重建，完全由任务目标（Reward/Value）驱动潜空间，计算开销更低、对复杂无关视觉背景具有极强免疫力，适合棋类与复杂策略游戏。
-3. **判断题**：在 Dreamer 中，因为有了重参数化技巧，Actor 可以在想象中无限展开 100 步进行梯度反向传播。
-   - _解析_：错误。虽然梯度理论上可直通，但穿过 100 层非线性循环单元的梯度极易发生梯度爆炸或退化；实际工程中 Dreamer 通常将前瞻时域严格截断在 $H=15$ 步左右。
-
-### 常见误区与工程陷阱
-
-- **误区 1：认为 VAE 的重建图像越逼真，控制效果一定越好**。VAE 可能花费大量参数去重建路边的草坪纹理，却忽视了远方只有 2 个像素大小的关键障碍物。第 6 章将介绍通过 JEPA 或对齐损失克服这一缺陷。
-- **误区 2：在梦境训练中忽视终止信号（Termination）**。在虚拟想象中推演时，如果撞车死亡后未正确阻断梯度或状态更新，策略会学会“从死后状态中死而复生继续得分”的错误逻辑。
-- **误区 3：混淆先验（Prior）与后验（Posterior）的使用时机**。在 RSSM 中，在真实环境中与真机交互接收到图像 $x_t$ 时，必须使用后验网络 $q(z_t \mid h_t, x_t)$；在纯脑海想象多步推演（没有未来图像）时，必须使用先验网络 $p(z_t \mid h_t)$。
-
----
-
-## 小结与下节预告
-
-- **V-M-C 范式** 奠定了感知压缩（V）、时序记忆（M）与紧凑决策（C）解耦的现代世界模型三元架构。
-- **PlaNet、TD-MPC 与 Dreamer** 分别用在线搜索、短视界价值 MPC、可微想象来消费同一个潜空间。
-- **MuZero** 证明了不重建像素也能在纯任务潜空间中完成超人水平的树搜索规划。
-- **五条路线** 对应五族骨干；策略网络本身不是世界模型。
-
-理论与架构的推演至此全部打通。下一篇 [1.4 动手：在想象中驾驶](/chapters/01-why-world-models/04-imagine-driving) 不写代码：先玩一台会猜下一步的表格世界模型，再看 2018 年那台在梦里学会开车的系统。手写九格转移表放到 [3.5](/chapters/03-data-and-first-model/05-rl-foundation-scratch)。
+:begin_tab:pytorch
+[讨论](https://discuss.d2l.ai/t/1234)
+:end_tab:

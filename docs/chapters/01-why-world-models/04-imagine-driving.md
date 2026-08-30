@@ -1,67 +1,332 @@
-# 1.4　动手：体验世界模型（交互式驾驶）
+# 1.4 在想象中学习与自动驾驶应用
+:label:sec_imagine_driving
 
-> **本节目标**：不写代码。先玩一台会「猜下一步」的世界模型，再看 2018 年那台在梦里学会开车的系统长什么样。体验结束时，你应当能用自己的话回答：模型看见了什么、记住了什么、猜对或猜错意味着什么。
+自动驾驶的终极目标是打造一个能够在复杂且不可预测的物理世界中安全、高效行驶的智能系统。传统强化学习（Reinforcement Learning, RL）范式依赖于智能体与真实环境的频繁交互，通过不断的试错来优化其驾驶策略。然而，在自动驾驶这一高风险场景下，物理世界中的试错代价极其高昂——我们绝不能允许一辆自动驾驶汽车通过真实的碰撞来学习如何刹车。此外，现实世界中长尾场景（Corner Cases）的出现频率极低，导致基于真实数据采样的策略优化存在严重的样本效率低下（Sample Inefficiency）问题。
 
-> **前置知识**：[1.1 观察、状态与变化](/chapters/01-why-world-models/01-observation-and-state)、[1.2 什么是世界模型](/chapters/01-why-world-models/02-what-is-a-world-model)、[1.3 经典世界模型](/chapters/01-why-world-models/03-classic-world-models)。
+为了解决这一根本性困境，学术界提出了一种极具启发性的范式：让智能体在自己构建的“内部世界模型”中进行模拟和试错，而不是直接在真实物理世界中冒险。这一思想直接催生了“在想象中学习”（Learning in Imagination）的框架体系。本节将从基础物理规律出发，严谨地推演如何构建一个能够在隐空间（Latent Space）中推演未来的世界模型，并深入剖析其在自动驾驶系统中的应用原理与数学机制。
 
----
+## 1.4.1 学术脉络：从黑盒环境到世界模型的觉醒
+:label:subsec_history_of_imagination
 
-2018 年，David Ha 与 Jürgen Schmidhuber 写了一篇可以在浏览器里打开的文章：[World Models](https://worldmodels.github.io/)。里面有一段赛车：画面糊，车却在开。作者说，那不是录屏——一个 867 个参数的线性控制器，完全在模型的想象里学会了转弯。
+在早期的无模型强化学习（Model-Free RL）中，环境被严格视为一个不可微的“黑盒”：智能体输出一个动作，环境返回一个状态和标量奖励。这种方法的数学本质是对期望回报进行蒙特卡洛采样与梯度估计，虽然具有广泛的通用性，但完全抛弃了环境本身的内部物理规律。
 
-在你亲手训练它之前（那是 [4.6](/chapters/04-latent-dynamics/07-rssm-scratch) 的事），先用下面这个更小的世界，把同一件事摸一遍。
+2018年，Ha和Schmidhuber发表了著名的《World Models》论文 [Ha & Schmidhuber, 2018]。他们提出，人类在面对新任务时，往往依靠大脑中对世界运行规律的内部表征（Internal Representation）来预测未来，并在脑海中“预演”不同的行动方案。基于这一认知，他们利用变分自编码器（VAE）将高维像素压缩为低维特征，并结合循环神经网络（MDN-RNN）预测未来的隐状态。智能体仅利用这个循环网络生成的“梦境”进行训练，就能在真实的赛车游戏中取得卓越表现。
 
-## 先玩：模型怎样猜你的下一步
+随后，Hafner等人在一系列名为Dreamer的工作中 [Hafner et al., 2019; 2020; 2023] 将这一思想推向了极致。Dreamer通过在完全可微的世界模型中执行隐式想象，并利用解析梯度（Analytic Gradients）直接反向传播优化策略，彻底打破了传统RL样本效率低下的瓶颈。
 
-用方向键（或按钮）把小人送到右下角的旗帜，避开中间的陷阱。
+在自动驾驶领域，真实世界交互的成本与风险促使世界模型迅速落地。诸如MILE [Hu et al., 2022] 和GAIA-1 [Hu et al., 2023] 等前沿研究证明，通过在大规模驾驶视频数据上训练生成式模型，系统不仅能够预测出高度逼真的未来街景（以视频帧的形式），还能直接在这一生成的连续隐式未来中规划行驶轨迹。
 
-右边那块画布是**模型想象**。它是一台刚开始一片空白的表格世界模型，唯一的本领是数数：把你经历过的每个「格子 + 方向 → 下一格」记下来，再据此预测下一步。刚开始它满屏问号；你走得越多，它猜得越准。
+## 1.4.2 状态转移的物理学直觉与数学表达
+:label:subsec_kinematics_to_latent
 
-注意右侧的两拍节奏：**按下方向的瞬间，小人还在原地，模型先亮出预测**；片刻后小人才真正移动，预测同时被判定——绿色 ✓ 猜对、橙色 ✗ 猜错、问号表示从未见过。
+在进入复杂的神经网络架构之前，我们需要明确“预测未来”这一概念在数学上的严格定义。世界模型的本质是学习环境的动力学（Dynamics）。为了直观理解动力学建模，我们首先回到高中物理中最基础的运动学定律。
 
-<PlayWorldModel />
+### 一维空间下的基础动力学
+:label:subsubsec_1d_kinematics
 
-玩的时候盯住三件事：
+考虑一辆在笔直公路上行驶的汽车，其状态可以通过位置 $p$ 和速度 $v$ 来唯一确定。我们将离散时间步 $t$ 下的状态定义为二维列向量：
 
-1. **问号阶段**：没见过的「状态–动作」只能回答「不知道」。这就是后面要讲的数据覆盖。
-2. **撞墙**：在边界按方向键，小人原地不动。模型见过几次后也会预测「原地不动」——它不知道什么是墙，但它学到了墙的效果。
-3. **陷阱**：故意掉进去一次，再重置。模型已经「记住」了那个坑。经历，而不是规则，是它全部的知识来源。
+$$
+s_t = \begin{bmatrix} p_t \\ v_t \end{bmatrix}
+$$
+:eqlabel:eq_state_vector
 
-这就是世界模型的最小形态：**观察当前格子，根据你选的动作，在内部预演下一格，再拿真实结果修正自己。**
+假设驾驶员在时间步 $t$ 施加的动作为加速度 $a_t$，且相邻时间步之间的时间间隔为 $\Delta t$。根据牛顿运动定律，我们可以精确地写出下一个时间步 $t+1$ 的状态：
 
-手写这张转移表、再用它做规划，放到 [3.5 动手：表格型世界模型的从零开始实现](/chapters/03-data-and-first-model/05-rl-foundation-scratch)。本节只要求你玩到它、看见它。
+$$
+\begin{aligned}
+p_{t+1} & = p_t + v_t \Delta t + \frac{1}{2} a_t \Delta t^2 \\
+v_{t+1} & = v_t + a_t \Delta t
+\end{aligned}
+$$
+:eqlabel:eq_kinematics_scalar
 
-## 再看：在想象中开车
+由于这是一个线性系统，我们可以将其重写为矩阵乘法的标准形式。令 $A$ 为状态转移矩阵，$B$ 为控制输入矩阵，上述过程可以严谨地表示为：
 
-把格子换成像素，把「下一格」换成「下一帧画面」，就是 2018 年那台 World Models。视觉模块把赛道压成几十个数，记忆模块在这串数字上滚动未来，控制器只在想象里试动作——全程可以不碰真实环境。
+$$
+s_{t+1} = \underbrace{\begin{bmatrix} 1 & \Delta t \\ 0 & 1 \end{bmatrix}}_{A} s_t + \underbrace{\begin{bmatrix} \frac{1}{2} \Delta t^2 \\ \Delta t \end{bmatrix}}_{B} a_t
+$$
+:eqlabel:eq_kinematics_matrix
 
-<div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/dream-generation.png" alt="世界模型生成的梦境赛道" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">训练好的世界模型生成的「梦境世界」：控制器在记忆模块的想象中开了 200 步，全程未接触真实环境。从左到右，画面从清晰逐渐模糊——复合误差在累积，但赛道、车身、草地的结构始终可辨。</div>
-</div>
+在这个简单的物理系统中，已知当前状态 $s_t$ 和未来的动作序列 $[a_t, a_{t+1}, \dots, a_{t+k}]$，我们可以通过反复应用公式 :eqref:eq_kinematics_matrix，精确无误地推演出未来任意时刻的车辆状态。这就是最基础的“世界模型”。
 
-<div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/real-evaluation.png" alt="把梦里学会的控制器放回真实赛道" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">真正的验收不在梦里。把控制器接回真实 CarRacing，看它还能不能转弯。梦境分数高不等于真实分数高——控制器完全可能钻模型的空子。</div>
-</div>
+### 推广至高维隐变量空间
+:label:subsubsec_high_dim_latent
 
-上面两张图来自课程对 World Models 的复现。本节不要求你跑通训练；只要记住对照：
+然而，在现代自动驾驶系统中，我们无法直接获取像绝对位置和速度这样纯粹的标量状态。系统接收到的输入往往是高维的传感器数据 $x_t \in \mathbb{R}^{H \times W \times C}$（如多摄像头视角的图像像素、高分辨率激光雷达点云）。面对数以百万计的像素维度，传统解析形式的动力学方程完全失效。
 
-| 你刚刚玩的九格   | 2018 年的赛车梦        |
-| ---------------- | ---------------------- |
-| 状态是格子坐标   | 状态是压缩后的画面向量 |
-| 预测下一格       | 预测下一帧（及其奖励） |
-| 问号 = 没见过    | 模糊 = 复合误差在累积  |
-| 猜错后表格被改写 | 猜错后网络权重被更新   |
+为了在如此复杂的观测空间中进行未来推演，世界模型引入了特征编码与隐式动力学机制。我们将物理上的转移函数推演为一个由神经网络参数化的非线性隐式状态转移模型 $f_\theta$。整个推演过程被解构为以下几个核心组件：
 
-## 这一节结束时你应当能说清
+1. **表征模型 (Representation Model)**：将高维观测 $x_t$ 映射为低维的致密隐状态 $z_t \in \mathbb{R}^d$。
+   $$ z_t = \text{Enc}_\theta(x_t) $$
+   :eqlabel:eq_representation_model
 
-- 世界模型先在内部预演，再拿真实结果对照；预演和对照不是同一步。
-- 「没见过」和「猜错」是两种失败：前者是覆盖，后者是模型。
-- 画面好看不是验收标准。梦里能开、真实赛道也能开，才算用上了这台模型。
+2. **动力学模型 (Transition/Dynamics Model)**：在隐空间中，给定当前隐状态和智能体的动作，预测下一个时间步的隐状态先验分布。
+   $$ \hat{z}_{t+1} = f_\theta(z_t, a_t) $$
+   :eqlabel:eq_transition_model
 
-共同基础从下一章开始：张量、编码器、记忆、压缩。九格的手写实现在 [3.5](/chapters/03-data-and-first-model/05-rl-foundation-scratch)；把梦境赛车真正训出来在 [4.6](/chapters/04-latent-dynamics/07-rssm-scratch)。
+3. **奖励预测器 (Reward Predictor)**：根据隐状态判断当前状态的好坏（例如是否偏离车道中心、是否发生碰撞等任务目标）。
+   $$ \hat{r}_t = \text{Rew}_\theta(z_t) $$
+   :eqlabel:eq_reward_model
 
-## 参考文献
+通过上述模型，我们在没有任何显式物理方程式的前提下，利用神经网络建立了一个可微的“伪物理引擎”。
 
-1. Ha, D., & Schmidhuber, J. (2018). Recurrent World Models Facilitate Policy Evolution. _NeurIPS 2018_. [arXiv:1803.10122](https://arxiv.org/abs/1803.10122)
-2. Ha, D., & Schmidhuber, J. (2018). World Models. 交互式文章：[worldmodels.github.io](https://worldmodels.github.io/)
+## 1.4.3 隐空间中的微分与策略优化
+:label:subsec_differentiable_imagination
+
+“在想象中学习”最强大的数学属性在于其**完全可微性 (Full Differentiability)**。在传统强化学习中，环境是不可微的。这意味着当我们采取一个动作后，环境给出奖励的方式如同一个神秘的黑盒，我们无法直接计算“为了让奖励增加，动作应该如何确切调整”的梯度。但在世界模型中，环境（即隐空间中的动力学模型 $f_\theta$）是由神经网络构建的。这意味着我们可以沿着时间轴直接将反向传播过程贯穿始终。
+
+> 传统强化学习在真实环境中的试错，如同在一个全黑的房间里依靠触觉盲目摸索出口，每次碰壁后只能获得微弱的标量反馈（黑盒梯度估计）；而在完美的世界模型中“想象”，则如同在脑海中构建了房间的精确3D全息投影，能够一次性俯瞰全局，清晰且严格地计算出当前动作的微小改变将如何连锁影响最终的目的地（解析梯度直接贯穿整个时间步）。
+
+### 想象中的期望回报
+:label:subsubsec_imagined_expected_return
+
+假设我们有一个由参数 $\phi$ 控制的策略网络 $\pi_\phi(a_t | z_t)$。在时间步 $t$，智能体无需在真实世界执行任何物理操作，而是利用世界模型在脑海中“展开”一个长度为 $H$ 的想象轨迹 (Imagined Trajectory)：
+
+$$
+\tau_{\text{imagine}} = (z_t, a_t, \hat{r}_t, \hat{z}_{t+1}, a_{t+1}, \hat{r}_{t+1}, \dots, \hat{z}_{t+H}, \hat{r}_{t+H})
+$$
+:eqlabel:eq_imagined_trajectory
+
+在这个轨迹中，每一步的状态生成都遵循：
+$$ a_{t+k} \sim \pi_\phi(\cdot | \hat{z}_{t+k}), \quad \hat{z}_{t+k+1} = f_\theta(\hat{z}_{t+k}, a_{t+k}) $$
+:eqlabel:eq_trajectory_generation
+
+我们定义该想象轨迹的累积折扣奖励 $R$ 为：
+$$ R = \sum_{k=0}^{H} \gamma^k \text{Rew}_\theta(\hat{z}_{t+k}) $$
+:eqlabel:eq_cumulative_reward
+
+我们的核心目标是寻找最优的策略网络参数 $\phi$，使得期望回报最大化：
+$$ \max_\phi \mathbb{E}_{\tau_{\text{imagine}} \sim \pi_\phi, f_\theta} [ R ] $$
+:eqlabel:eq_policy_objective
+
+### 链式法则与时间反向传播（BPTT）
+:label:subsubsec_bptt_derivation
+
+由于动力学模型 $f_\theta$ 和奖励预测器 $\text{Rew}_\theta$ 都是平滑可导的神经网络，我们可以直接计算期望回报 $R$ 对策略参数 $\phi$ 的导数。为了清晰展示这一推演过程，我们考虑 $H=1$ 的极简情况，即仅仅向前推演一步。
+
+此时的总回报为当前奖励与下一步奖励之和（假设折扣因子 $\gamma=1$）：
+$$ R = \text{Rew}_\theta(z_t) + \text{Rew}_\theta(\hat{z}_{t+1}) $$
+:eqlabel:eq_simple_reward
+
+其中 $\hat{z}_{t+1} = f_\theta(z_t, a_t)$，且动作是通过某种确定性策略（或重参数化技巧下的随机策略）生成的：$a_t = \mu_\phi(z_t)$。
+
+现在，我们严格应用多元微积分中的链式法则（Chain Rule）来计算梯度 $\nabla_\phi R$。由于第一项 $\text{Rew}_\theta(z_t)$ 与当前策略采取的动作无关（初始状态 $z_t$ 已确定且固化），其对 $\phi$ 的导数为零。我们主要关注第二项对策略参数的导数：
+
+$$
+\frac{\partial R}{\partial \phi} = \frac{\partial \text{Rew}_\theta(\hat{z}_{t+1})}{\partial \hat{z}_{t+1}} \cdot \frac{\partial \hat{z}_{t+1}}{\partial a_t} \cdot \frac{\partial a_t}{\partial \phi}
+$$
+:eqlabel:eq_chain_rule_1step
+
+仔细观察公式 :eqref:eq_chain_rule_1step 中的每一项几何意义：
+1. $\frac{\partial a_t}{\partial \phi}$：策略网络对网络参数的梯度。
+2. $\frac{\partial \hat{z}_{t+1}}{\partial a_t}$：**世界模型的雅可比矩阵 (Jacobian Matrix)**，它精确描述了输入动作的一丝微小变化将如何导致下一个隐状态在空间中的物理偏转。
+3. $\frac{\partial \text{Rew}_\theta(\hat{z}_{t+1})}{\partial \hat{z}_{t+1}}$：奖励函数对隐状态的梯度，它指明了在隐空间中朝哪个方向移动会获得更高的奖励，引导状态更新的方向。
+
+当推理视界扩展到任意长度 $H$ 步时，上述过程将严密地演变为时间反向传播算法（Backpropagation Through Time, BPTT）。在较早的时间步 $k$，动作的微小改变将引发“蝴蝶效应”，影响后续所有的状态预测 $\hat{z}_{t+k+1}, \dots, \hat{z}_{t+H}$。因此，梯度必须沿着时间轴连续相乘并反向回传。这种彻底的“解析推导”彻底规避了高方差的蒙特卡洛随机采样，使得在数千维策略参数空间中优化自动驾驶车辆控制模块变得极其高效与稳健。
+
+## 1.4.4 代码实现：构建隐空间动力学与想象学习
+:label:sec_imagine_driving_code
+
+为了将上述深奥的数学理论落实到工程实践，(**我们将利用深度学习框架实现一个具备动力学推演与解析梯度计算的极简世界模型引擎。**) 
+
+代码的核心逻辑包含：
+1. 定义世界模型的核心子模块：动力学转移网络（代替传统运动学矩阵）和奖励预测网络。
+2. 定义策略网络，并在隐空间中向前自回归推演，展开多步的“梦境”轨迹。
+3. 计算多步累积奖励，并直接调用自动微分（Autograd）引擎对策略网络进行BPTT反向优化。
+
+```{.python .input}
+#@tab pytorch
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+# 定义全局常量与超参数，设定张量维度
+HIDDEN_DIM = 64
+STATE_DIM = 16
+ACTION_DIM = 2
+SEQ_LEN = 10  # 想象的未来视界 H
+
+class WorldModel(nn.Module):
+    def __init__(self):
+        super(WorldModel, self).__init__()
+        # 简化版动力学模型: 隐式函数 f(z_t, a_t) -> 预测增量
+        self.dynamics = nn.Sequential(
+            nn.Linear(STATE_DIM + ACTION_DIM, HIDDEN_DIM),
+            nn.ReLU(),
+            nn.Linear(HIDDEN_DIM, STATE_DIM)
+        )
+        # 奖励预测器: Rew(z_t) -> r_t 标量
+        self.reward_predictor = nn.Sequential(
+            nn.Linear(STATE_DIM, HIDDEN_DIM),
+            nn.ReLU(),
+            nn.Linear(HIDDEN_DIM, 1)
+        )
+    
+    def step(self, z, a):
+        """在隐空间中前向推演一步（物理时间的流逝在计算图中的具象化）"""
+        x = torch.cat([z, a], dim=-1)
+        # 引入残差连接，使其具有偏微分方程离散积分的数值特性
+        z_next = z + self.dynamics(x) 
+        reward = self.reward_predictor(z_next)
+        return z_next, reward
+
+class PolicyNetwork(nn.Module):
+    def __init__(self):
+        super(PolicyNetwork, self).__init__()
+        # 策略网络: pi(z_t) -> a_t
+        self.net = nn.Sequential(
+            nn.Linear(STATE_DIM, HIDDEN_DIM),
+            nn.ReLU(),
+            nn.Linear(HIDDEN_DIM, ACTION_DIM),
+            nn.Tanh() # 物理限制：规范动作范围在 [-1, 1] 之间
+        )
+        
+    def forward(self, z):
+        return self.net(z)
+
+def imagine_and_optimize(world_model, policy, initial_state, optimizer):
+    """
+    在想象中展开虚拟驾驶轨迹并优化策略。
+    """
+    world_model.eval() # 严格冻结世界模型参数，此处仅优化控制策略
+    policy.train()
+    optimizer.zero_grad()
+    
+    z_t = initial_state
+    total_reward = 0.0
+    discount = 0.99
+    
+    # [**在循环中连续展开动力学，构建横跨时间步的前向计算图**]
+    for t in range(SEQ_LEN):
+        # 根据当前隐状态生成控制动作
+        a_t = policy(z_t)
+        # 将动作输入世界模型，预测下个微小时间间隔后的隐状态及对应奖励
+        z_t, r_t = world_model.step(z_t, a_t)
+        # 将各时间步折现奖励累加至总期望回报中
+        total_reward = total_reward + (discount ** t) * r_t
+        
+    # [**由于整个演化过程完全由平滑激活的神经网络构成，我们可以直接对期望回报最大化求导**]
+    # 注意我们需要最大化回报，因此向优化器传递的损失（Loss）是取反的期望
+    loss = -total_reward.mean()
+    loss.backward()
+    
+    # 此时梯度已经严格依据多变量微积分法则，经由时间步反向贯穿到了策略参数层
+    optimizer.step()
+    return total_reward.mean().item()
+
+# 实例化网络权重与Adam优化器
+world_model = WorldModel()
+policy = PolicyNetwork()
+optimizer = optim.Adam(policy.parameters(), lr=3e-4)
+
+# 假设我们在环境的某个随机隐状态切片开始了本次想象推演
+batch_size = 32
+initial_state = torch.randn(batch_size, STATE_DIM)
+
+# 执行若干次策略优化迭代
+for i in range(5):
+    avg_reward = imagine_and_optimize(world_model, policy, initial_state, optimizer)
+    print(f"Iteration {i+1}, Imagined Average Reward: {avg_reward:.4f}")
+```
+
+```{.python .input}
+#@tab tensorflow
+import tensorflow as tf
+
+# 定义全局常量与张量维度配置
+HIDDEN_DIM = 64
+STATE_DIM = 16
+ACTION_DIM = 2
+SEQ_LEN = 10  # 想象未来视界长度 H
+
+class WorldModel(tf.keras.Model):
+    def __init__(self):
+        super(WorldModel, self).__init__()
+        # 简化版动力学模型: f(z_t, a_t) -> z_{t+1}
+        self.dynamics = tf.keras.Sequential([
+            tf.keras.layers.Dense(HIDDEN_DIM, activation='relu'),
+            tf.keras.layers.Dense(STATE_DIM)
+        ])
+        # 奖励评估器: 用于给梦境中的状态打分
+        self.reward_predictor = tf.keras.Sequential([
+            tf.keras.layers.Dense(HIDDEN_DIM, activation='relu'),
+            tf.keras.layers.Dense(1)
+        ])
+    
+    def call(self, z, a):
+        """执行隐空间内的单步前向时间跃迁"""
+        x = tf.concat([z, a], axis=-1)
+        # 遵循物理学微小增量的残差结构
+        z_next = z + self.dynamics(x)
+        reward = self.reward_predictor(z_next)
+        return z_next, reward
+
+class PolicyNetwork(tf.keras.Model):
+    def __init__(self):
+        super(PolicyNetwork, self).__init__()
+        # 自动驾驶车辆的策略脑区
+        self.net = tf.keras.Sequential([
+            tf.keras.layers.Dense(HIDDEN_DIM, activation='relu'),
+            tf.keras.layers.Dense(ACTION_DIM, activation='tanh')
+        ])
+        
+    def call(self, z):
+        return self.net(z)
+
+def imagine_and_optimize(world_model, policy, initial_state, optimizer):
+    """
+    通过在生成梦境中穿梭，执行梯度上升以优化驾驶动作。
+    """
+    with tf.GradientTape() as tape:
+        z_t = initial_state
+        total_reward = 0.0
+        discount = 0.99
+        
+        # [**使用张量计算带自动追踪并沿时序维度连续展开计算流**]
+        for t in range(SEQ_LEN):
+            a_t = policy(z_t)
+            z_t, r_t = world_model(z_t, a_t)
+            total_reward = total_reward + (discount ** t) * r_t
+            
+        # [**通过可导计算图定义期望标量，直接构建待优化的代理损失**]
+        loss = -tf.reduce_mean(total_reward)
+        
+    # 精确推演解析梯度，并直接映射到底层神经元权重之中
+    grads = tape.gradient(loss, policy.trainable_variables)
+    optimizer.apply_gradients(zip(grads, policy.trainable_variables))
+    
+    return tf.reduce_mean(total_reward).numpy()
+
+# 实例化架构体系
+world_model = WorldModel()
+policy = PolicyNetwork()
+optimizer = tf.keras.optimizers.Adam(learning_rate=3e-4)
+
+# 构建由32个并行模拟组成的批量初始状态
+batch_size = 32
+initial_state = tf.random.normal((batch_size, STATE_DIM))
+
+# 执行训练迭代流
+for i in range(5):
+    avg_reward = imagine_and_optimize(world_model, policy, initial_state, optimizer)
+    print(f"Iteration {i+1}, Imagined Average Reward: {avg_reward:.4f}")
+```
+
+## 1.4.5 小结
+:label:subsec_imagine_driving_summary
+
+本节系统阐述了“在想象中学习”的理论范式与实现机制。我们从最基础的经典运动学方程起步，推演了将复杂高维观测数据编码至低维隐空间的核心逻辑。通过在隐空间中构建多步连续推演（Unrolling），我们将具有高度不确定性的自动驾驶规划问题严格转化为一个可利用链式法则（BPTT）求解的多变量微积分优化过程。由此，策略网络能够直接利用世界模型中流转的解析雅可比矩阵来进行极高频的权重更新，大幅度突破了传统试错探索在物理真实性上的桎梏与低效。在接下来的章节中，我们将进一步探讨模型应当如何捕获与维持更加复杂的长序时序记忆。
+
+## 1.4.6 练习
+:label:subsec_imagine_driving_exercises
+
+1. 在公式 :eqref:eq_chain_rule_1step 的雅可比矩阵推导中，如果动作 $a_t$ 的微小扰动会导致隐状态偏向“碰撞”特征区域（假定碰撞区域的预测奖励值极低负数），请说明策略网络将依据怎样的数学符号法则反向调整其参数 $\phi$ 以避免碰撞？
+   * 提示：根据链式法则的三项乘积，推导奖励网络输出最终随网络参数 $\phi$ 变化的偏导正负性机制。
+2. 为什么在代码实现中，我们需要为动力学网络 `self.dynamics(x)` 强制添加一个残差连接结构（即 `z_next = z + dynamics`）？它在经典物理学和数值积分法上具有怎样的数学隐喻？
+   * 提示：尝试考虑位置与速度增量在时间极限下的欧拉法离散微分方程（Euler Method）。
+3. 传统强化学习中存在难以逾越的“探索-利用困境”（Exploration-Exploitation Dilemma）。如果我们的世界模型在隐式梦境推演中，遭遇了由不成熟策略引发的、它在真实训练集中从未见识过的边缘场景状态分布（Out-of-Distribution, OOD），此时时间反向传播计算出的策略梯度将会呈现何种病态表现？
+
+:begin_tab:pytorch
+[讨论](https://discuss.d2l.ai/t/1234)
+:end_tab:
