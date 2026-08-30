@@ -1,3 +1,217 @@
-# 2.6　基础模块的简洁实现
+# 2.6 基础模块的简洁实现
+:label:sec_basic_components_concise
 
-本节内容待撰写。
+在深度学习的早期探索阶段，研究人员常常需要耗费大量精力去手动计算网络层间的导数，并使用底层的语言（如 C 或 CUDA）实现每一个算子的前向和反向传播代码。这种极具侵入性的工程负担在很大程度上阻碍了算法的快速迭代。随着现代深度学习框架（例如 PyTorch [Paszke et al., 2019] 和 TensorFlow [Abadi et al., 2016]）的逐渐成熟，计算图抽象与自动微分机制使得深度神经网络的开发变得像搭积木一样自然。
+
+在上一节中，我们完全依赖基础的张量运算，从零开始完整地实现了一个线性模型。我们显式地完成了数据小批量的生成、模型参数的初始化、前向传播的矩阵乘法、损失函数的计算以及随机梯度下降的参数更新过程。虽然这种极其底层的实现方式赋予了我们对每一块内存空间和每一个梯度的绝对掌控力，但在实际的工业界应用与前沿学术研究中，我们绝不会反复去手写这些标准化的底层逻辑。
+
+本节我们将改变视角，站在高层抽象的维度，学习如何利用深度学习框架中的高级 API（应用程序编程接口）来实现基础的神经网络模块。我们将严格剖析数据管道、线性层、数值稳定的损失函数以及优化器在底层是如何被优雅地封装的。这不仅是为了教导大家如何“偷懒”，更是为了帮助我们理解现代深度学习框架背后的抽象哲学。
+
+## 2.6.1 深度学习框架的演进与抽象哲学
+:label:sec_framework_philosophy
+
+在讨论具体的代码实现之前，我们有必要先回顾一下深度学习框架的历史脉络。在早期，诸如 Theano [Bergstra et al., 2010] 和 Caffe [Jia et al., 2014] 等框架，要求用户在提供任何实际数据之前，先显式地、完全地定义出整个静态的符号计算图（Symbolic Computation Graph）。这种设计虽然能在编译期实现极致的硬件优化，但其僵化的设计使得控制流（如循环、条件分支）的实现极为痛苦，且调试过程如同黑盒一般。
+
+如今以 PyTorch 为代表的动态计算图（Dynamic Computation Graph，即 Eager Execution）框架，则采用了完全不同的哲学。它允许我们在执行普通的宿主语言（如 Python）控制流的同时，在后台隐式地构建计算图。这种机制意味着每一次前向传播都会实时生成一个新的计算图，极大地释放了表达能力。我们将在本节中看到，如何利用这种动态性，通过高层抽象类（如 `nn.Module`）来将复杂的数据流与参数管理解耦。
+
+## 2.6.2 数据处理的管道化：从数组到迭代器
+:label:sec_data_pipeline
+
+任何机器学习任务的起点都是数据。假设我们的数据集中包含了 $N$ 个样本，每个样本由特征 $\mathbf{x}_i \in \mathbb{R}^d$ 和标签 $y_i$ 组成。在理想情况下，我们希望在每一步迭代中，使用整个数据集来计算损失函数的精确梯度。这被称为批量梯度下降（Batch Gradient Descent）。假设我们优化的目标是最小化整个数据集上的平均损失：
+
+$$
+L(\mathbf{\theta}) = \frac{1}{N} \sum_{i=1}^N l(f_{\mathbf{\theta}}(\mathbf{x}_i), y_i)
+$$
+:eqlabel:eq_empirical_risk
+
+然而，在面对包含数百万样本的现代数据集时，直接计算全量数据集的梯度将导致显存溢出，且计算时间长得令人难以忍受。为了解决这一问题，我们将求和的范围缩小到一个大小为 $B$（通常为 $32$ 到 $256$ 之间）的随机子集，即小批量（Minibatch）：
+
+$$
+L_B(\mathbf{\theta}) = \frac{1}{B} \sum_{i \in \mathcal{B}} l(f_{\mathbf{\theta}}(\mathbf{x}_i), y_i)
+$$
+:eqlabel:eq_minibatch_risk
+
+由于 $\mathcal{B}$ 是从全量数据中均匀无放回抽样得到的子集，理论上小批量梯度的期望严格等于全量梯度，这就保证了优化的正确方向。
+
+在框架中，数据的加载和批处理被抽象为了迭代器。我们只需要提供张量格式的数据，框架就会自动为我们处理打乱（Shuffle）和切片（Slicing）的逻辑。
+
+(**我们首先生成一些服从正态分布的合成数据，并将特征和标签打包成一个数据张量元组，交由数据管道进行管理。**)
+
+```{.python .input}
+#@tab pytorch
+import torch
+from torch import nn
+from torch.utils import data
+
+# 生成合成数据
+true_w = torch.tensor([2.0, -3.4])
+true_b = 4.2
+features = torch.randn(1000, 2)
+labels = torch.matmul(features, true_w) + true_b
+# 添加高斯噪声
+labels += torch.randn(labels.shape) * 0.01
+
+def load_array(data_arrays, batch_size, is_train=True):
+    """构造一个PyTorch数据迭代器"""
+    dataset = data.TensorDataset(*data_arrays)
+    return data.DataLoader(dataset, batch_size, shuffle=is_train)
+
+batch_size = 10
+data_iter = load_array((features, labels), batch_size)
+```
+
+通过内置的迭代器，我们可以直接在 `for` 循环中使用 `data_iter`，它在每次产出 $10$ 个样本后自动推进，且在每次遍历完整个数据集（一个 Epoch）后，如果指定了 `is_train=True`，则会重新打乱索引。
+
+## 2.6.3 线性层的封装：全连接神经网络的积木
+:label:sec_linear_layer_encapsulation
+
+接下来，我们需要定义模型本身。在最基础的标量场景中，一个线性映射仅仅是一个简单的初等代数公式：对于输入标量 $x$，权重为 $w$，偏置为 $b$，则输出 $y = wx + b$。
+
+随着问题复杂度的提升，假设输入不再是单一的数值，而是描述某个物体属性的 $d$ 个特征向量（例如长度、宽度、重量等）。我们将输入升级为向量 $\mathbf{x} \in \mathbb{R}^d$。此时，我们需要 $d$ 个权重分量来分别评估每一个特征的重要性，即权重变为了向量 $\mathbf{w} \in \mathbb{R}^d$。此时线性关系变为两个向量的点积：
+
+$$
+y = \mathbf{w}^\top \mathbf{x} + b = \sum_{j=1}^d w_j x_j + b
+$$
+:eqlabel:eq_linear_vector
+
+在现代神经网络中，我们不仅要同时处理多个特征，还要同时计算多个并行的输出神经元。如果我们的网络层接收 $d$ 个维度的输入，并投射到 $c$ 个维度的输出，那么我们将有 $c$ 个独立的偏置 $b_1, \dots, b_c$。权重则从向量演化为矩阵 $\mathbf{W} \in \mathbb{R}^{d \times c}$。在此情况下，对于单样本 $\mathbf{x} \in \mathbb{R}^{1 \times d}$，其线性映射变为：
+
+$$
+\mathbf{y} = \mathbf{x} \mathbf{W} + \mathbf{b}
+$$
+:eqlabel:eq_linear_single_matrix
+
+最终，为了充分利用 GPU 的海量并发计算单元，我们必须采用式 :eqref:eq_minibatch_risk 中提到的小批量形式。我们将 $n$ 个样本堆叠起来，形成输入设计矩阵 $\mathbf{X} \in \mathbb{R}^{n \times d}$。根据矩阵乘法的法则，输出张量 $\mathbf{Y}$ 的形状自然演变为 $n \times c$：
+
+$$
+\mathbf{Y} = \mathbf{X} \mathbf{W} + \mathbf{b}
+$$
+:eqlabel:eq_linear_batch_matrix
+
+在式 :eqref:eq_linear_batch_matrix 中，矩阵 $\mathbf{X} \mathbf{W}$ 的形状为 $n \times c$，而偏置向量 $\mathbf{b}$ 的形状为 $1 \times c$。这里隐藏着深度学习框架中最关键的张量机制——**广播机制（Broadcasting）**。框架会自动将偏置向量 $\mathbf{b}$ 在第 $0$ 维度（样本维度）上复制 $n$ 次，使得两个张量的形状完全匹配后进行逐元素相加，这一切发生得既隐蔽又高效。
+
+在 PyTorch 中，上述整个维度的推导、权重的显存分配以及初始化逻辑，都被无缝封装在一个名为“全连接层”（Fully-Connected Layer）或“线性层”（Linear Layer）的抽象类中。
+
+(**我们使用`nn.Sequential`容器将多个神经网络层按顺序拼装，并向其中传入一个输入维度为 2、输出维度为 1 的线性层`nn.Linear`。**)
+
+```{.python .input}
+#@tab pytorch
+# 构建模型：这里相当于 y = XW + b
+# PyTorch 的 nn.Linear 第一个参数是输入特征数 d，第二个参数是输出特征数 c
+net = nn.Sequential(nn.Linear(2, 1))
+
+# 初始化模型参数，我们通常从特定方差的正态分布中抽取权重
+net[0].weight.data.normal_(0, 0.01)
+net[0].bias.data.fill_(0)
+```
+
+## 2.6.4 损失函数的计算图抽象与数值稳定性
+:label:sec_loss_and_stability
+
+定义了模型输出后，我们需要通过损失函数来量化模型预测值与真实值之间的偏差。对于回归任务，最直接的度量方式是均方误差（Mean Squared Error, MSE）。框架提供了 `nn.MSELoss` 类，它内部会自动将计算过程注册到动态图中，为反向传播铺平道路。
+
+然而，更具学术探讨价值的是分类任务中使用的损失函数。让我们稍微偏离回归任务，深入探讨一下深度学习中最容易踩坑的数值稳定性问题。在分类问题中，我们通常将线性层的原始输出向量 $\mathbf{o}$ 称为“逻辑值”（Logits）。为了将其转化为合法的概率分布 $\mathbf{\hat{y}}$，我们会使用 Softmax 操作：
+
+$$
+\hat{y}_j = \frac{\exp(o_j)}{\sum_{k=1}^c \exp(o_k)}
+$$
+:eqlabel:eq_softmax_naive
+
+然后，我们将预测概率代入交叉熵损失函数中：
+
+$$
+l(\mathbf{y}, \mathbf{\hat{y}}) = - \sum_{j=1}^c y_j \log \hat{y}_j
+$$
+:eqlabel:eq_cross_entropy
+
+如果我们将式 :eqref:eq_softmax_naive 代入式 :eqref:eq_cross_entropy，我们得到：
+
+$$
+\log \hat{y}_j = o_j - \log \left( \sum_{k=1}^c \exp(o_k) \right)
+$$
+:eqlabel:eq_log_softmax_unstable
+
+这就引出了严重的**数值溢出（Numerical Overflow/Underflow）**风险。在计算机中，浮点数的表达范围是有限的。假设在训练初期，某个逻辑值 $o_k$ 的数值因为梯度爆炸而变得非常大（例如 $o_k = 1000$）。当我们计算 $\exp(1000)$ 时，超出了单精度浮点数的上限，结果会变成 `NaN`（Not a Number）或 `Inf`。反之，如果 $o_k$ 全是巨大的负数，指数项会下溢为 $0$，此时计算 $\log(0)$ 得到负无穷大。
+
+现代深度学习框架通过优雅地合并 Softmax 和 Cross-Entropy 的计算，彻底解决了这个问题。框架在底层自动采用了 **LogSumExp 技巧**。我们在每次计算前，先找到当前逻辑值中的最大项 $M = \max(o_k)$，并在分子分母中同时提出 $\exp(M)$：
+
+$$
+\log \hat{y}_j = (o_j - M) - \log \left( \sum_{k=1}^c \exp(o_k - M) \right)
+$$
+:eqlabel:eq_log_softmax_stable
+
+通过式 :eqref:eq_log_softmax_stable 的巧妙变换，最大的指数项被强制缩放为 $\exp(0) = 1$，从而绝不可能发生上溢；同时，因为至少存在一个项等于 $1$，求和项总大于等于 $1$，因此其对数运算也绝不会产生负无穷大。由于框架在底层的 C++ 算子级别实现了这一优化，开发者只需简单调用 `nn.CrossEntropyLoss()`，即可安全、高效地进行反向传播。
+
+而在本节的线性回归演示中，我们直接使用 MSE 损失。
+
+(**我们将实例化均方误差损失函数用于后续的训练循环。**)
+
+```{.python .input}
+#@tab pytorch
+loss = nn.MSELoss()
+```
+
+## 2.6.5 优化器的模块化：随机梯度下降的封装
+:label:sec_optimizer_encapsulation
+
+最后，当我们通过反向传播计算得到损失函数关于所有模型参数的梯度 $\nabla_{\mathbf{\theta}} L(\mathbf{\theta})$ 时，我们需要按照一定的策略对参数进行迭代更新。在高中物理中，我们知道物体在势能曲面上会沿着最陡峭的方向（梯度的反方向）加速滑落。优化算法的核心思想正是在高维损失曲面上模拟这一滑落过程。
+
+最经典的更新规则是小批量随机梯度下降（Stochastic Gradient Descent, SGD）：
+
+$$
+\mathbf{\theta}_{t} = \mathbf{\theta}_{t-1} - \eta \nabla_{\mathbf{\theta}} L_B(\mathbf{\theta}_{t-1})
+$$
+:eqlabel:eq_sgd_update
+
+其中 $\eta$ 表示学习率（Learning Rate），它严格控制了我们每一次朝着梯度方向迈出步伐的长度。如果 $\eta$ 设定得过大，优化轨迹可能会在峡谷的两壁间来回震荡，甚至发散；如果过小，则收敛速度将变得如同蜗牛漫步。
+
+在框架中，所有的参数矩阵（如 `net[0].weight` 和 `net[0].bias`）在内部都维护着两个连续的内存块：一个存储当前的参数值数据 `.data`，另一个存储刚刚计算出来的梯度信息 `.grad`。我们不再需要手动书写遍历和相减的代码。框架将整个更新法则和超参数管理器统筹在 `torch.optim` 模块中。我们只需将待优化的参数列表交由优化器对象托管即可。
+
+(**我们实例化一个`SGD`优化器对象，指定要优化的网络参数和学习率。**)
+
+```{.python .input}
+#@tab pytorch
+trainer = torch.optim.SGD(net.parameters(), lr=0.03)
+```
+
+## 2.6.6 端到端的模型训练生命周期
+:label:sec_training_loop
+
+至此，我们将前面讨论的所有高级抽象模块——数据迭代器、网络模型结构、数值稳定的损失函数以及 SGD 优化器——组合在一起，形成一段极其紧凑却功能完备的训练脚本。
+
+在深层框架的视角下，每一次训练迭代（Step）都遵循着一段严格的生命周期逻辑，不可随意颠倒：
+1. 从迭代器获取下一批特征 $\mathbf{X}$ 与标签 $\mathbf{y}$。
+2. 调用 `net(X)` 构建前向计算图并得到预测值 $\mathbf{\hat{y}}$。
+3. 计算标量损失值 `l = loss(y_hat, y)`。
+4. **清理遗留状态**：在反向传播前，必须调用 `trainer.zero_grad()`。这是因为框架的底层设计为了支持复杂的循环神经网络等架构，默认会将计算出的梯度累加到原有梯度上，而不是替换。
+5. **触发反向传播**：调用 `l.backward()`。此时框架的自动微分引擎会自顶向下遍历整个动态计算图，利用链式法则计算出所有叶子节点（即模型参数）的梯度，并将其填充到参数的 `.grad` 属性中。
+6. **执行更新步**：调用 `trainer.step()`。优化器会遍历其托管的参数列表，严格按照式 :eqref:eq_sgd_update 执行就地（In-place）的数值减法。
+
+(**以下是完整的模型训练生命周期代码实现。**)
+
+```{.python .input}
+#@tab pytorch
+num_epochs = 3
+for epoch in range(num_epochs):
+    for X, y in data_iter:
+        l = loss(net(X) ,y)
+        trainer.zero_grad()
+        l.backward()
+        trainer.step()
+    # 每个 epoch 结束后，在全量数据上评估当前损失
+    l = loss(net(features), labels)
+    print(f'epoch {epoch + 1}, loss {l:f}')
+```
+
+通过这一节的解析，我们不难发现：尽管高级 API 的使用代码极为简洁，往往只有区区几行，但其下掩藏的是极其严密的数学推导与深刻的工程权衡。无论是自动维度广播、LogSumExp 的防溢出技巧，还是动态图与梯度累加的解耦，都是深度学习发展十余年来沉淀下的智慧结晶。对这些“黑盒”底层原理的敬畏与透彻理解，正是进阶成为顶级人工智能研究者的必经之路。
+
+## 2.6.7 练习
+
+1. 如果我们将本节中用于生成合成数据的真实标签权重从一个二维向量变为形状为 $2 \times 3$ 的矩阵，我们需要对数据迭代器、模型维度和损失函数的形状进行哪些改动？
+    - **提示**：回顾式 :eqref:eq_linear_batch_matrix 中的矩阵乘法维度推演。当输出维度 $c = 3$ 时，偏置向量 $\mathbf{b}$ 在广播时的维度是什么？
+2. 试着在训练循环内部，将 `trainer.zero_grad()` 这一行注释掉。观察几轮训练后的损失值变化，并用微积分链式法则和梯度累加的机制解释这一现象。
+3. 在 `nn.MSELoss` 的文档中存在一个名为 `reduction` 的参数。探索如果将其从默认的 `'mean'` 改为 `'sum'`，为了保证收敛，我们需要对优化器的学习率做何种数值量级上的等比例缩放？
+
+:begin_tab:pytorch
+[讨论](https://discuss.d2l.ai/t/1234)
+:end_tab:

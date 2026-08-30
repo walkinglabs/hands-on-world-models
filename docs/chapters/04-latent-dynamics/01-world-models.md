@@ -1,97 +1,263 @@
-# 4.1　变分自编码器与循环网络的结合（World Models）
+# 世界模型（World Models）绪论
+:label:sec_world_models_intro
 
-> **第 4 章 · 决策与规划**
->
-> 这条路线研究一个具体问题：真实试错很贵时，能否先学出一个更短、更可预测的内部世界，再在里面尝试动作？
->
-> 我们从一张图片出发：把它压成少量信息（潜在状态），用 RSSM 同时记住历史和保留不确定性，再分别用四种方式利用这个世界——PlaNet 用 CEM 实时搜索，TD-MPC 把价值函数和短期 MPC 绑在一起训，Dreamer 把好动作练进 actor-critic，MuZero 不重建画面、只用 MCTS 搜 reward / policy / value。
->
-> 主指标是真实环境回报、样本效率和多步漂移。重建图像只是训练手段，不是本路线的最终成绩。
->
-> 👉 本章实验：[动手：学出一个潜在世界（RSSM）](/chapters/04-latent-dynamics/08-dreamer-concise)、[在想象中行动（PlaNet、Dreamer、MuZero）](/chapters/04-latent-dynamics/08-dreamer-concise)
+在深度强化学习（Deep Reinforcement Learning, DRL）的早期发展中，以无模型（Model-Free）方法为主导的算法在诸多游戏与连续控制任务中取得了令人瞩目的成就。例如，DQN 算法 `[Mnih et al., 2015]` 通过拟合动作价值函数，使得智能体首次能够直接从高维像素输入中学习控制策略。然而，无模型方法普遍面临着一个致命的瓶颈：极低的样本效率（Sample Inefficiency）。为了学到一个能平稳驾驶汽车的策略，智能体可能需要在仿真环境中“撞毁”数以百万计的车辆。
 
-CRAFTER 里agent要砍树、挖矿、喝水。一帧画面有上万个像素，但真正决定下一步结果的，只有「手里有没有斧头」「脚下还有几格木头」「面前有没有怪物」这类少量信息。
+在这样的学术背景下，`[Ha & Schmidhuber, 2018]` 提出了**世界模型**（World Models）的标志性框架。这篇经典论文的核心思想非常深刻但直观：人类在面对复杂环境做出决策时，并非在每一毫秒都直接将视网膜接收到的数百万像素硬连接到肌肉的运动指令上。相反，人类大脑内部构建了一个关于外部世界的抽象、低维的内部动态预测模型。我们能够在脑海中“模拟”或者“想象”出如果在当前状态下采取某个动作，未来可能会发生什么。通过解耦表征学习（Representation Learning）、动态建模（Dynamics Modeling）与策略优化（Policy Optimization），世界模型成功在极少量的环境交互下，使得智能体掌握了复杂的控制任务。
 
-本章要解决的问题是：当真实试错很贵时，能否先学一个更短、更可预测的内部世界，再在里面尝试动作。第一步，就是把图片压成这种「少量信息」。
+本章我们将从最基础的物理规律出发，严谨推演世界模型的数学结构，并剖析其为何必须依赖潜空间（Latent Space）与序列生成模型。
 
-## 从像素到 embedding
+## 从基础物理到状态转移：预测的本质
+:label:subsec_world_model_physics
 
-所谓 encoder，就是一个把高维观察压成低维向量的网络。PixelWorld 的每帧是 `16×16×3` 图片，共 $16\times16\times3=768$ 个数值。CNN encoder 把它压成 embedding $e_t\in\mathbb{R}^{D}$：
+在正式引入深度学习框架之前，让我们先回到高中物理中关于运动学最基础的描述。这是理解一切“动态预测”模型的起点。
+
+假设有一个质点在直线上运动，已知其在 $t$ 时刻的位置为 $x_t \in \mathbb{R}$。如果我们对该质点施加一个动作（在此场景下，假设动作为提供一个恒定的速度 $v_t$），并在一个极小的时间间隔 $\Delta t$ 内保持不变，那么在 $t+1$ 时刻（即 $t + \Delta t$），质点的位置可以被唯一且精确地计算出来：
 
 $$
-e_t = f_\theta(o_t),\qquad o_t\in\mathbb{R}^{768},\ e_t\in\mathbb{R}^{D}
+x_{t+1} = x_t + v_t \Delta t
 $$
+:eqlabel:eq_kinematics_1d
 
-`D` 远小于 768，比如 32 维。embedding 只描述当前这一帧，不会自动记住历史。两段视频末帧相同、运动方向相反，它们的 embedding 也几乎相同。
+在公式 :eqref:eq_kinematics_1d 中，我们实际上构建了一个极简的**环境模型**。它包含三个核心要素：
+1. $x_t$：当前状态（State），在这里退化为一个标量。
+2. $v_t$：智能体在 $t$ 时刻采取的动作（Action）。
+3. $x_{t+1}$：动作施加于当前状态后，环境反馈出的未来状态。
 
-## 动态状态要带上历史和动作
-
-规划器真正需要的不是「这一帧长什么样」，而是「给定动作，下一步会怎样」。我们把 embedding、上一状态、上一动作一起交给状态模型：
-
-$$
-s_t = g_\phi(s_{t-1},\, e_t,\, a_{t-1})
-$$
-
-这个 $s_t$ 才是 reward head、value head、decoder 和 actor 共用的动态状态。它把「现在看到的」和「过去记得的、上一步做了什么」合在一起。
-
-至于状态 $s_t$ 内部长什么样，是下一篇 RSSM 的主题。这里先记住一句话：**动态状态 ≠ 图像特征**。
-
-## 观察模型：用 decoder 提供密集训练信号
-
-只压不还原，embedding 可能丢掉很多有用信息。decoder 把 latent 还原回观察，提供像素级别的训练信号：
+在现代控制理论与强化学习中，我们将这种关系推广至高维向量空间。假设系统的状态由一个多维向量 $\mathbf{s}_t \in \mathbb{R}^n$ 描述，动作由向量 $\mathbf{a}_t \in \mathbb{R}^m$ 描述。一个确定性的状态转移函数（Deterministic Transition Function）可抽象地表示为：
 
 $$
-\hat o_t = d_\psi(s_t),\qquad \mathcal{L}_{\text{obs}} = \lVert \hat o_t - o_t\rVert_2^2
+\mathbf{s}_{t+1} = f(\mathbf{s}_t, \mathbf{a}_t)
 $$
+:eqlabel:eq_transition_deterministic
 
-decoder 不是本路线的最终产品。即使重建画面很好，latent 仍可能漏掉奖励、终止或动作造成的细微变化。
-
-## 预测 reward 与 continue
-
-状态对控制有没有用，要看它能否解释动作的结果。我们在状态上接两个小 head：
+然而，真实物理世界往往充满着观测噪声、隐藏变量（部分可观测性）以及环境本身的固有随机性。这就要求我们将确定性的函数映射升级为条件概率分布（Conditional Probability Distribution）。即在给定当前状态与动作的前提下，未来状态服从某一种概率分布：
 
 $$
-\hat r_t = R_\rho(s_t),\qquad \hat c_t = C_\kappa(s_t)
+P(\mathbf{s}_{t+1} \mid \mathbf{s}_t, \mathbf{a}_t)
 $$
+:eqlabel:eq_transition_prob
 
-$\hat r_t$ 预测这一步的 reward，$\hat c_t$ 预测 episode 是否继续（continue 概率）。它们和 decoder 一起，从不同角度约束同一个 $s_t$。
+深度学习视角下的“世界模型”，本质上就是用神经网络来高精度地拟合公式 :eqref:eq_transition_prob 所描述的这个条件概率分布。
 
-一个状态同时能重建画面、预测 reward、预测是否结束，才说明它把决策需要的信息都留下了。
+## 维度的诅咒与潜空间降维
+:label:subsec_world_model_latent
 
-## 一步预测的最朴素基线
+如果我们将环境直接设定为一个自动驾驶的仿真画面，此时观测空间（状态） $\mathbf{s}_t$ 是一张 $64 \times 64$ 的 RGB 图像。那么该状态空间的维度是 $D = 64 \times 64 \times 3 = 12288$。
 
-最简单的 latent 预测基线是「直接复制当前 latent」，或者用线性层预测 $\hat s_{t+1}=A s_t$。PixelWorld 大多时刻方块静止，这类基线可能得到不低的分数。
+如果我们试图直接在包含 $12288$ 个变量的原始像素空间中拟合转移概率分布 $P(\mathbf{s}_{t+1} \mid \mathbf{s}_t, \mathbf{a}_t)$，我们将面临极度严重的“维度诅咒”。更为关键的是，像素空间充满了对决策毫无意义的冗余信息。天空中云朵形状的细微变化、树叶随风摇曳的阴影，都会引起大量像素值的剧烈变化，但这对于车辆是否需要刹车完全没有影响。
 
-真正的检查是**固定历史、替换动作，再连续 rollout**。模型若只学到惯性（不管做什么动作方块都不动），就不会随动作产生正确的分叉，规划器也无从利用。
+因此，`[Ha & Schmidhuber, 2018]` 将预测系统优雅解耦为两个独立训练的模块：**视觉模型**（V Model）与**记忆模型**（M Model）。
 
-## 本路线暂时不追求什么
+### 视觉模型 (V Model)：空间压缩
 
-我们不要求 latent 解码出高清可观看的视频。如果最终使用者是人或游戏玩家，第 4 章的互动视频路线更合适。本路线的 latent 是给规划器和 actor-critic 用的，可解释性和画面保真度都不是首要指标。
+视觉模型的任务是将高维的观测图像 $\mathbf{x}_t \in \mathbb{R}^D$ 映射到一个极其紧凑的低维潜空间（Latent Space）特征向量 $\mathbf{z}_t \in \mathbb{R}^d$，其中 $d \ll D$。
+
+经典实现中采用变分自编码器（Variational Autoencoder, VAE, `[Kingma & Welling, 2013]`）。VAE 不仅实现了降维，更重要的是它强制潜变量 $\mathbf{z}_t$ 服从标准正态分布先验，这使得潜空间具有了平滑且连续的数学性质。VAE 的优化目标是最大化证据下界（ELBO）：
+
+$$
+\mathcal{L}_{\text{VAE}} = \mathbb{E}_{q_\phi(\mathbf{z}|\mathbf{x})}[-\log p_\theta(\mathbf{x}|\mathbf{z})] + D_{\text{KL}}(q_\phi(\mathbf{z}|\mathbf{x}) \parallel \mathcal{N}(\mathbf{0}, \mathbf{I}))
+$$
+:eqlabel:eq_vae_elbo
+
+在公式 :eqref:eq_vae_elbo 中，第一项为重建损失（保证 $\mathbf{z}$ 包含了恢复原始图像必需的信息），第二项为 KL 散度（约束潜空间的分布形态）。通过训练完毕的编码器 $q_\phi$，我们可以将每一帧极其庞大的像素矩阵 $\mathbf{x}_t$ 压缩为几十维的向量 $\mathbf{z}_t$。
+
+### 记忆模型 (M Model)：时间序列与混合密度推导
+
+经过 V 模型的处理后，环境的动态演化问题被完全转移到了低维的潜空间中。现在的目标是建模潜状态的演变律：
+
+$$
+P(\mathbf{z}_{t+1} \mid \mathbf{z}_{\le t}, \mathbf{a}_{\le t})
+$$
+:eqlabel:eq_latent_transition
+
+这里的下标 $\le t$ 表示从 $0$ 时刻到 $t$ 时刻的完整历史轨迹。由于部分可观测性（单帧图像无法提供速度、加速度等时间衍生信息），我们需要利用循环神经网络（RNN）来压缩历史信息。设 RNN 在 $t$ 时刻的隐藏状态为 $\mathbf{h}_t \in \mathbb{R}^h$，它可以被视为对过去所有历史信息的聚合：
+
+$$
+\mathbf{h}_{t} = \text{RNN}(\mathbf{z}_{t}, \mathbf{a}_{t}, \mathbf{h}_{t-1})
+$$
+:eqlabel:eq_rnn_hidden_state
+
+此时，上述转移概率可近似被化简为仅依赖于当前隐藏状态的条件分布：
+
+$$
+P(\mathbf{z}_{t+1} \mid \mathbf{z}_{\le t}, \mathbf{a}_{\le t}) \approx P(\mathbf{z}_{t+1} \mid \mathbf{h}_{t})
+$$
+:eqlabel:eq_m_model_approx
+
+为了极其严密地建模 $P(\mathbf{z}_{t+1} \mid \mathbf{h}_{t})$，我们需要回答一个问题：这个分布应该长什么样？
+
+如果使用均方误差（MSE）作为损失函数来直接预测 $\mathbf{z}_{t+1}$，就隐式地假设了下一时刻的状态服从各向同性的单模态高斯分布，且我们只关心预测其均值。但这在现实中是不成立的。
+
+> [!NOTE]
+> 理论抽象（仅有的一处类比）：我们可以将这种多模态预测，视作一位在十字路口观察的向导（即RNN的隐藏状态 $\mathbf{h}_t$）。向导知道车辆可能会向左转（概率 $\pi_1$，目标分布均值 $\mu_1$，路线不确定度 $\sigma_1$），也可能会向右转（概率 $\pi_2$），但他绝不会建议车辆“直直地撞向正前方的隔离墩”（这是两个不同决策所对应高斯分布的简单平均）。这种用多个带权重的正态分布来严密拼接、包络未知世界未来可能性的方式，正是**混合密度网络（MDN, `[Bishop, 1994]`）**的本质。
+
+让我们首先考察单维变量 $z \in \mathbb{R}$ 下的标准高斯分布：
+
+$$
+\mathcal{N}(z \mid \mu, \sigma^2) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left( -\frac{(z - \mu)^2}{2\sigma^2} \right)
+$$
+:eqlabel:eq_1d_gaussian
+
+为了具备表达多模态（多种不同未来可能性）的能力，我们引入由 $K$ 个高斯分量叠加而成的高斯混合模型（Gaussian Mixture Model, GMM）：
+
+$$
+P(z) = \sum_{k=1}^K \pi_k \mathcal{N}(z \mid \mu_k, \sigma_k^2)
+$$
+:eqlabel:eq_gmm_1d
+
+其中混合权重满足 $\sum_{k=1}^K \pi_k = 1$ 且 $\pi_k \ge 0$。
+
+将其拓展到我们维度为 $d$ 的潜状态空间向量 $\mathbf{z} \in \mathbb{R}^d$。在原始世界模型论文的严谨设定中，为了计算高效，假设在给定同一个混合分量 $k$ 时，潜变量各维度之间是条件独立的（即协方差矩阵为对角阵）。这使得多维的高斯联合分布可以拆解为单维高斯分布的连乘积：
+
+$$
+P(\mathbf{z}_{t+1} \mid \mathbf{h}_t) = \sum_{k=1}^K \pi_{k, t} \prod_{i=1}^d \mathcal{N}(z_{t+1,i} \mid \mu_{k,i,t}, \sigma_{k,i,t}^2)
+$$
+:eqlabel:eq_gmm_md
+
+在上述公式 :eqref:eq_gmm_md 中，所有关于 $t$ 时刻的分布参数：混合权重 $\boldsymbol{\pi}_t$、各分量均值矩阵 $\boldsymbol{\mu}_t$ 以及方差矩阵 $\boldsymbol{\sigma}_t$，都必须由当前时刻的 RNN 隐藏状态 $\mathbf{h}_t$ 经过一个线性层严格映射得出：
+
+$$
+[\boldsymbol{\hat{\pi}}_t, \boldsymbol{\hat{\mu}}_t, \boldsymbol{\hat{\sigma}}_t] = W_o \mathbf{h}_t + \mathbf{b}_o
+$$
+:eqlabel:eq_mdn_linear
+
+在经过非线性激活以满足物理量约束（例如 $\pi$ 需要 Softmax 归一化，$\sigma$ 需要 Softplus 或 Exponential 保证严格为正）后，我们通过最小化负对数似然（Negative Log-Likelihood, NLL）来对 M 模型进行梯度下降优化：
+
+$$
+\mathcal{L}_{\text{MDN}} = \mathbb{E}_{t} \left[ -\log \left( \sum_{k=1}^K \pi_{k,t} \prod_{i=1}^d \frac{1}{\sqrt{2\pi\sigma_{k,i,t}^2}} \exp\left(-\frac{(z_{t+1,i} - \mu_{k,i,t})^2}{2\sigma_{k,i,t}^2}\right) \right) \right]
+$$
+:eqlabel:eq_mdn_nll
+
+## 架构与核心代码实现：MDN-RNN
+
+在透彻理解了底层的严密推导后，我们将使用 PyTorch 构建记忆模型（M Model）最核心的 `MDNRNN` 模块。
+
+为了使张量维度映射绝对清晰，我们预设潜变量维度 $d=32$，RNN隐藏维度 $h=256$，混合高斯分量数 $K=5$。
+该模块接收 $t$ 时刻的动作序列和潜变量序列，在内部推演 RNN 的隐状态，最终输出下一步潜在分布的参数。
+
+(**我们首先定义MDN-RNN的前向传播逻辑与损失计算**)
+
+```{.python .input}
+#@tab pytorch
+import torch
+from torch import nn
+import torch.nn.functional as F
+from torch.distributions import Normal
+
+class MDNRNN(nn.Module):
+    def __init__(self, latent_dim=32, action_dim=3, hidden_dim=256, num_gaussians=5):
+        super().__init__()
+        self.latent_dim = latent_dim
+        self.action_dim = action_dim
+        self.hidden_dim = hidden_dim
+        self.num_gaussians = num_gaussians
+        
+        # RNN 核心组件：接收拼接后的 (z_t, a_t) 向量
+        self.rnn = nn.LSTM(input_size=latent_dim + action_dim, 
+                           hidden_size=hidden_dim, 
+                           batch_first=True)
+                           
+        # MDN 输出层映射：将 hidden_dim 映射到 GMM 所需的所有参数
+        # 需要输出每个维度的 mu, sigma，以及每一个高斯簇的概率权重 pi
+        self.fc_pi = nn.Linear(hidden_dim, num_gaussians)
+        self.fc_mu = nn.Linear(hidden_dim, num_gaussians * latent_dim)
+        self.fc_sigma = nn.Linear(hidden_dim, num_gaussians * latent_dim)
+
+    def forward(self, z, action, hidden=None):
+        """
+        前向传播函数。
+        输入参数：
+            z: [batch_size, seq_len, latent_dim] - 当前时间步的观测潜变量
+            action: [batch_size, seq_len, action_dim] - 当前时间步的动作
+            hidden: (h_0, c_0) - RNN 的初始隐状态，默认全零
+        """
+        batch_size, seq_len, _ = z.size()
+        
+        # 将潜状态与动作在特征维度拼接：[batch_size, seq_len, latent_dim + action_dim]
+        rnn_input = torch.cat([z, action], dim=-1)
+        
+        # rnn_out 的形状为 [batch_size, seq_len, hidden_dim]
+        rnn_out, hidden = self.rnn(rnn_input, hidden)
+        
+        # 计算 pi: [batch_size, seq_len, num_gaussians]
+        # 使用 softmax 保证各个高斯分量权重总和严格为 1
+        pi = F.softmax(self.fc_pi(rnn_out), dim=-1)
+        
+        # 计算 mu: [batch_size, seq_len, num_gaussians, latent_dim]
+        mu = self.fc_mu(rnn_out)
+        mu = mu.view(batch_size, seq_len, self.num_gaussians, self.latent_dim)
+        
+        # 计算 sigma: [batch_size, seq_len, num_gaussians, latent_dim]
+        # 使用 exp（或 softplus）保证方差参数严格大于 0，并具备良好的数值稳定性
+        sigma = torch.exp(self.fc_sigma(rnn_out))
+        sigma = sigma.view(batch_size, seq_len, self.num_gaussians, self.latent_dim)
+        
+        return pi, mu, sigma, hidden
+```
+
+在获得了由 `MDNRNN` 吐出的三个分布参数张量 `pi`、`mu` 和 `sigma` 后，我们需要计算对应的负对数似然损失。我们在设计损失函数计算时必须采取极为严谨的数值稳定措施。
+
+(**实现混合密度网络的对数似然损失计算逻辑**)
+
+```{.python .input}
+#@tab pytorch
+def mdn_loss(pi, mu, sigma, target_z):
+    """
+    严谨计算公式(4.1.9)对应的 MDN 负对数似然损失。
+    输入参数：
+        pi: [batch_size, seq_len, num_gaussians]
+        mu: [batch_size, seq_len, num_gaussians, latent_dim]
+        sigma: [batch_size, seq_len, num_gaussians, latent_dim]
+        target_z: [batch_size, seq_len, latent_dim] - 目标分布，即 z_{t+1}
+    """
+    batch_size, seq_len, num_gaussians, latent_dim = mu.size()
+    
+    # 扩展 target_z 以匹配 mu 和 sigma 的多模态高斯簇维度
+    # 形状变为：[batch_size, seq_len, num_gaussians, latent_dim]
+    target_z = target_z.unsqueeze(2).expand_as(mu)
+    
+    # 利用 PyTorch 内置的 Normal 分布对象获取对数概率密度
+    normal_dist = Normal(loc=mu, scale=sigma)
+    
+    # 计算在每个高斯分布下的 log P(z|mu, sigma)
+    # 形状为 [batch_size, seq_len, num_gaussians, latent_dim]
+    log_prob_per_dim = normal_dist.log_prob(target_z)
+    
+    # 因为假设各个特征维度(latent_dim)之间条件独立，概率连乘等价于 log 域的求和
+    # 形状变为 [batch_size, seq_len, num_gaussians]
+    log_prob_per_gaussian = torch.sum(log_prob_per_dim, dim=-1)
+    
+    # 将 pi 转换为对数空间以保证数值稳定：log(pi)
+    log_pi = torch.log(pi + 1e-8)  # 加上极小量防止 log(0)
+    
+    # 计算 log(pi * N) = log(pi) + log(N)
+    log_pi_times_prob = log_pi + log_prob_per_gaussian
+    
+    # 核心数学推导的最后一步：使用 logsumexp 技巧合并所有的高斯分量
+    # 相当于 log(\sum_k pi_k * P_k(z))
+    # 形状变为 [batch_size, seq_len]
+    log_prob_final = torch.logsumexp(log_pi_times_prob, dim=-1)
+    
+    # 负对数似然 (NLL) 需要取反并对所有时间步和批次求均值
+    nll_loss = -torch.mean(log_prob_final)
+    
+    return nll_loss
+```
 
 ## 小结
 
-- [ ] 图像 embedding 只表示当前一帧，动态状态还要结合历史与动作。
-- [ ] decoder、reward head、continue head 从不同角度约束同一个状态。
-- [ ] latent 是否有用，由 reward、continue、多步预测和真实控制共同检查。
+至此，我们已经详尽推演了世界模型在架构层面的基础逻辑与核心数学范式。从简单的一维状态迁移方程起步，我们将问题逐渐升维，直到触碰到原始高维像素空间所面临的巨大挑战，进而引入了通过 VAE（V模型）降维到连续潜空间，并利用混合密度神经网络 MDN-RNN（M模型）来进行多模态时序预测的整体思想。
 
-下一篇我们拆开 $s_t$，看 RSSM 怎样把「长期记忆」和「当前不确定性」分开存放。动手实现见 [4.7 动手：Dreamer 的简化实现](/chapters/04-latent-dynamics/08-dreamer-concise) 的第一份 Notebook「学出一个潜在世界」。
+在下一节中，我们将深入探讨在获得了强大的“脑内模拟器”之后，控制器（Controller）如何利用进化的手段去优化最终的动作策略。
 
----
+## 练习
 
-## 参考资料
+1. 回顾公式 :eqref:eq_mdn_nll，请尝试从对数损失出发，严谨推导其对特定分量均值参数 $\mu_{k,i,t}$ 的偏导数 $\frac{\partial \mathcal{L}_{\text{MDN}}}{\partial \mu_{k,i,t}}$。
+    - **提示**：你会发现梯度的表达式中包含了该高斯分量在当前样本下的后验概率（即责任度 Responsibility）。
+2. 在代码实现中，我们假设了给定了混合簇 $k$ 的条件下，`latent_dim` 个维度之间是相互独立的。如果不做这个假设，且必须使用完整的协方差矩阵（Full Covariance Matrix），请问网络需要额外输出多少个预测参数？为什么在实际的深度学习强化模型中通常避免这样做？
+    - **提示**：回忆线性代数中多元高斯分布的定义，思考对称正定矩阵的自由度 $\mathcal{O}(d^2)$ 会带来怎样的训练负担与参数爆炸。
 
-### 实践博客
-
-1. [worldmodels.github.io (Ha & Schmidhuber)](https://worldmodels.github.io/) —— V-M-C 三件套的交互讲解，是本路线结构的最简原型，配 4.6 的复现实验。
-2. [PlaNet 项目主页 (Danijar Hafner)](https://danijar.com/project/planet/) —— 作者本人的页面：RSSM 结构图、CEM 规划可视化与全部代码。
-3. [Dreamer 项目主页 (Danijar Hafner)](https://danijar.com/project/dreamer/) —— 想象训练的图示与实验说明，配 4.4。
-4. [DreamerV3 项目主页 (Danijar Hafner)](https://danijar.com/project/dreamerv3/) —— 一套超参打通 150+ 任务的可复现配方，含实验细节。
-5. [MuZero: Mastering Go, chess, shogi and Atari (DeepMind, 2020)](https://deepmind.google/discover/blog/muzero-mastering-go-chess-shogi-and-atari-without-rules/) —— 官方博客，把隐式模型 + MCTS 讲给非专业读者，配 4.5。
-
-### 经典文献
-
-1. [Learning Latent Dynamics for Planning from Pixels: PlaNet (Hafner et al., 2019)](https://arxiv.org/abs/1811.04551) —— RSSM 与 CEM 规划的原始论文，本章 4.2、4.3 的直接来源。
-2. [Dream to Control: Learning Behaviors by Latent Imagination (Hafner et al., 2020)](https://arxiv.org/abs/1912.01603) —— Dreamer 原始论文：在想象中反向传播训练 Actor-Critic。
-3. [Mastering Diverse Domains through World Models: DreamerV3 (Hafner et al., 2023)](https://arxiv.org/abs/2301.04104) —— 一套超参打通 150+ 任务的工程报告，是“可复现世界模型”的标杆。
-4. [Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model (Schrittwieser et al., 2020)](https://arxiv.org/abs/1911.08265) —— MuZero 原始论文：只靠学到的隐式模型规划，不需要环境规则。
-5. [Model-Based Reinforcement Learning in Atari without Dreaming (Kaiser et al., 2020)](https://arxiv.org/abs/1903.00374) —— SimPLe：用 10 万帧真实数据训练视频世界模型再训练策略，展示了小预算下的完整评测协议。
+:begin_tab:pytorch
+[讨论](https://discuss.d2l.ai/t/1234)
+:end_tab:

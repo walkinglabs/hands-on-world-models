@@ -1,323 +1,308 @@
-# 4.7　循环状态空间模型的从零开始实现
+# 潜在动力学（RSSM）的从零开始实现
+:label:sec_rssm_scratch
 
-> **本节目标**：在 CarRacing 赛道上，用不到原文百分之一的规模，完整跑通 World Models 的 V-M-C 管线。从随机数据开始，训练一个压缩器、一个想象器、一个进化出来的控制器，最后把它们接回真实环境，亲眼看到「在想象中训练」是怎样发生的。
+在前几章中，我们探讨了如何通过自编码器将高维观测（如图像）压缩为低维的潜在表示（Latent Representation），并初步介绍了如何使用循环神经网络（RNN）在时间维度上建模这些状态的演化。然而，真实的物理世界充满了不确定性。一个纯粹确定性的动力学模型（如标准的RNN）在面对多条可能的未来分支时，往往会产生模糊的预测，或者因为微小的误差而在长程预测中彻底崩溃。
 
-> **本节代码**：[训练脚本](https://github.com/walkinglabs/hands-on-world-models/blob/main/scripts/run_carracing.py)
+为了在潜在空间中既能保持对历史信息的长期记忆，又能稳健地模拟未来的不确定性，Hafner等人在他们的经典工作“Learning Latent Dynamics for Planning from Pixels (PlaNet)” [Hafner et al., 2019] 中，提出了一种名为**循环状态空间模型**（Recurrent State Space Model, 简称RSSM）的优雅架构。RSSM 并非凭空出现，它是对隐马尔可夫模型（HMM）、卡尔曼滤波（Kalman Filter）以及变分自编码器（VAE）等早期序列生成模型在深度学习时代的集大成者。
 
-> **前置知识**：你已经读过 [1.3 经典世界模型](/chapters/01-why-world-models/03-classic-world-models)，知道 V-M-C 三个组件各自做什么。这一节把它们真跑一遍。
+在本节中，我们将完全从零开始，使用基本张量操作和标准神经网络层，一步步构建出完整的 RSSM。我们将从最基础的标量动力学方程出发，严格推导其多维张量形式，并最终落实到可以直接运行的代码实现上。
 
----
+## 历史背景与动力学建模的困境
 
-2018 年，David Ha 与 Jürgen Schmidhuber 在 NeurIPS 发表了论文 _Recurrent World Models Facilitate Policy Evolution_ [1]，并配套了一篇交互式文章 [World Models](https://worldmodels.github.io/) [2]。文章里有一个赛车 demo：一辆小车在赛道上飞驰，画面模糊但动作流畅。作者说，这不是录屏，是模型在「做梦」——一个 867 个参数的线性控制器，完全在想象中学会了开车。
+在深度学习处理时间序列的早期，研究者通常依赖确定性的循环神经网络（如 LSTM 或 GRU）来预测未来的状态。以自动驾驶为例，给定过去的视频帧序列，我们希望预测接下来几秒的画面。如果是确定性模型，当路口前方面临左转或直行的可能性时，网络为了最小化预测误差（均方误差），往往会输出左转和直行的“平均图像”——也就是一团模糊的像素。
 
-你当时大概和我一样，第一反应是：「这怎么可能？867 个参数？线性控制器？在梦里学的？」
+为了引入随机性，变分循环神经网络（Variational RNNs） [Chung et al., 2015] 被提出，它们在每个时间步引入一个服从高斯分布的随机变量。然而，纯粹依靠随机状态跨越时间步传递信息的模型，在优化时极难保留跨越数百步的长期依赖。
 
-这一节，我们要亲手把这件事再做一遍。规模打折，原理不打折。跑完之后，你会对「在想象中训练」这句话有完全不同的理解。
+Hafner 敏锐地洞察到了这一矛盾。在 [Hafner et al., 2019] 中，他提出：**状态的记忆机制应当是确定性的，而对未来的推断应当包含随机性。** 这种将状态强制解耦为“确定性部分”和“随机性部分”的思想，正是 RSSM 在众多世界模型中脱颖而出的核心基础，并在后续的 Dreamer 系列论文 [Hafner et al., 2020; 2023] 中被不断发扬光大。
 
-<div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/carracing-initial.png" alt="CarRacing 目标世界" style="max-width:min(400px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">这就是我们要让模型学会的「世界」：红色小车在灰色赛道上行驶，周围是绿色草地。模型从未见过物理定律，它要从像素流里自己发现「踩油门车会加速、打方向盘车会转弯」。</div>
-</div>
+## 从抛物运动到分离状态空间
 
-## 为什么选 CarRacing
+让我们暂时抛开高维张量和神经网络，回到高中物理中最经典的抛物运动。
 
-World Models 原文有两个实验：CarRacing 赛车和 VizDoom 躲火球。我们选赛车，原因有两个：
+假设你在一个大风天抛出一个网球。网球在 $t$ 时刻的位置不仅取决于 $t-1$ 时刻的位置和速度，还取决于你施加的力量（动作），以及当时阵风的扰动。
 
-**第一，观测就是像素。** 赛道画面是 96×96×3 的图像，V 必须学会把它压成 32 维 latent。压缩的意义立刻可见——12,288 个像素变成 32 个数，信息量压缩了 384 倍。
+在一个简化的、一维的离散时间系统中，网球的速度 $v_t$ 可以近似写为：
+$$v_t = v_{t-1} + a \cdot \Delta t + \epsilon_t$$
+:eqlabel:eq_simple_dynamics_scalar
 
-**第二，随机策略就能收集数据。** 世界模型学的是「世界如何响应动作」，不是「如何开好车」。乱开乱撞的轨迹同样是合法的物理样本。你不需要先有一个会开车的策略，只需要让世界告诉你「踩油门之后画面怎么流动」。
+其中，$a$ 是你施加的加速度，$\epsilon_t$ 则是代表阵风影响的随机噪声。我们可以敏锐地发现，等式的右边由两部分组成：
+1. **确定性部分**（$v_{t-1} + a \cdot \Delta t$）：它精确记录了系统在此前的状态以及受控输入，这部分是完全可以被物理法则（或网络权重）确定的。
+2. **随机性部分**（$\epsilon_t$）：这是系统不可预知的外部扰动，或者说是一种内在的不确定性。
 
-动作空间是三维连续向量：方向盘 \([-1, 1]\)、油门 \([0, 1]\)、刹车 \([0, 1]\)。每局最多 1,000 步（约 20 秒），冲出赛道或长时间停滞会提前结束。
+在真实的非线性世界中，我们将上述系统推广。令 $h_t$ 为存储过去所有历史信息的确定性状态，令 $z_t$ 为捕捉当前时刻随机性的随机状态。如果我们在时间步 $t$ 执行了动作 $a_t$，系统的动力学可以拆解为以下三个严谨的组件。
 
-原文收集了 10,000 次随机 rollout、合计约 1,000 万帧。课程脚本默认 400 次，普通笔记本 CPU 上约 1–3 小时可完成全流程。
+### 确定性状态更新方程
 
-## 第一步：收集随机数据
+确定性状态 $h_t$ 必须融合上一时刻的记忆 $h_{t-1}$、上一时刻的具体遭遇 $z_{t-1}$ 以及上一时刻的动作 $a_{t-1}$。这是一个纯粹的非线性映射：
+$$h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})$$
+:eqlabel:eq_deterministic_update
 
-世界模型学的是物理规律，不是驾驶技术。数据不需要来自专家——乱开乱撞的轨迹同样是合法的物理样本。
+这里，$f_\theta$ 通常被实现为一个门控循环单元（GRU）。需要极其注意的是，$h_t$ 的更新**不依赖**当前时刻 $t$ 的任何新观测，它仅仅是对过去的总结。
 
-脚本用一个「温和随机」策略收集数据：方向盘均匀随机，目标速度每 20 步左右重采一次（让车偶尔沿直线走一段，而不是原地打转），刹车以 10% 概率踩下。每步把观测缩放为 64×64×3（area 插值，与原文一致），连同动作与奖励一起存档。
+### 先验动力学（Prior Dynamics）
 
-```python
-# 简化的数据收集循环
-for episode in range(num_rollouts):
-    observation, _ = env.reset()
-    for step in range(max_steps):
-        action = np.array([
-            np.random.uniform(-1, 1),      # 方向盘
-            target_speed,                   # 油门
-            float(np.random.rand() < 0.1)  # 刹车
-        ])
-        observation, reward, terminated, truncated, _ = env.step(action)
-        observation = resize_frame(observation)  # 96x96 → 64x64
-        # 存储 (observation, action, reward)
+在没有看到时刻 $t$ 真实发生的画面之前，我们需要基于我们对世界的理解（即 $h_t$），去“想象”当前时刻可能发生什么。这就是**先验分布**。为了数学上的可计算性，我们通常假设它服从多变量高斯分布：
+$$p_\theta(z_t \mid h_t) = \mathcal{N}(\mu_\theta(h_t), \Sigma_\theta(h_t))$$
+:eqlabel:eq_prior_dynamics
+
+先验动力学网络通过多层感知机（MLP）输出均值 $\mu_\theta$ 和协方差矩阵（通常被限制为对角阵）$\Sigma_\theta$。
+
+### 后验推断（Posterior Inference）
+
+当我们睁开眼睛，切实看到了时刻 $t$ 的画面（观测 $x_t$）后，我们需要更新我们的认知。结合过去的记忆 $h_t$ 和当前的观测特征，我们提取出当前真实的随机状态 $z_t$。这就是**后验分布**：
+$$q_\phi(z_t \mid h_t, x_t) = \mathcal{N}(\mu_\phi(h_t, x_t), \Sigma_\phi(h_t, x_t))$$
+:eqlabel:eq_posterior_inference
+
+后验推断由编码器提供支持，其分布必须在训练阶段作为先验分布试图逼近的目标（Target）。
+
+> 💡 **复杂机制的直觉映射：**
+> 想象你在黑暗中摸索前行（先验动力学预测可能的位置 $h_t \to z_t$），突然你打开手电筒看清了周围的陈设（观测 $x_t$），此时你在脑海中立刻修正了对自己确切位置的判断（后验推断 $h_t, x_t \to z_t$）。在训练世界模型时，我们要让闭着眼睛摸索的预测，尽可能贴近睁开眼睛看到的真实结果（这正是最小化 KL 散度的物理意义）。
+
+## 严谨的维度推演
+
+在实现代码之前，我们必须对网络中流动的数据张量的形状（Shape）有极其精确的掌控。设批大小为 $B$，序列长度为 $T$。
+
+1. **确定性状态维度（Deterministic State Dimension）**：$D_h$。对于一般的复杂任务，通常取 200 到 1024。
+2. **随机状态维度（Stochastic State Dimension）**：$D_z$。由于它是高斯分布采样的结果，其维度表示潜在因子的数量，通常取 32 到 256。
+3. **动作维度（Action Dimension）**：$D_a$。
+
+在单步推进中：
+- 提取的历史特征：$h_{t-1} \in \mathbb{R}^{B \times D_h}$
+- 历史随机特征：$z_{t-1} \in \mathbb{R}^{B \times D_z}$
+- 当前动作：$a_{t-1} \in \mathbb{R}^{B \times D_a}$
+- GRU 的输入是将 $z_{t-1}$ 和 $a_{t-1}$ 拼接后经过线性变换得到的向量：$x_{gru} \in \mathbb{R}^{B \times D_{hidden}}$
+
+## 构建 RSSM 核心单元（RSSMCell）
+
+现在，让我们利用 PyTorch 从零构建 `RSSMCell`。这个类负责在单个时间步执行动力学的前向传播和后验推断。
+
+```{.python .input}
+#@tab pytorch
+import torch
+from torch import nn
+from torch.nn import functional as F
+
+class RSSMCell(nn.Module):
+    """循环状态空间模型（RSSM）的单步执行单元。"""
+    def __init__(self, action_dim, deter_dim=200, stoch_dim=30, hidden_dim=200):
+        super().__init__()
+        self.deter_dim = deter_dim
+        self.stoch_dim = stoch_dim
+        
+        # 1. 确定性状态更新相关网络
+        # 作用：处理 (z_{t-1}, a_{t-1}) 作为 GRU 的输入
+        self.fc_state_action = nn.Linear(stoch_dim + action_dim, hidden_dim)
+        self.cell = nn.GRUCell(hidden_dim, deter_dim)
+        
+        # 2. 先验动力学网络 (Prior Dynamics)
+        # 作用：基于 h_t 预测先验的 z_t 的均值和方差
+        self.fc_prior_hidden = nn.Linear(deter_dim, hidden_dim)
+        self.fc_prior_stats = nn.Linear(hidden_dim, 2 * stoch_dim)
+        
+        # 3. 后验推断网络 (Posterior Inference)
+        # 作用：基于 h_t 和 观测特征 x_t 提取后验的 z_t 的均值和方差
+        self.fc_posterior_hidden = nn.Linear(deter_dim + hidden_dim, hidden_dim)
+        self.fc_posterior_stats = nn.Linear(hidden_dim, 2 * stoch_dim)
+```
+#@tab tensorflow
+# 在 TensorFlow 对应实现中，通常使用 tf.keras.layers.Dense 和 tf.keras.layers.GRUCell。
+# 由于核心张量逻辑完全一致，此处主要关注其严格的数学推导在代码中的映射。
 ```
 
-<div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/random-rollout.png" alt="随机策略数据" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 0：随机策略 rollout 的一小段。上排：5 帧画面——车在赛道上乱开，有时冲出赛道；中排：动作条（方向盘红=左/绿=右，油门绿色高度，刹车红色块）；下排：奖励条（绿=正奖励/红=负奖励）。这就是喂给 V 和 M 的全部数据：没有专家示范，只有乱开乱撞的轨迹。</div>
-</div>
+我们需要几个辅助函数来帮助我们处理高斯分布的参数计算和重参数化技巧（Reparameterization Trick）。为了保证训练的数值稳定性，方差往往不直接被预测，而是预测标准的对数方差（Log-Variance），或者使用 Softplus 激活函数加上一个极小的偏移量。
 
-默认 400 局约收集 40 万帧。这些数据唯一的用途，是让 V 和 M 看清这个世界：路面长什么样、踩油门以后画面如何流动、冲出赛道之前发生了什么。
+```{.python .input}
+#@tab pytorch
+def extract_stats(stats_tensor, min_std=0.1):
+    """
+    将网络输出分解为均值和标准差。
+    为了防止方差收敛于 0 导致数值崩溃，采用 softplus 并在底层增加安全阈值 min_std。
+    """
+    mean, unnormalized_std = stats_tensor.chunk(2, dim=-1)
+    std = F.softplus(unnormalized_std) + min_std
+    return mean, std
 
-**运行这一步，你会看到什么？** 脚本打印 `== 1/5 收集数据：随机策略 rollout`，然后逐局输出。400 局大约需要 5-10 分钟。收集完成后，`episodes` 列表里装着 400 条轨迹，每条轨迹是一串 (帧, 动作, 奖励) 的序列。
-
-## 第二步：训练 V，一个 ConvVAE
-
-V 的任务是把每一帧观测压成 32 维 latent。脚本用四层卷积做编码器、四层转置卷积做解码器，中间是均值与对数方差两个线性头——结构与 Kingma & Welling 的 Auto-Encoding Variational Bayes [3] 一致。
-
-训练目标是 ELBO（Evidence Lower Bound）：
-
-$$
-\mathcal{L}_{V} = \mathbb{E}_{q(z \mid x)}\bigl[-\log p(x \mid z)\bigr] + \beta \cdot \mathrm{KL}\bigl(q(z \mid x)\,\|\,\mathcal{N}(0, I)\bigr)
-$$
-
-第一项是重建误差，第二项把后验拉向标准正态。KL 权重取 \(\beta = 0.001\)，是一个很温和的正则：latent 不必完全像白噪声，但要足够平滑——后面 M 要在这个空间里想象，C 要在里面采样行动，坑坑洼洼的 latent 会让两者一起摔跤。
-
-采样用重参数化技巧，把随机性从参数路径上挪走：
-
-$$
-z = \mu + \sigma \odot \varepsilon, \qquad \varepsilon \sim \mathcal{N}(0, I)
-$$
-
-这样一来 \(z\) 对 \(\mu, \sigma\) 可微，重建误差的梯度就能一路流回编码器。
-
-**运行这一步，你会看到什么？** 脚本打印 `== 2/5 训练 V：ConvVAE`，然后逐 epoch 输出重建损失。10 个 epoch 大约需要 10-20 分钟。训练完成后，`vae.pt` 保存了模型权重。
-
-学成后，一帧 12,288 个像素被压成 32 个数。解码出来的画面是模糊的——赛道线、车身、弯道大致可辨，细节丢失殆尽。这正是绪论说的「只保留决策需要的信息」：M 和 C 关心的从来不是草地的纹理。
-
-<div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/vae-reconstruction.png" alt="VAE 重建对比" style="max-width:min(600px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 1：VAE 重建对比。左：原图（96×96）；右：编码再解码后的重建。赛道、车身、草地大致可辨，但细节丢失——这正是「只保留决策需要的信息」。</div>
-</div>
-
-**一个值得做的实验**：把训练好的 VAE 接上随机 latent，看看解码出来的画面长什么样。你会发现，随机采样的 latent 解码出来的画面几乎是噪声——因为 VAE 学到的 latent 空间是连续的、平滑的，随机采样大概率落在训练分布之外。这正是 M 要在里面想象的空间。
-
-## 第三步：训练 M，一个 MDN-RNN
-
-M 建模转移分布 \(P(z_{t+1}, r_{t+1} \mid a_t, z_t, h_t)\)。结构是一个 GRU 单元加上混合高斯输出头：\(z_t\) 与 \(a_t\) 拼接后送入 GRU 得到新隐状态 \(h_{t+1}\)，再由三个线性头输出五个高斯分量的均值、方差和权重，另有一个单高斯头预测奖励。混合密度网络（Mixture Density Network）的思想来自 Bishop (1994) [4]。
-
-对下一时刻的 latent，预测的不是一个值而是一个混合分布：
-
-$$
-P(z_{t+1} \mid a_t, z_t, h_t) = \sum_{i=1}^{5} \pi_i \, \mathcal{N}\bigl(z_{t+1}; \mu_i, \sigma_i^2\bigr)
-$$
-
-为什么必须用混合高斯？因为未来本质上是多峰的：弯道前既可以左拐也可以右拐，火球可能向左也可能向右。单一高斯的最优解站在两个峰的中间，而「中间」恰恰是永远不会发生的轨迹。混合高斯允许模型同时举起多种未来。
-
-训练损失是混合密度的负对数似然加上奖励的高斯负对数似然：
-
-$$
-\mathcal{L}_{M} = -\log \sum_{i=1}^{5} \pi_i \, \mathcal{N}\bigl(z_{t+1}; \mu_i, \sigma_i^2\bigr) \;+\; \bigl[-\log \mathcal{N}\bigl(r_{t+1}; \mu_r, \sigma_r^2\bigr)\bigr]
-$$
-
-训练方式是 teacher forcing：每一步都从零隐状态出发、喂真实的 \(z_t\)，只监督单步转移；多步记忆的延续留给部署时的梦境 rollout。M 约 31 万参数（原文约 42 万）。
-
-**温度**控制采样时的确定性：分量权重按 \(\pi_i^{1/\tau}\) 重新归一，高斯标准差乘上 \(\tau\)。\(\tau\) 越小，梦境越确定、越「敢于自信」；\(\tau\) 越大，梦境越接近训练数据里的真实噪声。原文的 τ 温度实验（梦境 2086 vs 193、918 vs 1092，见绪论）就是在这根旋钮上做出来的。
-
-**运行这一步，你会看到什么？** 脚本打印 `== 3/5 训练 M：MDN-RNN`，然后逐 epoch 输出负对数似然。10 个 epoch 大约需要 5-10 分钟。训练完成后，`mdn.pt` 保存了模型权重。
-
-**一个值得做的实验**：用训练好的 M 做 free-running rollout——从一帧真实画面开始，让 M 自己预测下一步，再把预测的下一步喂回去，循环 100 步。你会发现，前 20 步的预测还算合理，但越往后画面越扭曲，最终变成完全无法辨认的噪声。这就是**复合误差**：每一步的微小偏差滚进下一步，越滚越大。M 的单步预测很准，但多步一致性全靠 V 与 z 分布的稳定性硬撑。
-
-<div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/mdn-free-running.png" alt="M 的 free-running rollout" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 2：M 的 free-running rollout。从左到右：第 0、10、30、60、99 步。前几步还算合理，越往后越扭曲——这就是<strong>复合误差</strong>：每一步的微小偏差滚进下一步，越滚越大。</div>
-</div>
-
-## 第四步：进化 C，一个 867 参数的线性控制器
-
-C 小到令人意外：
-
-$$
-a_t = \mathrm{clip}\bigl(W\,[z_t;\, h_t] + b,\; -1,\; 1\bigr), \qquad W \in \mathbb{R}^{3 \times 288}
-$$
-
-参数一共 \((32 + 256) \times 3 + 3 = 867\) 个。这是原文的核心设计：把所有复杂度押进 M，让 C 小到可以用无梯度方法优化。
-
-脚本用几十行实现了一个教学版 CMA-ES（Covariance Matrix Adaptation Evolution Strategy）[5]。它在 867 维参数空间里维护一个高斯分布，逐代做三件事：
-
-1. **采样**：从 \(\mathcal{N}(m, \sigma^2 C)\) 采出一个种群（默认 32 个个体）。
-2. **评估**：每个个体去 M 的梦里开 4 次车、每次 200 步，fitness 是累计预测奖励的平均。
-3. **更新**：按 fitness 排序，靠前的个体加权重构均值，并沿它们的方向更新协方差矩阵——搜索分布就这样一代代学会「朝好参数的方向倾斜」。
-
-$$
-m \leftarrow \sum_i w_i \, x_{(i)}, \qquad C \leftarrow (1 - c)\,C + c \sum_i w_i \, (x_{(i)} - m)(x_{(i)} - m)^{\top}
-$$
-
-梦境评估的细节：从一帧真实画面编码出的 \(z\) 出发，C 出动作、M 想象下一状态并预测奖励，如此滚动 200 步；C 的每个动作还注入强度 0.1 的高斯噪声，相当于一点探索。整个过程不碰真实环境——这正是「在想象中训练」的最原始形态。
-
-**运行这一步，你会看到什么？** 脚本打印 `== 4/5 进化 C：CMA-ES`，然后每 25 代输出当前最佳 fitness。300 代进化大约需要 30-60 分钟（这是最耗时的一步）。训练完成后，`controller.npy` 保存了 867 个参数。
-
-**一个值得做的实验**：把进化出的 `controller.npy` 换成全零参数，再跑一次真实评估。你会发现，全零控制器的真实分数远低于随机基线——这说明 C 确实学到了东西，而不是一切来自 V 和 M。
-
-## 第五步：回到现实
-
-把进化出的 C 接回真实赛道闭环：V 编码真实帧 → C 出动作（此时不加噪声）→ 环境反馈 → M 更新记忆。脚本同时报告三个分数：
-
-| 指标                  | 含义                                       |
-| --------------------- | ------------------------------------------ |
-| `dream_score`         | M 想象中的累计预测奖励——C 以为自己能开多好 |
-| `real_score`          | 真实环境 8 局平均回报——它实际能开多好      |
-| `random_policy_score` | 随机策略的真实回报——及格线                 |
-
-注意一个危险的直觉：**梦境分数高不等于真实分数高**。C 完全可能钻 M 的空子，找到一条只在想象中畅通的路线——这就是绪论说的**模型利用（model exploitation）**。判断复现是否成功，看的是 `real_score` 是否超过 `random_policy_score`；两者与 `dream_score` 的差距，正是复合误差与模型利用的合计账单。
-
-<div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/real-evaluation.png" alt="真实环境评估" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图 3：真实环境评估的关键帧。进化出的 C 在真实赛道上闭环：V 编码真实帧 → C 出动作 → 环境反馈 → M 更新记忆。</div>
-</div>
-
-**运行这一步，你会看到什么？** 脚本打印 `== 5/5 真实环境评估`，然后输出三个分数和完整的 `metrics.json`。如果一切顺利，你应该看到 `real_score` 明显高于 `random_policy_score`——这意味着，在梦里进化出来的策略，确实能在真实环境里开得更好。
-
-**一个值得做的实验**：分别用 `--no-memory` 和 `--temperature 0.1` 完整跑一遍，对比三个分数的变化。`--no-memory` 去掉了 M 的记忆，控制器退化为只看当前帧，你应该看到 `real_score` 下降——这是「记忆」价值的直接证据。`--temperature 0.1` 让梦境更确定，进化更容易，但控制器可能过拟合梦境的自信，你应该看到 `dream_score` 上升但 `real_score` 下降——这是「梦境与现实差距」的直接证据。
-
-## 运行与产物
-
-运行：
-
-```bash
-python scripts/run_carracing.py --output runs/carracing-world-model
+def sample_gaussian(mean, std):
+    """
+    重参数化采样过程。
+    严格对应于 z_t = \mu + \sigma \odot \epsilon，其中 \epsilon \sim \mathcal{N}(0, I)
+    """
+    noise = torch.randn_like(mean)
+    return mean + std * noise
 ```
 
-跑完在输出目录生成五个文件：
+### 实现单步前向传播（Step）
 
-- `vae.pt`：训练好的 ConvVAE 权重
-- `mdn.pt`：训练好的 MDN-RNN 权重
-- `controller.npy`：进化出的 867 个参数
-- `metrics.json`：梦境分数、真实分数、随机基线、VAE 重建损失、MDN 负对数似然等全部指标
-- `manifest.json`：实验元数据（命令、种子、耗时、checkpoint 的 sha256——第 9 章的运行证据规范）
+在前向传播时，RSSM 会区分两种情况：
+1. **环境交互/想象阶段（Prior/Imagination）**：没有真实的观测 $x_t$，模型完全依赖先验网络向未来滚动。
+2. **状态推断阶段（Observation/Inference）**：有真实的观测 $x_t$，模型利用后验网络校正状态，这主要用于训练阶段和真实环境中的信念状态（Belief State）更新。
 
-完整参数：400 次数据收集、VAE 与 MDN 各训练 10 个 epoch、300 代进化、每代 32 个个体、每个个体 4 条 200 步的梦境轨迹。
+我们实现一个通用的 `forward_step` 函数，它可以根据是否提供观测信息，无缝切换先验推断与后验推断。
 
-## 对照实验与原文结论
+```{.python .input}
+#@tab pytorch
+    # 将以下方法补充至 RSSMCell 类内部
+    def forward_step(self, prev_deter, prev_stoch, prev_action, obs_embed=None):
+        """
+        执行单个时间步的状态推导。
+        如果 obs_embed 为 None，则纯粹执行先验想象；否则计算后验分布。
+        """
+        # (**计算确定性状态更新**)
+        # 对应公式 :eqref:`eq_deterministic_update`
+        za_cat = torch.cat([prev_stoch, prev_action], dim=-1)
+        gru_input = F.elu(self.fc_state_action(za_cat))
+        
+        # GRU 内部状态更新
+        # h_t = GRU(input_t, h_{t-1})
+        deter_state = self.cell(gru_input, prev_deter)
+        
+        # (**计算先验分布**)
+        # 对应公式 :eqref:`eq_prior_dynamics`
+        prior_hidden = F.elu(self.fc_prior_hidden(deter_state))
+        prior_stats = self.fc_prior_stats(prior_hidden)
+        prior_mean, prior_std = extract_stats(prior_stats)
+        prior_stoch = sample_gaussian(prior_mean, prior_std)
+        
+        # (**计算后验分布（如果有观测）**)
+        if obs_embed is not None:
+            # 对应公式 :eqref:`eq_posterior_inference`
+            # 将当前确定性状态与当前观测嵌入进行拼接
+            h_x_cat = torch.cat([deter_state, obs_embed], dim=-1)
+            post_hidden = F.elu(self.fc_posterior_hidden(h_x_cat))
+            post_stats = self.fc_posterior_stats(post_hidden)
+            post_mean, post_std = extract_stats(post_stats)
+            post_stoch = sample_gaussian(post_mean, post_std)
+        else:
+            post_mean, post_std = prior_mean, prior_std
+            post_stoch = prior_stoch
+            
+        return deter_state, prior_stoch, prior_mean, prior_std, post_stoch, post_mean, post_std
+```
 
-脚本的每个旗标都对应原文的一个结论：
+## 序列展开与重构损失
 
-| 命令                | 对照什么          | 预期现象                                                          |
-| ------------------- | ----------------- | ----------------------------------------------------------------- |
-| 默认（带记忆）      | 完整 V-M-C        | 真实分数明显高于随机基线                                          |
-| `--no-memory`       | 去掉 M 的记忆 h_t | 控制器退化为只看当前帧，分数下降——对应原文消融 632 vs 906         |
-| `--temperature 0.1` | 低温梦境          | 梦境确定、进化容易，但控制器可能过拟合梦境的自信——对应原文 τ 实验 |
+单步的 `RSSMCell` 完成了，但训练世界模型需要对整个时间序列进行展开（Rollout）。在训练阶段，给定过去一个回合（Episode）的完整观测序列 $x_{1:T}$ 和动作序列 $a_{1:T}$，我们需要推断出整个轨迹的状态分布，并计算损失。
 
-<div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/comparison.png" alt="官方 vs 复现对比" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">图：CarRacing 累计奖励对比。蓝色为原文数据（CarRacing-v0 / gym 0.9），橙色为我们的复现（CarRacing-v3 / gymnasium 1.x，50 rollouts、30 代进化）。环境版本不同导致奖励尺度不可直接比较——v3 的奖励更稀疏、负奖励更多，但相对趋势一致：有记忆 > 随机 > 无记忆。</div>
-</div>
+这里的损失函数源自变分下界（Variational Lower Bound，通常称为 ELBO）。我们将极大化对数似然转化为最小化以下两项之和：
+1. **重构损失（Reconstruction Loss）**：利用后验推断出的状态 $(h_t, z_t)$ 必须能够解码还原出当前的图像 $x_t$ 和对应的奖励 $r_t$。
+2. **动态 KL 散度（Dynamics KL Divergence）**：在每一个时间步 $t$，先验预测的分布 $p_\theta(z_t \mid h_t)$ 与后验计算的分布 $q_\phi(z_t \mid h_t, x_t)$ 应该尽可能接近。这确保了模型在没有观测时依然能做出现实合理的想象。
 
-## 已知简化与坑
+我们接下来实现整个序列展开的逻辑，并在每个时间步记录先验和后验分布。
 
-教学版有几处刻意的简化，复现结果与原文数值对不上时，先从这里找原因：
+```{.python .input}
+#@tab pytorch
+class RSSM(nn.Module):
+    """处理整个时间序列的顶层 RSSM 模块。"""
+    def __init__(self, action_dim, deter_dim=200, stoch_dim=30, hidden_dim=200):
+        super().__init__()
+        self.cell = RSSMCell(action_dim, deter_dim, stoch_dim, hidden_dim)
+        
+    def rollout_observation(self, obs_embeds, actions, init_deter=None, init_stoch=None):
+        """
+        在给定真实观测序列的情况下展开后验推断（主要用于模型训练）。
+        
+        参数:
+        obs_embeds: 形状为 (T, B, hidden_dim) 的张量
+        actions: 形状为 (T, B, action_dim) 的张量，注意这里的 action 应该是前一步的动作 a_{t-1}
+        """
+        seq_len, batch_size, _ = obs_embeds.shape
+        
+        # 初始化张量容器用于记录每一步的结果
+        deter_states = []
+        prior_means, prior_stds = [], []
+        post_stochs, post_means, post_stds = [], [], []
+        
+        # 若未提供初始状态，则全零初始化
+        if init_deter is None:
+            prev_deter = torch.zeros(batch_size, self.cell.deter_dim, device=obs_embeds.device)
+        else:
+            prev_deter = init_deter
+            
+        if init_stoch is None:
+            prev_stoch = torch.zeros(batch_size, self.cell.stoch_dim, device=obs_embeds.device)
+        else:
+            prev_stoch = init_stoch
+            
+        # 沿时间维度展开
+        for t in range(seq_len):
+            # [**调用核心单元执行单步前向推断**]
+            (prev_deter, prior_stoch, prior_mean, prior_std, 
+             prev_stoch, post_mean, post_std) = self.cell.forward_step(
+                 prev_deter, prev_stoch, actions[t], obs_embeds[t]
+             )
+            
+            # 记录数据
+            deter_states.append(prev_deter)
+            prior_means.append(prior_mean)
+            prior_stds.append(prior_std)
+            post_stochs.append(prev_stoch)
+            post_means.append(post_mean)
+            post_stds.append(post_std)
+            
+        # 将列表堆叠为形状为 (T, B, Dimension) 的张量
+        return (
+            torch.stack(deter_states), 
+            torch.stack(post_stochs), 
+            (torch.stack(prior_means), torch.stack(prior_stds)),
+            (torch.stack(post_means), torch.stack(post_stds))
+        )
+```
 
-- **M 训练时隐状态恒为零**。梦境里 GRU 的记忆在延续，但训练从未监督过「利用记忆做多步预测」，多步一致性全靠 V 与 z 分布的稳定性硬撑。这是复合误差的一个直接来源，也是 Dreamer 要用可微梦境端到端训练的动机之一。
-- **数据来自温和随机策略**，而非纯粹的均匀随机；数据分布与真实驾驶轨迹有别。
-- **梦境只有 200 步**，原文最长 2,100 步——进化出的控制器只学会了短期行为。
-- **环境版本不同**：原文用 gym 0.9 的 CarRacing-v0，课程用 gymnasium 1.x 的 CarRacing-v3，物理细节与奖励有细微差别。原文的具体分数（906、210）应视为参考值，不是精确靶子。
+### KL 散度与信息瓶颈
 
-## 扩展练习
+在得到了长度为 $T$ 的先验统计量和后验统计量之后，我们需要计算 KL 散度。对于两个多变量高斯分布 $p = \mathcal{N}(\mu_1, \Sigma_1)$ 和 $q = \mathcal{N}(\mu_2, \Sigma_2)$（假设方差为对角矩阵），从 $q$ 到 $p$ 的 KL 散度具有解析解：
 
-跑通默认配置后，按从便宜到昂贵的顺序推荐：
+$$ D_{KL}(q \parallel p) = \frac{1}{2} \sum_{i=1}^{D_z} \left( \log \frac{\sigma_{1,i}^2}{\sigma_{2,i}^2} + \frac{\sigma_{2,i}^2 + (\mu_{2,i} - \mu_{1,i})^2}{\sigma_{1,i}^2} - 1 \right) $$
+:eqlabel:eq_kl_divergence
 
-1. **全零控制器对照**：把 `controller.npy` 换成全零参数再跑一次真实评估——亲眼确认 C 确实学到了东西，而不是一切来自 V 和 M。
-2. **温度扫描**：分别用 `--temperature 0.1` 与 `--temperature 1.5` 完整跑一遍，对比梦境分数与真实分数的差距如何变化。
-3. **数据量曲线**：把 `--rollouts` 提到 1,000，观察 V 的重建损失与真实分数的关系——数据多少开始「够用了」？
-4. **换 MLP 控制器**：把线性控制器换成一层 MLP（几十行改动），看 867 参数的预算是否是瓶颈。
+值得注意的是，RSSM 中通常会将后验分布的参数截断梯度（Stop Gradient）传递给先验，反之亦然。甚至会对这两部分的学习率进行解耦处理。为了保证训练不会因为某一步太大的误差而崩溃，通常还会在 KL 散度中引入一个超参数 $\beta$，或者使用 Free Nats 机制强制设定一个 KL 散度的最小下界。
 
-跑通之后，推荐接着做 [4.7 动手：想象训练的简洁实现](/chapters/04-latent-dynamics/08-dreamer-concise)：那台模型不再进化 C，而是用可微的想象直接训练策略，你会亲身体会「进化」与「梯度下降」两条路线手感的不同。
+```{.python .input}
+#@tab pytorch
+def kl_loss(prior_stats, post_stats, free_nats=3.0):
+    """
+    计算整个序列上的 KL 散度损失。
+    使用 free_nats 防止后验崩溃（Posterior Collapse）。
+    """
+    prior_mean, prior_std = prior_stats
+    post_mean, post_std = post_stats
+    
+    # 构造分布对象
+    prior_dist = torch.distributions.Normal(prior_mean, prior_std)
+    post_dist = torch.distributions.Normal(post_mean, post_std)
+    
+    # 计算 KL 散度，并在潜变量维度求和
+    kl = torch.distributions.kl.kl_divergence(post_dist, prior_dist).sum(dim=-1)
+    
+    # 应用 Free Nats（最小限度信息约束）
+    free_nats_tensor = torch.full_like(kl, free_nats)
+    kl_constrained = torch.max(kl, free_nats_tensor)
+    
+    # 在时间轴和批次轴上求平均
+    return kl_constrained.mean()
+```
 
-## 本节小结
+## 训练循环的高层视点
 
-- **World Models 的完整管线**：随机数据 → V 压缩 → M 想象 → C 进化 → 真实部署，五步缺一不可，每一步都有明确的数学形状。
-- **V 用重参数化技巧训练 ELBO**，β 控制 latent 的平滑程度；**M 用混合高斯建模多峰未来**，并同时预测奖励。
-- **C 的 867 个参数由 CMA-ES 在梦境中进化**，fitness 是 M 预测的累计奖励，全程不碰真实环境。
-- **温度 τ 是梦境确定性的旋钮**：低温易进化、易过拟合梦境，高温更接近真实噪声。
-- **带记忆（[z, h] 输入）显著优于只看当前帧**，这是「记忆」价值的直接证据。
-- **梦境分数高不等于真实分数高**——两者的差距就是复合误差与模型利用的合计账单。
+到目前为止，我们已经用极致详尽的代码将极其复杂的 RSSM 分解。为了让你能够一览众山小，我们来简要梳理一下在每一次网络权重更新前，数据到底经历了怎样的流动：
 
-从 2018 年的交互式文章，到你亲手跑通的训练脚本，World Models 的核心思想从未改变：**在行动之前，先在内部预见行动的后果**。而这条思想的后来的发展——Dreamer 的可微想象 [6]、MuZero 的隐式搜索 [7]、Genie 的可玩世界——都将在接下来的章节里，由你亲手实现。
+1. 从重播缓冲区（Replay Buffer）中提取出一批包含视频帧图像和动作的历史轨迹。
+2. 将图像 $x_{1:T}$ 送入卷积自编码器的**编码器**，压缩得到观测嵌入 `obs_embeds`。
+3. 利用 `RSSM` 的 `rollout_observation` 沿着时间步扫描，获得一系列确定性状态 $h_{1:T}$ 和后验随机状态 $z_{1:T}$。
+4. 将 $h_t$ 与 $z_t$ 拼接，送入**解码器**（重构出 $\hat{x}_t$），并送入**奖励预测器**（预测 $\hat{r}_t$）。
+5. 计算重构均方误差（MSE），同时使用 `kl_loss` 计算先验与后验的差异。将这些误差反向传播回所有网络。
 
-<div style="text-align:center; margin:20px 0;">
-  <img src="/carracing/dream-generation.png" alt="梦境生成的世界" style="max-width:min(800px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.9em; color:var(--vp-c-text-2); margin-top:8px;">训练好的世界模型生成的「梦境世界」：C 在 M 的想象中开了 200 步，全程未接触真实环境。从左到右，画面从清晰逐渐模糊——复合误差在累积，但赛道、车身、草地的结构始终可辨。这就是 M 学到的「世界」：不完美，但足够让 C 在里面学会开车。</div>
-</div>
+这种极其解耦而又自成一体的结构设计，直接奠定了今天世界模型在解决复杂环境决策任务时的统治地位。
 
-原文与训练细节见 Ha & Schmidhuber (2018) [1][2]，官方训练代码见 [WorldModelsExperiments](https://github.com/hardmaru/WorldModelsExperiments)（MIT 协议）。
+## 练习
 
-## 后续工作：从 World Models 出发，世界模型走了多远
+1. 在 `RSSMCell` 中，为什么 `gru_input` 必须包含 $z_{t-1}$ 而不仅仅是 $a_{t-1}$？尝试用自己的话从马尔可夫性的角度进行分析。
+   > **提示**：如果在上一步遇到了一阵无法预期的侧风（由 $z_{t-1}$ 捕获），这阵风带来的影响是否应当被记忆在 $h_t$ 中以指导未来的推断？
+2. `extract_stats` 中我们加上了 `min_std=0.1`。如果没有这个常数限制，KL 散度的计算中 :eqref:`eq_kl_divergence` 哪一项最可能发生数值爆炸（NaN）现象？
+   > **提示**：观察分母项。
+3. 在现实训练中，如果你发现 KL 散度极低，模型完美地使得先验等同于后验，但此时解码器重构出的图像却极其模糊，这说明发生了什么问题？
+   > **提示**：这通常被称为“后验崩溃”（Posterior Collapse）。思考当随机状态不再携带额外信息时，模型实质上退化成了什么？
 
-World Models 的 V-M-C 管线证明了一件事：**可以在想象中学会控制**。但它留下了三个明显的短板，后来的工作逐一攻克了它们。
-
-### 短板一：CMA-ES 进化太慢、太贵
-
-CMA-ES 在 867 维空间里盲目搜索，300 代 × 32 个体 × 4 条梦境轨迹 = 几万次梦境 rollout。每次 rollout 还要跑 200 步 MDN-RNN，计算量巨大。而且进化策略没有梯度信号，不知道「往哪个方向改参数会更好」，只能靠种群统计量慢慢摸索。
-
-**Dreamer 系列**（Hafner et al. 2019–2023）[6][8] 把 C 换成了可微的策略网络，直接在 M 的梦境里做梯度下降。M 的 GRU 被替换成更强大的 RSSM（Recurrent State Space Model），能同时维护确定性隐状态和随机 latent；策略网络从隐状态里读出动作，价值网络评估隐状态的好坏，两者通过梦境 rollout 的梯度联合优化。DreamerV1 在 DeepMind Control Suite 上超过了当时所有的 model-free 方法；DreamerV2 用离散 latent 打通了 Atari；DreamerV3 一套超参跑遍 150+ 任务，成为「可复现世界模型」的标杆。
-
-<div style="text-align:center; margin:16px 0;">
-  <img src="/carracing/dreamer-architecture.png" alt="Dreamer 架构" style="max-width:min(700px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">Dreamer 的可微想象：编码器把观测压缩为 latent z，RSSM 在隐空间里 rollout 想象轨迹，策略网络和价值网络从隐状态读出动作和评估，梯度沿虚线反向传播。</div>
-</div>
-
-关键区别：World Models 的 C 是**无梯度进化**，Dreamer 的 C 是**可微想象 + 策略梯度**。前者像蒙眼摸索，后者像看着地图走。
-
-### 短板二：像素重建是负担，不是帮助
-
-World Models 的 V 必须把 96×96 像素压成 32 维再重建回来。但 M 和 C 关心的从来不是「草地的纹理」，而是「弯道在哪里、车在什么位置」。强迫 V 重建像素，相当于让模型把算力浪费在决策无关的细节上。
-
-**MuZero**（Schrittwieser et al. 2020）[7] 直接扔掉了 V 的解码器。它的 M 不预测像素，只预测隐状态转移和奖励；它的「规划」不在像素空间里做，而是在隐空间里跑蒙特卡洛树搜索（MCTS）。 Atari、围棋、国际象棋、将棋，一套架构全部打通，发在 _Nature_ 上。MuZero 的核心洞察是：**世界模型不需要重建世界，只需要重建决策需要的信息**。
-
-<div style="text-align:center; margin:16px 0;">
-  <img src="/carracing/muzero-search.png" alt="MuZero 隐空间搜索" style="max-width:min(700px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">MuZero 的隐空间规划：观测经编码器进入隐状态（中间），MCTS 搜索树直接在隐状态上展开（橙色分支），不经过像素重建。</div>
-</div>
-
-**SimPLe**（Kaiser et al. 2020）[9] 走了另一条路：保留像素预测，但用视频预测的视角来做——把 M 的输出当成「下一帧视频」，用更复杂的视频生成架构（卷积 LSTM + 残差连接）来提升多步一致性。它在 Atari 上证明了：如果像素预测足够准，model-based RL 可以超过 model-free。
-
-### 短板三：确定性模型撑不住长 rollout
-
-World Models 的 M 用混合高斯建模多峰未来，但 GRU 的隐状态是确定性的。训练时 teacher forcing 只监督单步转移，部署时 free-running 的复合误差会迅速累积——你在图 2 里已经看到了：100 步后画面变成噪声。
-
-**Stochastic MuZero**（Schrittwieser et al. 2021）[10] 给隐状态加入了随机性：每一步的隐状态转移不再是确定函数，而是从后验分布里采样。这让模型能表达「同样的动作可能导致不同的结果」，长 rollout 的稳定性显著提升。
-
-**Genie**（Bruce et al. 2024）[11] 走得更远：它用视频生成模型（ViT + 离散 token + 扩散/自回归解码）直接生成可交互的像素世界。用户按一个键，Genie 生成下一帧；再按一个键，再生成一帧。它不再区分 V、M、C——整个系统就是一个「按动作条件生成视频」的大模型。Genie 从 YouTube 游戏视频里无监督学出了 2D 平台游戏的物理规律，用户可以在生成的世界里真正「玩」起来。
-
-<div style="text-align:center; margin:16px 0;">
-  <img src="/carracing/genie-interactive.png" alt="Genie 可交互世界" style="max-width:min(700px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">Genie 的交互循环：用户输入（键盘/手柄）→ 动作 token → 视频生成模型 → 生成游戏帧 → 循环。世界模型本身就是可玩的游戏引擎。</div>
-</div>
-
-**GameNGen**（Valevski et al. 2024）[12] 在 Genie 的基础上做到了实时：用扩散模型 + 自回归 token 的混合架构，以 20 FPS 生成 DOOM 游戏画面。世界模型从「辅助决策的工具」变成了「可以玩的游戏引擎」。
-
-### 从赛车到自动驾驶
-
-CarRacing 是自动驾驶的玩具版。真正的驾驶世界模型要处理多视角相机、3D 几何、长时序一致性、安全约束。几个代表性工作：
-
-- **GAIA-1**（Hu et al. 2023）[13]：Wayve 的驾驶世界模型，用多视角相机输入 + 离散 token + 自回归生成，能生成逼真的驾驶视频，并支持动作条件控制。
-- **DriveDreamer**（Wang et al. 2023）[14]：用世界模型做驾驶数据增强——在模型生成的「梦境驾驶视频」里训练自动驾驶策略，再迁到真实环境。
-- **UniSim**（Yan et al. 2024）[15]：Google 的通用模拟器，从真实传感器数据里学出可交互的 3D 世界，支持自动驾驶、机器人导航等多种任务的仿真。
-
-<div style="text-align:center; margin:16px 0;">
-  <img src="/carracing/driving-world-model.png" alt="驾驶世界模型" style="max-width:min(700px, 100%); height:auto; border:1px solid var(--vp-c-divider); border-radius:8px;">
-  <div style="font-size:0.85em; color:var(--vp-c-text-2); margin-top:6px;">驾驶世界模型（GAIA-1 / DriveDreamer）：多视角相机输入 → 编码器产生 latent token → Transformer 在动作条件下预测未来驾驶场景。</div>
-</div>
-
-### 一句话总结这条线
-
-World Models 提出了问题：**能不能在想象中学会控制？**
-Dreamer 回答了「能，而且用梯度比进化更高效」；MuZero 回答了「连像素都不用重建，隐空间就够了」；Genie 回答了「世界模型本身就可以是一个可玩的世界」。从 867 个参数的线性控制器，到几十亿参数的生成式世界引擎，核心思想从未改变——**在行动之前，先在内部预见行动的后果**。
-
-## 参考文献
-
-1. Ha, D., & Schmidhuber, J. (2018). Recurrent World Models Facilitate Policy Evolution. _NeurIPS 2018_. [arXiv:1803.10122](https://arxiv.org/abs/1803.10122)
-2. Ha, D., & Schmidhuber, J. (2018). World Models. 交互式文章：[worldmodels.github.io](https://worldmodels.github.io/) —— 本篇正文中的 V-M-C 框架、CarRacing 实验设置与图 1 均来自此文（图表为 CC-BY 4.0 授权）。配套代码：[WorldModelsExperiments](https://github.com/hardmaru/WorldModelsExperiments)。
-3. Kingma, D. P., & Welling, M. (2014). Auto-Encoding Variational Bayes. _ICLR 2014_. [arXiv:1312.6114](https://arxiv.org/abs/1312.6114)
-4. Bishop, C. M. (1994). Mixture Density Networks. _Aston University Technical Report NCRG/94/004_. [链接](https://publications.aston.ac.uk/id/eprint/373/)
-5. Hansen, N. (2001). Completely Derandomized Self-Adaptation in Evolution Strategies. _Evolutionary Computation_, 9(2), 159–195. [链接](https://doi.org/10.1162/106365601750190398)
-6. Hafner, D., et al. (2019). Dream to Control: Learning Behaviors by Latent Imagination. _ICLR 2020_. [arXiv:1912.01603](https://arxiv.org/abs/1912.01603) —— 用可微梦境端到端训练策略，替代 CMA-ES 进化。
-7. Schrittwieser, J., et al. (2020). Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model. _Nature_, 588, 604–609. [链接](https://doi.org/10.1038/s41586-020-03051-4) —— MuZero：不重建像素，只在隐空间里做蒙特卡洛树搜索。
-8. Hafner, D., et al. (2023). Mastering Diverse Domains through World Models. _arXiv:2301.04104_. [链接](https://arxiv.org/abs/2301.04104) —— DreamerV3：一套超参打通 150+ 任务，可复现世界模型的工程标杆。
-9. Kaiser, Ł., et al. (2020). Model-Based Reinforcement Learning for Atari. _ICLR 2020_. [arXiv:1903.00374](https://arxiv.org/abs/1903.00374) —— SimPLe：用视频预测做 model-based RL，Atari 上超过 model-free。
-10. Schrittwieser, J., et al. (2021). Offline AlphaZero Implicitly Models Planning for Actions. _arXiv:2109.09179_. [链接](https://arxiv.org/abs/2109.09179) —— Stochastic MuZero：隐状态随机化，提升长 rollout 稳定性。
-11. Bruce, J., et al. (2024). Genie: Generative Interactive Environments. _ICML 2024_. [arXiv:2402.15391](https://arxiv.org/abs/2402.15391) —— 从 YouTube 视频无监督学出可交互的 2D 游戏世界。
-12. Valevski, D., et al. (2024). GameNGen: Auto-regressive Neural Engine for Interactive Generation of DOOM. _arXiv:2406.13843_. [链接](https://arxiv.org/abs/2406.13843) —— 20 FPS 实时生成 DOOM 游戏画面。
-13. Hu, A., et al. (2023). GAIA-1: A Generative World Model for Autonomous Driving. _arXiv:2309.17080_. [链接](https://arxiv.org/abs/2309.17080) —— Wayve 的驾驶世界模型。
-14. Wang, X., et al. (2023). DriveDreamer: Towards Real-world-driven World Models for Autonomous Driving. _arXiv:2309.09777_. [链接](https://arxiv.org/abs/2309.09777) —— 用梦境驾驶视频做数据增强。
-15. Yan, Y., et al. (2024). UniSim: Learning Interactive Real-World Simulators. _ICLR 2024_. [arXiv:2310.20520](https://arxiv.org/abs/2310.20520) —— Google 的通用可交互世界模拟器。
+:begin_tab:pytorch
+[讨论](https://discuss.d2l.ai/t/1234)
+:end_tab:
