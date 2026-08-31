@@ -1,14 +1,32 @@
 # 8.6 遥操作、人类在环与 SERL
 
-在探讨了强化学习的基础以及如何在仿真环境中训练智能体之后，我们面临着一个在真实机器人领域中不可回避的残酷现实：强化学习算法往往需要极其庞大的交互样本（Sample Complexity）。在纯仿真环境中，我们可以通过成千上万个并行环境加速数据的收集；然而，当策略必须在真实物理世界中训练时，环境重置的代价、硬件磨损的风险以及探索过程中的安全隐患，使得传统的试错型（Trial-and-Error）强化学习举步维艰。
+一次抓取失败后，人可能只需把物体放回原位；机器人系统却还要检测失败、复位机械臂、检查碰撞并重新开始。真实交互的瓶颈不只是一秒能执行多少动作，还包括复位、安全监控和硬件维护。
 
-为了打破这一僵局，学者们回到了一个最直观的起点：向人类学习。[[Argall et al., 2009]](https://doi.org/10.1016/j.robot.2008.10.024) 对机器人从示范中学习（Learning from Demonstration, LfD）进行了系统性的回顾，指出引入人类先验能够极大地缩小策略搜索空间。近年来，随着高频力反馈设备的普及以及人类在环（Human-in-the-Loop, HIL）控制体系的成熟，研究者们将遥操作（Teleoperation）收集的高质量人类示范与深度强化学习深度融合，诞生了诸如 SERL（Sample-Efficient Robotic Reinforcement Learning）[[Luo et al., 2024]](https://arxiv.org/abs/2401.16013) 等一系列工程与算法相结合的先进框架。
+<div align="center">
+<img src="/figures/08-robot-sim/source/06-teleop-hil-serl/hilserl-fig1.png" alt="HIL-SERL 在插接、装配和精细操作任务中让人类干预直接修补真实机器人探索。" width="86%">
+
+_图 8.6-1：HIL-SERL 在插接、装配和精细操作任务中让人类干预直接修补真实机器人探索。 出处：Lawrence Yunliang Chen et al.，[HIL-SERL: Precise and Dexterous Robotic Manipulation via Human-in-the-Loop Reinforcement Learning](https://arxiv.org/abs/2410.21845)（2024），Figure 1。_
+</div>
+
+一种做法是先用遥操作收集成功示范，再让策略在线练习；当机器人将要进入危险或无效状态时，人类可以接管并补充纠正数据。[[Argall et al., 2009]](https://doi.org/10.1016/j.robot.2008.10.024) 总结了机器人示范学习，SERL 则把示范增强的 off-policy 强化学习、并行数据采集和训练工具组织为真实机器人学习流程 [[Luo et al., 2024]](https://arxiv.org/abs/2401.16013)。
+
+<div align="center">
+<img src="/figures/08-robot-sim/source/06-teleop-hil-serl/haco-fig1.png" alt="HACO 的人机共驾图展示人类在危险动作出现时接管，并把干预反馈用于安全策略学习。" width="86%">
+
+_图 8.6-2：HACO 的人机共驾图展示人类在危险动作出现时接管，并把干预反馈用于安全策略学习。 出处：Zhizheng Liu et al.，[Human-AI Copilot Optimization for Safe Reinforcement Learning](https://arxiv.org/abs/2202.10341)（2022），Figure 1。_
+</div>
 
 本节先讨论遥操作中的空间映射，再分析 DAgger 如何通过在线聚合数据缓解模仿学习的分布偏移 [[Ross et al., 2011]](https://proceedings.mlr.press/v15/ross11a.html)。随后以 AWAC 为例，说明如何用优势加权把离线数据与在线强化学习结合 [[Nair et al., 2020]](https://arxiv.org/abs/2006.09359)。SERL 是软件与训练流程框架，并不等同于 AWAC；它的公开实现主要围绕示范增强的 off-policy 强化学习 [[Luo et al., 2024]](https://arxiv.org/abs/2401.16013)。
 
+<div align="center">
+<img src="/figures/08-robot-sim/source/06-teleop-hil-serl/serl-fig1.png" alt="SERL 在多种真实机械臂任务中复用示范、奖励分类器与在线强化学习组件。" width="86%">
+
+_图 8.6-3：SERL 在多种真实机械臂任务中复用示范、奖励分类器与在线强化学习组件。 出处：Jianlan Luo et al.，[SERL: A Software Suite for Sample-Efficient Robotic Reinforcement Learning](https://arxiv.org/abs/2401.16013)（2024），Figure 1。_
+</div>
+
 ## 8.6.1 遥操作的几何映射：主从机器人的空间同构
 
-遥操作的本质是一个控制论中的主从（Master-Slave）跟随问题。人类操作员控制一个主控设备（例如具有力反馈的机械臂或六自由度手柄），产生状态轨迹；而从动设备（真实机器人）需要实时解析这些状态，并在其自身的工作空间中进行相应的动作。
+遥操作把主控设备的运动转换为机器人目标位姿。这里先用二维增量建立直觉，再扩展到三维刚体变换。
 
 我们可以从高中最基础的二维平面几何谈起。假设在一个二维笛卡尔坐标系中，主控设备的末端点位置为 $\mathbf{p}_m \in \mathbb{R}^2$。当操作员将设备平移 $\Delta \mathbf{p}_m$ 并旋转角度 $\theta$ 时，我们希望从动设备（机器人末端点） $\mathbf{p}_s$ 能够做出同构的运动。
 
@@ -30,7 +48,7 @@ $$
 \tilde{\mathbf{p}}'_s = \begin{bmatrix} \mathbf{R}(\theta) & \alpha \Delta \mathbf{p}_m \\ \mathbf{0}^\top & 1 \end{bmatrix} \tilde{\mathbf{p}}_s
 $$
 
-在真实的三维物理世界中，状态属于特殊欧几里得群 $SE(3)$。主控设备的位姿（Pose）被表示为变换矩阵 $\mathbf{T}_m \in \mathbb{R}^{4 \times 4}$。为了实现平滑的遥操作映射，我们通常通过计算主控设备在相邻时间步 $t$ 和 $t-1$ 之间的相对变换 $\Delta \mathbf{T}_m = \mathbf{T}_{m, t} \mathbf{T}_{m, t-1}^{-1}$，然后将其作用于机器人的当前位姿 $\mathbf{T}_{s, t-1}$，从而求解出目标位姿 $\mathbf{T}_{s, t}$。这一严谨的同构映射确保了无论操作员身处何种相对朝向，机器人的响应在局部坐标系下都是直观且一致的。
+在三维空间中，位姿属于特殊欧几里得群 $SE(3)$。主控设备的位姿记为 $\mathbf{T}_m\in\mathbb{R}^{4\times4}$，相邻时刻的相对变换为 $\Delta\mathbf{T}_m=\mathbf{T}_{m,t}\mathbf{T}_{m,t-1}^{-1}$，再把它映射到机器人目标位姿。实际系统还要处理主从坐标系标定、尺度、工作空间限制、逆运动学和延迟；仅有相对变换公式并不能保证操作直观或安全。
 
 ## 8.6.2 人类在环（HIL）：从分布偏移到 DAgger
 
@@ -40,15 +58,21 @@ $$
 J_{\text{BC}}(\theta) = \mathbb{E}_{(s,a) \sim \mathcal{D}} [-\log \pi_\theta(a|s)]
 $$
 
-虽然直观，但 BC 在机器人序列决策中面临着灾难性的分布偏移（Distribution Shift）问题。在训练阶段，策略网络 $\pi_\theta$ 仅仅在人类访问过的状态边缘分布 $p_{\text{data}}(s)$ 上进行了优化；而在部署阶段（闭环控制），机器人依据 $\pi_\theta(a|s)$ 采取动作，环境转移概率 $P(s_{t+1}|s_t, a_t)$ 会导致新的状态分布 $p_{\pi_\theta}(s)$。一旦 $p_{\pi_\theta}(s)$ 偏离了 $p_{\text{data}}(s)$，微小的动作误差就会随时间步累积，导致机器人进入一种它在训练数据中从未见过的状态，进而产生更加荒谬的动作，最终导致任务失败。
+BC 在机器人序列决策中会面临分布偏移（Distribution Shift）。训练时，策略只在专家访问的 $p_{\text{data}}(s)$ 上拟合；部署时，自己的动作会诱导新分布 $p_{\pi_\theta}(s)$。若误差把机器人带到训练集之外，后续预测通常更不可靠，误差便可能继续累积。
 
 Ross 等人提出数据集聚合（DAgger, Dataset Aggregation）算法 [[Ross et al., 2011]](https://proceedings.mlr.press/v15/ross11a.html)。DAgger 反复让当前策略访问状态、由专家给这些状态标注动作，再把新样本聚合进训练集；论文用在线学习中的无悔分析说明其性能界。它属于交互式模仿学习，但不等同于所有形式的人类在环控制。
 
-在 DAgger 的第 $k$ 次迭代中，机器人使用当前的策略 $\pi_{\theta_k}$ 在环境中运行，产生轨迹状态 $\{s_t\}_{t=1}^T$。此时，人类操作员（或专家控制器）被引入反馈循环，为这些已经发生偏离的状态提供最优动作修正 $a_t^* = \pi^*(s_t)$。新产生的数据被聚合到总数据集中 $\mathcal{D} \leftarrow \mathcal{D} \cup \{(s_t, a_t^*)\}$，随后在聚合的数据集上重新训练新的策略 $\pi_{\theta_{k+1}}$。这种方法在严格的数学意义上保证了策略能够在自己诱导的状态分布 $p_{\pi_\theta}(s)$ 下拟合专家行为，从而优雅地解决了分布偏移问题。
+在 DAgger 的第 $k$ 次迭代中，当前策略 $\pi_{\theta_k}$ 访问状态，专家为这些状态标注动作 $a_t^*=\pi^*(s_t)$，再把样本加入 $\mathcal{D}$ 并重新训练。这样，训练集逐步覆盖当前策略实际访问的状态。DAgger 的理论界依赖专家标注与在线学习假设，有限数据和函数近似下仍可能失败，因此不能理解为彻底消除分布偏移。
 
-## 8.6.3 SERL 的核心机制：受限强化学习与优势加权
+<div align="center">
+<img src="/figures/08-robot-sim/source/06-teleop-hil-serl/hilserl-fig2.png" alt="HIL-SERL 系统图标出策略执行、人类接管、干预数据回流与离策略更新的闭环。" width="86%">
 
-DAgger 虽然理论上完备，但它要求人类专家能够实时提供极低延迟且高精度的修正动作，这对人类操作员的认知带宽（Cognitive Bandwidth）提出了极高要求。在更现代的框架（如 SERL）中，我们希望仅在任务初期提供有限的遥操作示范，随后让机器人通过自我强化学习（RL）微调，同时保证它在探索过程中不偏离人类所示范的安全行为流形（Behavioral Manifold）。
+_图 8.6-4：HIL-SERL 系统图标出策略执行、人类接管、干预数据回流与离策略更新的闭环。 出处：Lawrence Yunliang Chen et al.，[HIL-SERL: Precise and Dexterous Robotic Manipulation via Human-in-the-Loop Reinforcement Learning](https://arxiv.org/abs/2410.21845)（2024），Figure 2。_
+</div>
+
+## 8.6.3 优势加权：连接离线数据与在线更新
+
+DAgger 需要专家为策略访问的状态持续标注。另一条路线是先把示范放入回放缓冲区，再用 off-policy 强化学习复用示范和在线数据。下面用 AWAC 解释优势加权；它不是 SERL 的同义词，也不自动提供安全约束。
 
 这种思想可以被严密地形式化为带有 Kullback-Leibler (KL) 散度约束的策略搜索问题。给定一个由人类示范和部分在线交互混合组成的回放缓冲区（Replay Buffer），设其导出的行为分布为 $p_{\text{data}}(a|s)$。我们希望找到一个策略 $\pi$，在最大化动作价值 $Q^\pi(s,a)$ 的同时，其条件概率分布不偏离 $p_{\text{data}}$ 太远。我们写出受限优化目标：
 
@@ -80,13 +104,19 @@ $$
 \pi^*(a|s) = p_{\text{data}}(a|s) \exp \left( \frac{Q(s,a) - \alpha - \lambda}{\lambda} \right)
 $$
 
-由于 $\pi^*$ 必须是一个合法的概率分布，我们可以将所有不依赖于动作 $a$ 的项吸收进一个配分函数（Partition Function） $Z(s)$ 中。同时，由于任意一个只依赖于状态 $s$ 的基线函数（Baseline）不会改变相对概率大小，我们将 $Q(s,a)$ 减去状态价值 $V(s)$，从而定义优势函数 $A(s,a) = Q(s,a) - V(s)$。这使得最优策略的解析解变得极其优雅：
+由于 $\pi^*$ 必须是一个合法的概率分布，可以将所有不依赖动作 $a$ 的项吸收进配分函数 $Z(s)$。只依赖状态 $s$ 的基线不会改变动作之间的相对概率，因此用 $A(s,a) = Q(s,a) - V(s)$ 定义优势函数后，可写成：
 
 $$
 \pi^*(a|s) = \frac{1}{Z(s)} p_{\text{data}}(a|s) \exp \left( \frac{A(s,a)}{\lambda} \right)
 $$
 
-> 我们可以将这种机制理解为一种“橡皮筋效应”：强化学习的奖励最大化目标（正向的优势函数）试图将策略拉向高价值的动作；而 KL 散度约束就像一根连接在人类示范数据（$p_{\text{data}}$）上的橡皮筋，防止策略走得太远而陷入未知的危险状态。随着乘子 $\lambda$（即温度系数）的调节，橡皮筋的拉力发生改变，从而在“探索高价值动作”与“保守模仿专家”之间达成精妙的平衡。
+<div align="center">
+<img src="/figures/08-robot-sim/latex/06-teleop-hil-serl/awac-advantage-reweighting.png" alt="数据动作概率乘以指数优势权重，再由配分函数归一化为目标策略" width="86%">
+
+_图 8.6-5：AWAC 用指数优势放大高价值数据动作、压低低价值动作，再通过同一个配分函数把所有权重归一化为概率分布。本文根据上式绘制。_
+</div>
+
+温度 $\lambda$ 控制优势权重的尖锐程度。$\lambda$ 较小时，少数高优势动作获得很大权重；较大时，更新更接近对数据动作的普通最大似然。它控制的是更新幅度，不提供形式化的安全保证。
 
 由于真实应用中我们需要拟合一个参数化的神经网络策略 $\pi_\theta(a|s)$，我们将目标转化为最小化 $\pi_\theta$ 偏离最优解 $\pi^*$ 的 KL 散度，这等价于最大化在 $\pi^*$ 下对数似然的期望。利用重要性采样（Importance Sampling），我们可以将期望的采样分布转回我们的数据集分布 $p_{\text{data}}$：
 
@@ -94,7 +124,7 @@ $$
 \max_\theta \mathbb{E}_{a \sim p_{\text{data}}} \left[ \frac{\pi^*(a|s)}{p_{\text{data}}(a|s)} \log \pi_\theta(a|s) \right]
 $$
 
-将该公式代入上式（忽略常数项 $Z(s)$），我们终于推导出了 AWAC 的核心更新公式：
+将这个策略形式代入上式，并忽略与动作无关的 $Z(s)$，得到 AWAC 使用的加权行为克隆目标：
 
 $$
 \max_\theta \mathbb{E}_{s, a \sim \mathcal{D}} \left[ \exp \left( \frac{A(s,a)}{\lambda} \right) \log \pi_\theta(a|s) \right]
@@ -149,17 +179,18 @@ class AWACUpdate:
             q_values = torch.stack([self.critic(states, a) for a in sampled_actions], dim=0)
             v_s = q_values.mean(dim=0)
 
-            # 计算优势函数 A(s,a) = Q(s,a) - V(s)
-            advantage = current_q - v_s
+            # Critic 已更新，因此重新计算数据动作的 Q 值
+            data_q = self.critic(states, actions)
+            advantage = data_q - v_s
 
             # 计算加权系数 exp(A/lambda) 并截断以防数值爆炸
             weights = torch.clamp(torch.exp(advantage / self.lambda_weight), max=100.0)
 
         # 获取当前策略对数据集动作的对数概率
-        log_probs = self.actor(states).log_prob(actions)
+        log_probs = self.actor(states).log_prob(actions).sum(dim=-1, keepdim=True)
 
         # 乘以常数权重，实现加权的最大似然估计 (等价于最小化加权负对数似然)
-        actor_loss = - (weights * log_probs).mean()
+        actor_loss = -(weights * log_probs).mean()
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
@@ -168,13 +199,14 @@ class AWACUpdate:
         return critic_loss.item(), actor_loss.item()
 ```
 
-在这段核心逻辑中，我们在计算 Actor 损失时，通过 `torch.exp(advantage / self.lambda_weight)` 精准地再现了推导出的该公式。并且出于工程稳定性考虑，对权重进行了 `torch.clamp` 处理。
+代码用 `exp(advantage / lambda_weight)` 给数据动作加权，并截断过大的权重。这里假定 actor 返回逐动作维的分布，因而先沿动作维求和得到每个样本的对数概率。
 
 ## 8.6.5 小结
 
-- **遥操作（Teleoperation）**提供了解决强化学习样本效率低下的关键人类先验，其核心依赖于严格的空间 $SE(3)$ 群几何变换与运动学映射。
-- 传统的行为克隆由于忽视了环境转移带来的**分布偏移（Distribution Shift）**问题，容易在长时间控制中失效。人类在环的 DAgger 算法通过在线学习机制为其提供了强力的理论支撑。
-- 现代的样本高效机器人框架（如 SERL）将离线人类示范与在线强化学习有机结合。其底层的 **AWAC 算法**通过带有 KL 散度约束的拉格朗日变分推导，证明了只需通过指数化优势函数加权的对数似然，即可在“模仿”与“探索”之间取得最优平衡。
+- 遥操作需要位姿映射，也需要标定、约束、逆运动学和延迟处理。
+- 行为克隆只在专家状态分布上训练；DAgger 通过让专家标注当前策略访问的状态来缓解分布偏移。
+- AWAC 用指数化优势给回放数据中的动作加权，从而连接离线数据与在线价值估计。
+- SERL 是更完整的真实机器人训练流程，不等同于 AWAC，也不因使用示范就自动获得安全保证。
 
 ## 8.6.6 练习
 

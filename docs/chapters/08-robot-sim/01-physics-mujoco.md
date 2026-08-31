@@ -1,4 +1,4 @@
-# 物理仿真与 MuJoCo 基础
+# 8.1 物理仿真与 MuJoCo 基础
 
 > **本章导读**
 >
@@ -8,11 +8,17 @@
 >
 > **故事线：** `建立可计算的刚体与接触世界 → 并行生成大量交互 → 随机化未知物理参数 → 用特权信息帮助策略学习 → 在模型想象中继续试错 → 让人类示范与干预修补现实失败`
 
-在探讨具身智能（Embodied AI）和基于世界模型（World Models）的强化学习时，我们不可避免地需要一个能够以极高保真度模拟真实物理法则的环境。在过去的十年中，物理仿真器在机器人学和强化学习领域经历了从“视觉优先的渲染引擎”向“动力学优先的科学计算工具”的范式转变。
+先看一个单摆。给定摆杆的长度、质量、当前角度和角速度，仿真器要在一个很短的时间步内算出下一时刻的角度。若摆杆撞到挡板，计算还要同时满足“不能穿透”和“接触力只能把物体推开”等约束。
+
+<div align="center">
+<img src="/figures/08-robot-sim/source/01-physics-mujoco/dmcontrol-fig1.png" alt="DeepMind Control Suite 汇集摆、机械臂、行走与游泳任务，展示刚体仿真如何承载连续控制实验。" width="86%">
+
+_图 8.1-1：DeepMind Control Suite 汇集摆、机械臂、行走与游泳任务，展示刚体仿真如何承载连续控制实验。 出处：Yuval Tassa et al.，[DeepMind Control Suite](https://arxiv.org/abs/1801.00690)（2018），Figure 1。_
+</div>
 
 机器人控制要求仿真器在速度、稳定性与接触动力学精度之间作出明确取舍；仿真误差是否被闭环放大，取决于系统稳定性，不能一概说成指数增长。Todorov 等人提出 MuJoCo（Multi-Joint dynamics with Contact），采用广义坐标，并把接触动力学写成凸优化问题 [[Todorov et al., 2012]](https://doi.org/10.1109/IROS.2012.6386109)。这正是该论文能够直接支持的技术贡献。
 
-在本节中，我们将从最基础的牛顿运动定律出发，逐步推导多刚体系统的动力学方程，并深入解析 MuJoCo 是如何通过数学优化来求解接触力的。最终，我们将通过代码展示如何在深度学习框架中调用 MuJoCo。
+本节从这个最小例子出发，依次建立广义坐标、多刚体动力学、接触约束和时间积分，最后用 Python 读取 MuJoCo 的质量矩阵并推进一步仿真。
 
 ## 从牛顿第二定律到广义坐标
 
@@ -28,7 +34,7 @@ $$f(t) = m \cdot a(t)$$
 
 $$f(t) = m \cdot \frac{d^2 x(t)}{dt^2} = m \cdot \ddot{x}(t)$$
 
-在物理仿真中，我们通常已知系统的当前状态（位置 $x$ 和速度 $v$）以及当前施加的力 $f$，目标是求解出加速度 $\ddot{x}$。这个过程被称为**前向动力学（Forward Dynamics）**。一旦我们得到了加速度 $\ddot{x}$，就可以通过数值积分来预测质点在下一个时刻的状态。对于简单的质点，前向动力学极其简单，只需一次标量除法：$\ddot{x}(t) = \frac{f(t)}{m}$。
+在物理仿真中，我们通常已知系统的当前状态（位置 $x$ 和速度 $v$）以及当前施加的力 $f$，目标是求解出加速度 $\ddot{x}$。这个过程被称为**前向动力学（Forward Dynamics）**。得到加速度后，就可以通过数值积分预测质点在下一个时刻的状态。对于简单质点，前向动力学只需一次标量除法：$\ddot{x}(t) = \frac{f(t)}{m}$。
 
 ### 矢量形式与多刚体系统
 
@@ -40,73 +46,92 @@ $$f(t) = m \cdot \frac{d^2 x(t)}{dt^2} = m \cdot \ddot{x}(t)$$
 
 此时，系统的受力也从单一的标量力升级为**广义力向量（Generalized Forces）** $\boldsymbol{\tau} \in \mathbb{R}^{n_v}$，它代表了施加在每个关节上的驱动力矩（Torque）。
 
-随着维度的提升，单个质点的标量质量 $m$ 必须被推广为**正定对称的质量矩阵（Mass Matrix）** $\mathbf{M}(\mathbf{q}) \in \mathbb{R}^{n_v \times n_v}$。与恒定的质点质量不同，多刚体系统的质量矩阵 $\mathbf{M}(\mathbf{q})$ 是高度非线性的，并且极其依赖于系统当前的姿态 $\mathbf{q}$。例如，当机械臂完全伸展时，其整体的转动惯量远大于它蜷缩时的转动惯量。
+随着维度提升，标量质量 $m$ 被推广为**质量矩阵（Mass Matrix）** $\mathbf{M}(\mathbf{q}) \in \mathbb{R}^{n_v \times n_v}$。它通常是对称正定的，并随姿态 $\mathbf{q}$ 改变。例如，机械臂伸展和收拢时，各关节感受到的等效惯量并不相同。
 
 除了外部施加的控制力矩 $\boldsymbol{\tau}$，由于物体在三维空间中运动，系统内部还会产生离心力（Centrifugal force）、科里奥利力（Coriolis force）以及重力（Gravity）。我们将所有这些非外部控制力统称为**科里奥利与重力偏置项** $\mathbf{c}(\mathbf{q}, \mathbf{v}) \in \mathbb{R}^{n_v}$。
 
-结合以上定义，我们将该公式推广到高维向量空间，就得到了机器人学中最核心的**多刚体动力学方程（Equations of Motion）**：
+把这些量推广到高维向量空间，就得到机器人学常用的**多刚体动力学方程（Equations of Motion）**：
 
 $$\mathbf{M}(\mathbf{q})\dot{\mathbf{v}} + \mathbf{c}(\mathbf{q}, \mathbf{v}) = \boldsymbol{\tau}$$
 
-该公式完美地将牛顿-欧拉方程组抽象成了矩阵运算。要想进行前向动力学仿真求解加速度 $\dot{\mathbf{v}}$，我们只需对质量矩阵求逆并进行简单的矩阵乘法：
+忽略接触约束时，前向动力学可以写为：
 
 $$\dot{\mathbf{v}} = \mathbf{M}(\mathbf{q})^{-1} \left( \boldsymbol{\tau} - \mathbf{c}(\mathbf{q}, \mathbf{v}) \right)$$
 
-MuJoCo 在底层采用了极其高效的羽石算法（Featherstone's Articulated Body Algorithm, ABA）来隐式求解这一过程，避免了极其昂贵的 $O(N^3)$ 复杂度直接矩阵求逆计算，使其时间复杂度降至 $O(N)$，其中 $N$ 为系统关节数量。
+<div align="center">
+<img src="/figures/08-robot-sim/latex/01-physics-mujoco/mass-matrix-coupled-solve.png" alt="质量矩阵的非对角项把两个净力矩分量耦合到两个关节加速度分量" width="86%">
+
+_图 8.1-2：质量矩阵存在非对角项时，前向动力学必须整体求解耦合方程；单个净力矩分量不再只对应一个关节加速度。本文根据上式绘制。_
+</div>
+
+这个式子用于说明变量关系，不表示实现时真的显式计算 $\mathbf{M}^{-1}$。MuJoCo 使用复合刚体算法构造稀疏质量矩阵，并对其做保持稀疏性的 $L^\top D L$ 分解；求解 $\mathbf{M}^{-1}\mathbf{x}$ 时使用回代 [[MuJoCo Computation]](https://mujoco.readthedocs.io/en/latest/computation.html)。
+
+<div align="center">
+<img src="/figures/08-robot-sim/source/01-physics-mujoco/d4rl-fig1.png" alt="D4RL 的 MuJoCo locomotion 数据集把同一物理系统中的不同数据质量组织成可比较的离线控制基准。" width="86%">
+
+_图 8.1-3：D4RL 的 MuJoCo locomotion 数据集把同一物理系统中的不同数据质量组织成可比较的离线控制基准。 出处：Justin Fu et al.，[D4RL: Datasets for Deep Data-Driven Reinforcement Learning](https://arxiv.org/abs/2004.07219)（2020），Figure 1。_
+</div>
 
 ## 接触动力学与线性互补问题
 
-如果在真空中模拟一个悬浮的机械臂，该公式就足够了。但在实际任务中（如机器人行走、机械臂抓取杯子），物体之间不可避免地会发生碰撞和接触。接触物理的建模是现代物理仿真中最困难、也是计算量最大的环节。
+如果在真空中模拟一个悬浮的机械臂，上式已经描述了主要动力学。但在机器人行走、机械臂抓取杯子等任务中，物体还会发生碰撞和接触。接触建模通常也是物理仿真中计算较多、调参较敏感的环节。
 
-当两个刚体发生接触时，它们之间会产生接触力 $\mathbf{f}_c \in \mathbb{R}^{n_c}$，其中 $n_c$ 取决于当前接触点的数量。这些由于接触产生的力必须被映射回到关节空间中，才能与主系统的动力学方程融合。我们在此引入接触雅可比矩阵（Contact Jacobian）$\mathbf{J}_c(\mathbf{q}) \in \mathbb{R}^{n_c \times n_v}$。根据虚功原理，施加在接触点上的法向与摩擦力 $\mathbf{f}_c$ 可以被完全等效映射为关节上的广义反作用力，即 $\mathbf{J}_c(\mathbf{q})^\top \mathbf{f}_c$。
+<div align="center">
+<img src="/figures/08-robot-sim/source/01-physics-mujoco/gym-fig1.png" alt="OpenAI Gym 的机器人环境界面把物理状态、动作和可视化包装成统一交互循环。" width="86%">
+
+_图 8.1-4：OpenAI Gym 的机器人环境界面把物理状态、动作和可视化包装成统一交互循环。 出处：Greg Brockman et al.，[OpenAI Gym](https://arxiv.org/abs/1606.01540)（2016），Figure 1。_
+</div>
+
+当两个刚体发生接触时，它们之间会产生接触力 $\mathbf{f}_c \in \mathbb{R}^{n_c}$，其中 $n_c$ 取决于当前接触约束的数量。接触力要先映射到关节空间，才能进入系统动力学方程。为此引入接触雅可比矩阵 $\mathbf{J}_c(\mathbf{q}) \in \mathbb{R}^{n_c \times n_v}$。根据虚功关系，接触坐标中的力 $\mathbf{f}_c$ 对应关节空间中的广义力 $\mathbf{J}_c(\mathbf{q})^\top \mathbf{f}_c$。
 
 因此，包含物理接触后的系统总动力学方程变为：
 
 $$\mathbf{M}(\mathbf{q})\dot{\mathbf{v}} + \mathbf{c}(\mathbf{q}, \mathbf{v}) = \boldsymbol{\tau} + \mathbf{J}_c(\mathbf{q})^\top \mathbf{f}_c$$
 
-此时的前向动力学求解面临着一个巨大的纯数学挑战：系统的新加速度 $\dot{\mathbf{v}}$ 和突发的接触力 $\mathbf{f}_c$ 同时成为了未知的变量。传统的软接触模型（Soft Contact / Penalty Methods）通过允许物体发生非常轻微的体积穿透，然后如同放置了一根极硬的弹簧般产生排斥力来估算 $\mathbf{f}_c$。这种方法非常容易导致数值刚性（Stiffness）和仿真系统能量的失控爆炸。
+现在，加速度 $\dot{\mathbf{v}}$ 与接触力 $\mathbf{f}_c$ 都是未知量。硬接触的理想化形式常写成互补条件：法向力 $f_n$ 不能为负，分离加速度 $a_n$ 不能指向穿透方向，并且两者不能同时为正。
 
-> 一次克制的类比：
-> 我们可以将带接触的物理引擎仿真，理解为在带有坚硬墙壁和不规则地面的房间内，寻找多个弹性小球在一瞬间的受力平衡态。传统的惩罚法就像是当小球已经深陷进墙体内部时，才猛然施加一个巨大的弹簧力将其弹开，如果弹簧弹性系数设得过高，小球会直接被弹飞（导致仿真崩溃）。而 MuJoCo 则是将“小球绝对不能穿过墙壁”这个事实直接写成一个极其严格的数学不等式约束条件，并在时间轴的每一步，精确计算出一个刚好不让小球穿透、且符合摩擦圆锥限制的最优接触作用力。这使得整个系统能够在数学分析的层面上保证绝对稳定的非穿透性。
+$$
+f_n \ge 0, \qquad a_n \ge 0, \qquad f_n a_n = 0
+$$
 
-在严密的数学框架下，MuJoCo 将接触力求解转化为了一个复杂的线性互补问题（Linear Complementarity Problem, LCP）及广义凸优化问题。设接触点在法线方向的相对距离为 $d(\mathbf{q})$（当 $d>0$ 时分离，$d=0$ 时接触），那么对应的相对法向加速度为 $a_n = \mathbf{J}_c(\mathbf{q}) \dot{\mathbf{v}} + \dot{\mathbf{J}}_c(\mathbf{q}) \mathbf{v}$。真实物理世界中刚体的硬接触现象，必须严格满足所谓的 Signorini 条件（互补条件）：
+第三个条件的含义很具体：物体正在分离时，接触力应为零；接触力为正时，接触点不能继续沿法线方向互相挤入。
 
-1. **不可穿透性**：相对法向加速度必须非负，$a_n \ge 0$。
-2. **接触力单向性**：法向接触力只能是推斥力而不能是拉拽力，即 $f_{c,n} \ge 0$。
-3. **正交互补性**：只有当真正的物理接触正在发生（距离为 0 且毫无分离趋势，即 $a_n=0$）时，接触推力才可能大于 0。这在数学上被极其优雅地表达为 $a_n \cdot f_{c,n} = 0$。
+MuJoCo 并不是简单地把所有接触都当作严格的硬约束 LCP。它使用可调软硬程度的约束模型，并把约束力定义为凸优化问题的解：金字塔摩擦锥对应二次规划，椭圆摩擦锥对应锥规划 [[MuJoCo Computation]](https://mujoco.readthedocs.io/en/latest/computation.html)。软约束允许模型表达有限刚度，也让数值求解更稳定；代价是接触行为仍取决于时间步、求解器容差和材料参数。
 
-MuJoCo 引擎在底层深刻利用了极小化高斯原理（Gauss's Principle of Least Constraint），将其重构为二次规划（Quadratic Programming）模型，通过投影高斯-赛德尔迭代法（Projected Gauss-Seidel）等先进的数值迭代器，在每一极小时间步极其严谨地逼近求出最优的 $\mathbf{f}_c$ 和对应的加速度 $\dot{\mathbf{v}}$。这正是为什么 MuJoCo 能够在强化学习这种需要成百上千万次不间断迭代的接触密集型任务中屹立不倒的原因。
+因此，仿真器给出的不是“真实接触力的唯一答案”，而是在指定模型与数值设置下的一致近似。将策略迁移到真实机器人时，接触参数仍需要校准或随机化。
 
 ## 时间离散化与数值积分
 
-通过解析该公式和强大的内部接触求解器，我们终于得到了当前精确时刻 $t$ 系统的连续时间加速度 $\dot{\mathbf{v}}_t$。但为了让计算机算法能够在离散硬件中模拟连续时间流逝，我们必须选择一个极小的离散时间步长 $\Delta t$（通常在 MuJoCo 强化学习环境中设置为 0.002 到 0.01 秒左右），并使用数值积分算法更新全局状态。
+前向动力学给出当前时刻的连续时间加速度 $\dot{\mathbf{v}}_t$。计算机还需要选择时间步长 $\Delta t$，再用数值积分把速度和位置推进到下一时刻。时间步越小通常越准确，但每秒需要的求解次数也越多。
 
-MuJoCo 默认使用的是一种具备极高学术声誉的积分方法：半隐式欧拉积分（Semi-implicit Euler，在物理学中也被广泛称为辛欧拉积分 Symplectic Euler）。与传统直觉中简单的显式欧拉积分（先用旧速度更新旧位置，再独立更新速度）截然不同，半隐式欧拉法首先积分得到最新一步的速度，然后立即利用这个**最新**鲜的速度变量来积分更新位移。
+<div align="center">
+<img src="/figures/08-robot-sim/source/01-physics-mujoco/brax-fig5.png" alt="Brax 对接触系统的能量与动量误差进行比较，显示积分与接触实现会直接改变长期数值行为。" width="86%">
+
+_图 8.1-5：Brax 对接触系统的能量与动量误差进行比较，显示积分与接触实现会直接改变长期数值行为。 出处：C. Daniel Freeman et al.，[Brax — A Differentiable Physics Engine for Large Scale Rigid Body Simulation](https://arxiv.org/abs/2106.13281)（2021），Figure 5。_
+</div>
+
+下面先看半隐式欧拉积分（Semi-implicit Euler）。它先更新速度，再用新速度更新位置：
 
 首先，我们在极短的 $\Delta t$ 窗口内对系统的广义加速度进行线性积分：
 
 $$\mathbf{v}_{t+1} = \mathbf{v}_t + \dot{\mathbf{v}}_t \cdot \Delta t$$
 
-紧接着，立刻利用这个刚刚算得的未来一瞬的速度 $\mathbf{v}_{t+1}$ 来前推广义位置：
+随后用 $\mathbf{v}_{t+1}$ 更新广义位置：
 
 $$\mathbf{q}_{t+1} = \mathbf{q}_t + \mathbf{v}_{t+1} \cdot \Delta t$$
 
-与标准显式欧拉法不可逆转的能量发散缺陷相比，这种半隐式的方法在哈密顿动力系统（Hamiltonian Systems）分析中，在数学理论上能极其完美地保持长期运动方程能量边界的守恒（Bounded Energy），从而断崖式地提升了仿真器进行长期策略评估时的底层数值稳定性。
+相较于用旧速度更新位置的显式欧拉法，这种顺序在许多机械系统中更稳定，但并不保证所有带阻尼、接触和控制输入的系统都守恒能量。MuJoCo 还提供隐式类积分器与四阶 Runge–Kutta；具体选择应由系统刚性、精度要求和计算预算决定 [[MuJoCo Computation]](https://mujoco.readthedocs.io/en/latest/computation.html#numerical-integration)。
 
 ## MuJoCo 在深度学习框架中的使用
 
-前文我们深入剖析了由微积分与线性代数交织的动力学仿真底层原理，接下来，我们将展示如何在现代深度学习生态的 Python 环境中启动 MuJoCo。MuJoCo 的所有底层物理模型都由一种极其清晰、严格的 XML 标签系统（被官方称为 MJCF 格式）定义。为了演示的纯粹性，我们将直接利用 Python 语言的字符串特性，动态传递一段简易的、带有单向铰链（hinge）关节的胶囊体单摆（Capsule Pendulum）模型。
-
-在接下来的动作中，我们将展示如何通过 API 层打通底层 C++ 引擎与 Python 上层逻辑。我们通过加载几何模型提取质量矩阵 $\mathbf{M}(\mathbf{q})$，并最终执行一次严格包含约束求解的前向动力学步长跨越。为了无缝匹配深度学习工程的上下游，代码会将仿真底层的 C 数组指针数据无缝平滑地封装至主流深度学习框架的张量（Tensor）结构中。
-
-(**定义 XML 模型、初始化 MuJoCo 引擎并执行一次完整的前向动力学与积分迭代**)
+MuJoCo 使用 MJCF 描述刚体、关节、执行器和传感器。下面的 MJCF 只包含一个胶囊体和一个铰链，因此质量矩阵退化为 $1\times1$。代码先读取这一矩阵，再调用 `mj_step` 推进一步。
 
 ```python
 import mujoco
 import numpy as np
 import torch
 
-# 纯手写定义一个极简的带单向铰链（hinge）的单摆模型的 MJCF XML 字符串
+# 一个带铰链的胶囊体单摆
 xml_string = """
 <mujoco>
   <option gravity="0 0 -9.81" timestep="0.01"/>
@@ -120,50 +145,44 @@ xml_string = """
 </mujoco>
 """
 
-# 步骤 1：将静态的 XML 字符串加载编译为不变的底层 mjModel 结构（包含了独立于时间的物理拓扑、质量分布信息）
+# mjModel 保存拓扑与参数，mjData 保存当前状态与中间结果
 model = mujoco.MjModel.from_xml_string(xml_string)
-# 步骤 2：基于固定的模型分配连续内存，创建 mjData 结构（包含了随时间瞬息万变的状态量：q, v 等）
 data = mujoco.MjData(model)
 
-# 人为设置系统的初始广义坐标 q (对应由于重力下垂的单摆初始抬起角度) 和初始广义速度 v (初态角速度)
+# 初始角度约为 57 度，初始角速度为 0
 data.qpos[0] = 1.0  # 约抬起 57 度
 data.qvel[0] = 0.0
 
-# 记录当前的物理瞬像
 print(f"初始物理状态 - 位置(q): {data.qpos[0]:.4f}, 速度(v): {data.qvel[0]:.4f}")
 
-# 执行一次干净的纯前向运动学计算（此函数仅更新空间中的笛卡尔位置和各种雅可比变换，完全不步进时间）
+# 更新当前状态对应的动力学量，但不推进时间
 mujoco.mj_forward(model, data)
 
-# 在数学上提取系统的总质量矩阵 M(q) (由于当前是极为纯粹的单摆系统，退化为一个 1x1 的标量矩阵)
-# 由于 MuJoCo 为追求极限性能，其底层质量矩阵默认以稀疏的一维 C 数组形式存储，
-# 因此我们必须利用官方专门提供的 mj_fullM 函数将其反算回我们熟悉的稠密矩阵表示。
+# 将稀疏存储的 qM 展开为便于检查的稠密质量矩阵
 nv = model.nv
 M_dense = np.zeros((nv, nv))
 mujoco.mj_fullM(model, M_dense, data.qM)
-print(f"当前严谨物理姿态下的稠密质量矩阵 M(q):\n {M_dense}")
+print(f"当前姿态下的质量矩阵 M(q):\n{M_dense}")
 
-# 提取由几何非线性和万有引力主导的科里奥利力与重力补偿偏置项 c(q, v)
-c_gravity_coriolis = data.qfrc_bias
-print(f"当前时间断面下的科里奥利力与重力非线性偏置 c(q, v): {c_gravity_coriolis}")
+# qfrc_bias 包含科里奥利、离心和重力偏置项
+bias_force = data.qfrc_bias.copy()
+print(f"偏置力 c(q, v): {bias_force}")
 
-# 执行最具含金量的单步完整引擎仿真核心流程：
-# (它内部连贯执行了计算实时受力、启动 LCP 求解器解算出非穿透接触、求解最新加速度、并完成最终的半隐式欧拉积分，最后强行将系统时间指针前推 Delta t)
+# 求解前向动力学与约束，并按所选积分器推进一个时间步
 mujoco.mj_step(model, data)
 
-# 仿真步进完成后，为了供给后续的神经网络策略网络读取计算，我们将纯 Numpy 数组零拷贝(如果可能)转化为 PyTorch 浮点张量
-next_q_tensor = torch.tensor(data.qpos, dtype=torch.float32)
-next_v_tensor = torch.tensor(data.qvel, dtype=torch.float32)
+# 先复制数组，避免后续仿真步原地改写张量所引用的数据
+next_q_tensor = torch.tensor(data.qpos.copy(), dtype=torch.float32)
+next_v_tensor = torch.tensor(data.qvel.copy(), dtype=torch.float32)
 
 print(f"单步数值积分后的系统状态 (转为 PyTorch Tensor) - 位置: {next_q_tensor.item():.4f}, 速度: {next_v_tensor.item():.4f}")
 ```
 
-通过这段看似简短却深邃的代码，我们极其透彻地揭开了黑盒仿真器的底层神秘面纱。可以看到，动力学引擎在运行时的每一步迭代计算（如提取物理质量矩阵、利用 LCP 求解加速度、并驱动数值积分），全都在工程上完美无缝地印证了我们在前几节中推导的极其严格的数学物理方程体系。
+这段代码对应三个层次：`qpos/qvel` 是状态，`qM/qfrc_bias` 是当前状态导出的动力学量，`mj_step` 则完成受力、约束与积分。神经网络通常读取状态或传感器观测，而不是直接读取全部内部量。
 
 ## 小结
 
-- Todorov 等人的 **MuJoCo** 采用广义坐标与凸优化接触模型，并面向模型式控制所需的速度与导数计算 [[Todorov et al., 2012]](https://doi.org/10.1109/IROS.2012.6386109)。这是可由原论文核实的贡献；“商业引擎都牺牲精度”或“MuJoCo 是绝对基石”属于无法由该论文证明的价值判断。
-
-* 世界上一切复杂多刚体的机械运动，其最底层的数学内核，全部都可以毫无保留地映射为广义坐标系下的高维**牛顿-欧拉方程**：$\mathbf{M}(\mathbf{q})\dot{\mathbf{v}} + \mathbf{c}(\mathbf{q}, \mathbf{v}) = \boldsymbol{\tau}$。
-* 真实世界的硬物理接触（Contact）在数值仿真中绝不应被粗暴廉价地视作会引发穿透的弹簧阻尼惩罚模型，而必须被极其严谨地建模为严格满足物理不穿透性和受力绝对单向性的**线性互补问题（LCP）或凸优化问题**。
-* 借助极具物理洞察力的半隐式欧拉法（Symplectic Euler），我们在极微小的时间切片维度上离散化方程，将每一独立微小时间步算出的瞬时连续加速度，通过积分几何严密累加汇入速度和位置中，从而不可逆地驱动虚拟世界的时间箭头向未来无尽推进。
+- 广义坐标下的动力学由质量矩阵、偏置力、控制力和约束力共同决定。
+- MuJoCo 把约束力写成凸优化问题，并允许通过参数调节接触的软硬程度。
+- 数值积分把连续时间加速度变成离散状态序列；时间步和积分器都会影响稳定性与精度。
+- `mjModel` 保存模型，`mjData` 保存状态与中间量。读取 `qM`、`qfrc_bias` 和推进 `mj_step` 可以把公式对应到程序接口。
