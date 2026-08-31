@@ -4,6 +4,13 @@ LeCun 在 _A Path Towards Autonomous Machine Intelligence_ 中提出了联合嵌
 
 本节在这一原则上加入**动作（Action）**：预测器除了读取当前表征，还读取动作，用来预测动作条件下的下一时刻表征。这里的“Action-conditional JEPA”是教学性的组合设计，并不声称复现 LeCun 文章中某个固定模型，也不能仅凭预测损失就推出它已经具备反事实规划能力。
 
+<div align="center">
+  <img src="/figures/06-jepa/source/04-action-jepa/muzero-fig1.png" alt="MuZero 把动作送入潜在动力学并递归展开奖励、价值与策略预测，是动作条件隐空间演化的直接前身。" width="86%">
+
+_图 6.4-1：MuZero 把动作送入潜在动力学并递归展开奖励、价值与策略预测，是动作条件隐空间演化的直接前身。 出处：Julian Schrittwieser et al.，[Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model](https://arxiv.org/abs/1911.08265)（2020），Figure 1。_
+
+</div>
+
 本节从基础运动学出发构造一个最小模型，并分析表征坍塌为何仍可能出现。代码用于说明张量与梯度路径，不代表经过真实机器人基准验证的工业实现。
 
 ## 6.4.1 从基础运动学到隐空间的非线性演化
@@ -13,6 +20,13 @@ LeCun 在 _A Path Towards Autonomous Machine Intelligence_ 中提出了联合嵌
 $$x_{t+1} = x_t + v_t \cdot \Delta t$$
 
 在这个简单的物理系统中，状态 $x_t$ 是完全可观测的（例如物体在坐标轴上的位置），而 $v_t$ 则是我们主动施加的“动作”。如果我们将其推广到多维空间，状态变为向量 $\mathbf{x}_t \in \mathbb{R}^D$，动作变为控制向量 $\mathbf{a}_t \in \mathbb{R}^A$，我们便得到了现代控制理论中的线性离散时间状态方程：
+
+<div align="center">
+  <img src="/figures/06-jepa/source/04-action-jepa/world-models-fig4.png" alt="World Models 的 VAE、MDN-RNN 与控制器分工图展示动作如何进入学习到的隐状态动力学。" width="86%">
+
+_图 6.4-2：World Models 的 VAE、MDN-RNN 与控制器分工图展示动作如何进入学习到的隐状态动力学。 出处：David Ha; Jürgen Schmidhuber，[World Models](https://arxiv.org/abs/1803.10122)（2018），Figure 4。_
+
+</div>
 
 $$\mathbf{x}_{t+1} = \mathbf{A}\mathbf{x}_t + \mathbf{B}\mathbf{a}_t$$
 
@@ -26,11 +40,11 @@ $$\mathbf{s}_t = E_\theta(\mathbf{o}_t), \quad \mathbf{s}_t \in \mathbb{R}^d$$
 
 $$\hat{\mathbf{s}}_{t+1} = P_\phi(\mathbf{s}_t, \mathbf{a}_t)$$
 
-通过这种方式，动作条件 JEPA 将复杂的“像素级演化”转换为了纯粹的“语义级演化”，极大地降低了预测环境动态的难度。
+动作条件 JEPA 不直接预测下一帧像素，而是预测动作发生后的目标表征。这会改变损失强调的信息，但是否降低任务难度、表征是否足以支持控制，都需要通过下游实验验证。
 
 ## 6.4.2 架构解析与严密的数学表达
 
-动作条件 JEPA 的整体架构由三个核心神经网络组件构成。为了保证数学上的严谨性，我们将精确定义每个组件的张量输入与输出。
+教学模型由上下文编码器、目标编码器和动作条件预测器组成。先固定每个组件的输入、输出和梯度路径。
 
 1. **上下文编码器（Context Encoder） $E_\theta$**：
    负责处理当前时刻 $t$ 的观测数据 $\mathbf{o}_t$。参数为 $\theta$。其输出被称为上下文表征（Context Representation） $\mathbf{s}_t \in \mathbb{R}^d$。
@@ -44,6 +58,13 @@ $$\hat{\mathbf{s}}_{t+1} = P_\phi(\mathbf{s}_t, \mathbf{a}_t)$$
 在给定的批次大小 $B$（Batch Size）下，我们可以将损失函数定义为预测表征 $\hat{\mathbf{Y}}$ 与目标表征 $\mathbf{Y}$ 之间的均方误差（MSE）。设批次中的第 $i$ 个样本的第 $j$ 个特征维度分别为 $\hat{y}_{t+1}^{(i,j)}$ 和 $y_{t+1}^{(i,j)}$，标量形式的损失函数展开如下：
 
 $$\mathcal{L}_{JEPA}(\theta, \phi) = \frac{1}{B \cdot d} \sum_{i=1}^B \sum_{j=1}^d \left( \hat{y}_{t+1}^{(i,j)} - y_{t+1}^{(i,j)} \right)^2$$
+
+<div align="center">
+  <img src="/figures/06-jepa/latex/04-action-jepa/jepa-batch-feature-reduction.png" alt="批量特征误差矩阵沿特征维和样本维求和后除以 B 乘 d" width="86%">
+
+_图 6.4-3：每个 e_ij 对应第 i 个样本、第 j 个特征；双重求和消去两维，再除以 Bd 得到逐元素均方误差。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
 
 将其写为紧凑的矩阵形式（即 Frobenius 范数的平方）：
 
@@ -71,6 +92,13 @@ EMA 与停止梯度让目标网络不会在同一步直接追随预测器，从�
 
 真实的规划往往需要预测未来多步的状态。动作条件 JEPA 可以自然地扩展为自回归（Autoregressive）模式。给定初始观测 $\mathbf{o}_t$ 以及一个动作序列 $\mathbf{a}_t, \mathbf{a}_{t+1}, \dots, \mathbf{a}_{t+K-1}$，我们可以递归地展开预测：
 
+<div align="center">
+  <img src="/figures/06-jepa/source/04-action-jepa/planet-fig2.png" alt="PlaNet 并列确定性、随机与循环状态空间模型，展示多步潜在动力学中历史与随机状态的不同组织方式。" width="86%">
+
+_图 6.4-4：PlaNet 并列确定性、随机与循环状态空间模型，展示多步潜在动力学中历史与随机状态的不同组织方式。 出处：Danijar Hafner et al.，[Learning Latent Dynamics for Planning from Pixels](https://arxiv.org/abs/1811.04551)（2019），Figure 2。_
+
+</div>
+
 1. $\hat{\mathbf{s}}_{t+1} = P_\phi(E_\theta(\mathbf{o}_t), \mathbf{a}_t)$
 2. $\hat{\mathbf{s}}_{t+2} = P_\phi(\hat{\mathbf{s}}_{t+1}, \mathbf{a}_{t+1})$
 3. ...
@@ -80,13 +108,20 @@ EMA 与停止梯度让目标网络不会在同一步直接追随预测器，从�
 
 $$\mathcal{L}_{multi} = \sum_{k=1}^K \lambda_k \left\| \hat{\mathbf{s}}_{t+k} - E_{\bar{\theta}}(\mathbf{o}_{t+k}) \right\|_F^2$$
 
+<div align="center">
+  <img src="/figures/06-jepa/latex/04-action-jepa/action-conditioned-autoregressive-chain.png" alt="每个动作把上一预测表征推进一步，并在对应未来时刻接受加权目标损失" width="86%">
+
+_图 6.4-5：第 k 步以先前预测和 a_{t+k−1} 为输入；每个预测节点都与同一时刻的目标编码相配，并以 λ_k 加权进入总损失。本文根据上式及递推定义绘制；TikZ/LaTeX 编译。_
+
+</div>
+
 其中 $\lambda_k$ 为不同时间步的权重系数。通过多步展开训练，预测器被迫学习长期的环境动态，而不仅仅是下一步的细微变化。
 
 ## 6.4.5 代码实现
 
-下面我们以工业级代码的标准，使用 PyTorch 实现一个多层感知机（MLP）版本的动作条件 JEPA 核心架构。我们将明确处理梯度的截断（Stop-Gradient）以及 EMA 参数的更新。
+下面用 PyTorch 实现一个 MLP 版本的教学骨架，重点检查停止梯度、EMA 更新和张量形状。它不是某篇 Action-JEPA 论文的完整官方实现。
 
-(**首先，我们定义基础的编码器和预测器模块。**)
+先定义编码器和动作条件预测器。
 
 ```python
 import torch
@@ -127,7 +162,7 @@ class ActionPredictor(nn.Module):
         return self.net(x)
 ```
 
-(**接下来，我们组装完整的 Action-conditional JEPA 模型，并实现 EMA 更新逻辑。**)
+再组装在线分支、目标分支与 EMA 更新。
 
 ```python
 class ActionConditionalJEPA(nn.Module):
@@ -153,7 +188,7 @@ class ActionConditionalJEPA(nn.Module):
         """执行目标编码器的指数移动平均 (EMA) 更新"""
         for param_q, param_k in zip(self.context_encoder.parameters(), self.target_encoder.parameters()):
             # \bar{\theta} = \tau * \bar{\theta} + (1 - \tau) * \theta
-            param_k.data.mul_(self.ema_tau).add_(param_q.data, alpha=1.0 - self.ema_tau)
+            param_k.mul_(self.ema_tau).add_(param_q, alpha=1.0 - self.ema_tau)
 
     def forward(self, obs_t, action_t, obs_t_plus_1):
         """
@@ -168,17 +203,17 @@ class ActionConditionalJEPA(nn.Module):
         # (3) 使用目标编码器获取真实的下一时刻目标隐状态
         with torch.no_grad():
             s_t_plus_1_target = self.target_encoder(obs_t_plus_1)
-            # 严格确保在此处进行 Stop-Gradient (尽管 no_grad 已经保证了这一点)
+            # no_grad 在此处停止目标分支的梯度
             s_t_plus_1_target = s_t_plus_1_target.detach()
 
         # (4) 计算 MSE 损失
-        # 这里使用了平滑且严谨的均方误差公式
+        # 对批量和特征维取平均的均方误差
         loss = nn.functional.mse_loss(s_t_plus_1_pred, s_t_plus_1_target)
 
         return loss, s_t_plus_1_pred
 ```
 
-(**为了观察模型如何避免表征坍塌，我们编写一个简短的训练循环，并监控损失和隐状态的方差。如果模型坍塌，隐状态的方差会迅速趋近于零。**)
+下面的训练循环同时记录损失和隐状态方差。方差趋近于零是完全坍塌的警报；方差非零并不能单独证明表征有用。
 
 ```python
 # 初始化模型和优化器
@@ -207,16 +242,16 @@ for step in range(50):
     jepa.update_target_encoder()
 
     if (step + 1) % 10 == 0:
-        # 监控隐特征维度的方差。方差远离 0 说明没有发生表征坍塌。
+        # 批内方差接近 0 是完全坍塌警报；非零不等于表征一定有用。
         state_variance = pred_state.var(dim=0).mean().item()
         print(f"Step {step+1}: Loss = {loss.item():.4f}, 隐特征均方差 = {state_variance:.4f}")
 ```
 
 ## 6.4.6 小结与实践指导
 
-在构建大规模世界模型时，动作条件 JEPA 提供了一种极具数学优雅性的解决方案。通过在隐空间中进行预测，并利用不对称的 EMA 架构冻结目标梯度，它巧妙地在“学习世界动态”与“忽略无关噪声”之间找到了平衡。
+动作条件 JEPA 把当前表征和动作映射到未来表征，并用变化较慢的目标分支提供监督。它是否保留了控制所需信息，需要结合预测误差、表征诊断和下游控制结果判断。
 
-在实际训练中，你需要注意以下几点：
+实际训练要注意以下两点：
 
-1. **EMA 动量参数（$\tau$）的选择**：如果 $\tau$ 太小，目标网络更新过快，很容易陷入表征坍塌；如果 $\tau$ 太大（非常接近 $1.0$），目标网络更新过于缓慢，导致训练收敛极慢。一种常见的策略是采用“余弦退火（Cosine Annealing）”，在训练过程中逐渐将 $\tau$ 从 $0.99$ 提升至 $1.0$。
-2. **多步预测的稳定性**：在执行多步自回归展开时，由于每一次预测都建立在前一次的输出之上，误差会呈指数级累积。通常需要在预测器中加入 Layer Normalization，并在训练早期限制预测的步数 $K$。
+1. **EMA 动量参数（$\tau$）**：较小的 $\tau$ 让目标快速跟随在线网络，较大的 $\tau$ 让目标更平滑但滞后更明显。合适取值依赖优化器、批量和训练长度；一些方法会逐渐调高 $\tau$，而不是把某个阈值当作坍塌定律。
+2. **多步预测稳定性**：自回归预测会把前一步误差带入后一步。误差是否放大以及放大速度取决于预测动力学的局部 Jacobian 等因素，并不总是指数增长。可用逐步监督、归一化、较短训练时域或非自回归结构缓和。

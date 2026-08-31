@@ -1,14 +1,42 @@
 # Video-JEPA（V-JEPA）的简洁实现
 
-在深入探究了图像级别的联合嵌入预测架构（I-JEPA）之后，我们自然而然地会将目光投向时间维度。物理世界并不是静止的图像集合，而是连续演化的动态系统。本节，我们将详细探讨并实现 Video-JEPA（V-JEPA）[[Bardes et al., 2024]](https://arxiv.org/abs/2404.08471)，这是由 Yann LeCun 提出的联合嵌入预测架构（JEPA）在视频领域的重磅延伸。
+I-JEPA 在图像块表征之间做预测；V-JEPA 把上下文与目标扩展到视频的时空块 [[Bardes et al., 2024]](https://arxiv.org/abs/2404.08471)。本节解释时空分块、掩码、位置条件和目标编码器，再实现一个保留这些接口的简化版本。
+
+<div align="center">
+  <img src="/figures/06-jepa/source/06-video-jepa-concise/vjepa-fig6.png" alt="V-JEPA 的离线特征预测可视化显示模型从可见视频上下文推断被遮挡区域的语义内容。" width="86%">
+
+_图 6.6-1：V-JEPA 的离线特征预测可视化显示模型从可见视频上下文推断被遮挡区域的语义内容。 出处：Adrien Bardes et al.，[Revisiting Feature Prediction for Learning Visual Representations from Video](https://arxiv.org/abs/2404.08471)（2024），Figure 6。_
+
+</div>
 
 ## 历史脉络与学术背景
 
 在深度学习的早期，视频理解大多依赖于 3D 卷积神经网络（如 C3D）或是结合了时间序列模型（如 LSTM）的 2D 卷积网络。随着 Transformer [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762) 在自然语言处理领域的巨大成功，研究者们迅速将其引入到视觉领域。Vision Transformer（ViT）[[Dosovitskiy et al., 2020]](https://arxiv.org/abs/2010.11929) 证明了将图像切分为块（Patch）并进行自注意力计算的有效性。
 
+<div align="center">
+  <img src="/figures/06-jepa/source/06-video-jepa-concise/vivit-fig1.png" alt="ViViT 并列四种时空 Transformer 分解方式，展示视频 token 在早期架构中的处理选择。" width="86%">
+
+_图 6.6-2：ViViT 并列四种时空 Transformer 分解方式，展示视频 token 在早期架构中的处理选择。 出处：Anurag Arnab et al.，[ViViT: A Video Vision Transformer](https://arxiv.org/abs/2103.15691)（2021），Figure 1。_
+
+</div>
+
 在自监督学习中，掩码自编码器（Masked Autoencoders, MAE）重构被遮挡图像块的像素 [[He et al., 2022]](https://arxiv.org/abs/2111.06377)，VideoMAE 把高比例时空遮挡用于视频表征学习 [[Tong et al., 2022]](https://arxiv.org/abs/2203.12602)。V-JEPA 采用另一种取舍：不重构像素，而是预测目标编码器产生的特征。对水面波纹或树叶细节是否“无语义价值”取决于任务，因此这里把它作为设计动机，而不是由 MAE 或 VideoMAE 实验普遍证明的结论。
 
-正是在这样的学术背景下，V-JEPA 应运而生。它放弃了在像素空间的逐点重建，转而要求模型在**抽象的特征表示空间**中预测缺失的视频片段。这种转变，不仅极大地提升了训练效率，更使其在特征提取上展现出了更强的泛化能力。
+<div align="center">
+  <img src="/figures/06-jepa/source/06-video-jepa-concise/videomae-fig2.png" alt="VideoMAE 的连续帧与管状掩码示例展示视频时间冗余为何允许高比例时空遮挡。" width="86%">
+
+_图 6.6-3：VideoMAE 的连续帧与管状掩码示例展示视频时间冗余为何允许高比例时空遮挡。 出处：Zhan Tong et al.，[VideoMAE: Masked Autoencoders are Data-Efficient Learners for Self-Supervised Video Pre-Training](https://arxiv.org/abs/2203.12602)（2022），Figure 2。_
+
+</div>
+
+V-JEPA 不逐点重建被遮挡视频，而是预测目标编码器在对应时空位置产生的特征。论文通过冻结主干后的图像与视频评测检验表征质量；效率和泛化结论应限定在其报告的模型、数据与基线设置内。
+
+<div align="center">
+  <img src="/figures/06-jepa/source/06-video-jepa-concise/vjepa-fig3.png" alt="V-JEPA 原论文训练图串起视频 token、上下文编码器、EMA 目标编码器和位置条件预测器。" width="86%">
+
+_图 6.6-4：V-JEPA 原论文训练图串起视频 token、上下文编码器、EMA 目标编码器和位置条件预测器。 出处：Adrien Bardes et al.，[Revisiting Feature Prediction for Learning Visual Representations from Video](https://arxiv.org/abs/2404.08471)（2024），Figure 3。_
+
+</div>
 
 ## 从静态二维到动态三维：数据的降维解析
 
@@ -61,17 +89,13 @@ $$
 \hat{H}_{\mathcal{T}} = g_{\phi}(H_{\mathcal{C}}, P_{\mathcal{T}})
 $$
 
-::: info 唯一的类比：关于特征预测与参数指数移动平均（EMA）
-V-JEPA 的架构最反直觉的地方在于：为什么需要两个编码器，并且目标编码器的参数不通过梯度下降更新？
-
-我们可以用一个极度克制的博弈学类比来理解。想象上下文编码器（及预测器）是一个“学生”，而目标编码器是一个“导师”。如果导师和学生一起通过梯度下降来纠正错误，系统极易陷入“特征坍塌”（Feature Collapse）——导师为了让学生永远猜对，干脆把所有的视频内容都映射为一个常数 $0$。
-
-为了防止这种作弊，V-JEPA 规定导师（目标编码器 $\theta_t$）的权重只能是学生（上下文编码器 $\theta_c$）历史权重的缓慢积累，即通过指数移动平均（EMA）更新：$\theta_t \leftarrow \tau \theta_t + (1 - \tau) \theta_c$。导师的判断标准不随当前这道题的对错而急剧改变，迫使学生必须真正学到如何根据上下文推断缺失的时空信息。
+::: info 目标分支为什么变化较慢
+上下文编码器和预测器接受当前损失的梯度，目标编码器则停止梯度，并用 $\theta_t \leftarrow \tau \theta_t + (1 - \tau) \theta_c$ 缓慢跟随上下文编码器。这样，当前一步不能通过同时移动预测与目标两端来立即缩小误差。它解释了训练的不对称性；V-JEPA 的实际稳定性还依赖掩码、预测器、归一化和优化配置。
 :::
 
 ### 4. 目标函数
 
-既然我们在特征空间进行预测，损失函数自然是预测特征 $\hat{H}_{\mathcal{T}}$ 与目标编码器给出的“导师特征” $H_{\mathcal{T}}$ 之间的距离。为了保持严谨性，我们使用归一化后的均方误差（MSE）：
+预测损失比较目标位置上的预测特征 $\hat{H}_{\mathcal{T}}$ 与目标编码器特征 $H_{\mathcal{T}}$。下面写出按目标 token 和特征维归一化的均方误差：
 
 $$
 \mathcal{L} = \frac{1}{|\mathcal{T}|} \sum_{i \in \mathcal{T}} \left\| \hat{h}_i - h_i \right\|_2^2
@@ -120,7 +144,7 @@ class TubeletEmbedding(nn.Module):
 
 ### 2. 三维位置编码 (3D Positional Encoding)
 
-在序列化之后，模型丢失了所有的时空结构信息。对于视频，我们不仅要告诉模型“这个块在什么位置”，还要告诉它“这个块在哪个时刻”。绝对三维位置编码是不可或缺的。为了简洁，在此实现中我们将位置编码作为一个可学习的绝对参数，在实际的大规模应用中往往使用正弦余弦分离编码以应对可变长度。
+序列化本身不携带 token 的时空坐标，因此模型需要某种位置编码区分时间、行和列。这里使用可学习的绝对位置参数；它是教学选择，不意味着所有 V-JEPA 实现都必须采用同一种编码。
 
 ```python
 def get_3d_sincos_pos_embed(embed_dim, grid_size, t_size):
@@ -133,7 +157,7 @@ def get_3d_sincos_pos_embed(embed_dim, grid_size, t_size):
 
 ### 3. V-JEPA 主干网络 (V-JEPA Backbone)
 
-V-JEPA 的主体由上下文编码器（学生）、目标编码器（导师）以及预测器组成。这里我们直接构建完整的架构。为了保证独立性，我们引入基础的 Transformer 块。由于篇幅限制，这里直接使用 PyTorch 自带的 TransformerEncoderLayer。
+V-JEPA 的主体由上下文编码器、目标编码器以及预测器组成。下面给出一个可独立运行的教学实现，并使用 PyTorch 自带的 `TransformerEncoderLayer` 组成基础 Transformer 块。
 
 ```python
 class VJEPAModel(nn.Module):
@@ -197,12 +221,11 @@ class VJEPAModel(nn.Module):
 
     def update_target_encoder(self, momentum=0.996):
         """
-        [利用动量机制 (EMA) 缓慢更新目标编码器的参数]
-        这是防止模型发生表征坍塌的核心技巧。
+        利用 EMA 缓慢更新目标编码器参数。
         """
         with torch.no_grad():
             for param_q, param_k in zip(self.context_encoder.parameters(), self.target_encoder.parameters()):
-                param_k.data.mul_(momentum).add_((1.0 - momentum) * param_q.detach().data)
+                param_k.mul_(momentum).add_(param_q, alpha=1.0 - momentum)
 
     def forward(self, x, context_mask, target_mask):
         """
@@ -213,6 +236,12 @@ class VJEPAModel(nn.Module):
             target_mask: 目标部分的布尔掩码 (B, N)
         """
         B = x.shape[0]
+        context_counts = context_mask.sum(dim=1)
+        target_counts = target_mask.sum(dim=1)
+        if not torch.all(context_counts == context_counts[0]):
+            raise ValueError("同一批次的每个样本必须选择相同数量的上下文 token。")
+        if not torch.all(target_counts == target_counts[0]):
+            raise ValueError("同一批次的每个样本必须选择相同数量的目标 token。")
 
         # 1. 时空块嵌入并加上位置编码
         x_embed = self.patch_embed(x) + self.pos_embed
@@ -222,8 +251,7 @@ class VJEPAModel(nn.Module):
             # 获取完整的目标特征
             target_full_features = self.target_encoder(x_embed)
             # 通过 target_mask 筛选出真正的目标特征
-            # 为了简洁，这里假设掩码后每个 batch 的有效序列长度相同，实际实现中需要复杂的 gather 操作
-            # 这里仅展示语义层面的张量操作
+            # 上面的显式检查保证布尔索引后可以安全恢复批量维。
             target_features = target_full_features[target_mask].view(B, -1, target_full_features.shape[-1])
 
         # 3. 上下文特征提取
@@ -258,13 +286,20 @@ class VJEPAModel(nn.Module):
         return loss
 ```
 
-### 代码推导的严谨性注记
+<div align="center">
+  <img src="/figures/06-jepa/latex/06-video-jepa-concise/equal-mask-cardinality-view.png" alt="三个 batch 行各选相同数量的目标 token，扁平 gather 后才能重排为 B 乘 M 乘 D" width="86%">
+
+_图 6.6-5：布尔索引先把所有选中 token 压成二维；只有每个 batch 的目标数 M_b 相同，才能无歧义地 view 为 B×M×D。本文根据上述代码的形状约束绘制；TikZ/LaTeX 编译。_
+
+</div>
+
+### 代码边界
 
 在上述代码中，有几处为了与纯粹的数学推导对齐而设计的精密巧思值得读者反复推敲：
 
 1. **梯度的阻断**：目标编码器的参数必须强制设为 `requires_grad = False`。模型唯一的学习信号来自于 `F.mse_loss` 反向传播给预测器和上下文编码器的梯度。
-2. **位置编码的时机**：注意预测器的输入设计。上下文特征在进入预测器时**没有**再次加上位置编码（它们在最开始已经加过了，特征内部已隐含位置信息），而 `mask_token` **必须**加上它试图重建的时空位置编码。这完美印证了该公式中 $P_{\mathcal{T}}$ 作为预测条件的核心地位。
+2. **位置编码的时机**：这个简化实现只在输入编码器前给上下文 token 加位置编码，并给 `mask_token` 加目标位置编码。具体论文实现的编码位置与参数化应以官方代码为准。
 
 ## 结语
 
-通过本节的探讨，我们完成了一次从视频的物理维度到抽象语义维度的穿越。V-JEPA 摒弃了执着于重建像素级细节的执念，证明了“预测高维抽象特征”才是通向对时空动态规律深刻理解的正确途径。这种架构的优美之处在于其简洁的数学表达和极为高效的训练过程。
+V-JEPA 把视频切成时空 token，只编码可见上下文，再预测被遮挡位置的目标表征。它展示了表征预测是一条有效的视频自监督路线，但不能据此断言像素重构普遍错误。理解实现时应分别检查掩码索引、位置条件、停止梯度与 EMA 更新。

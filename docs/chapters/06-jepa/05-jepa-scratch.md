@@ -2,9 +2,23 @@
 
 自监督学习包含多种训练目标。掩码自编码器 MAE 重构被遮挡图像块的像素 [[He et al., 2022]](https://arxiv.org/abs/2111.06377)；SimCLR、MoCo 等对比方法则在表征空间中拉近正样本、区分负样本。LeCun 的 JEPA 立场认为，对不可预测像素细节进行精确重构可能把容量花在与语义任务无关的信息上；这是 JEPA 的设计动机，不能仅由 MAE 论文反向证明。
 
+<div align="center">
+  <img src="/figures/06-jepa/source/05-jepa-scratch/mae-fig1.png" alt="MAE 编码可见块并用轻量解码器复原像素，作为 JEPA 表征预测接口的清晰对照。" width="86%">
+
+_图 6.5-1：MAE 编码可见块并用轻量解码器复原像素，作为 JEPA 表征预测接口的清晰对照。 出处：Kaiming He et al.，[Masked Autoencoders Are Scalable Vision Learners](https://arxiv.org/abs/2111.06377)（2022），Figure 1。_
+
+</div>
+
 LeCun 提出了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）的总体设想 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)。I-JEPA 随后把它实现为图像自监督学习方法：根据上下文块的表征预测目标块表征，不重构像素，也不使用显式负样本，并在论文所报告的图像分类、低样本和迁移评测中验证表征质量 [[Assran et al., 2023]](https://arxiv.org/abs/2301.08243)。
 
-在本节中，我们将完全从零开始，使用基础的张量操作和基本的神经网络层，构建一个 JEPA 表征学习模块。我们将从其数学原理出发，逐步推导并实现其核心组件：上下文编码器（Context Encoder）、目标编码器（Target Encoder）以及预测器（Predictor）。
+<div align="center">
+  <img src="/figures/06-jepa/source/05-jepa-scratch/ijepa-fig3.png" alt="I-JEPA 原论文总览把上下文编码器、目标编码器与位置条件预测器连接成完整训练路径。" width="86%">
+
+_图 6.5-2：I-JEPA 原论文总览把上下文编码器、目标编码器与位置条件预测器连接成完整训练路径。 出处：Mahmoud Assran et al.，[Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture](https://arxiv.org/abs/2301.08243)（2023），Figure 3。_
+
+</div>
+
+本节用基础张量操作和神经网络层构建 JEPA 教学模块，包括上下文编码器、目标编码器和预测器，并明确参数由梯度还是 EMA 更新。
 
 ## 自监督学习的范式转移：抽象空间中的预测
 
@@ -16,7 +30,7 @@ JEPA 正是这种抽象思维在神经网络中的直接体现。它不强迫网
 
 ## JEPA 架构的数学形式化
 
-JEPA 的训练过程可以被严谨地描述为两个不同视角的特征提取，以及它们之间在特定条件下的回归问题。
+JEPA 的训练可以写成两个输入区域的特征提取，以及给定上下文和位置条件后的表征回归。
 
 ### 场景设定与简单标量推导
 
@@ -39,7 +53,7 @@ $$L = (\hat{s}_y - s_y)^2$$
 
 我们将输入拆分为两个不重叠或部分重叠的集合：上下文区域矩阵 $\mathbf{X}_c \in \mathbb{R}^{N_c \times D}$ 和目标区域矩阵 $\mathbf{X}_y \in \mathbb{R}^{N_y \times D}$。
 
-在深度学习中，编码器 $f$ 通常由参数化的神经网络构成，例如具有权重 $\theta$ 的 Vision Transformer。因此，我们将上下文编码器记为 $f_\theta$。目标编码器本应具有相同的权重，但为了防止表示坍塌（Representation Collapse，即网络输出一个常数以使误差恒为0），我们使用另一组权重 $\bar{\theta}$ 来参数化目标编码器，记为 $f_{\bar{\theta}}$。
+编码器 $f$ 通常是参数化网络，例如 Vision Transformer。上下文编码器记为 $f_\theta$；目标编码器结构相同，参数记为 $\bar{\theta}$。两组参数通过 EMA 关联，而目标分支在当前损失中停止梯度。这一不对称设计用于稳定学习，不能单独视作不坍塌证明。
 
 于是，我们得到矩阵形式的表征：
 $$\mathbf{S}_c = f_\theta(\mathbf{X}_c) \in \mathbb{R}^{N_c \times d}$$
@@ -54,7 +68,7 @@ $$\hat{\mathbf{S}}_y = g_\phi(\mathbf{S}_c, \mathbf{Z}) \in \mathbb{R}^{N_y \tim
 $$\mathcal{L}(\theta, \phi) = \frac{1}{N_y} \sum_{i=1}^{N_y} \|\hat{\mathbf{s}}_{y, i} - \mathbf{s}_{y, i}\|_2^2$$
 
 ::: warning 注意
-在 JEPA 的优化过程中，这是一个极其核心的非对称操作：**损失函数 $\mathcal{L}$ 只对上下文编码器的参数 $\theta$ 和预测器的参数 $\phi$ 计算梯度并更新**。目标编码器的参数 $\bar{\theta}$ 被视为常数（Stop-Gradient），绝不能通过反向传播更新。这也是打破对称性、防止网络坍塌到平凡解（Trivial Solution）的根本保证。
+损失函数只对上下文编码器参数 $\theta$ 和预测器参数 $\phi$ 求梯度。目标编码器参数 $\bar{\theta}$ 在当前计算图中停止梯度，再通过 EMA 更新。这构成训练的不对称性，但不是对所有设置都不会坍塌的单独保证。
 :::
 
 为了让目标编码器能够提供高质量、一致的表征目标，参数 $\bar{\theta}$ 采用指数移动平均（Exponential Moving Average, EMA）的方式，根据 $\theta$ 的历史值进行平滑更新：
@@ -64,9 +78,9 @@ $$\bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta$$
 
 ## 从零实现 JEPA 的核心组件
 
-理解了上述严密的数学表述后，我们将逐步使用代码将这些公式转化为计算图。为了聚焦于 JEPA 机制本身，这里我们使用多层感知机（MLP）作为编码器与预测器的基础模块。在实际的 I-JEPA 中，它们通常由更复杂的 Transformer 块构成，但基本的数据流转逻辑是完全一致的。
+下面把公式转成计算图。为突出分支与 shape，示例使用 MLP，并把上下文 token 先做均值池化；I-JEPA 使用 Transformer 和更丰富的目标位置条件，因此这里只保留概念接口，不声称实现细节完全一致。
 
-(**首先，我们导入必要的库。**)
+先导入所需模块。
 
 ```python
 import torch
@@ -79,7 +93,7 @@ import copy
 
 我们首先定义一个通用的多层感知机（MLP）块，它将承担这两个公式中非线性映射的重任。
 
-(**我们定义一个带有残差连接的 MLP 模块，作为特征提取的基础。**)
+下面定义带残差连接的 MLP 基础块。
 
 ```python
 class MLPBlock(nn.Module):
@@ -100,7 +114,7 @@ class MLPBlock(nn.Module):
 
 接下来，我们基于上述基础模块构建编码器。正如前文的编码器公式所示，输入数据首先映射到维度为 `d` 的表征空间。
 
-(**我们定义编码器架构。**)
+编码器把输入映射到 $d$ 维表征。
 
 ```python
 class Encoder(nn.Module):
@@ -127,7 +141,7 @@ class Encoder(nn.Module):
 预测器是 JEPA 区别于其他架构的核心。它必须接收上下文表征 $S_c$ 以及指示目标位置的变量 $Z$。
 在实践中，一种常见的处理方法是将目标的位置编码 $Z$ 直接拼接或相加到上下文表征上，然后再通过预测器网络。在这里，为了简化说明，我们将表示“目标条件”的变量 $Z$（比如期望预测的未来时间步或空间索引映射成的向量）与上下文特征进行拼接。
 
-(**我们实现预测器，它根据上下文和位置指示预测目标。**)
+预测器根据上下文表征和位置条件预测目标表征。
 
 ```python
 class Predictor(nn.Module):
@@ -154,9 +168,9 @@ class Predictor(nn.Module):
 
 ### 整合 JEPA 模型与 EMA 机制
 
-现在，我们将上下文编码器、目标编码器和预测器组合成一个完整的 JEPA 模块。这里我们需要特别注意该公式中的 EMA 逻辑的实现。在初始化时，目标编码器是上下文编码器的精确副本。在每次前向传播或优化后，我们需要平滑地更新目标编码器的权重。
+现在把上下文编码器、目标编码器和预测器组合成一个 JEPA 教学模块。初始化时目标编码器复制上下文编码器；每次优化器更新在线参数后，再用 EMA 更新目标权重。
 
-(**实现包含 EMA 动量更新的完整 JEPA 架构。**)
+把编码器、预测器和 EMA 更新组合成完整教学模块。
 
 ```python
 class JEPAModel(nn.Module):
@@ -205,14 +219,21 @@ class JEPAModel(nn.Module):
     def update_target_encoder(self):
         """执行指数移动平均 (EMA) 更新 \bar{\theta} <- \tau \bar{\theta} + (1 - \tau) \theta"""
         for param_q, param_k in zip(self.context_encoder.parameters(), self.target_encoder.parameters()):
-            param_k.data.mul_(self.tau).add_((1.0 - self.tau) * param_q.detach().data)
+            param_k.mul_(self.tau).add_(param_q, alpha=1.0 - self.tau)
 ```
+
+<div align="center">
+  <img src="/figures/06-jepa/latex/05-jepa-scratch/context-pool-expand-position.png" alt="上下文序列沿 N_c 平均成单向量，再复制到 N_y 行并分别加入目标位置编码" width="86%">
+
+_图 6.5-3：mean 消去上下文 token 维得到 B×d；随后只复制该向量的视图到 N_y 个位置，每一行再与自己的 z_y,i 配对。本文根据上述张量操作绘制；TikZ/LaTeX 编译。_
+
+</div>
 
 ## 损失函数与训练过程
 
-在拥有了完整的架构后，我们可以编写单次迭代的训练逻辑。训练过程严格遵循我们推导的公式：计算前向传播得到预测表征 $\hat{\mathbf{S}}_y$ 和目标表征 $\mathbf{S}_y$，根据该公式计算均方误差（MSE），通过反向传播仅更新 $\theta$ 和 $\phi$，最后调用该公式更新 $\bar{\theta}$。
+单次迭代依次完成四步：计算预测表征 $\hat{\mathbf{S}}_y$ 和目标表征 $\mathbf{S}_y$，计算均方误差，只更新 $\theta$ 和 $\phi$，最后以 EMA 更新 $\bar{\theta}$。
 
-(**演示一个训练步骤（单步更新）的数据流转。**)
+最后演示一次“前向—反向—优化器更新—EMA 更新”。
 
 ```python
 # 模拟一些随机输入数据
@@ -254,11 +275,11 @@ jepa.update_target_encoder()
 print(f"训练步完成，表征预测损失: {loss.item():.4f}")
 ```
 
-在这个机制中，目标表征 $\mathbf{S}_y$ 由平滑更新的目标编码器生成，起到了一个动态但相对稳定的教师（Teacher）作用。而上下文编码器和预测器则是学生（Student），它们致力于根据片段信息和相对位置去重构“教师”心目中的完整世界。由于在表征空间内进行重构，网络无需理会那些无用的高频像素信息，从而拥有了更深层的语义抽象能力。
+目标表征 $\mathbf{S}_y$ 由变化较慢的目标编码器生成；上下文编码器和预测器根据可见片段与位置条件逼近它。损失发生在表征空间，因此不会直接逐像素惩罚重构误差。表征是否更有语义，仍需用冻结评估或下游任务验证。
 
 ## 小结
 
 - 传统生成式与对比式自监督方法在解决高频噪声和依赖数据增强上存在根本瓶颈。
 - JEPA 提供了一种优雅的范式转移：不再直接预测原始空间的未知信息，而是在**高度抽象的特征空间**内基于给定的位置先验去预测目标区域的表征。
-- 非对称的架构设计是保证 JEPA 不发生表征坍塌的物理基石：对预测器和上下文编码器执行梯度下降，但对目标编码器严格使用**停止梯度**（Stop-Gradient）并配合**指数移动平均**（EMA）进行平滑更新。
+- 非对称计算图让预测器和上下文编码器接受梯度，而目标编码器停止梯度并由 **EMA** 平滑更新；完整方法还需结合掩码、预测器、归一化与实验诊断评估坍塌风险。
 - 预测器不仅接收上下文信息，必须还要接收目标的位置条件变量 $Z$ 才能进行精准推断。
