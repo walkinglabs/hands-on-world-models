@@ -1,8 +1,14 @@
 # 10.2 系统级评测基准与榜单
 
-在这个由数据和算力驱动的深度学习时代，如何科学、客观地衡量一个模型的表现，与其架构设计同等重要。对于传统的监督学习（如图像分类任务），评测基准通常是简单明了的准确率（Accuracy）或交叉熵损失（Cross-Entropy Loss）。然而，当我们步入世界模型（World Models）领域时，模型的职责发生了根本性的转变：它不再仅仅是预测离散的标签，而是需要深刻理解环境的物理动态规律、在多步时间跨度上生成未来状态的观测，甚至在潜在的想象空间中规划出能够最大化奖励的动作轨迹。
+世界模型同时包含观测预测、状态转移、奖励建模和决策用途。单帧画得清楚，不代表动作真的改变未来；单步误差很小，也不代表长时程展开稳定。因此，本节把评测拆成图像保真、特征分布、动作条件展开和闭环任务四层。
 
-这种融合了多模态（视觉观测、离散或连续动作、标量奖励）与长时空耦合的复杂输出系统，要求我们必须放弃单一维度的考察标准，转而建立一套高度系统化、多维度的综合评测基准与榜单。
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/02-systematic-evaluation/crafter-fig1.png" alt="Crafter 的程序生成世界同时包含地形、资源与生物，展示系统级榜单实际要求智能体处理的开放式环境。" width="86%">
+
+_图 10.2-1：Crafter 的程序生成世界同时包含地形、资源与生物，展示系统级榜单实际要求智能体处理的开放式环境。 出处：Danijar Hafner，[Benchmarking the Spectrum of Agent Capabilities](https://arxiv.org/abs/2109.06780)（2022），Figure 1。_
+</div>
+
+这些层次不宜被简单加成一个总分。更稳妥的报告方式是同时给出指标、数据切分、展开长度、动作协议和置信区间，让读者看见模型在哪一层开始失效。
 
 ## 10.2.1 历史演进与学术追溯
 
@@ -36,7 +42,7 @@ $$ \text{PSNR} = 10 \cdot \log_{10} \left( \frac{\text{MAX}_I^2}{\text{MSE}} \ri
 
 ### 结构相似性指数 (SSIM)
 
-尽管 PSNR 计算简单且数学性质优良，但它仅仅孤立地比较了像素点与对应像素点之间的绝对数值差异，完全忽略了空间上相邻像素之间的强相关性。而人类的视觉系统对图像的结构信息（如边缘、轮廓）高度敏感，对全局亮度的绝对平移却相对迟钝。
+PSNR 逐像素汇总误差，没有显式建模邻域结构。两张图即使具有相似的边缘和轮廓，只要发生轻微平移，PSNR 也可能明显下降；反过来，较高 PSNR 也不保证局部结构自然。
 
 为了弥补这一缺陷，结构相似性指数（Structural Similarity Index, SSIM）被提出。SSIM 巧妙地将图像块的比较解耦为三个独立的统计物理量：亮度（Luminance）、对比度（Contrast）和结构（Structure）。
 
@@ -50,7 +56,13 @@ $$ \text{PSNR} = 10 \cdot \log_{10} \left( \frac{\text{MAX}_I^2}{\text{MSE}} \ri
 
 $$ \text{SSIM}(x, y) = \frac{(2\mu_x\mu_y + c_1)(2\sigma_{xy} + c_2)}{(\mu_x^2 + \mu_y^2 + c_1)(\sigma_x^2 + \sigma_y^2 + c_2)} $$
 
-SSIM 的取值范围被严格界定在 $[-1, 1]$ 之间。当两张局部图像完全一致时，$\mu_x = \mu_y$ 且 $\sigma_x = \sigma_y$，此时算式简化得出 $\text{SSIM} = 1$。通过滑动窗口计算整张图像的所有局部 SSIM 并求算术平均，我们能够获得一个更加贴合人类感知的重建质量量化指标。
+在常见参数与非负图像范围下，SSIM 通常不超过 1；两张局部图像完全一致时取 1。通过滑动窗口计算局部 SSIM 再平均，可以同时反映亮度、对比度和局部相关结构，但它仍不是人类偏好的完整替代。
+
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/02-systematic-evaluation/ssim-fig2.png" alt="SSIM 原论文让多种失真保持相同 MSE，却呈现显著不同的结构质量，说明逐像素误差无法区分所有视觉退化。" width="86%">
+
+_图 10.2-2：SSIM 原论文让多种失真保持相同 MSE，却呈现显著不同的结构质量，说明逐像素误差无法区分所有视觉退化。 出处：Zhou Wang；Alan C. Bovik；Hamid R. Sheikh；Eero P. Simoncelli，[Image Quality Assessment: From Error Visibility to Structural Similarity](https://ece.uwaterloo.ca/~z70wang/publications/ssim.pdf)（2004），Figure 2。_
+</div>
 
 ## 10.2.3 从单样本到概率分布：特征空间的几何度量
 
@@ -66,9 +78,15 @@ SSIM 的取值范围被严格界定在 $[-1, 1]$ 之间。当两张局部图像�
 其一，是它们期望（即概率密度中心位置）的平移偏移，反映为均值之差的平方 $(\mu_1 - \mu_2)^2$；
 其二，是它们散布程度（概率密度的胖瘦程度）的差异，反映为标准差之差的平方 $(\sigma_1 - \sigma_2)^2$。
 
-如果我们严密地求解将分布 $P$ 转换为分布 $Q$ 的最优传输代价（即 Wasserstein-2 距离的平方），其解析解恰好完美契合了我们的基础直觉：
+对一维高斯分布，Wasserstein-2 距离平方有解析解，恰好分成均值偏移和标准差偏移两项：
 
 $$ W_2^2(P, Q) = (\mu_1 - \mu_2)^2 + (\sigma_1 - \sigma_2)^2 = (\mu_1 - \mu_2)^2 + (\sigma_1^2 + \sigma_2^2 - 2\sigma_1\sigma_2) $$
+
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/latex/02-systematic-evaluation/wasserstein-mean-scale-plane.png" alt="两个一维高斯在均值和标准差参数平面中的差异构成直角三角形，Wasserstein 距离是其斜边" width="86%">
+
+_图 10.2-3：两个一维高斯的均值差与标准差差是参数平面上的两条正交分量，W2 距离由二者共同决定。本文根据上式绘制。_
+</div>
 
 > 想像你是一个城市规划者，你需要将一堆沙子（代表模型生成的特征分布）搬运去填补一个特定形状的坑（代表真实的特征分布）。不仅沙子的总量必须对等，你还需要考虑搬运沙子所耗费的距离与精力。如果我们将这种“最小化总体搬运成本”的几何直觉用数学语言严密地表达出来，并假设这些沙堆都服从多维正态分布，那么我们计算出的最优传输成本，正是弗雷歇距离（Fréchet Distance）。
 
@@ -76,17 +94,31 @@ $$ W_2^2(P, Q) = (\mu_1 - \mu_2)^2 + (\sigma_1 - \sigma_2)^2 = (\mu_1 - \mu_2)^2
 
 现在，我们将一维空间的方差延展推演至高维特征空间。此时，标量均值 $\mu$ 成为了一个多维列向量，而标量方差 $\sigma^2$ 则升级为了协方差矩阵 $\Sigma$。对于多维高斯分布，标准差的乘积项 $\sigma_1\sigma_2$ 无法直接通过简单的矩阵乘法建立对应关系。严密的黎曼流形数学推导表明，这一交叉项被矩阵乘积平方根的迹（Trace，即矩阵主对角线元素之和）所替代。
 
-由此，我们得到了深度学习生成模型领域中最为核心的评测公式，即两组多维高斯分布间的弗雷歇距离：
+由此得到两组多维高斯分布间的 $W_2^2$ 距离。对一般协方差矩阵，更明确的对称写法是：
 
-$$ d^2(P, Q) = ||\mu_p - \mu_q||_2^2 + \text{Tr}\left(\Sigma_p + \Sigma_q - 2(\Sigma_p \Sigma_q)^{1/2}\right) $$
+$$ d^2(P, Q) = \|\mu_p - \mu_q\|_2^2 + \operatorname{Tr}\left(\Sigma_p + \Sigma_q - 2\left(\Sigma_p^{1/2}\Sigma_q\Sigma_p^{1/2}\right)^{1/2}\right) $$
+
+FID 的实现常把迹项写成 $\operatorname{Tr}(\Sigma_p+\Sigma_q-2(\Sigma_p\Sigma_q)^{1/2})$；数值库还需处理有限样本造成的非对称和微小复数误差。
 
 在实际工程操作中，直接在原始像素空间计算协方差矩阵不仅计算复杂度极其高昂，而且像素空间的分布既不符合高斯假设，也不符合人类的语义认知。因此，我们引入一个在 ImageNet 上预训练的 Inception-v3 网络作为特征空间映射器。我们将大量真实图像与生成图像均前向传播至该网络的深层（通常截取分类全连接层之前的 2048 维全局平均池化层），以此特征向量集合来计算统计量 $\mu$ 和 $\Sigma$。这就是广泛采用的弗雷歇 Inception 距离（FID）。
 
-当我们将时间轴维度纳入考量，要求世界模型不仅生成单帧静态图像，而是生成一段具有连续时空因果的视频时，我们只需将 2D 的 Inception 网络替换为 3D 的 I3D 网络（在大规模视频动作识别数据集 Kinetics 上预训练）。利用 3D 网络提取时空强耦合的深层特征，再计算多维弗雷歇距离，便自然延伸出了用于衡量视频动态一致性的弗雷歇视频距离（FVD）。
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/02-systematic-evaluation/fid-fig3.png" alt="FID 原论文逐步增强噪声、模糊、遮挡与数据污染，展示特征分布距离如何响应不同扰动强度。" width="86%">
+
+_图 10.2-4：FID 原论文逐步增强噪声、模糊、遮挡与数据污染，展示特征分布距离如何响应不同扰动强度。 出处：Martin Heusel et al.，[GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium](https://arxiv.org/abs/1706.08500)（2017），Figure 3。_
+</div>
+
+FVD 沿用“提取特征后拟合高斯并比较统计量”的思路，但使用视频分类网络的时空特征。它对运动与片段结构比逐帧 FID 更敏感，却仍受特征网络、预处理、样本量和实现细节影响；低 FVD 也不能单独证明动作因果正确。
+
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/02-systematic-evaluation/fvd-fig1.png" alt="FVD 原论文把 BAIR 生成视频按分数排序，展示时空特征度量如何区分视频生成模型的整体质量。" width="86%">
+
+_图 10.2-5：FVD 原论文把 BAIR 生成视频按分数排序，展示时空特征度量如何区分视频生成模型的整体质量。 出处：Thomas Unterthiner et al.，[Towards Accurate Generative Models of Video: A New Metric & Challenges](https://arxiv.org/abs/1812.01717)（2018），Figure 1。_
+</div>
 
 ## 10.2.4 世界模型的专属核心：动作条件下的动力学评测
 
-前文所述的 FID 和 FVD 均属于“开环、无条件的视觉质量评测”。然而，世界模型的终极使命是成为智能体的“内部运行模拟器”。一个合格的世界模型必须深刻理解物理环境的因果性——即它必须能够准确预测环境状态如何根据智能体执行的具体动作指令发生转变。
+FID 和 FVD 比较样本或视频特征分布，本身不会验证同一初始状态下更换动作是否得到相应未来。用于控制的世界模型还需要动作条件评测：固定历史，替换动作，并检查预测变化是否与环境变化一致。
 
 假设智能体在时间步 $t$ 处于内部潜在隐状态 $s_t$，执行了动作 $a_t$。世界模型的动力学模型（Dynamics Model）进行一步状态转移 $s_{t+1} = f_\theta(s_t, a_t)$。这要求我们在评测时，必须将历史动作序列作为前置条件进行强干预验证。
 
@@ -102,17 +134,17 @@ $$ d^2(P, Q) = ||\mu_p - \mu_q||_2^2 + \text{Tr}\left(\Sigma_p + \Sigma_q - 2(\S
 
 在强化学习的上下文中，除了高维的视觉观测之外，环境在每一个时间步还会返回一个标量奖励 $r_t$。世界模型的奖励预测器（Reward Predictor）需要根据转移后的隐状态预测该奖励：$\hat{r}_t = R_\phi(\hat{s}_t)$。
 
-相比于高维图像像素的细微差别，奖励往往直接指示了任务的关键转折点（例如是否成功跨越了悬崖，是否触碰了终点旗帜）。因此，即使生成的预测图像在边缘细节上变得模糊，只要动力学模型能够精准地在特定的长程时间步预测出正确的奖励峰谷，它依然可以支撑强大的策略寻优算法。在系统级评测中，我们通常计算在给定动作序列展开下，真实标量奖励序列与预测奖励序列之间的均方误差，并尤为关注其在时间轴上的相位对齐程度。
+奖励常标记任务中的关键事件，例如越过障碍或到达终点。图像边缘略模糊的模型仍可能给规划提供有用信号，但前提是奖励事件的幅值和时间位置足够准确。评测时可以报告奖励误差、事件分类的精确率与召回率，以及预测峰值相对真值的时间偏移。
 
 ## 10.2.5 具身智能与系统级榜单概览
 
-为了标准化上述所有评测维度的计算，学术界与工业界已逐步构建起一系列涵盖不同环境复杂度的世界模型专属基准榜单。
+目前并不存在覆盖所有世界模型形态的统一榜单。实践中常借用强化学习、开放世界和机器人控制基准，分别检查数据效率、长时程技能与任务成功率。
 
-1. **Atari 100k 基准**：这是早期验证基于模型强化学习（Model-Based RL）极端数据效率的经典标尺。评测核心在于：严格限制模型与环境进行最多 100k 步（大约相当于人类实际游戏时间 2 小时）的交互，随后对比不同世界模型在潜空间中生成想象数据来训练出的策略最终得分。
-2. **Crafter / MineDojo**：这是在《我的世界》（Minecraft）体素物理风格下构建的开放式、长视野生存环境。它们拥有极高的行动自由度和庞杂的技能树。评测不仅看模型能否存活，还会细化地考察模型在采集木材、合成工具、对抗怪物等数十种子任务上的零样本（Zero-shot）或小样本泛化表现。
-3. **RoboDesk / MetaWorld**：这是专门面向三维机械臂与具身智能（Embodied AI）连续控制任务的测试基准。此类榜单不再仅仅衡量模拟器视觉维度的重建误差，而是将最终依靠模型规划出的连续动作轨迹能否在真实物理引擎中达成推、拉、抓取等任务的物理成功率（Success Rate）作为唯一真理的终极评价指标。
+1. **Atari 100k**：限制每个游戏 100k 个环境步，用回报衡量低数据预算下的策略学习。它能检验数据效率，但不能单独定位视觉模型、动力学模型或规划器哪一部分出了问题。
+2. **Crafter / MineDojo**：提供开放式、长时程的采集、制作和探索任务。二者的任务定义与报告协议不同，不能直接混成一个排行榜；使用时应明确任务集、训练数据和是否允许预训练。
+3. **RoboDesk / Meta-World**：提供机械臂连续控制任务，可报告逐任务成功率、跨任务平均值和分布外变化下的性能。成功率是关键系统指标，但仍应配合安全违规、动作平滑度和失败类型分析。
 
-一个经得起考验的世界模型，其评测报告必须是一份完整的综合体检单：包含了微观重建的 PSNR/SSIM、宏观分布特征空间的 FID/FVD，以及基于该模型的动力学引擎所规划出的动作序列在实际交互中的任务成功率。
+一份可复核的报告至少应覆盖与任务相符的观测指标、动作条件多步展开、奖励或事件预测、闭环任务结果，以及不同随机种子和分布外切分。并非每个模型都需要 PSNR、FID 和 FVD；没有像素解码器的模型就应改用状态、表征或任务层指标。
 
 ## 10.2.6 核心评测指标的代码实现
 
@@ -170,7 +202,7 @@ def calculate_ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 11
     return ssim_map.mean()
 ```
 
-对于 FID 的计算，其核心工程难点在于跨越像素空间，在深层特征流形上建立概率分布模型。以下代码展示了如何获取这些高维特征并严谨计算多维高斯分布统计量：
+下面的代码只演示“提取特征并计算均值、协方差”这一步，不用于复现论文或榜单的标准 FID。正式比较必须固定特征权重、输入归一化、样本数和矩阵平方根实现；最好直接采用经过交叉验证的同一评测库。
 
 ```python
 import numpy as np
@@ -181,10 +213,11 @@ def get_inception_features(images: torch.Tensor, batch_size: int = 32) -> torch.
     使用在 ImageNet 上预训练的 Inception-v3 模型提取高阶特征。
     """
     # [加载预训练权重，并务必设置为评估模式，防止 Batch Norm 或 Dropout 引入随机性扰动]
-    model = inception_v3(weights=Inception_V3_Weights.DEFAULT, transform_input=False)
+    weights = Inception_V3_Weights.DEFAULT
+    model = inception_v3(weights=weights, transform_input=False)
     # 移除最后的分类映射全连接层，以获取更底层的连续语义特征
     model.fc = torch.nn.Identity()
-    model.eval()
+    model = model.to(images.device).eval()
 
     features_list = []
     with torch.no_grad():
@@ -192,6 +225,9 @@ def get_inception_features(images: torch.Tensor, batch_size: int = 32) -> torch.
             batch = images[i:i+batch_size]
             # [通过双线性插值强制将图像缩放至299x299，以吻合Inception-v3初始感受野和步长的空间设计假设]
             batch = F.interpolate(batch, size=(299, 299), mode='bilinear', align_corners=False)
+            mean = batch.new_tensor([0.485, 0.456, 0.406])[None, :, None, None]
+            std = batch.new_tensor([0.229, 0.224, 0.225])[None, :, None, None]
+            batch = (batch - mean) / std
             features = model(batch)
             features_list.append(features)
 
@@ -215,4 +251,4 @@ def compute_statistics(features: torch.Tensor):
 
 ## 10.2.7 小结
 
-在本节中，我们沿着从局部确定性到全局概率性、从单帧切片图像到连续时空轨迹、从纯视觉信号解码到核心动作因果干预的学术脉络，立体地拆解了世界模型的**系统级评测体系**。我们利用高中代数的基础直觉严密推导了 **PSNR 和 SSIM** 的计算原理，引入了最优传输（Optimal Transport）的几何思想透彻解析了 FID 背后衡量分布距离的数学逻辑，并深入探讨了**长程动作累积误差和奖励预测**这类世界模型独有的检验机制。评测标准绝非仅仅是一把冷冰冰的标尺，它更是指引我们向着更强大的具身智能系统架构迭代前行的灯塔。
+本节建立了四层评测：PSNR/SSIM 检查对齐图像，FID/FVD 比较特征分布，动作条件展开检查动力学响应，闭环成功率检查系统效用。它们必须连同数据切分、样本量、展开长度和随机种子一起报告；指标之间不一致时，差异本身就是下一步故障分析的入口。

@@ -1,4 +1,4 @@
-# 世界模型的评估原则与核心指标
+# 10.1 世界模型的评估原则与核心指标
 
 > **本章导读**
 >
@@ -8,9 +8,15 @@
 >
 > **故事线：** `先检查预测与不确定性 → 再检查动作是否改变未来 → 展开长时程并接入下游任务 → 在分布外场景寻找稳定失败 → 比较多种解释 → 用可证伪实验设计下一台模型`
 
-在深度学习的发展历程中，评估（Evaluation）始终是引导模型演进的灯塔。对于监督学习而言，分类准确率或均方误差是直观且明确的评估指标；对于生成模型，我们有基于人类视觉感知的感知度量（如FID分数）。然而，当我们涉足“世界模型”（World Models）这一领域时，如何评估一个模型是否真正“理解”了世界的运作规律，便成了一个极具挑战性的开放问题。
+分类器通常可以用准确率概括一部分能力，世界模型却很难被一个数压缩。它既要预测观测或隐状态，也要响应动作、维持长时程一致性，并最终帮助智能体完成任务。因此，评估的目标不是判定模型是否“真正理解”世界，而是把这些可检验的能力逐项拆开。
 
-在本节中，我们将深入探讨世界模型的评估原则。我们将从早期模型架构的历史背景出发，严格推导从确定性预测到概率性推断的核心数学指标，并最终落脚于代码实现。
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/01-evaluate-principles/worldmodels-fig12.png" alt="World Models 的控制器在真实 CarRacing 环境中稳定通过弯道，说明世界模型最终要由闭环行为而非单一重构分数检验。" width="86%">
+
+_图 10.1-1：World Models 的控制器在真实 CarRacing 环境中稳定通过弯道，说明世界模型最终要由闭环行为而非单一重构分数检验。 出处：David Ha；Jürgen Schmidhuber，[World Models](https://arxiv.org/abs/1803.10122)（2018），Figure 12。_
+</div>
+
+本节从点预测误差出发，过渡到概率预测、潜变量诊断和任务效用。每个指标都回答一个具体问题，也都有不能回答的问题。
 
 ## 历史背景与学术脉络
 
@@ -18,7 +24,7 @@
 
 Ha 和 Schmidhuber 的 _World Models_ 用 VAE 压缩视觉输入，并用 MDN-RNN 预测潜变量与终止信号 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。VAE 的重构质量是组件诊断之一，但论文对完整系统的关键检验仍是控制器在 CarRacing 与 VizDoom 中取得的回报；不能把当时的评估概括为只看像素重构误差。
 
-然而，随着研究的深入，人们发现像素级重构存在致命缺陷。现实世界充满了无关紧要的噪声（例如微风吹动树叶的随机摆动）。如果模型将庞大的计算资源用于完美重构这些随机噪声，它将无法专注于真正决定世界演化规律的核心特征。
+像素级重构也有明显局限：现实观测中包含树叶摆动、纹理和传感器噪声等难预测细节。更低的像素误差不一定意味着模型保留了对控制最重要的信息，因此它只能作为组件诊断，不能替代动作响应和下游任务评测。
 
 PlaNet 首先提出 RSSM，Dreamer 随后用 RSSM 的潜在想象轨迹训练策略 [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)。Dreamer 的训练仍包含观测、奖励和折扣预测，评估则以环境回报和数据效率为主。LeCun 的立场文章进一步主张在抽象表征空间中预测，而不是为不可预测的像素细节分配容量 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)。
 
@@ -30,7 +36,7 @@ PlaNet 首先提出 RSSM，Dreamer 随后用 RSSM 的潜在想象轨迹训练策
 
 ### 确定性系统中的预测误差
 
-假设我们正在观测一个在真空中做平抛运动的小球。如果我们知道小球在 $t$ 时刻的水平位置 $x_t$ 和速度 $v_t$，根据牛顿运动定律，我们可以绝对确定地预测它在 $t+1$ 时刻的位置 $x_{t+1}$。
+先看一个理想化例子：忽略空气阻力，并且已知完整初始状态、重力和采样间隔时，平抛小球的下一时刻位置由运动方程确定。这个假设刻意排除了测量误差和未知扰动，方便我们先讨论点预测误差。
 
 假设我们的世界模型（在这里是一个简单的物理公式）给出了预测值 $\hat{x}_{t+1}$。此时，评估模型预测好坏的最自然方式，就是计算预测位置与真实观测位置之间的距离。这在数学上体现为绝对误差或平方误差。为了便于后续求导优化，我们通常选择平方误差：
 
@@ -42,7 +48,7 @@ $$ e_{t+1} = (x_{t+1} - \hat{x}_{t+1})^2 $$
 
 $$ \mathcal{L}_{\text{MSE}} = \frac{1}{d} \sum_{i=1}^{d} (z_{t+1}^{(i)} - \hat{z}_{t+1}^{(i)})^2 = \frac{1}{d} \|\mathbf{z}_{t+1} - \mathbf{\hat{z}}_{t+1}\|_2^2 $$
 
-在这里，$z_{t+1}^{(i)}$ 表示真实状态向量的第 $i$ 个维度分量，$\|\cdot\|_2$ 表示向量的 L2 范数。这个确定性的评估指标极其直观，但在现实世界中却面临着严峻的挑战。
+在这里，$z_{t+1}^{(i)}$ 表示真实状态向量的第 $i$ 个分量，$\|\cdot\|_2$ 表示 L2 范数。这个指标容易计算，但只描述一个目标状态与一个点预测之间的平均距离。
 
 ### 随机性与概率分布的引入
 
@@ -58,13 +64,25 @@ $$ p(x_{t+1} | \hat{\mu}_{t+1}, \hat{\sigma}_{t+1}^2) = \frac{1}{\sqrt{2\pi\hat{
 
 $$ \text{NLL} = - \ln p(x_{t+1}) = \frac{1}{2} \ln(2\pi\hat{\sigma}_{t+1}^2) + \frac{(x_{t+1} - \hat{\mu}_{t+1})^2}{2\hat{\sigma}_{t+1}^2} $$
 
-仔细观察该公式的第二项。如果模型的方差 $\hat{\sigma}_{t+1}^2$ 被固定为一个常数，那么最小化 NLL 就严格等价于最小化均方误差。这证明了：**均方误差本质上是假设预测分布为等方差高斯分布时的特殊最大似然估计**。通过引入可学习的方差 $\hat{\sigma}_{t+1}^2$，模型学会了表达“不确定性”——当环境随机性大时，模型会输出更大的方差，从而使第一项增大，但避免了因点预测错误导致的第二项剧烈惩罚。
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/latex/01-evaluate-principles/gaussian-nll-variance-balance.png" alt="固定残差时，高斯负对数似然由随标准差下降的残差项和随标准差上升的对数项共同决定" width="86%">
 
-将其严谨地推广到高维向量空间。假设模型预测的高维状态服从多变量高斯分布 $\mathcal{N}(\boldsymbol{\hat{\mu}}_{t+1}, \boldsymbol{\hat{\Sigma}}_{t+1})$，其中 $\boldsymbol{\hat{\Sigma}}_{t+1}$ 为协方差矩阵。高维分布的负对数似然形式为：
+_图 10.1-2：增大预测标准差会降低残差惩罚，却会抬高对数尺度项；两项平衡使最优标准差等于残差绝对值。本文根据上式绘制。_
+</div>
+
+仔细观察第二项：当方差固定且不依赖样本时，最小化高斯 NLL 与最小化平方误差具有相同的最优均值预测。让模型同时预测方差，则可以表达条件分布的尺度；但方差也可能被模型用来掩盖均值误差，所以还要用留出数据检查校准，而不能只看 NLL。
+
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/01-evaluate-principles/calibration-fig3.png" alt="校准回归把名义置信水平与实际覆盖率对齐，展示为什么概率预测除 NLL 外还必须检查不确定性的校准。" width="86%">
+
+_图 10.1-3：校准回归把名义置信水平与实际覆盖率对齐，展示为什么概率预测除 NLL 外还必须检查不确定性的校准。 出处：Volodymyr Kuleshov；Nathan Fenner；Stefano Ermon，[Accurate Uncertainties for Deep Learning Using Calibrated Regression](https://arxiv.org/abs/1807.00263)（2018），Figure 3。_
+</div>
+
+推广到高维向量空间，假设模型预测的状态服从多变量高斯分布 $\mathcal{N}(\boldsymbol{\hat{\mu}}_{t+1}, \boldsymbol{\hat{\Sigma}}_{t+1})$，其中协方差矩阵 $\boldsymbol{\hat{\Sigma}}_{t+1}$ 必须对称正定。其负对数似然为：
 
 $$ \mathcal{L}_{\text{NLL}} = \frac{d}{2}\ln(2\pi) + \frac{1}{2}\ln|\boldsymbol{\hat{\Sigma}}_{t+1}| + \frac{1}{2}(\mathbf{z}_{t+1} - \boldsymbol{\hat{\mu}}_{t+1})^\top \boldsymbol{\hat{\Sigma}}_{t+1}^{-1} (\mathbf{z}_{t+1} - \boldsymbol{\hat{\mu}}_{t+1}) $$
 
-在实际的世界模型实现中，为了降低计算复杂度，通常假设各个维度相互独立，即协方差矩阵为对角阵 $\boldsymbol{\hat{\Sigma}} = \text{diag}(\hat{\sigma}_1^2, \dots, \hat{\sigma}_d^2)$。此时，高维的似然评估退化为各个维度一维似然评估的累加。
+在实际实现中，为了降低计算复杂度，常假设给定条件后各维独立，即 $\boldsymbol{\hat{\Sigma}} = \text{diag}(\hat{\sigma}_1^2, \dots, \hat{\sigma}_d^2)$。此时 NLL 是各维一维 NLL 的和；后面的代码实现正是这种对角高斯，而不是完整协方差模型。
 
 ## 潜变量推断与变分下界 (ELBO)
 
@@ -75,18 +93,26 @@ $$ \mathcal{L}_{\text{NLL}} = \frac{d}{2}\ln(2\pi) + \frac{1}{2}\ln|\boldsymbol{
 1. **后验推断（Posterior Inference）**：根据当前的真实观测图像 $\mathbf{x}_t$ 提取出真实的隐状态分布 $q(\mathbf{z}_t | \mathbf{x}_t, \dots)$。
 2. **先验预测（Prior Prediction）**：在不看当前图像的情况下，仅根据历史信息 $\mathbf{z}_{t-1}$ 和动作 $\mathbf{a}_{t-1}$，预测出当前的隐状态分布 $p(\mathbf{z}_t | \mathbf{z}_{t-1}, \mathbf{a}_{t-1})$。
 
-评估这样的模型，我们采用了变分推断（Variational Inference）框架。我们要最大化观测数据 $\mathbf{x}_{1:T}$ 的边缘似然的下界，即证据下界（Evidence Lower Bound, ELBO）。对于单一时间步，ELBO 可以拆解为以下严格的数学形式：
+训练这类模型时，常采用变分推断（Variational Inference）框架，最大化观测边缘对数似然的下界，即证据下界（Evidence Lower Bound, ELBO）。省略跨时间求和后，单步形式可以写成：
 
-$$ \mathcal{L}_{\text{ELBO}} = \mathbb{E}_{q(\mathbf{z}_t | \mathbf{x}_t)}\big[\ln p(\mathbf{x}_t | \mathbf{z}_t)\big] - \beta D_{\text{KL}}\Big( q(\mathbf{z}_t | \mathbf{x}_t) \,\Big\|\, p(\mathbf{z}_t | \mathbf{z}_{t-1}, \mathbf{a}_{t-1}) \Big) $$
+$$ \mathcal{L}_{\text{ELBO}} = \mathbb{E}_{q(\mathbf{z}_t | \mathbf{x}_{\le t},\mathbf{a}_{<t})}\big[\ln p(\mathbf{x}_t | \mathbf{z}_t)\big] - D_{\text{KL}}\Big( q(\mathbf{z}_t | \mathbf{x}_{\le t},\mathbf{a}_{<t}) \,\Big\|\, p(\mathbf{z}_t | \mathbf{z}_{t-1}, \mathbf{a}_{t-1}) \Big) $$
 
-让我们温柔地拆解这个极其重要的高阶公式。它包含了两项截然不同的评估指标：
+这里写的是单位权重的 ELBO。工程实现常给 KL 项乘上系数 $\beta$ 或使用 free bits；这时它是由 ELBO 改造出的训练目标，不再等同于原始下界。
+
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/01-evaluate-principles/betavae-fig1.png" alt="β-VAE 图示说明后验分布的重叠、KL 压力与重构区分度彼此牵制，直观对应 ELBO 两项的张力。" width="86%">
+
+_图 10.1-4：β-VAE 图示说明后验分布的重叠、KL 压力与重构区分度彼此牵制，直观对应 ELBO 两项的张力。 出处：Christopher P. Burgess et al.，[Understanding disentangling in β-VAE](https://arxiv.org/abs/1804.03599)（2018），Figure 1。_
+</div>
+
+这个式子包含两项作用不同的训练诊断量：
 
 第一项 $\mathbb{E}_{q}[\ln p(\mathbf{x}_t | \mathbf{z}_t)]$ 是**重构似然（Reconstruction Likelihood）**。它要求基于观测图像提取出的后验隐状态，能够被解码器成功还原回原始图像。这衡量了隐状态是否保留了足够的视觉细节信息。
 
 第二项 $D_{\text{KL}}$ 则是评估世界模型动力学预测能力的核心。KL散度（Kullback-Leibler Divergence）衡量了两个概率分布之间的差异。在该公式中，它迫使**先验预测分布** $p(\mathbf{z}_t | \mathbf{z}_{t-1}, \mathbf{a}_{t-1})$ 必须尽可能地逼近**后验推断分布** $q(\mathbf{z}_t | \mathbf{x}_t)$。
 
 > 💡 **KL散度动力学匹配机制**
-> 在这里，我们可以将后验推断网络比作一位“拥有视觉的引导者”，它能够直接看到当前真实发生的画面 $\mathbf{x}_t$，从而精确判断当前所处的状态。而先验预测网络（即动力学模型）则是一位“被蒙上眼睛的预测者”，它只能依靠对过去 $\mathbf{z}_{t-1}$ 的记忆和执行的动作 $\mathbf{a}_{t-1}$，试图在脑海中描绘出此刻的状态。KL 散度所计算的，正是这两位引导者脑海中状态分布的不一致程度。在训练过程中，我们通过最小化这个 KL 散度，强迫蒙眼的预测者不断修正自己的物理直觉，直到其盲猜的分布与拥有视觉者的判断完全吻合。这便是世界模型“理解”动力学的数学本质。
+> 可以把后验看成“看过当前画面的定位器”，把先验看成“只凭上一状态和动作前推的预测器”。KL 衡量二者分布的差异。差异变小说明先验更接近训练后验，但不等于模型已经恢复了唯一、真实的物理状态；后验本身也可能丢失任务信息。
 
 ## 效用导向的评估 (Behavioral Utility)
 
@@ -94,11 +120,17 @@ $$ \mathcal{L}_{\text{ELBO}} = \mathbb{E}_{q(\mathbf{z}_t | \mathbf{x}_t)}\big[\
 
 MuZero 不要求隐空间展开重建环境图像，而是训练表示、动力学与预测网络去匹配规划所需的奖励、价值和策略目标 [[Schrittwieser et al., 2020]](https://arxiv.org/abs/1911.08265)。因此，组件诊断应同时检查奖励预测、价值预测与策略分布；完整系统仍需用环境回报和搜索性能评估，不能只看两个标量的拟合误差。
 
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/01-evaluate-principles/muzero-fig3.png" alt="MuZero 在 Go 与 Atari 上按搜索预算、训练步数和规划消融报告结果，体现任务效用必须通过真实游戏表现来检验。" width="86%">
+
+_图 10.1-5：MuZero 在 Go 与 Atari 上按搜索预算、训练步数和规划消融报告结果，体现任务效用必须通过真实游戏表现来检验。 出处：Julian Schrittwieser et al.，[Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model](https://arxiv.org/abs/1911.08265)（2020），Figure 3。_
+</div>
+
 具体的评估指标退化为联合的损失函数，直接在模型的展开轨迹上评估：
 
 $$ \mathcal{L}_{\text{Utility}} = \sum_{k=0}^{K} \Big[ l^r(r_{t+k}, \hat{r}_t^k) + l^v(v_{t+k}, \hat{v}_t^k) + l^p(\pi_{t+k}, \hat{\mathbf{p}}_t^k) \Big] $$
 
-其中，$\hat{r}_t^k$, $\hat{v}_t^k$ 和 $\hat{\mathbf{p}}_t^k$ 是世界模型从状态 $\mathbf{z}_t$ 出发，在脑海中向前推演 $k$ 步后预测出的奖励、状态价值和策略向量。这里的 $l^r$ 和 $l^v$ 往往采用普通的均方误差（或变体），而 $l^p$ 则多采用交叉熵。这种评估原则彻底摒弃了对环境细节的无谓纠缠，将评估的利刃直指任务的核心。
+其中，$\hat{r}_t^k$, $\hat{v}_t^k$ 和 $\hat{\mathbf{p}}_t^k$ 是世界模型从状态 $\mathbf{z}_t$ 出发，向前展开 $k$ 步后预测的奖励、状态价值和策略向量。这里的 $l^r$ 和 $l^v$ 可采用平方误差或离散支持上的交叉熵，$l^p$ 通常采用交叉熵。这类目标把评价重点移向规划所需的量，但仍可能忽略训练目标未覆盖的环境信息，所以要与真实环境中的搜索或控制结果一起报告。
 
 ## 代码实现：动力学评估指标
 
@@ -160,8 +192,8 @@ print(f"负对数似然 (NLL): {nll.item():.4f}")
 print(f"KL散度动力学惩罚: {kl.item():.4f}")
 ```
 
-在这个实现中，我们可以清晰地看到数学公式是如何一步步转化为张量运算的。尤其是对数方差的处理，在深度学习中这是一种极其重要且广泛使用的技巧，它避免了神经网络在直接输出方差时可能产生的负数问题。
+代码让网络输出对数方差，再通过指数映射得到正标准差，从参数化上避免了负方差。实际评测还应按预测步长、数据切分和任务类别分别汇总，不能只报告三个全局均值。
 
 ## 小结
 
-在本节中，我们严格梳理了世界模型的评估原则。我们从确定性系统的**均方误差**起步，通过引入不可避免的环境随机性，自然地过渡到了概率性推断的**负对数似然**。针对隐空间中的动态推演，我们拆解了变分下界中的 KL 散度匹配机制，并讨论了任务导向的**价值等效评估原则**。这些指标共同构成了评估现代世界模型性能的完整基石。
+本节从**均方误差**过渡到**负对数似然**，再讨论 ELBO 中的重构与 KL 项，以及任务导向的奖励、价值和策略诊断。它们不是可以互相替代的一串分数：点误差检查局部预测，NLL 还检查概率尺度，KL 检查先验与训练后验的匹配，而最终控制结果回答模型是否真的对任务有用。

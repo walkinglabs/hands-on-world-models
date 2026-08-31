@@ -1,14 +1,20 @@
-# 探索下一个世界模型：前沿与未来
+# 10.4 探索下一个世界模型：前沿与未来
 
 前面几章讨论了使用循环网络、潜变量模型、自回归模型和扩散模型表示环境动力学的方法。LeCun 的立场文章指出，像素空间包含大量难以预测、却未必与任务相关的细节，因此主张在抽象表征空间预测 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)。这篇文章为“避免预测所有像素细节”提供了理论动机，但没有对所有自回归或扩散世界模型给出统一的效率、泛化或长序列误差定理。
 
-在本节中，我们将把目光投向地平线之外，探索有望定义“下一个时代”世界模型的前沿架构与理论基石。我们将从联合嵌入预测架构（JEPA）的能量模型视角出发，推演放弃像素级重建的数学必然性；随后，我们将引入理论神经科学中的变分自由能原则（Free Energy Principle, FEP），探讨主动推断（Active Inference）如何统一预测与决策；最后，我们将利用连续时间的状态空间模型（State Space Models, SSMs）突破离散时间步长的桎梏。这些前沿探索不仅是工程架构的革新，更是对“智能系统如何认知物理世界”这一哲学命题的严密数学重构。
+本节选择三条可以被实验检验的路线：在表征空间预测、用主动推断组织感知与行动，以及用状态空间层处理长序列。它们不是“下一代世界模型”的既定答案，而是三组不同的设计假设；读者应继续追问它们在什么数据、任务和计算预算下真正占优。
 
-## 联合嵌入预测架构（JEPA）的数学必然性
+## 联合嵌入预测架构（JEPA）：不重建像素的选择
 
 现有的多数世界模型（如基于 Transformer 或 VAE 的架构）通常致力于在观察空间（如图像像素）中预测下一个状态。假设当前状态为 $\mathbf{x}_t$，动作为 $\mathbf{a}_t$，预测目标往往是 $\mathbf{x}_{t+1}$。然而，物理世界充满了不可预测的细微噪音（例如风中摇曳的树叶像素变化）。强迫模型耗费巨大的模型容量去拟合这些对高级决策毫无意义的高频细节，是不理智的。
 
-Yann LeCun 在其标志性的论文 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf) 中正式提出了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）。其核心思想是：抛弃在原始观测空间中的生成过程，转而在一个高度抽象、去除了不可预测噪声的隐变量空间（Latent Space）中进行预测。
+LeCun 的立场文章 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf) 系统阐述了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）：预测目标不是下一帧的全部像素，而是目标观测的表征。表征是否真的去除了无关噪声，要由训练约束与下游实验验证，不能由架构名称保证。
+
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/04-next-world-model/ijepa-fig6.png" alt="I-JEPA 预测表征经生成解码器可得到多种合理补全；共同内容体现预测表征保留的语义，变化部分对应未被确定的细节。" width="86%">
+
+_图 10.4-1：I-JEPA 预测表征经生成解码器可得到多种合理补全；共同内容体现预测表征保留的语义，变化部分对应未被确定的细节。 出处：Mahmoud Assran et al.，[Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture](https://arxiv.org/abs/2301.08243)（2023），Figure 6。_
+</div>
 
 ### 从自编码器到能量模型
 
@@ -44,7 +50,13 @@ $$v(\mathbf{S}) = \frac{1}{d} \sum_{j=1}^d \max\left(0, \gamma - \sqrt{\text{Var
 
 $$c(\mathbf{S}) = \frac{1}{d} \sum_{i \neq j} C_{i, j}^2$$
 
-通过组合不变性（预测与目标的距离）、方差（保持信息量）和协方差（去相关性），JEPA 实现了一个无需在像素层面生成、且具有严格数学保障的抽象世界模型。这种架构为处理高维复杂物理系统铺平了道路。
+VICReg 的三项损失分别约束样本对齐、每个维度的批内标准差和跨维相关性。它能排除一类“所有样本映射到同一点”的解，但不保证表征包含全部任务变量，也不是 JEPA 唯一可用的防坍塌机制。
+
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/04-next-world-model/vicreg-fig4.png" alt="VICReg 原论文跟踪 BYOL 与 SimSiam 特征标准差，显示显式方差正则如何阻止表征维度趋于零。" width="86%">
+
+_图 10.4-2：VICReg 原论文跟踪 BYOL 与 SimSiam 特征标准差，显示显式方差正则如何阻止表征维度趋于零。 出处：Adrien Bardes；Jean Ponce；Yann LeCun，[VICReg: Variance-Invariance-Covariance Regularization for Self-Supervised Learning](https://arxiv.org/abs/2105.04906)（2022），Figure 4。_
+</div>
 
 ## 主动推断与变分自由能
 
@@ -95,13 +107,25 @@ $$
 1. **感知（Perception）**：改变内部信念 $Q(\mathbf{s} \mid \mathbf{o})$ 以更好地拟合环境（即常规的模型训练）。
 2. **行动（Action）**：通过执行动作 $a$ 改变外部物理世界，产生新的观测 $\mathbf{o}$，使得新观测符合模型的先验预期（即目标导向的决策）。
 
-在主动推断框架中，策略的选择完全转化为对**期望自由能（Expected Free Energy, EFE）**的最小化。这种统一，消除了强化学习中外在奖励信号的绝对必要性，使得探索（降低模型不确定性）和利用（实现预期目标）被同等地编码在同一个公式中。这是迈向“通用世界模型”的重要理论基石。
+在主动推断的一类表述中，策略通过最小化**期望自由能（Expected Free Energy, EFE）**来选择。目标偏好被写进生成模型或偏好分布，而不是凭空消失；不同分解下的“信息增益”和“偏好满足”项也依赖具体假设。因此，它提供的是一种组织探索与利用的建模方式，而不是无需任务目标的通用控制定理。
+
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/04-next-world-model/active-fig5.png" alt="主动推断智能体在网格世界中反复探索并学习奖励位置偏好，展示信念更新如何与行动轨迹共同演化。" width="86%">
+
+_图 10.4-3：主动推断智能体在网格世界中反复探索并学习奖励位置偏好，展示信念更新如何与行动轨迹共同演化。 出处：Noor Sajid；Philip J. Ball；Thomas Parr；Karl J. Friston，[Active inference: demystified and compared](https://arxiv.org/abs/1909.10863)（2020），Figure 5。_
+</div>
 
 ## 连续时间与状态空间模型（SSMs）
 
 我们目前探讨的世界模型大多建立在离散的时间步 $t, t+1, t+2$ 之上。然而，真实的物理世界是连续流动的。对连续动态的离散化往往会导致信息丢失，并且在跨越多时间尺度的长序列预测时，循环网络或 Transformer 面临着灾难性的遗忘或平方级的计算复杂度。
 
 近年来，S4 等结构化状态空间序列模型从连续时间状态空间系统出发，设计了可高效计算的长序列层 [[Gu et al., 2021]](https://arxiv.org/abs/2111.00396)。这里引用的是 S4 论文，不是后来提出的 Mamba；这类模型为长序列建模提供了工具，但其对具体世界模型是否有效仍需实验验证。
+
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/source/04-next-world-model/s4-fig1.png" alt="S4 将连续时间状态空间系统连接到长程依赖矩阵结构与快速离散卷积，概括其长序列计算路径。" width="86%">
+
+_图 10.4-4：S4 将连续时间状态空间系统连接到长程依赖矩阵结构与快速离散卷积，概括其长序列计算路径。 出处：Albert Gu；Karan Goel；Christopher Ré，[Efficiently Modeling Long Sequences with Structured State Spaces](https://arxiv.org/abs/2111.00396)（2021），Figure 1。_
+</div>
 
 ### 线性状态空间动态系统
 
@@ -128,7 +152,13 @@ $$
 \mathbf{x}_k = \mathbf{x}(k\Delta) = e^{\mathbf{A}\Delta}\mathbf{x}_{k-1} + \left( \int_{0}^{\Delta} e^{\mathbf{A}\tau} d\tau \right) \mathbf{B}u_k
 $$
 
-令离散化的参数矩阵为 $\bar{\mathbf{A}} = e^{\mathbf{A}\Delta}$，以及 $\bar{\mathbf{B}} = (\mathbf{A}^{-1}(e^{\mathbf{A}\Delta} - \mathbf{I}))\mathbf{B}$，我们得到了类似于 RNN 的严格离散递归表示：
+<div align="center">
+<img src="/figures/10-evaluate-and-invent/latex/04-next-world-model/zoh-two-contributions.png" alt="零阶保持区间内，旧状态经矩阵指数传播，恒定输入经区间积分响应后共同形成下一离散状态" width="86%">
+
+_图 10.4-5：旧状态通过矩阵指数传播，区间内保持不变的输入通过积分响应累积；两项相加得到精确离散状态。本文根据上式绘制。_
+</div>
+
+令 $\bar{\mathbf{A}} = e^{\mathbf{A}\Delta}$，以及一般形式 $\bar{\mathbf{B}} = \left(\int_0^\Delta e^{\mathbf{A}\tau}\,d\tau\right)\mathbf{B}$。当 $\mathbf A$ 可逆时，后者可写成 $\mathbf{A}^{-1}(e^{\mathbf{A}\Delta} - \mathbf{I})\mathbf B$。于是得到离散递推：
 
 $$
 \begin{aligned}
@@ -137,7 +167,7 @@ y_k &= \mathbf{C}\mathbf{x}_k
 \end{aligned}
 $$
 
-与普通 RNN 使用启发式的非线性门控机制（如 LSTM）不同，该公式具有极其优美的解析性质。结合特定的矩阵 $\mathbf{A}$ 构造（如 HiPPO 矩阵，旨在正交多项式基上记忆完整的历史记录），SSMs 在进行物理动态的时序预测时，展现出极其优秀的数学收敛性和无需注意力机制的线性时间复杂度。这使得 SSMs 成为模拟长周期复杂物理动态现象的绝佳候选架构。
+离散后的线性递推具有可分析结构，并可通过卷积或扫描高效计算。S4 进一步对状态矩阵作结构化参数化来处理长序列。这里的计算优势不等于“记住完整历史”，也不保证学到真实物理动力学；把 SSM 用作世界模型仍需比较预测质量、动作响应、闭环控制与计算成本。
 
 ## 代码实现：构建下一代世界模型的核心模块
 
@@ -172,6 +202,11 @@ def vicreg_loss(x, y, sim_weight=25.0, var_weight=25.0, cov_weight=1.0, epsilon=
     y: 目标状态的真实表征 (Batch_size, embed_dim)
     """
     batch_size, embed_dim = x.shape
+    if batch_size < 2:
+        raise ValueError("VICReg 的方差与协方差项至少需要两个样本")
+
+    # 目标分支通常由停止梯度或独立更新的目标编码器产生
+    y = y.detach()
 
     # 1. 不变性损失 (Invariance Loss)：等价于我们在公式中提到的 MSE 距离
     sim_loss = F.mse_loss(x, y)
@@ -215,12 +250,12 @@ print(f"Total Loss: {total_loss.item():.4f}")
 print(f"Similarity Loss: {sim.item():.4f}, Variance Loss: {var.item():.4f}, Covariance Loss: {cov.item():.4f}")
 ```
 
-在这个实现中，通过 `vicreg_loss` 函数，我们无需繁重的像素解码器网络，在数学层面优雅地保障了网络在隐变量空间学习到了无偏且多元的动态规律。
+这个 `vicreg_loss` 同时约束预测配对、维度方差和跨维协方差。它能阻止一类常数表征，但不能保证学到无偏的真实动力学；仍需检查目标编码器更新方式、动作反事实和下游任务表现。
 
 ## 小结
 
 下一代世界模型的探索已经越过了单纯增加网络参数或数据的阶段，转入对智能体认知物理世界底层逻辑的反思：
 
-- **JEPA** 证明了对于高熵现实世界，我们必须在抽象的隐变量空间进行预测，并通过方差与协方差正则化等手段对抗信息坍塌。
-- **主动推断与自由能原则** 将控制论与生成模型统一，使模型不再满足于单纯的未来猜测，而是主动通过行动降低环境的不可预测性。
-- **连续状态空间模型** 利用微分方程重新审视序列建模，为物理规律中的长程、多尺度依赖提供了理论上完美的框架。
+- **JEPA** 提供了不重建全部像素的表征预测路线，但必须额外验证防坍塌机制和任务信息是否保留。
+- **主动推断与自由能原则** 提供了一种联合描述感知、偏好和行动的框架；它与标准强化学习的关系取决于建模假设。
+- **连续状态空间模型** 从连续系统出发构造高效序列层，是长时程世界模型的候选模块，而不是已经被证明最优的答案。
