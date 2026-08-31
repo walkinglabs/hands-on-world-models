@@ -8,33 +8,54 @@
 >
 > **故事线：** `从像素重构改为特征预测 → 用掩码制造上下文与目标 → 暴露常数表示的坍塌解 → 用不对称目标网络与 EMA 稳定学习 → 加入动作并展开多步未来`
 
-自监督学习（Self-Supervised Learning, SSL）在深度学习的黄金十年中占据了举足轻重的地位。然而，当我们试图让机器像人类一样理解世界时，传统的学习范式暴露出了深层的局限性。2022年，Yann LeCun 在其具有里程碑意义的论文 _A Path Towards Autonomous Machine Intelligence_ [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf) 中正式提出了联合嵌入预测架构（Joint Embedding Predictive Architecture, JEPA）。这一架构试图回答一个基础且深刻的问题：机器应该在哪个空间中预测未来或补全缺失的信息？
+自监督学习（Self-Supervised Learning, SSL）从数据本身构造训练目标。像素重构是一种选择，预测另一部分数据的表征则是另一种选择。LeCun 在 _A Path Towards Autonomous Machine Intelligence_ 中系统阐述了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）的设想 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)：给定上下文，在表征空间预测目标，而不要求还原目标的每个观测细节。
 
-在本节中，我们将从自监督学习的演进脉络出发，逐步剖析 JEPA 的物理直觉与数学基础，并最终在代码层面构建这一架构的核心组件。
+<div align="center">
+  <img src="/figures/06-jepa/source/01-jepa-foundation/data2vec-fig1.png" alt="data2vec 在语音、图像和文本上共享教师表征预测流程，展示潜在目标预测并不限于一种模态。" width="86%">
+
+_图 6.1-1：data2vec 在语音、图像和文本上共享教师表征预测流程，展示潜在目标预测并不限于一种模态。 出处：Alexei Baevski et al.，[data2vec: A General Framework for Self-supervised Learning in Speech, Vision and Language](https://arxiv.org/abs/2202.03555)（2022），Figure 1。_
+
+</div>
+
+本节先比较像素重构与表征预测，再定义上下文编码器、目标编码器和预测器，最后实现一个最小训练骨架。
 
 ## 历史脉络：从重构到表征预测
 
 在 JEPA 诞生之前，主流的自监督学习大致可以分为两类：生成式架构（Generative Architectures）和联合嵌入架构（Joint Embedding Architectures）。
 
+<div align="center">
+  <img src="/figures/06-jepa/source/01-jepa-foundation/ijepa-fig2.png" alt="生成式、联合嵌入与联合嵌入预测三类架构的并列图，说明 JEPA 把监督信号从像素移到表征关系。" width="86%">
+
+_图 6.1-2：生成式、联合嵌入与联合嵌入预测三类架构的并列图，说明 JEPA 把监督信号从像素移到表征关系。 出处：Mahmoud Assran et al.，[Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture](https://arxiv.org/abs/2301.08243)（2023），Figure 2。_
+
+</div>
+
 掩码自编码器 MAE 通过重构被遮挡图像块的像素学习表征 [[He et al., 2022]](https://arxiv.org/abs/2111.06377)。LeCun 的 JEPA 立场则认为，物理世界包含许多难以预测且未必与任务相关的像素细节，因此更适合在抽象表征空间预测 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)。前一句是 MAE 的方法，后一句是 JEPA 的设计主张，不能都归到 MAE 论文名下。
+
+<div align="center">
+  <img src="/figures/06-jepa/source/01-jepa-foundation/mae-fig2.png" alt="MAE 的遮挡图、像素重建与原图对照，具体展示像素重构路线需要恢复的视觉细节。" width="86%">
+
+_图 6.1-3：MAE 的遮挡图、像素重建与原图对照，具体展示像素重构路线需要恢复的视觉细节。 出处：Kaiming He et al.，[Masked Autoencoders Are Scalable Vision Learners](https://arxiv.org/abs/2111.06377)（2022），Figure 2。_
+
+</div>
 
 另一方面，联合嵌入架构直接约束不同视角的表征。若只最小化正样本之间的距离，模型确实可能把所有输入映射为同一常数；SimCLR 则使用批内负样本和对比损失来排除这种平凡解 [[Chen et al., 2020]](https://arxiv.org/abs/2002.05709)。因此，表示坍塌是联合嵌入方法需要解决的问题，而不是 SimCLR “引入”的问题。
 
-JEPA 的提出，是对这两种范式的超越。它保留了联合嵌入架构在高维抽象空间中操作的优势，同时引入了生成式架构中的“预测”机制。不同的是，JEPA 的预测发生在抽象的嵌入空间，而非原始的观测空间。
+JEPA 把“联合嵌入”与“预测”放进同一个框架：上下文和目标分别编码，预测器从上下文表征推断目标表征。与像素重构方法的主要区别是预测目标所在的空间，而不是简单地把两类方法排成高低关系。
 
 ## 物理直觉与高中数学映射：信号、噪声与状态转移
 
-为了严谨地理解 JEPA，我们首先将问题降维到最基础的高中物理与数学模型中。
+先用一维运动说明表征预测想舍弃什么信息。
 
 假设我们在观察一个沿直线运动的物体。在时刻 $t$，物体的实际位置是 $p_t$，但我们的测量仪器存在误差，因此我们观测到的位置是 $x_t = p_t + \epsilon_t$，其中 $\epsilon_t$ 是随机噪声。
 
-如果我们想要预测下一时刻 $t+1$ 的观测值 $x_{t+1}$，我们需要同时预测物体的真实运动规律以及未来的噪声 $\epsilon_{t+1}$。从统计学的角度看，这是极其困难甚至是不可能的，因为 $\epsilon_{t+1}$ 是不可预测的。
+若直接预测 $x_{t+1}$，模型既要描述位置变化，也会因损失函数而受到未来测量噪声 $\epsilon_{t+1}$ 的影响。独立噪声的具体取值无法由当前观测确定，平方误差下通常只能学到其条件均值。
 
-JEPA 的核心思想在于，我们不应该试图预测观测值 $x_{t+1}$。相反，我们应该构建一个“编码器”（Encoder），其作用是过滤掉观测中的噪声，提取出真实的状态 $p_t$。数学上，我们可以将这个过程定义为一个函数映射 $s_t = f(x_t)$，我们希望 $s_t$ 尽可能接近 $p_t$。
+JEPA 选择先编码观测 $s_t=f(x_t)$，再预测未来表征。训练希望表征保留可预测、对下游任务有用的结构，并弱化不稳定细节；这是一项目标，不意味着编码器天然等于真实物理状态 $p_t$，还需要实验验证。
 
 随后，我们在状态空间（而非观测空间）中进行预测：寻找一个预测器（Predictor）函数 $g$，使得 $g(s_t, \Delta t) \approx s_{t+1}$。
 
-这就是 JEPA 的本质：**在过滤了不确定性和无关细节的抽象状态空间中进行条件预测**。
+这一取舍可以概括为：**在表征空间做条件预测，让学习目标少受不可预测观测细节支配。**
 
 ## 核心架构与数学形式化
 
@@ -54,7 +75,7 @@ $$
 L = \frac{1}{2} (\hat{s}_y - s_y)^2
 $$
 
-此时，我们要优化网络参数 $\theta, \phi, \psi$ 以最小化 $L$。但如果我们直接优化所有参数，系统极易陷入一个平凡解：$E_\theta(x) = c, E_\phi(y) = c$（其中 $c$ 为任意常数）。此时 $\hat{s}_y = c, s_y = c$，损失完美地降为 0，但这并没有学习到任何关于数据的有用表征。这就是前文提到的信息坍塌。
+若两端编码器都能通过同一个距离损失自由更新，$E_\theta(x)=c$、$E_\phi(y)=c$ 会使损失为 0，却不保留输入信息。这说明常数映射是目标函数允许的平凡解；实际优化是否走到这里还取决于完整架构与训练设置。
 
 ### 向量空间与非对称架构
 
@@ -66,6 +87,13 @@ $$
 L = \|\mathbf{\hat{s}}_y - \mathbf{s}_y\|_2^2 = \sum_{i=1}^d (\hat{s}_{y, i} - s_{y, i})^2
 $$
 
+<div align="center">
+  <img src="/figures/06-jepa/latex/01-jepa-foundation/vector-distance-reduction.png" alt="预测向量与目标向量逐维相减平方，再沿特征维求和" width="86%">
+
+_图 6.1-4：每个特征坐标先形成差值并平方，随后沿 i=1,…,d 归约，得到单个表征距离。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
+
 在这里，$\mathbf{\hat{s}}_y = P_\psi(E_\theta(x), z)$，而 $\mathbf{s}_y = E_\phi(y)$。
 
 为了避免信息坍塌，现代 JEPA 变体（如 I-JEPA [[Assran et al., 2023]](https://arxiv.org/abs/2301.08243)）通常采用一种**非对称（Asymmetric）**的参数更新策略。具体而言，目标编码器 $E_\phi$ 的参数 $\phi$ **不通过**梯度下降直接更新。相反，它是上下文编码器参数 $\theta$ 的指数移动平均（Exponential Moving Average, EMA）：
@@ -76,9 +104,9 @@ $$
 
 其中 $\tau \in [0, 1]$ 且通常接近 1（例如 0.996）。慢速目标编码器、停止梯度、预测器以及掩码策略共同构成 I-JEPA 的非对称训练机制。EMA 提供了稳定目标，但单独使用 EMA 并不能从数学上保证任何架构都不会坍塌。
 
-## 潜变量 $z$ 的深层含义与变分视角
+## 条件变量与一般 JEPA 中的潜变量
 
-> 假设你正在观察一片在狂风中飘落的树叶。生成式模型试图精确预测树叶在每一微秒的坐标、姿态甚至叶脉上的反光——这项任务几乎注定失败，因为系统中存在巨大的不可控变数（风速的微小扰动）。而 JEPA 则采取了截然不同的策略：它提取出“树叶正在下落”这一核心状态，然后引入一个控制变量 $z$。如果 $z$ 代表“重力影响”，它就能预测出树叶整体向下的趋势；如果 $z$ 代表“特定的强侧风”，它就能预测出树叶向一侧偏移。$z$ 吸收了所有那些我们无法从当前上下文中推断，但对目标状态有决定性影响的信息。
+> 只看树叶当前一帧，下一时刻可能向左也可能向右。若另有风向或动作条件，就可把它作为 $z$ 输入预测器；若影响未来的因素不可观测，一般 JEPA 设想也允许用潜变量表示多种相容结果。具体实现是否显式建模这种潜变量，要看方法本身。
 
 在纯数学意义上，潜变量 $z$ 的存在是为了处理现实世界中“多对多”的映射关系。对于同一个上下文 $x$，未来可能存在多种合理的演化 $y$。如果没有 $z$，预测器 $P_\psi(s_x)$ 只能被迫输出所有可能未来的平均值（这往往是一个模糊且不现实的均值状态）。
 
@@ -94,14 +122,20 @@ $$
 z^* = \arg\min_{z \in \mathcal{Z}} D(P_\psi(E_\theta(x), z), E_\phi(y))
 $$
 
-在实际的端到端训练中（特别是在计算机视觉中），隐变量 $z$ 常常被实例化为目标位置或掩码的显式编码（例如目标图像块的位置嵌入），从而免去了复杂的在线优化过程。
+<div align="center">
+  <img src="/figures/06-jepa/latex/01-jepa-foundation/latent-condition-argmin.png" alt="同一上下文经多个候选条件产生预测，并以到目标表征的距离选择 z 星" width="86%">
+
+_图 6.1-5：x 与 y 固定时，每个候选 z 产生一个预测表征；内层 argmin 选择距离目标编码最小的 z\*。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
+
+在 I-JEPA 这类图像实现中，预测器接收目标块的位置 token；它是已知条件，不应与表示不可观测不确定性的随机潜变量混为一谈。这里的统一符号 $z$ 只表示“预测器还需读取的条件”。
 
 ## 代码实现：构建 JEPA 的核心骨架
 
-接下来，我们将使用纯粹的张量操作来实现一个 JEPA 的最小骨架。
+下面用张量操作实现一个最小骨架。
 
-(**我们首先定义上下文编码器、目标编码器和预测器。**)
-在这个简化的例子中，我们使用多层感知机（MLP）来替代复杂的 Transformer 骨干网络，以专注于 JEPA 独有的架构设计。
+为突出分支关系，示例用多层感知机（MLP）代替 Transformer 骨干。
 
 ```python
 import torch
@@ -114,7 +148,7 @@ class Encoder(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(input_dim, 256),
-            nn.BatchNorm1d(256),
+            nn.LayerNorm(256),
             nn.GELU(),
             nn.Linear(256, embed_dim)
         )
@@ -128,7 +162,7 @@ class Predictor(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(embed_dim + z_dim, 256),
-            nn.BatchNorm1d(256),
+            nn.LayerNorm(256),
             nn.GELU(),
             nn.Linear(256, embed_dim)
         )
@@ -139,7 +173,7 @@ class Predictor(nn.Module):
         return self.net(sz)
 ```
 
-(**现在，我们将这些组件组合成完整的 JEPA 模型，并实现非对称的指数移动平均（EMA）更新机制。**)
+再把三个组件组合起来，并实现非对称的 EMA 更新。
 
 ```python
 class JEPA(nn.Module):
@@ -163,7 +197,7 @@ class JEPA(nn.Module):
         with torch.no_grad():
             for param_q, param_k in zip(self.context_encoder.parameters(),
                                         self.target_encoder.parameters()):
-                param_k.data.mul_(self.ema_tau).add_(param_q.data, alpha=1.0 - self.ema_tau)
+                param_k.mul_(self.ema_tau).add_(param_q, alpha=1.0 - self.ema_tau)
 
     def forward(self, x, y, z):
         """
@@ -184,8 +218,8 @@ class JEPA(nn.Module):
         return s_y_hat, s_y
 ```
 
-在训练循环中，每次前向传播并计算出 `s_y_hat` 和 `s_y` 的 L2 损失后，我们只对 `context_encoder` 和 `predictor` 进行反向传播更新，随后必须显式调用 `update_target_encoder` 来更新目标的表征。这一精妙的设计，使得模型能够在一个不断演化但相对稳定的流形中进行预测，从而有效规避了表征坍塌。
+训练时只对 `context_encoder` 和 `predictor` 反向传播，再显式调用 `update_target_encoder`。这样目标分支变化得比在线分支慢。该最小代码展示数据流，但没有复现 I-JEPA 的块采样、位置 token、归一化与完整训练配置，因此不能单凭这个示例断言一定不会坍塌。
 
 ## 总结
 
-**联合嵌入预测架构（JEPA）**代表了机器智能迈向更高级抽象能力的关键一步。通过放弃对细枝末节的执着重构，JEPA 拥抱了**在特征空间中进行预测**的范式。借助于目标编码器的**非对称 EMA 更新**与隐变量机制，它不仅提供了一个计算高效的学习框架，也为处理现实世界中内在的不确定性奠定了数学基础。
+JEPA 的核心选择是让预测误差发生在表征空间。上下文编码器提供已知信息，目标编码器产生训练目标，预测器结合位置、动作或其他条件输出目标表征。非对称更新用于稳定目标；潜变量是否存在、怎样处理多种未来，则由具体 JEPA 实现决定。
