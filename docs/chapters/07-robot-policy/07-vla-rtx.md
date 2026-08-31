@@ -1,22 +1,38 @@
 # 视觉-语言-动作模型与RT-X
 
-在人类探索通用人工智能（Artificial General Intelligence, AGI）的历程中，如果说大型语言模型（Large Language Models, LLMs）赋予了机器“认知”与“推理”的大脑，视觉-语言模型（Vision-Language Models, VLMs）为机器装配了“观察”世界的双眼，那么视觉-语言-动作模型（Vision-Language-Action Models, VLA）则是迈向具身智能（Embodied AI）的关键一步——它赋予了机器在物理世界中“行动”的躯干与四肢。
+给机器人一张当前画面和一句“把可乐罐放进抽屉”，策略必须把语言里的目标、图像里的物体位置和机器人的动作空间联系起来。视觉—语言—动作模型（Vision-Language-Action Model, VLA）用统一模型完成这种条件动作预测；Open X-Embodiment/RT-X 进一步把多机构、不同形态的机器人数据放进联合训练框架。
 
-本节将深入探讨机器人策略（Robot Policy）学习范式的演进，特别是从传统的孤立控制算法到统一的 Transformer 架构的跨越。我们将重点剖析 Robotics Transformer 及其衍生模型（RT-1 [[Brohan et al., 2022]](https://arxiv.org/abs/2212.06817), RT-2 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818), 以及跨具身的 RT-X [[Open X-Embodiment Collaboration, 2023]](https://arxiv.org/abs/2310.08864)），并从最基础的数学概念出发，逐步构建起 VLA 模型的严谨理论框架与代码实现。
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/07-vla-rtx/rtx-fig1.png" alt="Open X-Embodiment 汇集多机构机器人与真实任务，展示 RT-X 的跨具身对象。" width="86%">
+
+_图 7.7-1：Open X-Embodiment 汇集多机构机器人与真实任务，展示 RT-X 的跨具身对象。 出处：[Open X-Embodiment: Robotic Learning Datasets and RT-X Models，Open X-Embodiment Collaboration，2023](https://arxiv.org/abs/2310.08864)。_
+
+</div>
+
+本节以 RT-1 [[Brohan et al., 2022]](https://arxiv.org/abs/2212.06817)、RT-2 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818) 和 Open X-Embodiment/RT-X [[Open X-Embodiment Collaboration, 2023]](https://arxiv.org/abs/2310.08864) 为主线，说明动作离散化、条件序列建模和跨机器人数据统一。不同 VLA 的动作表示并不完全相同，下面的离散词元方案只对应采用这一路线的模型。
 
 ## 历史脉络与学术背景
 
-在深度学习全面介入机器人控制之前，机器人策略主要依赖于经典控制理论与状态机（State Machines）。研究者需要利用动力学方程，计算关节的力矩与逆运动学（Inverse Kinematics）。这种方法的局限性在于，它对环境的非结构化变化极其敏感。
+经典机器人系统常把感知、任务规划、运动规划和底层控制拆成不同模块。这样的结构便于验证和施加约束，但感知模型或规则没有覆盖的环境变化，仍可能让整条链路失效。
 
-随后，基于卷积神经网络（CNNs）的端到端（End-to-End）行为克隆（Behavioral Cloning）开始兴起。然而，早期的模仿学习模型通常只能在单一机器人形态（Embodiment）、单一实验室环境和有限的指令集下工作。当 Transformer 架构在自然语言处理任务中展现出惊人的泛化能力 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762) 后，具身智能领域的研究者开始思考：我们能否将机器人的“感知-决策-行动”循环，抽象为一种类似语言翻译的序列建模问题？
+随后，基于卷积神经网络（CNN）的端到端行为克隆开始直接从观测预测动作。许多早期系统局限在单一机器人、实验室环境和有限指令集。Transformer 提供了统一处理长序列与多种词元的工具 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762)，机器人研究由此尝试把感知、指令和动作放进同一序列模型。
 
-RT-1 首先证明了将图像、语言和动作统一到同一个 Transformer 架构中的可行性；而 RT-2 则进一步回答了另一个深刻的问题：基于互联网海量文本与图像训练的视觉-语言模型（VLM），其蕴含的世界知识能否直接迁移到物理世界的机器人控制中？RT-X 项目（隶属于 Open X-Embodiment）则打破了硬件壁垒，证明了在多种完全不同的机器人硬件上联合训练单一模型，不仅不会导致严重的负迁移（Negative Transfer），反而能产生正向的跨具身（Cross-Embodiment）泛化能力。
+RT-1 展示了用 Transformer 统一处理图像、语言和离散动作的机器人策略。RT-2 把预训练视觉—语言模型与机器人动作数据共同微调，研究网络知识能否迁移到控制任务。Open X-Embodiment 汇集了 22 种机器人、超过一百万条轨迹；RT-X 实验表明，多机器人联合训练在论文评测设置中可以带来正迁移，但这不保证任意机器人组合都不会出现负迁移。
 
 ## 动作空间的离散化：从连续物理量到语言词表
 
 在高中物理中，我们习惯于将物体的运动描述为连续的实数变量（如坐标 $x, y, z$ 和速度 $v$）。传统的机器人控制也将动作输出建模为连续的连续向量 $\mathbf{a} \in \mathbb{R}^d$，并使用均方误差（MSE）作为回归任务的损失函数。
 
-然而，在 VLA 框架中，我们将连续的物理动作强行“降维”并映射到了离散的词表（Vocabulary）空间中。这样做的根本原因是：**离散化的交叉熵损失（Cross-Entropy Loss）在处理多峰分布（Multi-modal Distribution）时，比连续均方误差表现出更高的稳定性与表达能力**。
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/07-vla-rtx/rt2-fig2.png" alt="RT-2 的真实泛化案例说明语言知识怎样通过动作 token 落到机器人行为。" width="86%">
+
+_图 7.7-2：RT-2 的真实泛化案例说明语言知识怎样通过动作 token 落到机器人行为。 出处：[RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control，Anthony Brohan et al.，2023](https://arxiv.org/abs/2307.15818)。_
+
+</div>
+
+RT-1、RT-2 等模型把连续物理动作量化为离散词元，从而复用分类式的序列预测目标。离散分布可以为多个动作区间分配概率，但是否优于连续回归取决于数据、量化精度和模型设计，不能仅由损失函数形式决定。
 
 (**为了将连续动作转化为可以输入 Transformer 的词元（Tokens），我们需要进行统一的离散化操作。**)
 
@@ -30,9 +46,9 @@ $$ \tilde{a} = \frac{a - a_{\min}}{a_{\max} - a_{\min}} $$
 
 接着，我们将归一化后的值乘以 $(N-1)$，并向下取整，得到该动作所属的离散类别标签 $k$（$k \in \{0, 1, \dots, N-1\}$）：
 
-$$ k = \lfloor \tilde{a} \times (N - 1) \rceil $$
+$$ k = \operatorname{round}\!\left(\tilde{a}(N-1)\right) $$
 
-在这里，符号 $\lfloor \cdot \rceil$ 表示就近取整运算。通过这种方式，原本连续的物理量 $a$ 就变成了一个可以用独热编码（One-hot Encoding）表示的分类变量。
+这里还要先把越界值裁剪到 $[0,1]$。量化后的整数 $k$ 可以作为动作词元的类别标签。
 
 ### 向量化动作的离散化
 
@@ -44,7 +60,7 @@ $$ \tilde{\mathbf{a}}_t = (\mathbf{a}_t - \mathbf{a}_{\min}) \oslash (\mathbf{a}
 
 其中 $\oslash$ 表示逐元素除法。进而，动作的离散标签向量 $\mathbf{k}_t \in \mathbb{Z}^D$ 为：
 
-$$ \mathbf{k}_t = \lfloor \tilde{\mathbf{a}}_t \odot (N - 1) \rceil $$
+$$ \mathbf{k}_t = \operatorname{round}\!\left(\tilde{\mathbf{a}}_t \odot (N-1)\right) $$
 
 最终，这 $D$ 个离散值将被映射到一个预先定义的动作词表中，就像一句话中的 $D$ 个单词一样，送入 Transformer 进行序列建模。
 
@@ -62,15 +78,21 @@ $$ P(\mathbf{k}_t \mid \mathcal{I}_t, L; \boldsymbol{\theta}) = \prod_{d=1}^{D} 
 
 $$ \mathcal{L}(\boldsymbol{\theta}) = - \sum_{t=1}^{T} \sum_{d=1}^{D} \log P(k_{t,d} \mid k_{t,<d}, \mathcal{I}_t, L; \boldsymbol{\theta}) $$
 
-通过该公式，我们将复杂的机械臂闭环控制任务，严丝合缝地转换为了标准的自然语言处理中的“下一个词元预测”（Next-Token Prediction）任务。
+这个分解把一次动作预测写成“下一个词元”目标。闭环控制还包含观测更新、动作反量化、控制频率与安全约束，不能只由该概率分解概括。
 
 ## RT-1：基于 FiLM 的跨模态融合
 
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/07-vla-rtx/rt1-fig5.png" alt="RT-1 的多条真实执行轨迹将语言指令、视觉输入与离散动作闭环相连。" width="86%">
+
+_图 7.7-3：RT-1 的多条真实执行轨迹将语言指令、视觉输入与离散动作闭环相连。 出处：[RT-1: Robotics Transformer for Real-World Control at Scale，Anthony Brohan et al.，2022](https://arxiv.org/abs/2212.06817)。_
+
+</div>
+
 在 RT-1 架构中，如何有效地将语言指令 $L$ 的语义信息“注入”到视觉特征提取器中，是模型设计的关键。研究者并没有采用计算复杂度较高的跨注意力（Cross-Attention）机制，而是巧妙地借用了 **FiLM (Feature-wise Linear Modulation)** 机制。
 
-::: info 唯一一次类比：FiLM 机制的直觉
-我们可以将计算机视觉网络（如 ResNet 或 EfficientNet）看作是一个能够提取各种频率和形状特征的“全频段收音机”。自然语言指令（例如“抓取红色的苹果”）就像是一个“调谐器”（Tuner）。FiLM 机制通过语言特征直接生成缩放系数（Scale）和偏置系数（Shift），作用于视觉特征图的各个通道上。这相当于语言指令在“抑制”与红色苹果无关的通道特征，同时“放大”与红色、苹果形状相关的通道特征，从而在特征提取的最早期就完成了注意力的硬性聚焦。
-:::
+FiLM 的直觉很直接：语言嵌入为每个视觉通道产生一个缩放量和偏置量，因此同一幅图在不同指令下会得到不同的条件特征。它是一种软调制，并不保证模型只保留与指令相关的区域。
 
 具体而言，给定视觉网络某一层输出的特征图 $\mathbf{F} \in \mathbb{R}^{C \times H \times W}$（其中 $C$ 为通道数），以及语言指令的嵌入向量 $\mathbf{e}_L \in \mathbb{R}^{d_L}$。FiLM 层首先通过两层全连接网络，将 $\mathbf{e}_L$ 映射为两个 $C$ 维的仿射变换向量 $\boldsymbol{\gamma}$ 和 $\boldsymbol{\beta}$：
 
@@ -78,7 +100,16 @@ $$ \boldsymbol{\gamma} = \mathbf{W}_\gamma \mathbf{e}_L + \mathbf{b}_\gamma, \qu
 
 然后，在每个通道 $c \in \{1, \dots, C\}$ 上，对特征图进行空间一致的仿射调制：
 
-$$ \mathbf{F}'_{c, h, w} = \gamma_c \cdot \mathbf{F}_{c, h, w} + \beta_c $$
+$$ \mathbf{F}'_{c, h, w} = \gamma_c \cdot \mathbf{F}_{c, h, w} + \beta_c
+$$
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/latex/07-vla-rtx/film-channel-broadcast.png" alt="语言生成的通道缩放和平移参数广播到全部空间位置" width="86%">
+
+_图 7.7-4：语言嵌入生成每个通道的 γ 与 β；固定通道 c 后，同一对标量会广播到全部 H×W 位置。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
 
 经过 FiLM 调制后，视觉特征图会被展平为一维的词元序列（Token Sequence），并与动作词元序列拼接，送入仅包含解码器的 Transformer（Decoder-only Transformer）中。
 
@@ -210,8 +241,13 @@ class TinyVLAModel(nn.Module):
         else:
             transformer_input = v_seq
 
-        # 3. Transformer 处理 (此处简化，未加入因果掩码，仅用于示意特征流动)
-        output = self.transformer(transformer_input)
+        # 3. 因果掩码防止动作位置读取未来动作标签
+        seq_len = transformer_input.size(1)
+        causal_mask = torch.triu(
+            torch.full((seq_len, seq_len), float("-inf"), device=image.device),
+            diagonal=1,
+        )
+        output = self.transformer(transformer_input, mask=causal_mask)
 
         # 4. 预测下一个动作词元的概率分布
         # 取对应于动作位置的输出特征
@@ -223,13 +259,24 @@ class TinyVLAModel(nn.Module):
 
 随着模型规模的扩大，单一机器人收集的数据量很快成为了性能瓶颈。RT-X 的核心贡献在于提出了一种**跨具身（Cross-Embodiment）**的数据统一范式。
 
-不同机器人的连杆长度、关节数量和控制频率大相径庭。例如，Franka Emika 拥有 7 个自由度（DoF），而 UR5 仅有 6 个。为了将这些异构数据送入同一个模型中训练，RT-X 定义了一种统一的动作空间表示法。
+<div align="center">
 
-具体而言，研究者没有选择直接控制底层关节角度，而是统一控制末端执行器（End-Effector）在三维笛卡尔空间中的姿态变化（6 DoF 位姿，包括平移 $\Delta x, \Delta y, \Delta z$ 和旋转 $\Delta \text{roll}, \Delta \text{pitch}, \Delta \text{yaw}$），以及一个额外的标量用于控制夹爪状态。通过反向运动学（IK），模型输出的统一笛卡尔动作可以被转化为针对不同底盘硬件的专属关节控制信号。这一数学变换使得大规模、跨平台数据的协同微调（Co-finetuning）成为可能，极大地推动了通用机器人的发展进程。
+<img src="/figures/07-robot-policy/source/07-vla-rtx/rtx-fig3.png" alt="RT-1-X 与 RT-2-X 在统一跨具身数据上分别延续机器人 Transformer 与 VLA 路线。" width="86%">
+
+_图 7.7-5：RT-1-X 与 RT-2-X 在统一跨具身数据上分别延续机器人 Transformer 与 VLA 路线。 出处：[Open X-Embodiment: Robotic Learning Datasets and RT-X Models，Open X-Embodiment Collaboration，2023](https://arxiv.org/abs/2310.08864)。_
+
+</div>
+
+不同机器人的连杆长度、关节数量和控制频率不同。Open X-Embodiment 为数据交换定义了统一格式，并在训练 RT-X 时尽量把动作转成夹爪坐标系中的七维表示：三维平移、三维旋转和夹爪动作；缺失的维度可以用零填充。
+
+这七维量在不同数据源中可能表示位置变化、速度或夹爪状态，论文的数据转换规则会尽量对齐语义。底层控制器如何把末端动作变成关节命令由具体机器人决定，并不是数据集统一层自动提供的一套通用逆运动学。统一格式降低了联合训练门槛，却没有消除动力学、频率和相机视角之间的差异。
 
 ## 小结
 
-- **视觉-语言-动作模型（VLA）**通过将连续的控制信号离散化，成功将具身智能领域的规划与控制任务转化为自然语言处理中的自回归序列生成问题。
-- 动作序列的交叉熵损失，相较于均方误差，能够更好地建模具有多模态特性的动作分布。
+- 一部分 **VLA** 将连续控制量离散化，再用自回归序列模型预测动作词元；这不是所有 VLA 的统一定义。
+- 离散交叉熵能够表示多个动作区间的概率，但量化也会引入误差。
 - **FiLM 机制**提供了一种轻量级且有效的跨模态特征调制方法，使得语言指令能够在视觉特征提取的早期介入。
-- **跨具身（Cross-Embodiment）学习**通过统一坐标系下的逆运动学变换，打破了硬件壁垒，使得在千万级不同机器人轨迹上的联合训练成为可能。
+- **跨具身学习**依赖数据格式与动作语义的对齐。Open X-Embodiment 汇集的是百万级轨迹，硬件差异仍需在模型、数据和底层控制中处理。
+
+$$
+$$

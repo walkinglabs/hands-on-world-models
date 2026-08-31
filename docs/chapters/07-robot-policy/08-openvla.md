@@ -1,12 +1,20 @@
 # OpenVLA：开源具身大模型
 
-在探讨了RT系列模型（如RT-1与RT-2）之后，我们进入了一个由大语言模型（LLM）主导的具身智能新阶段。RT-2向我们展示了将视觉-语言大模型（Vision-Language Model, VLM）直接用于输出机器人动作的巨大潜力 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818)。然而，这类模型通常依赖于闭源的大规模专有架构，其高昂的训练成本和闭门造车的生态限制了整个具身智能社区的发展。为了打破这一壁垒，OpenVLA [[Kim et al., 2024]](https://arxiv.org/abs/2406.09246) 应运而生。作为一个拥有70亿参数的完全开源的视觉-语言-动作（Vision-Language-Action, VLA）模型，OpenVLA不仅在多项机器人操作基准测试中展现出卓越的性能，还为研究者提供了一套基于低秩自适应（LoRA）的高效微调范式。
+<div align="center">
 
-本节我们将深入解构OpenVLA的核心设计思想。我们将从动作序列的自回归建模出发，严格推导其如何将连续的物理动作映射为语言模型的离散词表，并探讨其如何利用几何降维的思想实现高效的模型微调。
+<img src="/figures/07-robot-policy/source/08-openvla/openvla-fig1.png" alt="OpenVLA 在多种真实机器人与任务上执行语言条件控制，呈现开源模型的实际对象边界。" width="86%">
+
+_图 7.8-1：OpenVLA 在多种真实机器人与任务上执行语言条件控制，呈现开源模型的实际对象边界。 出处：[OpenVLA: An Open-Source Vision-Language-Action Model，Moo Jin Kim et al.，2024](https://arxiv.org/abs/2406.09246)。_
+
+</div>
+
+OpenVLA 接收一张机器人视角图像和一条语言指令，例如“拿起蓝色杯子”，随后生成七个动作维度对应的离散词元，再还原成连续控制量。它是一个 70 亿参数的开源视觉—语言—动作模型，基于 Open X-Embodiment 的 97 万条机器人轨迹训练 [[Kim et al., 2024]](https://arxiv.org/abs/2406.09246)。开放权重、代码和微调流程，让研究者可以在自己的机器人数据上复现实验并检查模型边界。
+
+本节从自回归动作建模出发，说明 OpenVLA 如何量化连续动作、融合两种视觉特征，并用 LoRA 降低任务适配的训练参数量。
 
 ## 视觉-语言-动作建模的自回归表述
 
-大语言模型（如Llama 2或GPT系列）的核心数学形式是**自回归生成**（Autoregressive Generation）。给定一段离散的文本序列，模型通过极大化下一个词的条件概率来进行训练。OpenVLA继承了这一优雅的范式，并将其扩展到了多模态与控制领域。
+大语言模型（如 Llama 2）的核心训练形式是**自回归生成**。给定一段离散序列，模型学习下一个词元的条件概率。OpenVLA 沿用这一形式，并把输出空间扩展到机器人动作词元。
 
 在具身控制场景中，机器人在离散时间步 $t$ 需要根据当前的视觉观察图像 $x_{\text{img}}$ 和人类提供的文本指令 $x_{\text{text}}$，输出一个多维度的动作向量 $\mathbf{a}_t$。
 假设动作向量包含 $D$ 个维度（例如末端执行器的三维坐标、三维旋转姿态以及夹爪的开合程度），即 $\mathbf{a}_t = [a_{t}^{(1)}, a_{t}^{(2)}, \dots, a_{t}^{(D)}]^{\top}$。
@@ -19,7 +27,7 @@ $$ P(\mathbf{a}_t \mid x_{\text{img}}, x_{\text{text}}) $$
 
 $$ P(\mathbf{a}_t \mid x_{\text{img}}, x_{\text{text}}) = \prod_{d=1}^{D} P(a_{t}^{(d)} \mid x_{\text{img}}, x_{\text{text}}, a_{t}^{(1)}, \dots, a_{t}^{(d-1)}) $$
 
-这种拆解将一个高维的联合概率密度估计问题，转化为了 $D$ 个一维条件概率分布的序列预测问题。现在，模型只需要在每一步预测动作的某一个维度。这与预测句子的下一个单词在数学形式上达到了完美的统一。
+这种拆解将高维联合分布写成 $D$ 个条件分布的序列预测问题。它与语言模型的下一个词元预测采用相同的概率分解，但动作词元还需要满足物理范围、控制频率和安全约束。
 
 ## 连续物理动作的离散化（Tokenization）
 
@@ -27,7 +35,7 @@ $$ P(\mathbf{a}_t \mid x_{\text{img}}, x_{\text{text}}) = \prod_{d=1}^{D} P(a_{t
 
 ### 一维标量的均匀量化
 
-首先，我们考虑一个最简单的场景：假设机器人的夹爪开合度用一个标量 $v$ 表示，其物理范围已知为 $[v_{\min}, v_{\max}]$。我们的目标是将这个连续区间切分为 $B$ 个均匀的离散“桶”（Bins），用整数索引 $k \in \{0, 1, \dots, B-1\}$ 来表示。
+先考虑夹爪开合度标量 $v$。OpenVLA 按数据集和动作维度统计第 1、99 百分位数，并把它们作为鲁棒边界 $[v_{\min}, v_{\max}]$；超出边界的少量值会被裁剪。随后把区间切分为 $B$ 个均匀桶，用整数 $k \in \{0,1,\dots,B-1\}$ 表示。
 
 第一步，我们需要通过仿射变换（Affine Transformation）将真实的物理量 $v$ 映射到 $[0, 1]$ 的标准区间。我们定义归一化函数：
 
@@ -39,7 +47,7 @@ $$ v_{\text{norm}} = \frac{v - v_{\min}}{v_{\max} - v_{\min}} $$
 
 $$ k = \text{round}(v_{\text{norm}} \times (B-1)) $$
 
-其中，$\text{round}(\cdot)$ 表示四舍五入到最接近的整数。此时，连续的标量 $v$ 就成功转化为了一个离散的整数 $k$。OpenVLA 将这 $B$ 个整数作为特殊的词元（Action Tokens）直接追加到大语言模型的词汇表中。
+其中，$\text{round}(\cdot)$ 表示就近取整。OpenVLA 使用 256 个桶，并复用 Llama 2 词表中使用频率最低的 256 个词元作为动作词元，而不是简单扩充一个全新的词表区间。
 
 ### 反向映射与量化误差
 
@@ -53,24 +61,48 @@ $$ \hat{v} = \left( \frac{k}{B-1} \right) (v_{\max} - v_{\min}) + v_{\min} $$
 
 $$ \epsilon_{\max} = \frac{v_{\max} - v_{\min}}{2(B-1)} $$
 
-这在物理上意味着：只要我们设置的桶数量 $B$ 足够大（OpenVLA 默认设为 256），离散化带来的误差 $\epsilon_{\max}$ 就会极度缩小，从而对最终的物理控制影响微乎其微。
+增加桶数会减小单维量化误差上界，但同时提高分类分辨率。量化误差是否能被具体机器人容忍，还取决于动作尺度、控制频率和底层控制器。
 
 ### 矢量化与多维拓展
 
-对于多维动作向量 $\mathbf{a}_t \in \mathbb{R}^D$，我们通常在所有维度上共享相同的动作词汇表空间。但在实际情况中，不同物理维度的数据分布（例如坐标系 X 轴的位移与末端夹爪的开度）可能相差极大。因此，我们需要对每个维度 $d$ 单独统计其在数据集中的极值 $a_{\min}^{(d)}$ 和 $a_{\max}^{(d)}$，进而通过矢量化形式并行完成整个动作向量的离散化。
+对于多维动作向量 $\mathbf{a}_t \in \mathbb{R}^D$，不同维度仍可共享同一组动作词元，但归一化统计量不能混用。OpenVLA 对每个维度 $d$ 分别统计第 1、99 百分位数 $q_{01}^{(d)}$ 和 $q_{99}^{(d)}$，再并行完成整个动作向量的归一化与离散化。
 
 ## OpenVLA 的网络架构与特征融合
 
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/08-openvla/openvla-fig2.png" alt="OpenVLA 将 DINOv2、SigLIP、Llama 2 与动作解码器串联为端到端 VLA。" width="86%">
+
+_图 7.8-2：OpenVLA 将 DINOv2、SigLIP、Llama 2 与动作解码器串联为端到端 VLA。 出处：[OpenVLA: An Open-Source Vision-Language-Action Model，Moo Jin Kim et al.，2024](https://arxiv.org/abs/2406.09246)。_
+
+</div>
+
 OpenVLA 的架构由三个核心组件构成：视觉编码器（Vision Encoder）、视觉-语言投影层（Projector）和大语言模型主干（LLM Backbone）。其本质是将图像映射为语言模型能够理解的“视觉词汇”，进而触发大语言模型的自回归推理。
 
-1. **视觉编码器**：OpenVLA 采用了多尺度特征提取的方法。它将图像切分为 $N$ 个不重叠的图像块（Patches），并通过视觉变换器（如 SigLIP 或 DINOv2）提取特征矩阵 $\mathbf{X}_{\text{vis}} \in \mathbb{R}^{N \times d_{\text{vis}}}$。
+1. **视觉编码器**：OpenVLA 同时使用 SigLIP 与 DINOv2。两路特征分别提供语言对齐和细粒度视觉结构线索，拼接后形成视觉特征矩阵 $\mathbf{X}_{\text{vis}} \in \mathbb{R}^{N \times d_{\text{vis}}}$。
 2. **投影层**：由于视觉特征的维度 $d_{\text{vis}}$ 与语言模型的词嵌入维度 $d_{\text{llm}}$ 不匹配，我们需要引入一个多层感知机（MLP）将其投影到相同的空间：
    $$ \mathbf{H}_{\text{vis}} = \text{MLP}(\mathbf{X}_{\text{vis}}) \in \mathbb{R}^{N \times d_{\text{llm}}} $$
 3. **特征拼接与推理**：将文本指令通过嵌入层转化为矩阵 $\mathbf{H}_{\text{text}} \in \mathbb{R}^{M \times d_{\text{llm}}}$ 后，在序列维度上与视觉特征拼接，形成完整的输入序列 $[\mathbf{H}_{\text{vis}}; \mathbf{H}_{\text{text}}]$。随后，Llama 2 主干网络将在此基础上自回归地生成动作词元。
 
 ## 低秩自适应（LoRA）：高效微调的几何视角
 
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/08-openvla/lora-fig1.png" alt="LoRA 用低秩矩阵分解参数更新，在冻结主权重时实现高效适配。" width="86%">
+
+_图 7.8-3：LoRA 用低秩矩阵分解参数更新，在冻结主权重时实现高效适配。 出处：[LoRA: Low-Rank Adaptation of Large Language Models，Edward J. Hu et al.，2021](https://arxiv.org/abs/2106.09685)。_
+
+</div>
+
 拥有 70 亿参数的 OpenVLA 若直接进行全参数微调（Full Fine-Tuning），将对显存和计算资源造成极大的挑战。OpenVLA 选择采用低秩自适应（Low-Rank Adaptation, LoRA）技术 [[Hu et al., 2021]](https://arxiv.org/abs/2106.09685)，使得普通实验室甚至个人研究者也能在特定的机器人任务上对其进行高效微调。
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/08-openvla/openvla-fig5.png" alt="新机器人平台上的适配任务比较全量与参数高效微调的实际效果。" width="86%">
+
+_图 7.8-4：新机器人平台上的适配任务比较全量与参数高效微调的实际效果。 出处：[OpenVLA: An Open-Source Vision-Language-Action Model，Moo Jin Kim et al.，2024](https://arxiv.org/abs/2406.09246)。_
+
+</div>
 
 让我们从线性变换的几何视角来严格拆解 LoRA 的原理。在大模型的前馈网络中，核心运算是矩阵乘法。设预训练的权重矩阵为 $\mathbf{W}_0 \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}$，输入向量为 $\mathbf{x} \in \mathbb{R}^{d_{\text{in}}}$，则线性投影的输出为：
 
@@ -78,7 +110,7 @@ $$ \mathbf{h} = \mathbf{W}_0 \mathbf{x} $$
 
 在微调过程中，我们需要寻找一个更新量 $\Delta \mathbf{W}$，使得新的权重矩阵为 $\mathbf{W} = \mathbf{W}_0 + \Delta \mathbf{W}$。全参数微调需要更新 $\Delta \mathbf{W}$ 中的 $d_{\text{out}} \times d_{\text{in}}$ 个参数，这往往是百万级别的标量。
 
-然而，深度学习研究中的一个重要发现是：预训练大模型在适应特定下游任务（如抓取某个特定物体）时，其权重矩阵的有效更新实际上处于一个非常低维的子空间（Intrinsic Subspace）中。
+LoRA 假设任务适配所需的权重更新可以用低秩矩阵近似。这个假设在许多任务上有效，但秩 $r$ 是否足够仍需由验证结果决定。
 
 基于这一洞察，LoRA 强制约束更新矩阵 $\Delta \mathbf{W}$ 的秩（Rank）不超过常数 $r$，且 $r \ll \min(d_{\text{out}}, d_{\text{in}})$。根据线性代数的矩阵分解原理，任何秩为 $r$ 的矩阵均可以分解为两个低秩矩阵的乘积：
 
@@ -86,9 +118,18 @@ $$ \Delta \mathbf{W} = \mathbf{A} \mathbf{B} $$
 
 其中，$\mathbf{B} \in \mathbb{R}^{r \times d_{\text{in}}}$ 将原始高维特征投影到低维子空间，而 $\mathbf{A} \in \mathbb{R}^{d_{\text{out}} \times r}$ 将低维特征重新映射回高维的目标空间。前向传播公式也随之被重写为两条独立的数据流之和：
 
-$$ \mathbf{h} = \mathbf{W}_0 \mathbf{x} + \mathbf{A} \mathbf{B} \mathbf{x} $$
+$$ \mathbf{h} = \mathbf{W}_0 \mathbf{x} + \mathbf{A} \mathbf{B} \mathbf{x}
+$$
 
-在训练期间，**我们冻结庞大的预训练权重 $\mathbf{W}_0$ 的梯度，仅对小矩阵 $\mathbf{A}$ 和 $\mathbf{B}$ 进行梯度下降**。这种几何降维的思想将需要更新的参数量从 $\mathcal{O}(d_{\text{out}} d_{\text{in}})$ 急剧压缩到了 $\mathcal{O}(r(d_{\text{out}} + d_{\text{in}}))$。在实际部署 OpenVLA 时，这能节省超过 80% 的显存占用。
+<div align="center">
+
+<img src="/figures/07-robot-policy/latex/08-openvla/lora-low-rank-branch.png" alt="冻结基座支路与可训练低秩支路同形相加" width="86%">
+
+_图 7.8-5：低秩支路先把 d_in 压到 r，再升回 d_out，与冻结基座输出相加；反向梯度只进入 A、B。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
+
+训练时冻结预训练权重 $\mathbf{W}_0$，只更新小矩阵 $\mathbf{A}$ 和 $\mathbf{B}$。这样，需要更新的参数量从 $\mathcal{O}(d_{\text{out}} d_{\text{in}})$ 降到 $\mathcal{O}(r(d_{\text{out}} + d_{\text{in}}))$。OpenVLA 论文中的 LoRA 配置只训练约 1.4% 的参数；实际显存节省还受优化器、激活和量化设置影响。
 
 ## 代码实现
 
@@ -103,7 +144,7 @@ class ActionTokenizer:
     def __init__(self, num_bins: int = 256, action_min: float = -1.0, action_max: float = 1.0):
         """
         初始化动作离散化器。
-        假设所有动作维度已经被预处理为统一的 [action_min, action_max] 范围内。
+        教学实现假设动作已归一化到共享范围。真实 OpenVLA 使用每维 q01/q99 统计量。
         """
         self.num_bins = num_bins
         self.action_min = action_min
@@ -182,8 +223,13 @@ class SimpleOpenVLA(nn.Module):
         # 3. 序列拼接：[视觉特征; 文本指令特征]
         combined_emb = torch.cat([vis_emb, text_emb], dim=1)
 
-        # 4. 通过大模型的处理
-        hidden_states = self.llm_backbone(combined_emb)
+        # 4. 因果掩码保证当前位置不能读取未来词元
+        seq_len = combined_emb.size(1)
+        causal_mask = torch.triu(
+            torch.full((seq_len, seq_len), float("-inf"), device=combined_emb.device),
+            diagonal=1,
+        )
+        hidden_states = self.llm_backbone(combined_emb, mask=causal_mask)
 
         # 5. 预测下一个词元的 logits分布
         logits = self.lm_head(hidden_states) # [batch, combined_seq_len, total_vocab_size]
@@ -193,6 +239,9 @@ class SimpleOpenVLA(nn.Module):
 
 ## 小结
 
-- **OpenVLA** 通过统一的语言建模范式，将机器人动作空间精确地映射为大模型的扩展离散词汇表，实现了视觉-语言-动作的端到端自回归生成。
-- **连续物理动作的离散化**通过归一化、缩放与舍入操作完成，这引入了与离散区间成正比的固有误差，但通过增大区间数（如256桶）可将误差缩小至物理可容忍的范围。
-- 通过引入**低秩自适应（LoRA）**技术，我们能够将高维的权重更新分解为两个低维矩阵的乘积，极大地降低了微调大参数量模型时的硬件门槛与计算复杂度。
+- **OpenVLA** 结合 SigLIP、DINOv2、投影层与 Llama 2 7B，自回归生成动作词元。
+- 动作按数据集、按维度使用第 1、99 百分位数归一化，再均匀量化为 256 桶；桶数降低量化误差，但不能单独保证控制精度。
+- **LoRA** 用两个低秩矩阵表示权重更新。论文配置仅训练约 1.4% 的参数，适合资源受限的任务适配。
+
+$$
+$$
