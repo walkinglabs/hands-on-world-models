@@ -1,4 +1,8 @@
 import { defineConfig } from "vitepress";
+import {
+  pythonSemanticTransformer,
+  setupPythonSemanticStyles,
+} from "./semantic-highlighting.mjs";
 
 export default defineConfig({
   lang: "zh-CN",
@@ -10,6 +14,8 @@ export default defineConfig({
   markdown: {
     math: true,
     lineNumbers: true,
+    shikiSetup: setupPythonSemanticStyles,
+    codeTransformers: [pythonSemanticTransformer()],
     theme: {
       light: "light-plus",
       dark: "dark-plus",

@@ -41,6 +41,19 @@
 PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
+## 刷新 Python 语义高亮
+
+文档站在 Shiki 的 TextMate 高亮之上合并 Pylance semantic tokens。修改 Markdown 中的
+Python 代码块后，请确保本机 VS Code 已安装 Pylance，然后运行：
+
+```bash
+npm run semantic:refresh
+npm run semantic:check
+```
+
+刷新命令会在隔离的 VS Code 扩展宿主中调用 Pylance，并更新
+`docs/.vitepress/python-semantic-tokens.json`。构建和 CI 只读取这份缓存，不会启动 VS Code。
+
 若加入神经网络训练，还必须提供 smoke 配置、数据来源、切分方法和资源记录。没有完整真机运行证据时，只能写“设计预算”。
 
 ## 网站

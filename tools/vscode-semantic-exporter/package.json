@@ -1,0 +1,12 @@
+{
+  "name": "hands-on-world-models-semantic-exporter",
+  "displayName": "Hands-on World Models Semantic Exporter",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./extension.cjs",
+  "activationEvents": [],
+  "contributes": {}
+}

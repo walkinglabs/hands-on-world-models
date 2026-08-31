@@ -1,5 +1,6 @@
 node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+docs/.vitepress/python-semantic-tokens.json
 notebooks/**/*.ipynb
 package-lock.json
