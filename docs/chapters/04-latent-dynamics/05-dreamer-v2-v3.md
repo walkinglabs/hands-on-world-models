@@ -195,7 +195,7 @@ def two_hot_encode(target, min_val=-20.0, max_val=20.0, num_bins=255):
 
 ## 小结
 
-- 连续高斯潜在空间在表征强离散特征（如游戏类别、迷宫位置）时存在瓶颈。DreamerV2 创造性地通过多组分类分布（Categorical distribution）重构了 RSSM 的潜在空间。
-- 直通估计器（Straight-Through Estimator, STE）巧妙地化解了离散采样不可导的难题，使得计算图既能在前向传播中保持纯粹的离散状态，又能在反向传播中提供高质量的梯度信号。
-- KL 平衡（KL Balancing）解决了先验分布难以优化的问题，使得序列模型的动力学推演更加稳定。
+- 连续高斯潜在空间在表征强离散特征（如游戏类别、迷宫位置）时存在瓶颈。DreamerV2 创造性地通过**多组分类分布（Categorical distribution）**重构了 RSSM 的潜在空间。
+- **直通估计器（Straight-Through Estimator, STE）**巧妙地化解了离散采样不可导的难题，使得计算图既能在前向传播中保持纯粹的离散状态，又能在反向传播中提供高质量的梯度信号。
+- **KL 平衡（KL Balancing）**解决了先验分布难以优化的问题，使得序列模型的动力学推演更加稳定。
 - DreamerV3 彻底革新了数值处理机制。对称对数变换（Symlog）将各种规模的奖励和价值压缩到紧凑区间内；双热编码（Two-hot Encoding）则将回归问题优雅地转化为分类问题，彻底根除了大尺度误差带来的梯度爆炸现象，为世界模型的通用化奠定了坚实的工程与数学基础。
