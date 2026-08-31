@@ -1,4 +1,4 @@
-# 相机几何与三维视觉基础
+# 9.1 相机几何与三维视觉基础
 
 > **本章导读**
 >
@@ -8,11 +8,17 @@
 >
 > **故事线：** `理解三维点如何投影成像素 → 把多视角特征提升到 BEV 与占据网格 → 重建静态三维场景 → 加入时间得到 4D 世界 → 用动作条件预测驾驶场景的未来`
 
-三维视觉是理解和重建物理世界的核心基础。在现代自动驾驶、机器人导航以及虚拟现实等领域，智能体需要从二维的图像观测中推断出三维世界的几何结构。要实现这一目标，我们首先必须理解物理世界中的三维点是如何被投影到二维图像平面上的。这种从三维到二维的降维映射过程，正是由相机的物理结构和几何光学所决定的。
+把同一个路标放在相机前 2 米和 20 米处，它在图像中的像素高度会明显不同。要从像素反推距离，先要弄清三维点如何投影到图像平面。相机几何给出了坐标系、焦距、像素位置与深度之间的关系。
 
-在计算机视觉的历史长河中，多视图几何理论的建立为相机模型奠定了坚实的数学基础。正如 [[Hartley & Zisserman, 2003]](https://www.cambridge.org/core/books/multiple-view-geometry-in-computer-vision/0B6F289C78B2B23F596CAA76D3D43F7A) 在其经典著作《Multiple View Geometry in Computer Vision》中所系统阐述的那样，通过射影几何（Projective Geometry），我们可以将复杂的物理成像过程抽象为优雅的矩阵运算。
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/01-camera-geometry/dust3r-fig1.png" alt="DUSt3R 从未标定图像直接恢复稠密三维点图与相机关系，展示相机几何最终要支持的真实重建任务。" width="86%">
 
-在本节中，我们将从最基础的中学几何光学出发，推导针孔相机模型。随后，我们将引入齐次坐标系，将非线性的透视除法转化为线性的矩阵乘积，最终构建出包含相机内参（Intrinsic Parameters）和外参（Extrinsic Parameters）的完整相机投影模型。
+_图 9.1-1：DUSt3R 从未标定图像直接恢复稠密三维点图与相机关系，展示相机几何最终要支持的真实重建任务。 出处：Shuzhe Wang et al.，[DUSt3R: Geometric 3D Vision Made Easy](https://arxiv.org/abs/2312.14132)（2024），Figure 1。_
+</div>
+
+Hartley 与 Zisserman 的《Multiple View Geometry in Computer Vision》系统整理了射影几何、相机模型和多视图约束 [[Hartley & Zisserman, 2003]](https://www.cambridge.org/core/books/multiple-view-geometry-in-computer-vision/0B6F289C78B2B23F596CAA76D3D43F7A)。本节只使用其中最基础的针孔模型，并暂时忽略镜头畸变。
+
+下面依次推导透视投影、齐次坐标、内参与外参，再用 PyTorch 投影一组三维点。
 
 ## 针孔相机模型
 
@@ -26,6 +32,12 @@
 
 从侧面（例如 $Y-Z$ 平面或 $X-Z$ 平面）观察这个投影过程，我们可以清晰地看到两个相似三角形。以 $X-Z$ 平面为例，原点 $O_c$、点 $(X, 0, Z)$ 以及它们在 $Z$ 轴上的投影点构成了一个大三角形；而原点 $O_c$、点 $(x, 0, f)$ 及其在 $Z$ 轴上的投影点构成了一个小三角形。
 
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/01-camera-geometry/mipnerf-fig1.png" alt="Mip-NeRF 对比单条相机射线与具有像素面积的锥台，直观呈现像素在三维空间中对应的采样区域。" width="86%">
+
+_图 9.1-2：Mip-NeRF 对比单条相机射线与具有像素面积的锥台，直观呈现像素在三维空间中对应的采样区域。 出处：Jonathan T. Barron et al.，[Mip-NeRF: A Multiscale Representation for Anti-Aliasing Neural Radiance Fields](https://arxiv.org/abs/2103.13415)（2021），Figure 1。_
+</div>
+
 根据相似三角形的比例关系，对应边的比值相等，我们立刻可以写出如下等式：
 
 $$ \frac{x}{f} = \frac{X}{Z} $$
@@ -38,11 +50,11 @@ $$ x = f \frac{X}{Z} $$
 
 $$ y = f \frac{Y}{Z} $$
 
-这就是最基础的针孔透视投影公式。这两个公式清晰地揭示了透视投影的一个核心特征：**近大远小**。当一个物体的深度 $Z$ 增加时，其在图像上的投影尺寸 $x$ 和 $y$ 会反比例地缩小。
+这就是针孔透视投影。对于相同大小的物体，深度 $Z$ 增加时，其投影尺寸按 $1/Z$ 缩小，这就是“近大远小”。
 
 ## 齐次坐标系与射影几何
 
-尽管这两个公式物理意义清晰，但从数学计算的角度来看，它们存在一个致命的缺陷：由于存在除以深度的操作（即 $\frac{1}{Z}$），这种变换在普通的欧几里得坐标（笛卡尔坐标）下是**非线性**的。在深度学习和三维视觉的矩阵运算中，非线性变换意味着我们无法使用单一的矩阵乘法来简洁地表达整个投影过程。
+由于要除以深度 $Z$，透视投影在普通欧几里得坐标中不是线性变换，不能只用一次固定矩阵乘法直接得到 $(x,y)$。
 
 为了解决这个问题，我们需要引入射影几何中的一个伟大发明：**齐次坐标（Homogeneous Coordinates）**。
 
@@ -54,7 +66,7 @@ $$ y = f \frac{Y}{Z} $$
 $$ (wx, wy, w)^\top \equiv (x, y, 1)^\top $$
 要将齐次坐标转换为普通的非齐次坐标，只需将所有分量除以最后一个分量即可。
 
-现在，让我们利用齐次坐标重写透视投影。考虑三维点坐标 $(X, Y, Z)^\top$ 和图像平面坐标 $(x, y, 1)^\top$。我们可以构造一个 $3 \times 4$ 的矩阵来实现映射：
+用齐次坐标可以把透视除法推迟到最后一步。考虑三维点 $(X,Y,Z)^\top$ 和图像平面点 $(x,y,1)^\top$，构造映射：
 
 $$
 \begin{bmatrix}
@@ -82,7 +94,7 @@ Z \\
 \end{bmatrix}
 $$
 
-请注意，等式左侧的向量 $(Z x, Z y, Z)^\top$ 根据齐次坐标的等价原则，完全等同于 $(x, y, 1)^\top$。如此一来，令人棘手的除以 $Z$ 的非线性操作，被巧妙地推迟到了从齐次坐标恢复为非齐次坐标的最后一步（又称透视除法，Perspective Division），而投影的主体过程被完美地转化为了一次纯粹的线性矩阵乘法。
+向量 $(Zx,Zy,Z)^\top$ 与 $(x,y,1)^\top$ 表示同一个齐次点。矩阵乘法得到齐次坐标后，再除以第三个分量恢复普通像素坐标；非线性的透视除法并没有消失，只是被放到最后执行。
 
 ## 相机内参矩阵 (Intrinsic Matrix)
 
@@ -110,7 +122,7 @@ $$ v = m_y f \frac{Y}{Z} + c_y = f_y \frac{Y}{Z} + c_y $$
 
 这里，我们定义 $f_x = m_x f$ 和 $f_y = m_y f$ 为相机在 $u$ 和 $v$ 方向上的有效焦距（以像素为单位）。通常对于正方形像素，$f_x$ 和 $f_y$ 是非常接近的。
 
-利用我们在相关章节中引入的齐次坐标，我们可以将上述映射极其优雅地写成矩阵形式：
+利用齐次坐标，可以把上述映射写成矩阵形式：
 
 $$
 \begin{bmatrix}
@@ -131,7 +143,13 @@ Z
 \end{bmatrix}
 $$
 
-在该公式中，我们定义中间的 $3 \times 3$ 矩阵为**相机内参矩阵（Camera Intrinsic Matrix）**，通常记作 $\mathbf{K}$。
+中间的 $3\times3$ 矩阵称为**相机内参矩阵（Camera Intrinsic Matrix）**，记作 $\mathbf K$。
+
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/01-camera-geometry/deepv2d-fig2.png" alt="DeepV2D 的深度模块把相机模型、重投影代价体与深度更新连接起来，展示投影矩阵如何进入可学习三维视觉系统。" width="86%">
+
+_图 9.1-3：DeepV2D 的深度模块把相机模型、重投影代价体与深度更新连接起来，展示投影矩阵如何进入可学习三维视觉系统。 出处：Zachary Teed；Jia Deng，[DeepV2D: Video to Depth with Differentiable Structure from Motion](https://arxiv.org/abs/1812.04605)（2020），Figure 2。_
+</div>
 
 $$
 \mathbf{K} = \begin{bmatrix}
@@ -141,7 +159,7 @@ f_x & 0 & c_x \\
 \end{bmatrix}
 $$
 
-内参矩阵完全由相机自身的物理属性（焦距、感光元件尺寸、像素密度等）决定，一旦相机在出厂后参数固定，$\mathbf{K}$ 就是一个常数矩阵。
+内参描述焦距、主点和像素尺度。在固定成像设置下可视为常数；图像缩放、裁剪、数字防抖或变焦后，应同步更新相应内参。
 
 ## 相机外参矩阵 (Extrinsic Matrix)
 
@@ -151,11 +169,17 @@ $$
 
 根据欧几里得几何理论，两个三维直角坐标系之间的变换可以通过一次刚体变换（Rigid Body Transformation）来描述，即一个旋转（Rotation）和一个平移（Translation）。
 
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/01-camera-geometry/deepv2d-fig3.png" alt="DeepV2D 的运动模块从多帧残差流联合优化相机位姿，展示外参在可微结构恢复中的更新路径。" width="86%">
+
+_图 9.1-4：DeepV2D 的运动模块从多帧残差流联合优化相机位姿，展示外参在可微结构恢复中的更新路径。 出处：Zachary Teed；Jia Deng，[DeepV2D: Video to Depth with Differentiable Structure from Motion](https://arxiv.org/abs/1812.04605)（2020），Figure 3。_
+</div>
+
 设世界坐标系到相机坐标系的旋转矩阵为 $\mathbf{R} \in SO(3)$，平移向量为 $\mathbf{t} \in \mathbb{R}^3$。那么两个坐标系下同一个点的坐标关系为：
 
 $$ P_c = \mathbf{R} P_w + \mathbf{t} $$
 
-同样地，由于平移操作在向量加法中不是一个严格的线性算子（它破坏了零点映射到零点的性质），我们再次求助于齐次坐标。我们将 $P_w$ 和 $P_c$ 扩展为四维向量，那么上述变换就可以紧凑地写成一个 $4 \times 4$ 矩阵的乘法：
+平移在三维欧几里得坐标中不是线性算子。把 $P_w$ 和 $P_c$ 扩展成四维齐次向量后，旋转和平移可以统一写成 $4\times4$ 矩阵乘法：
 
 $$
 \begin{bmatrix}
@@ -173,11 +197,11 @@ P_w \\
 \end{bmatrix}
 $$
 
-这里的 $\begin{bmatrix} \mathbf{R} & \mathbf{t} \\ \mathbf{0}^\top & 1 \end{bmatrix}$ 常常被称为相机的**外参矩阵（Extrinsic Matrix）**。它描述了相机在三维世界中的位姿（Pose），即相机“在哪里”以及“看向哪里”。与永远不变的内参不同，只要相机在移动，其外参随时都在发生改变。
+这里的 $\begin{bmatrix} \mathbf{R} & \mathbf{t} \\ \mathbf{0}^\top & 1 \end{bmatrix}$ 称为相机的**外参矩阵（Extrinsic Matrix）**。本节约定它把世界坐标变换到相机坐标；相机位姿本身是这个变换的逆。相机移动时外参会改变，而内参在固定成像设置下通常保持不变。
 
 ## 完整的投影模型
 
-现在，让我们把积木拼接起来。给定一个世界坐标系下的三维点 $P_w$（齐次坐标下为 $[P_w^\top, 1]^\top$），它在二维图像上的像素位置（齐次坐标下为 $[u, v, 1]^\top$），可以通过依次应用外参变换和内参投影来获得。
+给定世界坐标中的三维点 $P_w$，先用外参变换到相机坐标，再用内参映射到像素齐次坐标。
 
 结合这两个公式，我们得到完整的相机投影方程：
 
@@ -188,13 +212,17 @@ Z_c \begin{bmatrix} u \\ v \\ 1 \end{bmatrix}
 \begin{bmatrix} X_w \\ Y_w \\ Z_w \\ 1 \end{bmatrix}
 $$
 
-其中，矩阵 $\mathbf{P} = \mathbf{K} \begin{bmatrix} \mathbf{R} & \mathbf{t} \end{bmatrix}$ 是一个 $3 \times 4$ 的矩阵，被称为**相机投影矩阵（Camera Projection Matrix）**。它直接将三维齐次坐标映射到二维齐次坐标，涵盖了从三维世界到数字图像的完整物理信息降维过程。
+<div align="center">
+<img src="/figures/09-spatial-worlds/latex/01-camera-geometry/perspective-division-scale.png" alt="世界齐次点经外参与内参得到带深度尺度的三向量，再由第三分量完成透视除法" width="86%">
+
+_图 9.1-5：投影矩阵先输出带共同尺度的齐次坐标；只有除以第三分量 Z_c，前两项才恢复为像素坐标。本文根据上式绘制。_
+</div>
+
+其中 $\mathbf P=\mathbf K[\mathbf R\mid\mathbf t]$ 是 $3\times4$ 相机投影矩阵。它描述理想针孔成像；真实镜头的径向、切向畸变还需要额外模型。
 
 ## 代码实现
 
-理解了上述严密的数学推导后，我们可以非常轻松地用深度学习框架来实现这一投影过程。在批量处理数据时，张量（Tensor）运算可以极大地加速矩阵乘法。
-
-(**我们将通过张量计算模拟一个相机对三维点云的投影过程。**) 首先定义内参和外参，随后应用批量的矩阵乘积与透视除法。
+下面用张量一次投影 $N$ 个三维点，并同时返回点是否位于相机前方。
 
 ```python
 import torch
@@ -211,6 +239,7 @@ def project_points(points_3d, K, R, t):
 
     返回:
     pixels_2d: 形状为 (N, 2) 的二维像素坐标 (u, v)
+    valid: 形状为 (N,) 的布尔掩码，表示深度为正
     """
     # 步骤1：应用外参，将世界坐标系转换到相机坐标系
     # P_c = R * P_w + t
@@ -222,14 +251,12 @@ def project_points(points_3d, K, R, t):
     points_img = torch.matmul(points_c, K.T)
 
     # 步骤3：透视除法 (Perspective Division)，从齐次坐标恢复到非齐次二维坐标
-    # 取出第三个分量 Z_c
-    Z_c = points_img[:, 2:3]
+    depth = points_c[:, 2:3]
+    valid = depth[:, 0] > 1e-6
+    safe_depth = depth.clamp_min(1e-6)
+    pixels_2d = points_img[:, :2] / safe_depth
 
-    # 为了避免除以0，加上一个极小的数值 eps
-    eps = 1e-6
-    pixels_2d = points_img[:, :2] / (Z_c + eps)
-
-    return pixels_2d
+    return pixels_2d, valid
 
 # 模拟数据
 # 定义相机内参矩阵，假设图像尺寸为 800x600，焦距约为 1000 像素
@@ -253,16 +280,17 @@ points_w = torch.tensor([
 ], dtype=torch.float32)
 
 # 计算投影结果
-uv_coords = project_points(points_w, K, R, t)
+uv_coords, valid = project_points(points_w, K, R, t)
 print(uv_coords)
+print("位于相机前方:", valid)
 ```
 
-在上述代码中，我们极其小心地处理了张量的维度（例如使用 `R.T` 和 `t.T` 来适应批次乘法），并演示了从几何概念到工程实现的直接映射。透视除法这一步骤，在计算机图形学渲染管线中同样扮演着不可替代的角色。
+代码中的 `R.T` 与 `t.T` 是为了让行向量批次满足 $P_c=P_wR^\top+t^\top$。实际使用时还应检查像素是否落在图像边界内，并应用相机标定得到的畸变参数。
 
 ## 小结
 
 - **针孔相机模型**通过简单的相似三角形，描述了三维世界投射到二维平面的几何光学规律。
-- 由于透视投影存在非线性的除以深度操作，我们引入了齐次坐标，将其完美地转化为线性矩阵乘法。
-- **相机内参矩阵 $\mathbf{K}$** 描述了从物理焦平面到数字像素坐标系的缩放与平移，仅与相机硬件相关。
+- 齐次坐标把透视除法推迟到矩阵乘法之后，最终仍要除以深度分量。
+- **相机内参矩阵 $\mathbf{K}$** 描述焦距、主点和像素尺度，也会随图像缩放、裁剪或变焦改变。
 - 相机外参包含了旋转矩阵 $\mathbf{R}$ 和平移向量 $\mathbf{t}$，描述了相机在三维世界中的位置与朝向。
-- 完整的**相机投影矩阵**是内参和外参的乘积，是连接三维空间物理点与二维图像像素点之间的核心数学桥梁。
+- **相机投影矩阵**是针孔模型下内参与外参的乘积；镜头畸变需要单独处理。

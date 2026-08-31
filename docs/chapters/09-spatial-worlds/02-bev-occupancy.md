@@ -1,18 +1,24 @@
-# 鸟瞰图（BEV）与占据网格（Occupancy Grid）
+# 9.2 鸟瞰图（BEV）与占据网格（Occupancy Grid）
 
-在现代自动驾驶与具身智能领域，我们面临着一个本质的几何认知难题：智能体通过摄像头获取的图像，是三维物理世界在二维像素平面上的投影；然而，要在世界中安全地导航、规划与避障，智能体必须在三维真实空间中进行推理。长久以来，计算机视觉界主要在图像视图（Image View，或称透视图Perspective View）中解决目标检测与语义分割问题。然而，这种二维表征存在着严重的遮挡效应、尺度随距离剧烈变化等缺陷，且无法直接被下游的路径规划器与控制算法所使用。
+前视相机里，远处车道很窄，近处车道很宽；换到俯视坐标后，同样一米在不同位置可以对应相同网格尺度。鸟瞰图（Bird's-Eye View, BEV）把多相机特征放到统一地面坐标，三维占据网格则继续保留高度，用于描述空间中哪些体素空闲、被占据或属于某个语义类别。
 
-为了弥合二维感知与三维规划之间的鸿沟，鸟瞰图（Bird's-Eye View, BEV）与占据网格（Occupancy Grid）表征应运而生。BEV将感知结果从各个摄像头的透视空间统一转换到自车（Ego Vehicle）正上方的俯视平面，而占据网格进一步保留了高度信息，将三维空间离散化为体素（Voxel）。这种基于空间世界模型（Spatial World Models）的架构能够天然地融合多传感器数据，使得智能体对空间中“空闲区域”（Free Space）的理解达到前所未有的精度。
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/02-bev-occupancy/lss-fig1.png" alt="Lift-Splat-Shoot 把环视相机图像变成统一鸟瞰表示，显示 BEV 如何服务车辆周围的空间推理。" width="86%">
 
-在本节中，我们将首先回溯到这门技术的几何基石。正是基于这些严谨的几何与矩阵代数知识，诸如 [[Philion & Fidler, 2020]](https://arxiv.org/abs/2008.05711) 提出的 Lift, Splat, Shoot (LSS) 范式，以及随后 [[Li et al., 2022]](https://arxiv.org/abs/2203.17270) 提出的 BEVFormer 才得以建立起纯视觉 3D 空间感知的坚实理论体系。我们将从最基础的透视几何出发，一步步推导如何让神经网络学会在脑海中重构三维世界。
+_图 9.2-1：Lift-Splat-Shoot 把环视相机图像变成统一鸟瞰表示，显示 BEV 如何服务车辆周围的空间推理。 出处：Jonah Philion；Sanja Fidler，[Lift, Splat, Shoot: Encoding Images from Arbitrary Camera Rigs by Implicitly Unprojecting to 3D](https://arxiv.org/abs/2008.05711)（2020），Figure 1。_
+</div>
+
+BEV 与占据都需要显式处理相机标定、深度歧义和遮挡。统一坐标便于融合传感器和连接下游模块，但精度仍取决于数据、分辨率、标定和监督质量。
+
+LSS 预测像素的离散深度分布，再把图像特征提升并汇聚到 BEV [[Philion & Fidler, 2020]](https://arxiv.org/abs/2008.05711)；BEVFormer 则从 BEV 查询出发，到多相机特征中采样 [[Li et al., 2022]](https://arxiv.org/abs/2203.17270)。下面先解释它们共享的投影几何，再比较两种特征聚合方向。
 
 ## 相机成像背后的几何投影基础
 
-为了理解神经网络如何将二维像素“拉升”（Lift）回三维空间，我们必须首先清楚三维世界是如何被“压缩”成二维图像的。这是探讨所有空间表征模型的起点。
+二维到三维的困难来自投影的多对一：一条射线上的许多三维点会落到同一个像素。
 
 我们可以将摄像机的成像过程视为光线沿直线传播这一物理现象在几何学上的自然推演。假设我们使用的是一个理想的针孔相机（Pinhole Camera）。在最基础的高中几何中我们学过相似三角形：当三维空间中的物体反射的光线穿过一个小孔，会在后方的感光屏上留下倒立的像。为了数学表达上的直观与便捷，在多视图几何中，我们通常将虚拟的成像平面置于相机光心（小孔）的前方，从而得到一个正立的像。
 
-整个投影过程涉及多个坐标系之间的严格仿射变换与透视除法。设三维物理世界中有一个点，其在世界坐标系下的齐次坐标表示为 $\mathbf{P}_w = [X_w, Y_w, Z_w, 1]^\top$。
+设三维点在世界坐标系下的齐次坐标为 $\mathbf{P}_w=[X_w,Y_w,Z_w,1]^\top$。先用外参变换到相机坐标，再做透视除法。
 
 首先，我们需要将这个点转换到相机的自身参照系中。引入相机外参矩阵（Extrinsic Matrix）$\mathbf{T} \in \mathbb{R}^{4 \times 4}$，该矩阵包含了相机的旋转矩阵 $\mathbf{R} \in \mathbb{R}^{3 \times 3}$ 和平移向量 $\mathbf{t} \in \mathbb{R}^{3 \times 1}$。该点在相机坐标系下的坐标 $\mathbf{P}_c = [X_c, Y_c, Z_c, 1]^\top$ 可以通过如下矩阵乘法获得：
 
@@ -26,31 +32,39 @@ $$
 \frac{x}{f} = \frac{X_c}{Z_c}, \quad \frac{y}{f} = \frac{Y_c}{Z_c}
 $$
 
-最后，物理平面上的连续坐标需要被采样为感光元件上的离散像素坐标 $(u, v)$。考虑到感光元件在横纵方向上的物理尺寸比例，以及图像坐标原点往往在左上角的设定，我们引入相机内参矩阵（Intrinsic Matrix）$\mathbf{K} \in \mathbb{R}^{3 \times 3}$。结合该公式，完整的从相机坐标到像素坐标的投影可以被写成如下的严格矢量化形式：
+最后，物理平面坐标要换算为像素坐标 $(u,v)$。相机内参矩阵 $\mathbf K\in\mathbb R^{3\times3}$ 编码焦距、主点和像素尺度，投影可写为：
 
 $$
 Z_c \begin{bmatrix} u \\ v \\ 1 \end{bmatrix} = \begin{bmatrix} f_x & 0 & c_x \\ 0 & f_y & c_y \\ 0 & 0 & 1 \end{bmatrix} \begin{bmatrix} X_c \\ Y_c \\ Z_c \end{bmatrix} = \mathbf{K} \mathbf{P}_c^{(1:3)}
 $$
 
-在该公式中，等式左侧的标量 $Z_c$ 起到了至关重要的作用——透视除法（Perspective Division）。在实际计算中，我们通过矩阵相乘后，必须将得到的前两项除以第三项（即深度 $Z_c$），才能得到真实的二维像素坐标 $(u, v)$。正是这个除法操作，导致了深度信息的不可逆丢失。
+矩阵乘法后要把前两项除以第三项 $Z_c$ 才得到像素坐标 $(u,v)$。单张图像中的一个像素没有携带唯一深度；多视角、运动、双目或学习先验可以进一步约束它。
 
 ## 逆投影悖论与 Lift, Splat, Shoot 范式
 
-当智能体试图从二维图像逆推三维世界时，面临着一个病态（Ill-posed）的数学问题。观察该公式我们可以发现，给定图像上的一个确定的像素坐标 $(u, v)$，以及已知的内参矩阵 $\mathbf{K}$，我们能够求得的仅仅是该点在三维空间中所在的一条射线的方向向量：
+从单个二维像素逆推三维位置是欠定问题。给定像素 $(u,v)$ 和内参 $\mathbf K$，只能求出一条射线的方向：
 
 $$
 \begin{bmatrix} X_c \\ Y_c \\ Z_c \end{bmatrix} = Z_c \mathbf{K}^{-1} \begin{bmatrix} u \\ v \\ 1 \end{bmatrix}
 $$
 
-该公式中，深度标量 $Z_c$ 成为了唯一的自由度。换言之，二维像素完全缺乏深度的绝对数值，导致沿着这条射线上的任何一个三维点，都能在投影后严丝合缝地重叠在同一像素上。这就是困扰纯视觉 3D 目标检测多年的核心瓶颈。
+<div align="center">
+<img src="/figures/09-spatial-worlds/latex/02-bev-occupancy/pixel-ray-depth-family.png" alt="同一像素经内参逆变换只确定射线方向，不同正深度对应射线上不同三维点" width="86%">
 
-传统的方法试图通过深度估算网络，让模型回归出一个确定性的深度值 $\hat{Z}_c$。然而，由于遮挡和纹理缺失，单目深度估计往往存在极大的不确定性。一旦回归的深度出现偏差，三维空间中的特征投影就会彻底错位。
+_图 9.2-2：像素和内参固定的是射线方向；深度 Z_c 仍是自由变量，因此射线上多个三维点会投影到同一个像素。本文根据上式绘制。_
+</div>
+
+深度 $Z_c$ 是这条射线上的自由度。仅凭像素 $(u,v)$，射线上的不同三维点具有相同投影；LSS 用预测的深度分布表达这种不确定性。
+
+可以让网络回归单一深度 $\hat Z_c$，但遮挡、弱纹理和尺度歧义会造成误差。深度误差随后会转化为三维位置误差。
 
 Lift, Splat, Shoot（LSS）为每个图像位置预测离散深度分布，并把图像特征沿视锥提升到三维后汇聚到 BEV 网格 [[Philion & Fidler, 2020]](https://arxiv.org/abs/2008.05711)。深度分布保留了多个可能深度，但并不能从根本上消除深度估计误差。
 
-::: info 说明
-我们可以将“提升（Lift）”操作想象为一座灯塔向夜空中发射光束的过程。图像平面上的每一个像素都是一个微小的光源，像素的语义特征决定了这束光的“颜色”；而深度概率分布则决定了这束光在距离灯塔不同深度的夜空中，哪里显得最为明亮。通过这种方式，原本扁平的二维特征图在三维空间中弥散开来，化作一片充满概率的三维特征光晕（视锥）。这是理解连续物理映射与离散张量操作之间的绝佳桥梁。
-:::
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/02-bev-occupancy/lss-fig4.png" alt="LSS 将图像特征沿离散深度提升到视锥体，再汇聚到鸟瞰网格并输出规划相关预测。" width="86%">
+
+_图 9.2-3：LSS 将图像特征沿离散深度提升到视锥体，再汇聚到鸟瞰网格并输出规划相关预测。 出处：Jonah Philion；Sanja Fidler，[Lift, Splat, Shoot: Encoding Images from Arbitrary Camera Rigs by Implicitly Unprojecting to 3D](https://arxiv.org/abs/2008.05711)（2020），Figure 4。_
+</div>
 
 具体而言，我们预先定义一个包含 $D$ 个离散深度面（例如每隔 0.5 米取一个值）的深度集合 $\mathcal{D} = \{d_1, d_2, \dots, d_D\}$。给定从图像主干网络（Backbone）中提取的像素特征向量 $\mathbf{c} \in \mathbb{R}^C$，以及通过一个平行分支预测出的对应于该像素的深度概率分布 $\mathbf{p} \in \mathbb{R}^D$（满足 $\sum_{i=1}^D p_i = 1$），我们在三维空间距离光心 $d_i$ 处的特征表示 $\mathbf{f}_{d_i}$ 可以被严谨地定义为特征向量与概率标量的乘积：
 
@@ -58,47 +72,59 @@ $$
 \mathbf{f}_{d_i} = p_i \cdot \mathbf{c}
 $$
 
-如果我们用张量的视角来审视，(**这实际上是一个跨越维度的外积操作**)。设输入的特征图张量维度为 $C \times H \times W$，深度分布张量的维度为 $D \times H \times W$，通过张量的广播机制相乘，我们将得到一个维度为 $C \times D \times H \times W$ 的视锥（Frustum）特征张量。这个四维张量完美地保留了每一个像素特征在 $D$ 个不同深度面上的可能性。
+设图像特征为 $C\times H\times W$，深度分布为 $D\times H\times W$。广播相乘后得到 $C\times D\times H\times W$ 的视锥特征；同一个像素特征按预测概率分配到 $D$ 个深度区间。
 
-得到了视锥特征后，接下来的操作被称为“Splat”。借助该公式和外参矩阵的逆矩阵 $\mathbf{T}^{-1}$，我们可以精确地计算出这 $D \times H \times W$ 个网格点在世界坐标系下的真实物理三维坐标 $(X_w, Y_w, Z_w)$。随后，我们预先在自车正上方的空间中定义一个标准的鸟瞰图 BEV 网格（例如 $X$ 轴和 $Y$ 轴上每隔 0.2 米划分一个格子）。由于每一个视锥点都被映射到了绝对物理空间中，我们将它们落入同一个 BEV 格子的所有特征向量执行求和（Sum Pooling）或最大化（Max Pooling）操作，从而将三维的视锥张量“压扁”回一个 $C \times H_{bev} \times W_{bev}$ 的 BEV 俯视特征图。
+“Splat”把视锥采样点依据内外参转换到自车坐标，再汇聚到预定义的 BEV 网格。落入同一格子的特征可以求和或池化，得到 $C\times H_{bev}\times W_{bev}$ 的俯视特征。坐标只在标定准确时成立，离散网格还会引入量化误差。
 
 ## 空间交叉注意力机制：BEVFormer 范式
 
 LSS 采用“先提升到视锥、再聚合到 BEV”的 2D 到 3D 路线。视锥张量的大小随图像分辨率、深度分桶数和特征维度的乘积增长，而不是指数增长；多个相机特征在 BEV 中通过池化聚合，也会限制自适应融合能力。
 
-BEVFormer 从 BEV 查询出发，把参考点投影到多相机图像并用空间交叉注意力采样特征 [[Li et al., 2022]](https://arxiv.org/abs/2203.17270)。这种“由 BEV 查询图像”的方向区别于 LSS 的视锥提升，并影响了许多后续方法；原论文并不能支持“绝大多数端到端自动驾驶模型都以它为基座”的绝对结论。
+BEVFormer 从 BEV 查询出发，把参考点投影到多相机图像并用空间交叉注意力采样特征 [[Li et al., 2022]](https://arxiv.org/abs/2203.17270)。这种“由 BEV 查询图像”的方向不同于 LSS 的视锥提升；这里只比较两者的特征流向，不把它概括为所有端到端驾驶模型的共同基座。
+
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/02-bev-occupancy/bevformer-fig2.png" alt="BEVFormer 用空间交叉注意力从多相机特征更新 BEV 查询，并用时间自注意力融合历史 BEV。" width="86%">
+
+_图 9.2-4：BEVFormer 用空间交叉注意力从多相机特征更新 BEV 查询，并用时间自注意力融合历史 BEV。 出处：Zhiqi Li et al.，[BEVFormer: Learning Bird’s-Eye-View Representation from Multi-Camera Images via Spatiotemporal Transformers](https://arxiv.org/abs/2203.17270)（2022），Figure 2。_
+</div>
 
 在 BEVFormer 中，我们首先在二维 BEV 空间中初始化一组可学习的网格查询参数（Grid Queries）$\mathbf{Q} \in \mathbb{R}^{H_{bev} \times W_{bev} \times C}$。每一个查询向量 $\mathbf{q}_p$ 唯一对应物理世界中的一根自车周围的垂直柱子（Pillar）。
 
-为了让查询向量能够看到周围的环境，模型执行了一种被称为空间交叉注意力（Spatial Cross-Attention, SCA）的精密机制：
+为了让查询读取图像特征，模型使用空间交叉注意力（Spatial Cross-Attention, SCA）：
 
 1. 对于每一个查询点（对应柱子的中心 $(X_w, Y_w)$），我们沿着高度 $Z_w$ 方向均匀采样一系列三维参考点 $\mathbf{P}_{ref} = [X_w, Y_w, Z_i]^\top$。
-2. 我们利用这两个公式，将这些三维参考点严格地投影到所有相机的二维图像面上，获得对应的二维像素参考点坐标集 $\mathbf{p}_{ref, 2D}$。
-3. (**查询这些二维坐标点周围的图像特征**) 并非使用传统的稠密注意力，而是引入了可变形注意力机制（Deformable Attention），只在被投影位置的局部极小邻域内采样并加权求和，从而极大地削减了计算开销：
+2. 利用相机内外参，把三维参考点投影到各相机图像，得到二维参考坐标集 $\mathbf{p}_{ref,2D}$。
+3. 使用可变形注意力在投影位置附近采样少量图像特征并加权求和：
 
 $$
 \text{SCA}(\mathbf{q}_p, \mathbf{F}) = \sum_{i=1}^{N_{ref}} \sum_{v \in \mathcal{V}_{hit}} \text{DeformAttn}(\mathbf{q}_p, \mathbf{p}_{ref, 2D}^{(i, v)}, \mathbf{F}_v)
 $$
 
-在这个公式中，$\mathcal{V}_{hit}$ 表示该 3D 参考点能够成功投影进其视野的有效相机视图集合，$\mathbf{F}_v$ 是第 $v$ 个相机的图像特征图。由此可见，BEVFormer 优雅地绕开了显式深度的估算，让网络在注意力权重的学习过程中，隐式地完成了从三维到二维的特征寻址任务。
+其中 $\mathcal{V}_{hit}$ 表示参考点具有正深度且投影位于画面内的相机集合，$\mathbf F_v$ 是第 $v$ 个相机的特征图。BEVFormer 不为每个像素显式预测深度分布，而是从预设的三维参考点回到图像采样。
 
 ## 迈向真三维：占据网格（Occupancy Grid）的崛起
 
-鸟瞰图（BEV）表征在大多数二维地面导航任务中表现卓越，但它在本质上是对物理世界 $Z$ 轴（高度）的一次暴力压缩。设想一辆自动驾驶汽车正在接近一辆拖车或者一块悬空的广告牌：在 BEV 平面中，这些悬空物体的特征会被投影在地面上，系统极易将其误判为不可通行的路障。反之，那些不规则形状的灌木或是底盘较高的特种车辆，也难以用传统的 3D 边界框（Bounding Box）进行精确建模。
+二维 BEV 往往沿高度聚合特征，因此难以区分地面障碍、悬空结构和可从下方通过的空间。三维占据网格把高度轴保留下来，也能表示不适合用边界框描述的形状。
 
-占据网格（Occupancy Grid）网络由此应运而生。它是 BEV 的高维拓展，将自车周围的三维空间精细地划分为大小一致的三维体素（Voxel）。我们的目标不再是预测 2D 的俯视图特征，而是将特征空间扩展为 $C \times X_{dim} \times Y_{dim} \times Z_{dim}$ 的真实三维张量。
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/02-bev-occupancy/tpvformer-fig3.png" alt="TPVFormer 并列比较体素、BEV 与三正交平面表示，说明保留高度信息时的空间表征取舍。" width="86%">
 
-网络需要对空间中的每一个体素执行分类任务，判断其处于三种状态之一：
+_图 9.2-5：TPVFormer 并列比较体素、BEV 与三正交平面表示，说明保留高度信息时的空间表征取舍。 出处：Yuanhui Huang et al.，[TPVFormer: Tri-Perspective View for Vision-Based 3D Semantic Occupancy Prediction](https://arxiv.org/abs/2302.07817)（2023），Figure 3。_
+</div>
+
+占据网格把自车周围空间划分为体素（Voxel），输出可组织为 $C\times X_{dim}\times Y_{dim}\times Z_{dim}$ 的三维张量。
+
+一种标签设计把每个体素分为：
 
 1. **空闲（Free）**：代表可行驶空间。
-2. **占据且无特定语义（Occupied-Unknown）**：这一项是 Occupancy 表征的杀手锏。它允许模型感知到前方存在障碍物（例如翻倒的奇形怪状的垃圾桶），即便该物体不属于任何预定义的训练类别（白名单之外的通用障碍物）。
+2. **占据但语义未知（Occupied-Unknown）**：几何上判断有物体，但不把它归入已知类别。是否能识别训练分布外障碍物仍需专门评测。
 3. **占据且具备语义（Occupied-Semantic）**：该体素被特定的物体（如汽车、行人、路牌）占据。
 
-建立这种表征最大的挑战在于训练数据的真值（Ground Truth）获取。由于单帧激光雷达（LiDAR）产生的点云非常稀疏，无法直接作为稠密体素的监督信号。学术界（如 SurroundOcc 或 Occ3D 等工作）通常采用多帧点云拼接的方法。通过对一段较长轨迹上的 LiDAR 数据进行精确的姿态对齐与融合，构建出极度稠密的局部场景。随后，采用基于射线追踪（Ray-casting）的算法：从传感器原点发出的光线，沿途穿越的体素标记为“空闲”，光线击中的末端点标记为“占据”，未被光线探索到的背光面则标记为“未知”，从而构建出严谨的三维占据监督信号。
+占据真值也很难获得。常见做法是依据自车位姿对齐多帧激光雷达点云，再用射线遍历标记可观测空闲区域与击中位置。动态物体需要单独补偿运动，否则多帧融合会留下拖影；未被射线覆盖的体素应保留为未知，而不是当作空闲。
 
 ## 代码实现：构建简易的视锥生成与特征提升
 
-为了将抽象的几何理论具象化，我们使用 PyTorch 实现 LSS 范式中最核心的“视锥生成”与“外积提升”模块。以下代码严密追踪了张量维度的每一次变换，确保符合该公式描述的逻辑。
+下面实现视锥坐标和特征提升。代码尚未包含从相机坐标到自车坐标的转换，也没有实现体素池化。
 
 ```python
 import torch
@@ -120,8 +146,12 @@ class FrustumGenerator(nn.Module):
         self.feat_size = (img_size[0] // downsample_factor, img_size[1] // downsample_factor)
 
         # [构建离散深度的张量]
-        self.depths = torch.arange(
-            depth_bound[0], depth_bound[1], depth_interval, dtype=torch.float32
+        self.register_buffer(
+            "depths",
+            torch.arange(
+                depth_bound[0], depth_bound[1], depth_interval,
+                dtype=torch.float32
+            )
         )
         self.D = self.depths.shape[0]
 
@@ -143,11 +173,11 @@ class FrustumGenerator(nn.Module):
         y_grid = y_grid * self.downsample_factor
 
         # 扩展出深度维度：我们为每一个深度面复制一份二维网格
-        x_frustum = x_grid.unsqueeze(0).repeat(self.D, 1, 1) # (D, H_f, W_f)
-        y_frustum = y_grid.unsqueeze(0).repeat(self.D, 1, 1) # (D, H_f, W_f)
+        x_frustum = x_grid.unsqueeze(0).expand(self.D, -1, -1)
+        y_frustum = y_grid.unsqueeze(0).expand(self.D, -1, -1)
 
         # 扩展深度张量，匹配空间维度
-        d_frustum = self.depths.view(-1, 1, 1).repeat(1, H_f, W_f) # (D, H_f, W_f)
+        d_frustum = self.depths.view(-1, 1, 1).expand(-1, H_f, W_f)
 
         # 将三者拼接，构成视锥点的 (u, v, d) 表示
         frustum = torch.stack((x_frustum, y_frustum, d_frustum), dim=-1)
@@ -191,11 +221,11 @@ class LSSFeatureLifter(nn.Module):
         return frustum_feat
 ```
 
-这段代码精确地展示了连续物理世界在离散计算体系下的映射。视锥张量构建完成后，便可以使用相机内参矩阵将其投影回世界物理坐标系，为后续的体素池化（Voxel Pooling）奠定基础。
+输出 `frustum_feat` 仍位于相机视锥索引中。下一步要用内外参把每个 $(u,v,d)$ 反投影到自车坐标，再按 BEV 网格索引做体素池化。
 
 ## 小结
 
 - 从二维图像跨越到三维空间表征，其数学本质是**逆投影过程中的深度信息缺失**问题。
-- **Lift-Splat-Shoot 范式**通过预测连续概率分布的方法，巧妙地避免了单一深度估算的弊端，通过特征外积生成了充满三维空间的视锥表示。
-- **BEVFormer** 通过显式构建 BEV 网格，并利用 3D 参考点进行可变形的交叉注意力采样，大幅优化了特征聚合的效率与适应性。
-- 占据网格网络将空间进一步提升至真正的三维（Voxel），不仅能够更细致地描绘复杂的空间几何轮廓，更为检测未定义的异常障碍物提供了可行的基础框架。
+- **Lift-Splat-Shoot**预测离散深度分布，用外积生成视锥特征，再汇聚到 BEV。
+- **BEVFormer**从 BEV 查询出发，把参考点投影回多相机图像并采样特征。
+- 三维占据保留高度信息，但同时增加显存、标注和遮挡推断的难度。

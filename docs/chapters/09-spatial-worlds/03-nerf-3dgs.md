@@ -1,14 +1,20 @@
-# 神经辐射场（NeRF）与3D高斯溅射（3DGS）基础
+# 9.3 神经辐射场（NeRF）与 3D 高斯溅射（3DGS）基础
 
-如何将真实世界的连续三维空间及其光影表现，转化为计算机能够理解并高效渲染的数学表达？这是计算机图形学和三维视觉领域半个世纪以来的核心命题。传统的三维表示方法（如体素网络、点云和多边形网格）在表达复杂拓扑结构或实现高保真度的新视角合成时，往往会遭遇存储空间爆炸或几何离散化带来的失真。
+给定同一场景的多张照片，怎样合成相机从新位置看到的图像？关键是建立一个可查询的三维场景表示，并说明一条相机射线如何累积颜色。本节比较两种表示：NeRF 用神经网络表示连续辐射场，3DGS 用一组显式三维高斯表示场景。
+
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/03-nerf-3dgs/nerf-fig1.png" alt="NeRF 用稀疏输入视角拟合连续辐射场，再从未见相机位姿合成新视角。" width="86%">
+
+_图 9.3-1：NeRF 用稀疏输入视角拟合连续辐射场，再从未见相机位姿合成新视角。 出处：Ben Mildenhall et al.，[NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis](https://arxiv.org/abs/2003.08934)（2020），Figure 1。_
+</div>
 
 Mildenhall 等人提出神经辐射场（Neural Radiance Fields, NeRF），用一个以三维位置和观察方向为输入的 MLP 表示体密度与视角相关颜色，再通过体渲染合成新视角 [[Mildenhall et al., 2020]](https://arxiv.org/abs/2003.08934)。原始 NeRF 的网络查询和沿光线密集采样使训练与渲染较慢。Kerbl 等人提出 3D 高斯溅射（3D Gaussian Splatting, 3DGS），用显式三维高斯集合与可微分的基于瓦片的光栅化进行优化，并在论文数据集上报告实时新视角渲染 [[Kerbl et al., 2023]](https://arxiv.org/abs/2308.04079)。
 
-在本节中，我们将从最基础的直线方程和光学原理出发，严格推导连续空间中的体渲染方程，进而剖析NeRF的数学机制与代码实现，最后过渡到当前极具统治力的3D高斯溅射架构。
+下面从射线方程与透射率出发推导离散体渲染，再实现一个微型 NeRF，最后解释 3D 高斯如何投影到图像平面。
 
 ## 光线与体渲染：物理直觉与数学推导
 
-要理解如何合成一个三维场景的新视角图像，我们首先需要回到高中物理中的小孔成像原理与解析几何。
+每个像素对应一条从相机光心穿过成像平面的射线。
 
 当我们使用相机拍摄一张照片时，相机传感器上的每一个像素（像素中心），都在空间中对应着一条从相机光心出发，穿过该像素并射向三维场景的射线。我们可以使用高中数学中的参数方程来精确描述这条光线。设相机光心（原点）的三维坐标为 $\mathbf{o} = (o_x, o_y, o_z)^\top$，光线的单位方向向量为 $\mathbf{d} = (d_x, d_y, d_z)^\top$，那么光线上任意一点的三维坐标 $\mathbf{r}(t)$ 可以表示为：
 
@@ -17,7 +23,7 @@ $$ \mathbf{r}(t) = \mathbf{o} + t \mathbf{d} $$
 其中，$t \ge 0$ 表示光线在方向 $\mathbf{d}$ 上行进的距离（或时间参量）。
 
 当这条光线穿过充满半透明介质（例如云雾或带有色彩的粒子）的三维空间时，介质会对光线产生两个核心影响：**发光（Emission）**和**吸收（Absorption）**。
-假设空间中每一点 $\mathbf{r}(t)$ 都会向任意方向发出颜色为 $\mathbf{c}(\mathbf{r}(t), \mathbf{d})$ 的光，同时，空间中存在一定密度的“粒子”，这些粒子会阻挡光线的传播。我们定义体密度（Volume Density）$\sigma(\mathbf{r}(t))$，表示光线在点 $\mathbf{r}(t)$ 处行进微小距离 $dt$ 时，被粒子阻挡的概率。
+令 $\mathbf{c}(\mathbf{r}(t),\mathbf{d})$ 表示位置与视角相关的颜色，$\sigma(\mathbf{r}(t))\ge 0$ 表示单位距离上的衰减率。对很短的距离 $dt$，发生终止的概率近似为 $\sigma(t)dt$。
 
 ### 累积透射率与体渲染方程
 
@@ -27,7 +33,7 @@ $$ \mathbf{r}(t) = \mathbf{o} + t \mathbf{d} $$
 
 $$ \frac{dT(t)}{dt} = - \sigma(t) T(t) $$
 
-对该公式求解，并假设在起始点 $T(t_n) = 1$，我们可以得到累积透射率的积分形式：
+令起始点 $T(t_n)=1$，解这个微分方程得到：
 
 $$ T(t) = \exp \left( - \int_{t_n}^{t} \sigma(s) ds \right) $$
 
@@ -35,17 +41,17 @@ $$ T(t) = \exp \left( - \int_{t_n}^{t} \sigma(s) ds \right) $$
 
 $$ C(\mathbf{r}) = \int_{t_n}^{t_f} T(t) \sigma(t) \mathbf{c}(t, \mathbf{d}) dt $$
 
-该公式就是经典的体渲染方程（Volume Rendering Equation）。它不仅是计算机图形学中渲染半透明材质的基础，更是神经辐射场的理论内核。
+这就是 NeRF 使用的发射—吸收体渲染形式。
 
 ### 离散化近似推导
 
-然而，计算机无法直接计算连续的积分。我们需要对其进行离散化近似求解。沿光线方向采样 $N$ 个离散点，对应距离为 $t_1, t_2, \ldots, t_N$。我们将积分区间划分为 $N$ 个微小线段，第 $i$ 段的长度为 $\delta_i = t_{i+1} - t_i$。
+数值计算时沿光线采样 $N$ 个点 $t_1,\ldots,t_N$，把积分区间分成小段，第 $i$ 段长度为 $\delta_i=t_{i+1}-t_i$。
 
-在第 $i$ 个微小区间 $[t_i, t_{i+1}]$ 内，假设密度 $\sigma_i$ 和颜色 $\mathbf{c}_i$ 保持恒定。光线穿过该微小区间后的透射概率定义为 $\alpha_i$（也称为不透明度，Opacity）：
+在第 $i$ 个区间 $[t_i,t_{i+1}]$ 内，假设密度 $\sigma_i$ 和颜色 $\mathbf c_i$ 保持恒定。该段使光线终止的概率（不透明度）为 $\alpha_i$，剩余透射率为 $1-\alpha_i$：
 
 $$ \alpha_i = 1 - \exp(-\sigma_i \delta_i) $$
 
-此时，连续的积分该公式可以通过前向差分转化为离散的黎曼和：
+连续积分可以近似为：
 
 $$ \hat{C}(\mathbf{r}) = \sum_{i=1}^N T_i \alpha_i \mathbf{c}_i $$
 
@@ -53,11 +59,23 @@ $$ \hat{C}(\mathbf{r}) = \sum_{i=1}^N T_i \alpha_i \mathbf{c}_i $$
 
 $$ T_i = \prod_{j=1}^{i-1} (1 - \alpha_j) = \exp \left( - \sum_{j=1}^{i-1} \sigma_j \delta_j \right) $$
 
-上述离散化公式是严格可微的，这意味着我们可以利用现代深度学习框架的自动求导机制，通过反向传播来优化每个采样点的 $\sigma_i$ 和 $\mathbf{c}_i$。
+<div align="center">
+<img src="/figures/09-spatial-worlds/latex/03-nerf-3dgs/front-to-back-transmittance.png" alt="沿射线从近到远，每个样本的颜色权重由此前透射率连乘与本点不透明度共同决定" width="86%">
+
+_图 9.3-2：第 i 个样本只有在前方样本均未遮挡时才可见，因此其颜色权重为此前透射率 T_i 与本点不透明度 α_i 的乘积。本文根据上式绘制。_
+</div>
+
+这些算子对有限的 $\sigma_i$ 和 $\mathbf{c}_i$ 可微，因此可以通过反向传播更新生成它们的网络参数。
 
 ## 神经辐射场（NeRF）原理
 
-在明确了体渲染的数学模型后，NeRF 的核心思想呼之欲出：**使用多层感知机（MLP）来隐式地表示连续三维空间中的颜色场和密度场**。
+NeRF 使用 MLP 隐式表示连续三维空间中的颜色场和密度场。
+
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/03-nerf-3dgs/nerf-fig2b.png" alt="NeRF 的方法图串联相机射线采样、位置与方向编码、MLP 查询以及体渲染积分。" width="86%">
+
+_图 9.3-3：NeRF 的方法图串联相机射线采样、位置与方向编码、MLP 查询以及体渲染积分。 出处：Ben Mildenhall et al.，[NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis](https://arxiv.org/abs/2003.08934)（2020），Figure 2。_
+</div>
 
 ### 连续场景的MLP参数化
 
@@ -79,13 +97,13 @@ $$ \gamma(p) = \left( \sin(2^0 \pi p), \cos(2^0 \pi p), \ldots, \sin(2^{L-1} \pi
 
 ### 损失函数与优化
 
-NeRF的训练过程极致简约：我们从给定的多视角图像数据集中随机采样一组像素，根据相机参数发射射线。通过查询 MLP 得到每条射线上的颜色与密度，使用体渲染该公式计算出该射线的预测颜色 $\hat{C}(\mathbf{r})$。损失函数即为预测颜色与真实像素颜色 $C(\mathbf{r})$ 之间的均方误差（MSE）：
+训练时从多视角图像采样像素，根据已知相机参数生成射线，查询 MLP 得到颜色与密度，再用离散体渲染合成预测颜色 $\hat C(\mathbf r)$。原始 NeRF 使用预测颜色和真实像素颜色之间的平方误差：
 
 $$ \mathcal{L} = \sum_{\mathbf{r} \in \mathcal{R}} \left\| \hat{C}(\mathbf{r}) - C(\mathbf{r}) \right\|_2^2 $$
 
 ## 微型 NeRF 代码实现
 
-(**下面，我们将用代码严谨地复现NeRF的前向计算流程**)，包括射线采样、位置编码和离散体渲染。为了简洁，我们省略了实际复杂的射线生成（即相机参数解析）和分层采样策略。
+下面实现位置编码、微型 MLP 和离散体渲染。为突出张量流，省略相机射线生成、分层采样与训练循环。
 
 ```python
 import torch
@@ -114,10 +132,13 @@ class MicroNeRF(nn.Module):
         dir_dim = 3 + 3 * 2 * L_dir
 
         # 共享特征提取网络
-        self.pts_linears = nn.ModuleList(
-            [nn.Linear(pos_dim, W)] +
-            [nn.Linear(W, W) if i != 4 else nn.Linear(W + pos_dim, W) for i in range(D-1)]
-        )
+        self.pts_linears = nn.ModuleList([
+            nn.Linear(
+                pos_dim if i == 0 else W + pos_dim if i == 4 else W,
+                W
+            )
+            for i in range(D)
+        ])
 
         # 密度输出层
         self.density_linear = nn.Linear(W, 1)
@@ -142,11 +163,11 @@ class MicroNeRF(nn.Module):
         # 2. 通过共享 MLP 提取几何特征
         h = pts_encoded
         for i, l in enumerate(self.pts_linears):
+            # 第 5 个线性层读取位置编码跳连
+            if i == 4:
+                h = torch.cat([pts_encoded, h], dim=-1)
             h = l(h)
             h = torch.relu(h)
-            # 在第 5 层注入残差连接
-            if i == 4:
-                h = torch.cat([pts_encoded, h], -1)
 
         # 3. 输出密度 (通过 Softplus 确保正值)
         density = torch.nn.functional.softplus(self.density_linear(h))
@@ -168,8 +189,8 @@ def volume_render(rgb, density, z_vals, ray_dirs):
     """
     # 计算相邻采样点间的距离 delta
     dists = z_vals[..., 1:] - z_vals[..., :-1]
-    # 为最后一个点补充一个极大的距离
-    dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[..., :1].shape)], -1)
+    # 为最后一个点补充一个较大的距离，并保持设备与数据类型一致
+    dists = torch.cat([dists, dists[..., :1].new_full(dists[..., :1].shape, 1e10)], -1)
 
     # 考虑射线方向对距离的缩放
     dists = dists * torch.norm(ray_dirs[..., None, :], dim=-1)
@@ -180,7 +201,8 @@ def volume_render(rgb, density, z_vals, ray_dirs):
     # 公式(5): 计算累积透射率 T_i
     # 累积连乘: T_i = prod(1 - alpha_{j<i})
     # 为了数值稳定性，我们在累积前向计算中添加极小项
-    T = torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)), 1. - alpha + 1e-10], -1), -1)[:, :-1]
+    prefix = alpha.new_ones((*alpha.shape[:-1], 1))
+    T = torch.cumprod(torch.cat([prefix, 1.0 - alpha + 1e-10], -1), -1)[..., :-1]
 
     # 公式(4)最终合并，计算权重 w_i = T_i * alpha_i
     weights = alpha * T
@@ -192,13 +214,25 @@ def volume_render(rgb, density, z_vals, ray_dirs):
 
 ## 空间的新基底：3D高斯溅射（3DGS）
 
-NeRF 带来了惊艳的效果，但也暴露出了致命缺陷。一条射线上通常需要密集采样成百上千个点，每一个点都需要通过整个 MLP 进行前向传播。这种基于隐式函数的体渲染方式使得实时渲染（例如达到 $\geq 30$ FPS 的高分辨率输出）几乎成为奢望。
+原始 NeRF 每条射线要查询许多采样点，并让每个点通过 MLP，因此训练和渲染较慢。后续工作可用网格、哈希编码或缓存加速；3DGS 则换成显式基元与光栅化路线。
 
-此时，**3D高斯溅射（3D Gaussian Splatting, 3DGS）** 横空出世。它通过将隐式连续场转化为显式的离散三维高斯分布，从而彻底绕过了庞大的 MLP 前向计算。如果说 NeRF 是在使用一个复杂的微积分黑盒来推导空间，那么 3DGS 则是像泼墨画一般，用无数个具有物理属性的椭球（三维高斯）直接堆砌出逼真的世界。
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/03-nerf-3dgs/instantngp-fig1.png" alt="Instant-NGP 用多分辨率哈希编码显著缩短 NeRF 等神经图形基元的训练时间，并展示不同训练时长的输出质量。" width="86%">
+
+_图 9.3-4：Instant-NGP 用多分辨率哈希编码显著缩短 NeRF 等神经图形基元的训练时间，并展示不同训练时长的输出质量。 出处：Thomas Müller et al.，[Instant Neural Graphics Primitives with a Multiresolution Hash Encoding](https://arxiv.org/abs/2201.05989)（2022），Figure 1。_
+</div>
+
+**3D 高斯溅射（3D Gaussian Splatting, 3DGS）**用可优化的三维高斯集合表示场景。渲染时把高斯投影到图像平面并做透明度合成，不需要像原始 NeRF 那样逐点查询深层 MLP。
 
 ### 显式的三维高斯基元
 
-在 3DGS 中，三维场景被表示为数以百万计的“高斯基元”。每一个第 $k$ 个高斯基元由以下参数精确定义：
+在 3DGS 中，三维场景由许多高斯基元表示。第 $k$ 个基元包含：
+
+<div align="center">
+<img src="/figures/09-spatial-worlds/source/03-nerf-3dgs/3dgs-fig2.png" alt="3DGS 从稀疏 SfM 点初始化三维高斯，交替优化与密度控制，再通过可微光栅化生成图像。" width="86%">
+
+_图 9.3-5：3DGS 从稀疏 SfM 点初始化三维高斯，交替优化与密度控制，再通过可微光栅化生成图像。 出处：Bernhard Kerbl et al.，[3D Gaussian Splatting for Real-Time Radiance Field Rendering](https://arxiv.org/abs/2308.04079)（2023），Figure 2。_
+</div>
 
 1. **均值中心** $\boldsymbol{\mu}_k \in \mathbb{R}^3$：高斯体在三维空间中的中心位置。
 2. **协方差矩阵** $\boldsymbol{\Sigma}_k \in \mathbb{R}^{3 \times 3}$：决定了高斯椭球的大小和朝向。
@@ -209,21 +243,21 @@ NeRF 带来了惊艳的效果，但也暴露出了致命缺陷。一条射线上
 
 $$ G(\mathbf{x}; \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k) = \exp \left( -\frac{1}{2} (\mathbf{x} - \boldsymbol{\mu}_k)^\top \boldsymbol{\Sigma}_k^{-1} (\mathbf{x} - \boldsymbol{\mu}_k) \right) $$
 
-为了确保协方差矩阵 $\boldsymbol{\Sigma}$ 在优化过程中始终是半正定的，3DGS 采用了精妙的参数化手段。它将协方差分解为缩放矩阵 $\mathbf{S}$ 和旋转矩阵 $\mathbf{R}$：
+为了保持协方差矩阵有效，3DGS 用缩放矩阵 $\mathbf S$ 和旋转矩阵 $\mathbf R$ 参数化它：
 $$ \boldsymbol{\Sigma} = \mathbf{R} \mathbf{S} \mathbf{S}^\top \mathbf{R}^\top $$
 
 ### 溅射（Splatting）与可微光栅化
 
-如何将这几百万个三维高斯“投影”到二维像素平面上？在图形学中，这个过程被称为**溅射（Splatting）**。这也许是整个框架中最需借助直觉的部分：想象你向一堵玻璃墙投掷一个个柔软的水球，水球在撞击玻璃时会压扁成椭圆形的印记，我们将三维的高斯分布投影到二维成像平面，也会得到二维的高斯分布。
+把三维高斯投影到二维像素平面的过程称为**溅射（Splatting）**。在局部线性近似下，三维椭球会在图像上形成二维椭圆。
 
-在严谨的数学视角下，给定相机的观测矩阵 $\mathbf{W}$ 和射影变换的雅可比矩阵 $\mathbf{J}$，三维空间的协方差 $\boldsymbol{\Sigma}$ 可以近似投影为二维像素平面的协方差 $\boldsymbol{\Sigma}'$：
+给定相机变换 $\mathbf W$ 和投影在高斯中心处的雅可比 $\mathbf J$，三维协方差可近似投影为二维协方差：
 
 $$ \boldsymbol{\Sigma}' = \mathbf{J} \mathbf{W} \boldsymbol{\Sigma} \mathbf{W}^\top \mathbf{J}^\top $$
 
-投影完成后，在特定的二维像素点处，我们需要对所有覆盖该像素的高斯印记进行颜色合成。基于传统的 Alpha 合成原理，其公式与体渲染极其相似：
+投影完成后，对覆盖同一像素的高斯按深度排序并做 Alpha 合成，其形式与离散体渲染相似：
 
 $$ C = \sum_{i \in \mathcal{N}} c_i \alpha'_i \prod_{j=1}^{i-1} (1 - \alpha'_j) $$
 
 这里的 $\mathcal{N}$ 是所有在深度（从近到远）上排序后的、且覆盖当前像素的高斯基元集合。$\alpha'_i$ 是由二维高斯求值并乘以基础不透明度 $\alpha_k$ 得到的像素级不透明度。
 
-通过基于平铺（Tile-based）的并行排序算法和高度优化的 CUDA 算子，3DGS 能够以极高的帧率（通常达到实时 100+ FPS）直接评估上述公式。由于没有任何深层神经网络的参与，仅仅依赖矩阵乘法和显式求和，它彻底解放了计算资源。
+3DGS 使用基于图块的筛选、排序和可微光栅化评估这些贡献。原论文在指定数据集、分辨率与硬件上报告实时渲染；实际速度仍取决于高斯数量、图像大小和实现。显式表示减少了 MLP 查询，却要存储、排序并合成大量基元。
