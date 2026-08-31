@@ -101,8 +101,7 @@ $$
 
 [**我们将通过代码具体实现上文推导的滑块物理系统，并在每次重置时对其动力学参数进行域随机化。**] 我们将使用均匀分布对滑块质量和桌面摩擦系数进行采样，并采用一阶欧拉积分来更新连续物理状态。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch.distributions import Uniform
 
@@ -150,59 +149,9 @@ class RandomizedBlockEnv:
         return self.state, reward, False
 ```
 
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-
-class RandomizedBlockEnv:
-    """基于TensorFlow的带有动力学域随机化的1D滑块环境"""
-    def __init__(self, mass_range=(0.5, 2.0), friction_range=(0.05, 0.3), dt=0.1):
-        self.mass_range = mass_range
-        self.friction_range = friction_range
-        self.dt = dt
-        self.mass = None
-        self.friction = None
-        self.state = None  # 状态向量形式：[位置, 速度]
-
-    def reset(self):
-        # 核心机制：环境重置时，从分布中随机采样物理参数
-        self.mass = tf.random.uniform([], self.mass_range[0], self.mass_range[1]).numpy()
-        self.friction = tf.random.uniform([], self.friction_range[0], self.friction_range[1]).numpy()
-
-        # 将位置和速度初始化为 0.0
-        self.state = tf.zeros([2], dtype=tf.float32)
-        return self.state
-
-    def step(self, action):
-        # action: 在1D方向上施加的外力 F
-        pos = self.state[0]
-        vel = self.state[1]
-
-        # 计算滑动摩擦力，方向与速度严格相反
-        # 引入微小阈值 1e-3 以保证数值计算稳定性
-        vel_sign = tf.sign(vel) if tf.abs(vel) > 1e-3 else tf.constant(0.0, dtype=tf.float32)
-        f_fric = self.friction * self.mass * 9.8 * vel_sign
-
-        # 根据牛顿第二定律计算净加速度
-        acc = (action - f_fric) / self.mass
-
-        # 采用欧拉积分法推进时间步
-        new_vel = vel + acc * self.dt
-        new_pos = pos + new_vel * self.dt
-
-        # 更新系统的内在状态张量
-        self.state = tf.stack([new_pos, new_vel])
-
-        # 定义二次型简单奖励函数
-        reward = -((new_pos - 10.0)**2 + 0.1 * new_vel**2)
-
-        return self.state, reward, False
-```
-
 [**下面，我们向环境连续施加相同大小的力，以验证不同的物理参数对相同动作序列究竟会产生多大的状态轨迹偏移。**]
 
-```{.python .input}
-#@tab pytorch
+```python
 # 实例化随机化物理环境
 env = RandomizedBlockEnv()
 # 定义一个固定的动作序列：连续施加大小为5.0的恒定推力，持续20个步长
@@ -222,33 +171,6 @@ def simulate_trajectory(env, action_seq):
     return mass, friction, positions
 
 # 分别在两个通过随机化生成的独立宇宙（环境实例）中，运行相同的控制序列
-m1, f1, pos1 = simulate_trajectory(env, action_sequence)
-m2, f2, pos2 = simulate_trajectory(env, action_sequence)
-
-print(f"宇宙A (质量={m1:.2f}, 摩擦={f1:.2f}) 20步后的最终位移: {pos1[-1]:.2f}")
-print(f"宇宙B (质量={m2:.2f}, 摩擦={f2:.2f}) 20步后的最终位移: {pos2[-1]:.2f}")
-```
-
-```{.python .input}
-#@tab tensorflow
-# 实例化随机化物理环境
-env = RandomizedBlockEnv()
-# 定义固定的动作序列：施加5.0的恒定推力，持续20步
-action_sequence = tf.constant([5.0] * 20, dtype=tf.float32)
-
-def simulate_trajectory(env, action_seq):
-    env.reset()
-    mass = env.mass
-    friction = env.friction
-    positions = []
-
-    # 将动作逐帧作用于环境并记录位移
-    for a in action_seq:
-        state, _, _ = env.step(a)
-        positions.append(state[0].numpy())
-    return mass, friction, positions
-
-# 验证分布下的轨迹差异
 m1, f1, pos1 = simulate_trajectory(env, action_sequence)
 m2, f2, pos2 = simulate_trajectory(env, action_sequence)
 

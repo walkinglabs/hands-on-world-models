@@ -56,8 +56,9 @@ $$h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})$$
 
 $$q_\phi(z_t \mid h_t, o_t)$$
 
-> [!NOTE]
-> 对于变分下界推导这一反直觉的高阶过程，我们可以借助一个精炼的类比：优化真实边缘似然如同试图精确重构一个漫长演化的远古生态系统，几乎不可能；而变分推断中的后验模型 $q$ 就像一位找到了部分当代化石残片（真实观测 $o$）的考古学家。通过最大化证据下界（ELBO），考古学家迫使自己不看化石做出的预测（先验 $p$）与看着化石做出的分析（后验 $q$）逐步对齐，从而在不需要穷举所有可能性的情况下，逼近那段未知的演化动力学真相。
+::: info 说明
+对于变分下界推导这一反直觉的高阶过程，我们可以借助一个精炼的类比：优化真实边缘似然如同试图精确重构一个漫长演化的远古生态系统，几乎不可能；而变分推断中的后验模型 $q$ 就像一位找到了部分当代化石残片（真实观测 $o$）的考古学家。通过最大化证据下界（ELBO），考古学家迫使自己不看化石做出的预测（先验 $p$）与看着化石做出的分析（后验 $q$）逐步对齐，从而在不需要穷举所有可能性的情况下，逼近那段未知的演化动力学真相。
+:::
 
 运用詹森不等式（Jensen's Inequality），将对数函数的凸组合极值向内投射，我们获得时间序列联合分布的变分证据下界（ELBO）：
 
@@ -101,8 +102,7 @@ $$V_t^\lambda = \hat{r}_t + \gamma \begin{cases} (1-\lambda) v_\xi(\hat{s}_{t+1}
 
 我们将使用深度学习张量框架严格还原前述算子的数学结构。首先实现处于核心枢纽地位的 `RSSMCell` 类。该类内部封装了递归动态方程、分布参数映射以及前后验散度计算逻辑。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.distributions import Normal
@@ -168,8 +168,7 @@ class RSSMCell(nn.Module):
 
 在策略网络的反向传播架构中，我们切断一切调用 `env.step` 的物理调用序列，转而使用 `RSSMCell` 输出搭建动态计算图。以下模块刻画了基于全微积分链展开的策略网络迭代过程：
 
-```{.python .input}
-#@tab pytorch
+```python
 class ActorCriticInDream(nn.Module):
     def __init__(self, rssm, actor, critic, horizon=15):
         super().__init__()

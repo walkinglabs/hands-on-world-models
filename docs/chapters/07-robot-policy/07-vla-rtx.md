@@ -68,9 +68,9 @@ $$ \mathcal{L}(\boldsymbol{\theta}) = - \sum_{t=1}^{T} \sum_{d=1}^{D} \log P(k_{
 
 在 RT-1 架构中，如何有效地将语言指令 $L$ 的语义信息“注入”到视觉特征提取器中，是模型设计的关键。研究者并没有采用计算复杂度较高的跨注意力（Cross-Attention）机制，而是巧妙地借用了 **FiLM (Feature-wise Linear Modulation)** 机制。
 
-> [!NOTE]
-> **唯一一次类比：FiLM 机制的直觉**
-> 我们可以将计算机视觉网络（如 ResNet 或 EfficientNet）看作是一个能够提取各种频率和形状特征的“全频段收音机”。自然语言指令（例如“抓取红色的苹果”）就像是一个“调谐器”（Tuner）。FiLM 机制通过语言特征直接生成缩放系数（Scale）和偏置系数（Shift），作用于视觉特征图的各个通道上。这相当于语言指令在“抑制”与红色苹果无关的通道特征，同时“放大”与红色、苹果形状相关的通道特征，从而在特征提取的最早期就完成了注意力的硬性聚焦。
+::: info 唯一一次类比：FiLM 机制的直觉
+我们可以将计算机视觉网络（如 ResNet 或 EfficientNet）看作是一个能够提取各种频率和形状特征的“全频段收音机”。自然语言指令（例如“抓取红色的苹果”）就像是一个“调谐器”（Tuner）。FiLM 机制通过语言特征直接生成缩放系数（Scale）和偏置系数（Shift），作用于视觉特征图的各个通道上。这相当于语言指令在“抑制”与红色苹果无关的通道特征，同时“放大”与红色、苹果形状相关的通道特征，从而在特征提取的最早期就完成了注意力的硬性聚焦。
+:::
 
 具体而言，给定视觉网络某一层输出的特征图 $\mathbf{F} \in \mathbb{R}^{C \times H \times W}$（其中 $C$ 为通道数），以及语言指令的嵌入向量 $\mathbf{e}_L \in \mathbb{R}^{d_L}$。FiLM 层首先通过两层全连接网络，将 $\mathbf{e}_L$ 映射为两个 $C$ 维的仿射变换向量 $\boldsymbol{\gamma}$ 和 $\boldsymbol{\beta}$：
 
@@ -92,8 +92,7 @@ $$ \mathbf{F}'_{c, h, w} = \gamma_c \cdot \mathbf{F}_{c, h, w} + \beta_c $$
 
 (**首先，我们实现动作空间的离散化与去离散化。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -142,8 +141,7 @@ class ActionTokenizer:
 
 (**接下来，我们实现极为关键的 FiLM 层。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class FiLMLayer(nn.Module):
     def __init__(self, lang_dim, channels):
         super(FiLMLayer, self).__init__()
@@ -166,8 +164,7 @@ class FiLMLayer(nn.Module):
 
 (**最后，我们将各部分组装成一个极简的 VLA Transformer。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class TinyVLAModel(nn.Module):
     def __init__(self, action_dim, lang_dim=128, img_channels=64, vocab_size=256, d_model=256, n_heads=4, num_layers=4):
         super(TinyVLAModel, self).__init__()

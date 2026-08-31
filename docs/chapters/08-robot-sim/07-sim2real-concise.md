@@ -1,7 +1,5 @@
 # Sim2Real 虚实迁移框架的简洁实现
 
-:label:sec_sim2real_concise
-
 在前面的章节中，我们在高度理想化的物理仿真环境中训练了机器人的运动控制策略。然而，当这些策略被直接部署到真实的物理硬件上时，往往会遭遇灾难性的失败。这种由仿真环境与真实物理世界之间的动力学差异、传感器噪声、以及通信延迟所导致的性能骤降，在学术界被称为“现实鸿沟”（Reality Gap）。为了跨越这一鸿沟，学术界和工业界发展出了从仿真到现实（Simulation-to-Reality, 简称为 Sim2Real）的迁移框架。
 
 Sim2Real 已在多类机器人任务中得到验证。例如，OpenAI 使用自动域随机化训练灵巧手，并在现实中完成魔方复原 [[Akkaya et al., 2019]](https://arxiv.org/abs/1910.07113)；苏黎世联邦理工学院的研究人员利用执行器建模与强化学习，让 ANYmal 在真实环境中完成动态运动 [[Hwangbo et al., 2019]](https://doi.org/10.1126/scirobotics.aau5872)。本节将从动力学方程出发，推导并实现常见的域随机化方法。
@@ -13,7 +11,6 @@ Sim2Real 已在多类机器人任务中得到验证。例如，OpenAI 使用自�
 假设我们试图控制一个在一维轨道上滑行的质量块。由牛顿第二定律可知，$F = m a$。如果我们以离散时间步 $\Delta t$ 观察该系统，令 $x_t$ 为时间 $t$ 时的状态（位置与速度），$u_t$ 为施加的控制力。在理想情况下，下一时刻的状态 $x_{t+1}$ 完全由当前状态和输入决定，我们可以写出最简单的一阶标量差分方程：
 
 $$x_{t+1} = a x_t + b u_t$$
-:eqlabel:eq_sim2real_scalar
 
 这里，$a$ 描述了系统固有的阻尼或惯性特征，$b$ 则反映了输入控制力转化为状态变化的增益（本质上与质量的倒数 $\frac{1}{m}$ 呈正相关）。在仿真环境中，参数 $a$ 和 $b$ 是由程序员精确设定的常数。
 
@@ -22,7 +19,6 @@ $$x_{t+1} = a x_t + b u_t$$
 顺理成章地，我们将这一标量动力学推广到机器人控制中常见的多维状态空间和非线性系统。令 $\mathbf{x}_t \in \mathbb{R}^n$ 为关节角度和角速度张量，$\mathbf{u}_t \in \mathbb{R}^m$ 为关节扭矩控制张量。真实物理环境的非线性演化可以表示为：
 
 $$\mathbf{x}_{t+1} = f(\mathbf{x}_t, \mathbf{u}_t; \mathbf{\Theta}_{\text{real}}) + \mathbf{\epsilon}_t$$
-:eqlabel:eq_sim2real_matrix
 
 其中，$\mathbf{\Theta}_{\text{real}}$ 包含了全部真实的物理参数（如所有连杆的质量矩阵、惯量张量、电机摩擦系数等），而 $\mathbf{\epsilon}_t$ 表示不可避免的观测与执行噪声。由于 $\mathbf{\Theta}_{\text{real}}$ 永远无法被完美的解析测量，Sim2Real 的核心数学思想即是通过优化策略对参数分布的鲁棒性来对抗这种物理参数的固有不确定性。
 
@@ -35,7 +31,6 @@ $$\mathbf{x}_{t+1} = f(\mathbf{x}_t, \mathbf{u}_t; \mathbf{\Theta}_{\text{real}}
 设随机参数 $\mathbf{\Theta}$ 服从我们人为设定的先验分布 $P_{\mathbf{\Theta}}$。在强化学习的标准马尔可夫决策过程（MDP）中，我们的目标是最大化累积期望奖励。在引入域随机化后，我们需要最大化的是**整个参数分布上的期望总奖励**：
 
 $$J(\pi_\phi) = \mathbb{E}_{\mathbf{\Theta} \sim P_{\mathbf{\Theta}}} \left[ \mathbb{E}_{\tau \sim P(\tau | \pi_\phi, \mathbf{\Theta})} \left[ \sum_{t=0}^T \gamma^t r_t \right] \right]$$
-:eqlabel:eq_sim2real_objective
 
 其中，轨迹 $\tau = (\mathbf{x}_0, \mathbf{u}_0, \mathbf{x}_1, \dots)$ 的生成分布现在直接依赖于采样的物理参数 $\mathbf{\Theta}$。$\phi$ 为策略神经网络的权重。通过在每一轮回合（Episode）开始时从 $P_{\mathbf{\Theta}}$ 中重新采样质量、摩擦力等参数，神经网络 $\pi_\phi$ 会自动惩罚那些过度依赖特定质量参数的脆弱行为，从而收敛到一种具备广义鲁棒性的次优解。
 
@@ -43,8 +38,7 @@ $$J(\pi_\phi) = \mathbb{E}_{\mathbf{\Theta} \sim P_{\mathbf{\Theta}}} \left[ \ma
 
 (**我们将构建一个轻量级的域随机化层，并在 PyTorch 中演示如何对前向动力学参数进行采样与张量批处理。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.distributions as dist
@@ -84,8 +78,7 @@ class RandomizedDynamics(nn.Module):
 
 接下来，我们实现一个域随机化包装器（Domain Randomizer）。它的核心功能是在训练的 `reset` 阶段，为并行环境生成服从特定分布的物理参数张量。
 
-```{.python .input}
-#@tab pytorch
+```python
 class DomainRandomizer:
     """物理参数先验分布采样器"""
     def __init__(self, batch_size, device='cpu'):
@@ -155,7 +148,3 @@ Sim2Real 的另一个致命问题在于“控制延迟”与“扭矩指令失�
 2.  在我们的 PyTorch 简易实现中，我们使用了半隐式欧拉积分来更新状态。如果系统的惯量极小而阻尼极大（即方程非常“刚性”），这会导致仿真出现什么数学灾难？
     _提示：回顾微积分中的步长 $\Delta t$ 与差分方程稳定域的关系。_
 3.  查阅关于执行器网络（Actuator Nets）的经典文献，尝试论述：为何 2026 年 AIRSEAI 的硬件底层补偿机制，在某些要求极端柔顺控制的场景下，可能会与上层强化学习算法产生控制环路的耦合震荡？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

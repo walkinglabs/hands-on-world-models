@@ -94,8 +94,7 @@ $$ \mathbf{h} = \mathbf{W}_0 \mathbf{x} + \mathbf{A} \mathbf{B} \mathbf{x} $$
 
 (**我们将利用 PyTorch 搭建 OpenVLA 的核心模块**)，包括动作的离散化处理器、视觉-语言投影层，以及简化的条件自回归生成流程。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 from typing import Tuple

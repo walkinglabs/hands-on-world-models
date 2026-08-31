@@ -59,8 +59,7 @@ $$a_t = \pi_\theta(I_t, q_t)$$
 
 (**实现多模态灵巧手策略网络**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 
@@ -120,49 +119,6 @@ class DexterousPolicy(nn.Module):
         fused_feat = torch.cat([vis_feat, prop_feat], dim=1)
 
         # 输出动作，维度 (B, action_dim)
-        action = self.action_head(fused_feat)
-
-        return action
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-
-class DexterousPolicy(tf.keras.Model):
-    def __init__(self, num_joints=24, action_dim=24, visual_feature_dim=128):
-        super().__init__()
-
-        # 视觉编码器：经典的简单卷积网络架构
-        self.visual_encoder = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(32, kernel_size=8, strides=4, activation='relu'),
-            tf.keras.layers.Conv2D(64, kernel_size=4, strides=2, activation='relu'),
-            tf.keras.layers.Conv2D(64, kernel_size=3, strides=1, activation='relu'),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(visual_feature_dim, activation='relu')
-        ])
-
-        # 本觉感知编码器
-        self.proprio_encoder = tf.keras.Sequential([
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(64, activation='relu')
-        ])
-
-        # 融合与输出层
-        self.action_head = tf.keras.Sequential([
-            tf.keras.layers.Dense(256, activation='relu'),
-            tf.keras.layers.Dense(action_dim, activation='tanh')
-        ])
-
-    def call(self, inputs):
-        image, proprioception = inputs
-
-        vis_feat = self.visual_encoder(image)
-        prop_feat = self.proprio_encoder(proprioception)
-
-        # 拼接特征
-        fused_feat = tf.concat([vis_feat, prop_feat], axis=1)
-
         action = self.action_head(fused_feat)
 
         return action

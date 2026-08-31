@@ -1,7 +1,5 @@
 # 扩散策略（Diffusion Policy）的从零开始实现
 
-:label:sec_diffusion_policy_scratch
-
 在探讨具身智能（Embodied AI）中的动作生成时，我们常常面临一个基础性却极难克服的挑战：对于相同的环境状态，专家演示（Expert Demonstrations）可能包含多种完全合理的动作序列。传统的行为克隆（Behavior Cloning, BC）广泛依赖于均方误差（Mean Squared Error, MSE）作为损失函数，这在数学上等价于假设动作分布服从单峰高斯分布。然而，当真实专家数据呈现多模态（Multi-modal）分布时，最小化均方误差会驱使模型预测出所有可能动作的平均值，这往往会导致灾难性的失败。例如，在面对障碍物时，专家可能选择从左侧绕过或从右侧绕过，而模型预测的平均动作则是径直撞向障碍物。
 
 Chi 等人提出扩散策略，把机器人动作序列建模为观测条件下的去噪扩散过程 [[Chi et al., 2023]](https://arxiv.org/abs/2303.04137)。它沿用 DDPM 的前向加噪与反向去噪框架 [[Ho et al., 2020]](https://arxiv.org/abs/2006.11239)，但生成对象从图像换成了连续动作轨迹。这种参数化可以表达多模态动作分布；论文结论应限定在所测试的机器人操作基准内。
@@ -9,8 +7,6 @@ Chi 等人提出扩散策略，把机器人动作序列建模为观测条件下�
 在本节中，我们将从最基础的统计学概念起步，逐步推导扩散策略的严密数学公式，并最终从零开始实现一个完整的扩散策略模型。
 
 ## 从高中统计学起步：状态与动作的概率映射
-
-:label:subsec_diffusion_math_basics
 
 为了深刻理解扩散模型的本质，我们不必立刻深陷高维张量和随机微分方程。让我们从高中统计学中最简单的标量概念出发。
 
@@ -24,8 +20,6 @@ Chi 等人提出扩散策略，把机器人动作序列建模为观测条件下�
 
 ## 扩散过程的严密数学推导
 
-:label:subsec_diffusion_derivation
-
 现在，我们将上述直觉转化为严格的数学语言。定义动作序列为 $a_0$。我们设计一个包含 $T$ 步的马尔可夫前向加噪过程（Forward Process）。
 
 ### 前向加噪过程
@@ -36,23 +30,17 @@ $$
 q(a_t | a_{t-1}) = \mathcal{N}(a_t; \sqrt{1-\beta_t} a_{t-1}, \beta_t \mathbf{I})
 $$
 
-:eqlabel:eq_diffusion_forward_step
-
 为了能够在训练时直接跳跃到任意时间步 $t$，而不需要一步步迭代计算，我们利用高斯分布的叠加性质（重参数化技巧）。令 $\alpha_t = 1 - \beta_t$，并定义 $\bar{\alpha}_t = \prod_{i=1}^t \alpha_i$。我们可以直接得到给定初始动作 $a_0$ 时，时刻 $t$ 的边缘概率分布：
 
 $$
 q(a_t | a_0) = \mathcal{N}(a_t; \sqrt{\bar{\alpha}_t} a_0, (1-\bar{\alpha}_t) \mathbf{I})
 $$
 
-:eqlabel:eq_diffusion_forward_t
-
 这意味着，时刻 $t$ 的含噪动作 $a_t$ 可以被确定性地表示为：
 
 $$
 a_t = \sqrt{\bar{\alpha}_t} a_0 + \sqrt{1-\bar{\alpha}_t} \epsilon
 $$
-
-:eqlabel:eq_diffusion_reparam
 
 其中 $\epsilon \sim \mathcal{N}(0, \mathbf{I})$ 是真实注入的噪声。当 $T$ 足够大且 $\bar{\alpha}_T \to 0$ 时，$q(a_T | a_0)$ 趋近于标准正态分布 $\mathcal{N}(0, \mathbf{I})$。
 
@@ -66,13 +54,9 @@ $$
 L(\theta) = \mathbb{E}_{t \sim \mathcal{U}(1,T), a_0, \epsilon \sim \mathcal{N}(0,\mathbf{I})} \left[ \| \epsilon - \epsilon_\theta(a_t, t, o) \|^2 \right]
 $$
 
-:eqlabel:eq_diffusion_loss
-
 这是扩散模型中极为优雅的结果：尽管背后的概率推导涉及复杂的积分与边界，其最终的训练目标却异常简洁，仅是对高斯噪声的误差匹配。
 
 ## 动作组块与时间维度
-
-:label:subsec_action_chunking
 
 在实际的具身智能中，为了保证运动的平滑性和应对网络延迟，扩散策略通常结合了动作组块（Action Chunking）技术。具体而言，模型并非在每个控制周期只预测单步动作，而是一次性预测未来 $H$ 步的动作序列。
 
@@ -80,14 +64,11 @@ $$
 
 ## 从零开始的代码实现
 
-:label:subsec_diffusion_implementation
-
 我们将分别实现噪声调度器、去噪神经网络以及整体的训练流程。首先，我们需要构建前向加噪过程的调度器。
 
 (**实现 DDPM 的方差调度器**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 import math
@@ -124,8 +105,7 @@ class DDPMScheduler:
 
 (**实现条件一维卷积去噪网络**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -197,8 +177,7 @@ class Conditional1DCNN(nn.Module):
 
 (**实现训练循环**)
 
-```{.python .input}
-#@tab pytorch
+```python
 def train_diffusion_policy():
     # 超参数定义
     B, H, action_dim, obs_dim = 32, 16, 2, 64
@@ -240,8 +219,6 @@ print(f"Training Loss: {train_diffusion_policy():.4f}")
 
 ## 2026 年具身智能开源生态深度剖析与融合
 
-:label:subsec_2026_ecosystem_analysis
-
 扩散策略虽然在数学推导和学术基准测试上展现了极高的上限，但要将其部署到真实物理世界，必须面对感知延迟、硬件碎片化以及泛化能力不足等严峻考验。2026 年标志着具身智能从“作坊式”学术实验全面转向“工业化”开源生态的一年。有几个里程碑式的开源项目不仅解决了部署难题，更为扩散策略提供了完美的土壤：
 
 首先，**Physical Intelligence (Pi) 探索的通用机器人大脑**模型确立了跨形态泛化的基准。Pi 的基础模型不再局限于特定机械臂的关节空间（Joint Space），而是通过学习统一的末端执行器（End-effector）六自由度动作流形（Action Manifold）。在这一框架下，扩散策略不再只是一个孤立的动作生成器，而是被集成到 Pi 的基础世界模型中。扩散过程的高维隐空间通过跨模态对齐，完美适应了 Pi 的泛化特征表征，极大地增强了复杂长视野（Long-horizon）任务的完成率。
@@ -254,15 +231,9 @@ print(f"Training Loss: {train_diffusion_policy():.4f}")
 
 ## 练习
 
-:label:subsec_diffusion_exercises
-
 1. **推导变分下界**：尝试手动推导从逆向概率分布匹配到该公式所述的均方误差形式。
    _提示_：回顾重参数化技巧，并关注 KL 散度在两个高斯分布之间的计算方式。
 2. **加速推理采样**：在标准的去噪循环中，必须严格按照时间步 $T \to 0$ 逐一迭代。如果要实现跳步推理（如 DDIM），调度器的 `step` 函数应该如何修改？
    _提示_：重新审视 $a_{t-1}$ 是如何由 $a_t$ 和预测出的 $\epsilon_\theta$ 确定性重构出来的。
 3. **生态系统结合**：如果在使用 LeRobot 框架部署扩散策略时，机械臂的控制频率出现了明显抖动，这会对 Action Chunking 产生怎样的影响？
    _提示_：思考时间维度的张量在执行物理动作时，一旦预设的时间间隔被打破，动作之间的连续性（如速度和加速度）会发生什么变化。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

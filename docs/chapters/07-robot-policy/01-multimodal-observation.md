@@ -1,5 +1,13 @@
 # 7.1 具身智能与多模态观测
 
+> **本章导读**
+>
+> **讲什么：** 本章把问题从“预测会发生什么”转向“让机器人现在做什么”。我们先处理视觉、本体感觉、触觉与接触动力学，再从行为克隆出发，依次研究扩散策略、动作分块和视觉—语言—动作模型，最后把世界模型接回策略，用预测的后果检查候选动作。
+>
+> **为什么策略不能只看一张 RGB 图像：** 机械臂看见杯子，并不等于知道自己的关节位置、夹爪受力和杯子是否已经滑动。真实动作连续、常有多种正确做法，还会因一次小偏差进入训练数据未覆盖的状态；因此策略既要融合异构观测，也要处理多峰动作、长动作序列和闭环误差。
+>
+> **故事线：** `融合身体与环境观测 → 理解接触和全身控制约束 → 用行为克隆建立基线并观察分布偏移 → 用扩散与动作分块表达多种连续动作 → 用语言和大规模数据扩展任务 → 用世界模型检查动作后果`
+
 在前面的章节中，我们主要探讨了在纯视觉或纯文本环境下的深度学习模型。然而，真正的智能体（Agent）并非“缸中之脑”，它们生存在复杂的物理世界中，需要通过躯体与环境发生持续的物理交互。这种强调智能体与环境物理形态耦合的智能范式，被称为**具身智能**（Embodied AI）。
 
 在具身智能的设定下，智能体（例如一台双足机器人或一条机械臂）在执行任务时，不仅能通过摄像头“看”到外部世界，还能通过关节编码器和力矩传感器“感受”到自身的姿态与受力。如何将这些维度、采样频率、物理语义截然不同的信息源有效地整合在一起，形成对当前状态的统一理解？这就是**多模态观测**（Multimodal Observation）所要解决的核心问题。
@@ -104,10 +112,9 @@ $$
 
 ## 7.1.5 代码实现：构建多模态观测编码器
 
-(**下面我们将基于PyTorch和TensorFlow，实现一个包含视觉CNN、本体MLP以及拼接融合机制的基础多模态观测编码器。**)
+(**下面我们将基于 PyTorch，实现一个包含视觉CNN、本体MLP以及拼接融合机制的基础多模态观测编码器。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 
@@ -177,60 +184,6 @@ class MultiModalEncoder(nn.Module):
 encoder = MultiModalEncoder()
 dummy_img = torch.randn(4, 3, 84, 84) # Batch size 4, 84x84 RGB图像
 dummy_prop = torch.randn(4, 14)       # Batch size 4, 14维本体状态
-output = encoder(dummy_img, dummy_prop)
-print(f"融合特征的张量形状: {output.shape}")
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-
-class MultiModalEncoder(tf.keras.Model):
-    def __init__(self, prop_dim=14, vis_embed_dim=256,
-                 prop_embed_dim=64, fused_dim=128):
-        super().__init__()
-
-        # 1. 视觉编码器
-        self.vis_encoder = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(32, kernel_size=8, strides=4, activation='relu'),
-            tf.keras.layers.Conv2D(64, kernel_size=4, strides=2, activation='relu'),
-            tf.keras.layers.Conv2D(64, kernel_size=3, strides=1, activation='relu'),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(vis_embed_dim),
-            tf.keras.layers.LayerNormalization(epsilon=1e-5)
-        ])
-
-        # 2. 本体编码器
-        self.prop_encoder = tf.keras.Sequential([
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(prop_embed_dim),
-            tf.keras.layers.LayerNormalization(epsilon=1e-5)
-        ])
-
-        # 3. 融合层
-        self.fusion_mlp = tf.keras.Sequential([
-            tf.keras.layers.Dense(256, activation='relu'),
-            tf.keras.layers.Dense(fused_dim)
-        ])
-
-    def call(self, img_obs, prop_obs):
-        # 提取视觉特征
-        z_vis = self.vis_encoder(img_obs)
-        # 提取本体特征
-        z_prop = self.prop_encoder(prop_obs)
-
-        # 拼接特征
-        z_concat = tf.concat([z_vis, z_prop], axis=1)
-
-        # 通过融合MLP
-        fused_feature = self.fusion_mlp(z_concat)
-        return fused_feature
-
-# 测试前向传播
-encoder = MultiModalEncoder()
-# TensorFlow通常使用NHWC格式，此处假设输入图像维度为84x84x3
-dummy_img = tf.random.normal((4, 84, 84, 3))
-dummy_prop = tf.random.normal((4, 14))
 output = encoder(dummy_img, dummy_prop)
 print(f"融合特征的张量形状: {output.shape}")
 ```

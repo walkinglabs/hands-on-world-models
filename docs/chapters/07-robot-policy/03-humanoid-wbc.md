@@ -147,8 +147,7 @@ $$
 
 (**我们定义一个多任务投影模块，给定机器人当前的动力学参数和任务雅可比，计算包含主次任务的控制力矩指令。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 
 class NullSpaceController:

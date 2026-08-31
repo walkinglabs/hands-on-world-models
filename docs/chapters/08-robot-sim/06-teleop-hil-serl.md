@@ -108,8 +108,7 @@ $$
 
 (**初始化包含优势加权机制的更新步骤**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.optim as optim

@@ -108,8 +108,7 @@ $$
 
 下面，我们将通过框架代码构建 RSSM 的核心闭环过程。这段实现精炼地展示了如何维持确定性与随机性状态的双轨更新，并在计算图内展开梦境以实现完全可微的策略优化。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.distributions import Normal

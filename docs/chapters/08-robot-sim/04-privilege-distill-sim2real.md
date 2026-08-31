@@ -70,8 +70,7 @@ $$\mathcal{L}(\psi) = \mathbb{E}_{\tau \sim \mathcal{D}} \left[ \frac{1}{2} \| \
 
 (**首先定义包含环境编码器的教师策略网络**)。在代码实现中，物理特征特征向量 `e_t` 会首先经过一个由多层感知机（MLP）构成的环境编码器进行降维。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -120,8 +119,7 @@ class TeacherPolicy(nn.Module):
 
 (**定义用于处理历史序列观测的适应网络**)。由于输入数据不仅包含特征维度，还包含显式的时间序列维度，我们通常采用一维卷积网络（1D CNN）或者时序卷积网络（TCN）来提取局部的时序相关性，从而准确预测当前的隐变量。
 
-```{.python .input}
-#@tab pytorch
+```python
 class AdaptationNetwork(nn.Module):
     """基于历史观测序列推断当前物理隐变量的适应网络"""
     def __init__(self, o_dim, hist_len, z_dim):
@@ -159,8 +157,7 @@ class AdaptationNetwork(nn.Module):
 
 为了确保对于蒸馏损失的优化过程毫无歧义，让我们(**模拟构建一个批次的轨迹数据并执行一次严谨的前向与反向传播步骤**)。这对应于数学该公式中期望的蒙特卡洛近似。
 
-```{.python .input}
-#@tab pytorch
+```python
 # 初始化张量维度超参数
 batch_size = 64
 o_dim = 42       # 本体观测维度（如各关节位置与速度）
@@ -213,6 +210,6 @@ print(f"Predicted z_hat_t shape: {z_hat_t.shape}")
 
 特权信息蒸馏架构为跨越虚实鸿沟提供了一条数学上极为严谨的解耦路径。通过将原先高度非平稳的 POMDP 求解拆解为两个具有明确物理意义的子问题，我们不仅在第一阶段（通过完全可观测的特权 MDP）极大地加速了强化学习的收敛，更在第二阶段获得了在真实物理世界中对未知扰动极强的在线推断与自适应能力。
 
-> [!NOTE]
->
-> 这种两阶段范式本质上展示了隐式表示学习（Implicit Representation Learning）的强大力量：我们摒弃了直接从观测端到端映射到动作的黑盒做法，而是强制神经网络在一个低维的流形空间（隐变量空间）内，将复杂的动力学方程与物理定律进行纯粹的数学抽象。这一架构至今仍是目前最先进的灵巧手操作与多足机器人跨地形行走研究中的核心基石。
+::: info 说明
+这种两阶段范式本质上展示了隐式表示学习（Implicit Representation Learning）的强大力量：我们摒弃了直接从观测端到端映射到动作的黑盒做法，而是强制神经网络在一个低维的流形空间（隐变量空间）内，将复杂的动力学方程与物理定律进行纯粹的数学抽象。这一架构至今仍是目前最先进的灵巧手操作与多足机器人跨地形行走研究中的核心基石。
+:::

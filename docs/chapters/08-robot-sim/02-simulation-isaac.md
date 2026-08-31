@@ -115,8 +115,7 @@ $$
 
 (**配置物理引擎与并行张量化环境**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 # 导入 Isaac Gym 会隐式初始化底层的 GPU 物理引擎与通信管道
 import isaacgym
@@ -156,39 +155,6 @@ def compute_reward(dof_positions, actions):
 # (计算张量化环境的奖励批次)
 batch_rewards = compute_reward(dof_pos, actions)
 print(f"Rewards Tensor Shape: {batch_rewards.shape}")
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-# TensorFlow 版本的大规模环境张量计算演示
-# 尽管 Isaac Gym 底层 API 优先适配 PyTorch 内存指针，但张量化理念是完全互通的。
-
-num_envs = 4096
-num_dofs = 12
-
-# 使用 TensorFlow 将状态张量硬分配至 GPU
-with tf.device('/GPU:0'):
-    dof_pos = tf.zeros((num_envs, num_dofs), dtype=tf.float32)
-    dof_vel = tf.zeros((num_envs, num_dofs), dtype=tf.float32)
-
-    actions = tf.random.normal((num_envs, num_dofs), dtype=tf.float32)
-
-    @tf.function
-    def compute_reward_tf(dof_positions, actions):
-        """
-        利用 tf.function 编译图运算，进一步榨取硬件极限性能。
-        """
-        target_pos = tf.zeros_like(dof_positions)
-        pos_error = tf.reduce_sum(tf.square(dof_positions - target_pos), axis=-1)
-        action_penalty = tf.reduce_sum(tf.square(actions), axis=-1)
-
-        rewards = -0.5 * pos_error - 0.01 * action_penalty
-        return rewards
-
-    # (执行编译后的并行计算图)
-    batch_rewards_tf = compute_reward_tf(dof_pos, actions)
-    print(f"TensorFlow Rewards Shape: {batch_rewards_tf.shape}")
 ```
 
 在这个编程范式中，所有的物理状态与策略计算全部封装在连续的张量结构内。通过避免逐环境循环（Loop-free Design），我们将底层的时间开销全部转移给了 GPU 并行计算库。这也是我们在编写现代机器人强化学习环境时需要培养的最核心的工程直觉。

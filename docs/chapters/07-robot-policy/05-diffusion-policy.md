@@ -93,8 +93,7 @@ $$\mathbf{A}_{k-1} = \frac{1}{\sqrt{\alpha_k}} \left( \mathbf{A}_k - \frac{1 - \
 
 [**我们首先定义严格的余弦方差调度计划以及与之匹配的前向加噪模块。**] 余弦调度在实际工程中已被广泛证明在图像与控制动作生成上显著优于最简单的线性调度，因为它能在扩散中后期更加克制地引入噪声，保留动作序列的高频微调信息。
 
-```{.python .input}
-#@tab pytorch
+```python
 import math
 import torch
 from torch import nn
@@ -137,8 +136,7 @@ class DDPMScheduler:
 
 [**接下来，我们定义用于逼近真实噪声分量的一维条件卷积骨干网络。**] 注意这里我们严格遵循了学术界主流的 FiLM（特征级线性调制）特征融合范式，将环境的先验观察条件与时间步特征直接作用于卷积激活后的流形层面上。
 
-```{.python .input}
-#@tab pytorch
+```python
 class ConditionalResidualBlock1D(nn.Module):
     def __init__(self, in_channels, out_channels, cond_dim):
         super().__init__()
@@ -219,8 +217,7 @@ class SimpleConditionalUnet1D(nn.Module):
 
 [**最后，我们将所有数学模块严丝合缝地组装为一个极简版本的端到端训练与逆向生成采样的闭环流程。**]
 
-```{.python .input}
-#@tab pytorch
+```python
 # 初始化环境维度界限设定与批次内存开销数据
 batch_size = 64
 action_sequence_length = 16  # 定义动作块长度 (Action Chunking)

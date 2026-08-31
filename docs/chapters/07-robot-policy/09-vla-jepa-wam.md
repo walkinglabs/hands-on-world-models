@@ -102,8 +102,7 @@ $$
 
 现在，让我们利用严谨的面向对象思想，将 VLA-JEPA 的上述数学推导一一落实到代码中。注意我们如何利用 `torch.no_grad()` 阻断目标编码器的梯度，并显式实现参数的 EMA 动量更新。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -222,92 +221,6 @@ class VLA_JEPA(nn.Module):
         loss = F.mse_loss(s_t_next_pred, s_t_next_target)
 
         return loss, s_t_next_pred, s_t_next_target
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-from tensorflow.keras import layers, models
-
-class VisionLanguageEncoder(layers.Layer):
-    """视觉-语言上下文编码器 (TensorFlow 版本)"""
-    def __init__(self, latent_dim=256, **kwargs):
-        super().__init__(**kwargs)
-        self.img_proj = layers.Dense(latent_dim, activation='gelu')
-        self.lang_proj = layers.Dense(latent_dim, activation='gelu')
-
-        self.fusion_mlp = models.Sequential([
-            layers.Dense(latent_dim * 2),
-            layers.LayerNormalization(),
-            layers.Activation('gelu'),
-            layers.Dense(latent_dim)
-        ])
-
-    def call(self, x, l):
-        x_feat = self.img_proj(x)
-        l_feat = self.lang_proj(l)
-        fused = tf.concat([x_feat, l_feat], axis=-1)
-        return self.fusion_mlp(fused)
-
-class ActionPredictor(layers.Layer):
-    """动作条件预测器 (TensorFlow 版本)"""
-    def __init__(self, latent_dim=256, **kwargs):
-        super().__init__(**kwargs)
-        self.act_proj = layers.Dense(latent_dim, activation='gelu')
-
-        self.predictor_net = models.Sequential([
-            layers.Dense(latent_dim * 2),
-            layers.LayerNormalization(),
-            layers.Activation('gelu'),
-            layers.Dense(latent_dim)
-        ])
-
-    def call(self, s_t, a_t):
-        a_feat = self.act_proj(a_t)
-        combined = tf.concat([s_t, a_feat], axis=-1)
-        return self.predictor_net(combined)
-
-class VLA_JEPA(models.Model):
-    """完整的 VLA-JEPA 架构 (TensorFlow 版本)"""
-    def __init__(self, img_dim=1024, lang_dim=512, act_dim=64, latent_dim=256, ema_tau=0.996, **kwargs):
-        super().__init__(**kwargs)
-        self.ema_tau = ema_tau
-
-        self.context_encoder = VisionLanguageEncoder(latent_dim)
-        self.predictor = ActionPredictor(latent_dim)
-        self.target_encoder = VisionLanguageEncoder(latent_dim)
-
-        # 在 TensorFlow 中设置网络不参与训练梯度更新
-        self.target_encoder.trainable = False
-
-    def build(self, input_shape):
-        super().build(input_shape)
-        # [将目标编码器的初始权重硬同步为与上下文编码器一致]
-        self.target_encoder.set_weights(self.context_encoder.get_weights())
-
-    def update_target_encoder(self):
-        """利用张量代数执行 EMA 权重更新"""
-        ctx_weights = self.context_encoder.get_weights()
-        tgt_weights = self.target_encoder.get_weights()
-
-        new_weights = [
-            self.ema_tau * tgt_w + (1 - self.ema_tau) * ctx_w
-            for ctx_w, tgt_w in zip(ctx_weights, tgt_weights)
-        ]
-        self.target_encoder.set_weights(new_weights)
-
-    def call(self, inputs, training=None):
-        x_t, x_t_next, l, a_t = inputs
-        s_t = self.context_encoder(x_t, l)
-        s_t_next_pred = self.predictor(s_t, a_t)
-
-        # [使用 tf.stop_gradient 严格阻断由后续损失计算引起的目标网络反向传播]
-        s_t_next_target = tf.stop_gradient(self.target_encoder(x_t_next, l))
-
-        loss = tf.reduce_mean(tf.square(s_t_next_pred - s_t_next_target))
-        self.add_loss(loss)
-
-        return s_t_next_pred, s_t_next_target
 ```
 
 ## 小结

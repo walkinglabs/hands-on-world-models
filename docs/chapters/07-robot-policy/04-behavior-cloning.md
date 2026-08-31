@@ -60,8 +60,7 @@ Ross 和 Bagnell 分析了监督式模仿学习中的分布偏移：若学习策
 
 (**首先，我们导入深度学习张量计算所需的依赖库，并严谨地生成合成的专家演示数据。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.utils.data import TensorDataset, DataLoader
@@ -97,8 +96,7 @@ print(f"专家动作张量维度: {expert_actions.shape}")
 
 (**接着，我们定义用于模仿专家行为的深度神经网络架构，并构建用于批量梯度优化的数据加载器。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 # 3. 定义策略网络架构 (前馈多层感知机)
 class BehavioralCloningPolicy(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -131,8 +129,7 @@ optimizer = torch.optim.Adam(policy_net.parameters(), lr=0.01)
 
 (**最后，我们执行标准的监督学习训练微循环，通过反向传播算法最小化动作重构的经验风险。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 num_epochs = 50
 loss_history = []
 

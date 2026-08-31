@@ -1,5 +1,13 @@
 # 物理仿真与 MuJoCo 基础
 
+> **本章导读**
+>
+> **讲什么：** 本章讨论机器人策略在哪里学习、怎样从仿真走向现实。我们从刚体与接触的数值模拟开始，扩展到 GPU 并行采样，再用域随机化和特权蒸馏处理虚实差距，并加入想象强化学习、遥操作与人在回路，让失败数据能够回到训练过程。
+>
+> **为什么不能把仿真器当成现实的复制品：** 在仿真中训练机械臂安全、快速且容易重复，但摩擦系数偏一点、相机晚一帧或物体比模型更软，都可能让现实动作失败。仿真的价值不是保证现实完全相同，而是提供可控制的试验场；要把策略带出去，还必须主动暴露差异、识别差异并在真实失败处修正。
+>
+> **故事线：** `建立可计算的刚体与接触世界 → 并行生成大量交互 → 随机化未知物理参数 → 用特权信息帮助策略学习 → 在模型想象中继续试错 → 让人类示范与干预修补现实失败`
+
 在探讨具身智能（Embodied AI）和基于世界模型（World Models）的强化学习时，我们不可避免地需要一个能够以极高保真度模拟真实物理法则的环境。在过去的十年中，物理仿真器在机器人学和强化学习领域经历了从“视觉优先的渲染引擎”向“动力学优先的科学计算工具”的范式转变。
 
 机器人控制要求仿真器在速度、稳定性与接触动力学精度之间作出明确取舍；仿真误差是否被闭环放大，取决于系统稳定性，不能一概说成指数增长。Todorov 等人提出 MuJoCo（Multi-Joint dynamics with Contact），采用广义坐标，并把接触动力学写成凸优化问题 [[Todorov et al., 2012]](https://doi.org/10.1109/IROS.2012.6386109)。这正是该论文能够直接支持的技术贡献。
@@ -93,8 +101,7 @@ $$\mathbf{q}_{t+1} = \mathbf{q}_t + \mathbf{v}_{t+1} \cdot \Delta t$$
 
 (**定义 XML 模型、初始化 MuJoCo 引擎并执行一次完整的前向动力学与积分迭代**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import mujoco
 import numpy as np
 import torch
@@ -149,64 +156,6 @@ next_q_tensor = torch.tensor(data.qpos, dtype=torch.float32)
 next_v_tensor = torch.tensor(data.qvel, dtype=torch.float32)
 
 print(f"单步数值积分后的系统状态 (转为 PyTorch Tensor) - 位置: {next_q_tensor.item():.4f}, 速度: {next_v_tensor.item():.4f}")
-```
-
-```{.python .input}
-#@tab tensorflow
-import mujoco
-import numpy as np
-import tensorflow as tf
-
-# 纯手写定义一个极简的带单向铰链（hinge）的单摆模型的 MJCF XML 字符串
-xml_string = """
-<mujoco>
-  <option gravity="0 0 -9.81" timestep="0.01"/>
-  <worldbody>
-    <light pos="0 1 1" dir="0 -1 -1" diffuse="1 1 1"/>
-    <body name="pendulum" pos="0 0 1">
-      <joint name="hinge" type="hinge" axis="0 1 0" pos="0 0 0"/>
-      <geom type="capsule" size="0.05 0.5" pos="0 0 -0.5" mass="1.0" rgba="0.8 0.2 0.2 1"/>
-    </body>
-  </worldbody>
-</mujoco>
-"""
-
-# 步骤 1：将静态的 XML 字符串加载编译为不变的底层 mjModel 结构（包含了独立于时间的物理拓扑、质量分布信息）
-model = mujoco.MjModel.from_xml_string(xml_string)
-# 步骤 2：基于固定的模型分配连续内存，创建 mjData 结构（包含了随时间瞬息万变的状态量：q, v 等）
-data = mujoco.MjData(model)
-
-# 人为设置系统的初始广义坐标 q (对应由于重力下垂的单摆初始抬起角度) 和初始广义速度 v (初态角速度)
-data.qpos[0] = 1.0  # 约抬起 57 度
-data.qvel[0] = 0.0
-
-# 记录当前的物理瞬像
-print(f"初始物理状态 - 位置(q): {data.qpos[0]:.4f}, 速度(v): {data.qvel[0]:.4f}")
-
-# 执行一次干净的纯前向运动学计算（此函数仅更新空间中的笛卡尔位置和各种雅可比变换，完全不步进时间）
-mujoco.mj_forward(model, data)
-
-# 在数学上提取系统的总质量矩阵 M(q) (由于当前是极为纯粹的单摆系统，退化为一个 1x1 的标量矩阵)
-# 由于 MuJoCo 为追求极限性能，其底层质量矩阵默认以稀疏的一维 C 数组形式存储，
-# 因此我们必须利用官方专门提供的 mj_fullM 函数将其反算回我们熟悉的稠密矩阵表示。
-nv = model.nv
-M_dense = np.zeros((nv, nv))
-mujoco.mj_fullM(model, M_dense, data.qM)
-print(f"当前严谨物理姿态下的稠密质量矩阵 M(q):\n {M_dense}")
-
-# 提取由几何非线性和万有引力主导的科里奥利力与重力补偿偏置项 c(q, v)
-c_gravity_coriolis = data.qfrc_bias
-print(f"当前时间断面下的科里奥利力与重力非线性偏置 c(q, v): {c_gravity_coriolis}")
-
-# 执行最具含金量的单步完整引擎仿真核心流程：
-# (它内部连贯执行了计算实时受力、启动 LCP 求解器解算出非穿透接触、求解最新加速度、并完成最终的半隐式欧拉积分，最后强行将系统时间指针前推 Delta t)
-mujoco.mj_step(model, data)
-
-# 仿真步进完成后，为了供给后续的神经网络策略网络读取计算，我们将纯 Numpy 数组转换为 TensorFlow 张量
-next_q_tensor = tf.convert_to_tensor(data.qpos, dtype=tf.float32)
-next_v_tensor = tf.convert_to_tensor(data.qvel, dtype=tf.float32)
-
-print(f"单步数值积分后的系统状态 (转为 TensorFlow Tensor) - 位置: {next_q_tensor.numpy()[0]:.4f}, 速度: {next_v_tensor.numpy()[0]:.4f}")
 ```
 
 通过这段看似简短却深邃的代码，我们极其透彻地揭开了黑盒仿真器的底层神秘面纱。可以看到，动力学引擎在运行时的每一步迭代计算（如提取物理质量矩阵、利用 LCP 求解加速度、并驱动数值积分），全都在工程上完美无缝地印证了我们在前几节中推导的极其严格的数学物理方程体系。

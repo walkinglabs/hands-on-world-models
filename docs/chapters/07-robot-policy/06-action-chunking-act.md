@@ -63,8 +63,9 @@ $$
 
 为了解决多模态问题，ACT 采用了一个极为优雅的架构设计：将条件变分自编码器（Conditional Variational Autoencoder, CVAE）与 Transformer 结合。
 
-> [!NOTE]
-> 犹如让一个极其聪明的学生（解码器）去复刻大师的画作（专家轨迹），但大师的思路是多变的，可能是印象派也可能是立体派。我们不让学生直接死记硬背平均特征，而是通过一个极小维度的暗号（隐变量 $Z$）来传递大师当前的具体流派。这个暗号在测试时是从一个标准的抽奖箱（先验分布）中盲抽的；但在训练时，我们允许通过一个偷窥孔（编码器）看着大师的画作来调整抽奖箱中各类暗号的概率（后验分布），从而迫使学生根据不同的暗号画出不同流派的画作，最终实现多模态的精准映射。
+::: info 说明
+犹如让一个极其聪明的学生（解码器）去复刻大师的画作（专家轨迹），但大师的思路是多变的，可能是印象派也可能是立体派。我们不让学生直接死记硬背平均特征，而是通过一个极小维度的暗号（隐变量 $Z$）来传递大师当前的具体流派。这个暗号在测试时是从一个标准的抽奖箱（先验分布）中盲抽的；但在训练时，我们允许通过一个偷窥孔（编码器）看着大师的画作来调整抽奖箱中各类暗号的概率（后验分布），从而迫使学生根据不同的暗号画出不同流派的画作，最终实现多模态的精准映射。
+:::
 
 我们需要推导 ACT 中 CVAE 的变分下界。令 $O$ 表示当前的视觉与关节状态观测，$A$ 表示我们需要预测的专家动作块（Action Chunk），$Z$ 为表征多模态意图的低维隐变量（Latent Variable）。
 
@@ -120,8 +121,7 @@ ACT 的网络结构严格分为两条支路：
 
 (**定义ACT的核心CVAE与Transformer结构**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -228,88 +228,6 @@ print(f"训练模式预测动作维度: {pred_a.shape}") # 预期 (100, 2, 14)
 # 测试时调用
 pred_a_test, _, _ = model(dummy_obs, None)
 print(f"推理模式预测动作维度: {pred_a_test.shape}")
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-from tensorflow.keras import layers
-
-class ACTCore(tf.keras.Model):
-    def __init__(self, action_dim=14, chunk_size=100, latent_dim=32, embed_dim=512):
-        super().__init__()
-        self.chunk_size = chunk_size
-        self.latent_dim = latent_dim
-
-        # 简化的[CLS]初始化
-        self.cls_embed = tf.Variable(tf.random.normal((1, 1, embed_dim)))
-        self.action_proj = layers.Dense(embed_dim)
-
-        # 为保持极简，这里使用 MultiHeadAttention 组装简易Encoder/Decoder块
-        self.enc_attn = layers.MultiHeadAttention(num_heads=8, key_dim=embed_dim//8)
-        self.enc_ffn = layers.Dense(2048, activation='relu')
-        self.enc_out = layers.Dense(embed_dim)
-
-        self.latent_proj = layers.Dense(latent_dim * 2)
-        self.z_proj = layers.Dense(embed_dim)
-
-        self.query_embed = tf.Variable(tf.random.normal((chunk_size, 1, embed_dim)))
-
-        self.dec_attn = layers.MultiHeadAttention(num_heads=8, key_dim=embed_dim//8)
-        self.dec_ffn = layers.Dense(2048, activation='relu')
-        self.dec_out = layers.Dense(embed_dim)
-
-        self.action_head = layers.Dense(action_dim)
-
-    def call(self, obs_features, action_sequence=None, training=False):
-        # TensorFlow 中通常 batch 为第一维，这里为了兼容上面的维度描述我们转置或显式指定
-        # 假设输入同样为 (Seq_len, Batch, Embed_dim) 形式
-        batch_size = tf.shape(obs_features)[1]
-
-        if action_sequence is not None:
-            a_embed = self.action_proj(action_sequence)
-            cls_token = tf.tile(self.cls_embed, [1, batch_size, 1])
-            enc_input = tf.concat([cls_token, a_embed, obs_features], axis=0)
-
-            # 简易 Encoder
-            attn_out = self.enc_attn(enc_input, enc_input)
-            enc_output = self.enc_out(self.enc_ffn(attn_out)) + attn_out
-
-            cls_out = enc_output[0] # (Batch, Embed_dim)
-            latent_params = self.latent_proj(cls_out)
-            mu, logvar = tf.split(latent_params, 2, axis=-1)
-
-            std = tf.exp(0.5 * logvar)
-            eps = tf.random.normal(tf.shape(std))
-            z = mu + eps * std
-        else:
-            z = tf.random.normal((batch_size, self.latent_dim))
-            mu, logvar = None, None
-
-        z_embed = tf.expand_dims(self.z_proj(z), axis=0)
-        memory = tf.concat([z_embed, obs_features], axis=0)
-
-        queries = tf.tile(self.query_embed, [1, batch_size, 1])
-
-        # 简易 Decoder (Cross Attention)
-        dec_attn_out = self.dec_attn(queries, memory)
-        dec_output = self.dec_out(self.dec_ffn(dec_attn_out)) + dec_attn_out
-
-        pred_actions = self.action_head(dec_output)
-
-        return pred_actions, mu, logvar
-
-# 模型测试
-batch_size, chunk_size, action_dim = 2, 100, 14
-embed_dim = 512
-obs_feat_len = 50
-
-model = ACTCore(action_dim=action_dim, chunk_size=chunk_size, embed_dim=embed_dim)
-dummy_obs = tf.random.normal((obs_feat_len, batch_size, embed_dim))
-dummy_actions = tf.random.normal((chunk_size, batch_size, action_dim))
-
-pred_a, _, _ = model(dummy_obs, dummy_actions)
-print(f"TensorFlow 预测动作维度: {pred_a.shape}")
 ```
 
 ## 7.6.6 小结
