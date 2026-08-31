@@ -17,7 +17,6 @@
   /* ---- Typography: Apple 风格字体栈 ---- */
   --hwm-doc-font-size: 17px;
   --hwm-doc-line-height: 1.7;
-  --vp-layout-top-height: 64px;
 
   --font-sans:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
@@ -95,12 +94,6 @@
   --radius-xl: 18px;
   --radius-2xl: 24px;
   --radius-full: 9999px;
-}
-
-@media (min-width: 640px) {
-  :root {
-    --vp-layout-top-height: 44px;
-  }
 }
 
 /* ---- Dark Mode Overrides ---- */

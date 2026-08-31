@@ -9,7 +9,6 @@ import {
   PopoverTrigger,
 } from "reka-ui";
 import { ChevronsDown, ChevronsUp, Moon, Settings, Sun } from "lucide-vue-next";
-import MaintenanceBanner from "./MaintenanceBanner.vue";
 import ReadingProgress from "./ReadingProgress.vue";
 
 const { frontmatter, isDark } = useData();
@@ -269,10 +268,6 @@ onMounted(() => {
 <template>
   <PopoverRoot v-model:open="settingsOpen">
     <DefaultTheme.Layout>
-      <template #layout-top>
-        <MaintenanceBanner />
-      </template>
-
       <template v-if="showReaderTools" #sidebar-nav-before>
         <Teleport defer to=".VPSidebar">
           <div class="hwm-sidebar-toolbar">
