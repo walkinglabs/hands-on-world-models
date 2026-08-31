@@ -1,7 +1,5 @@
 # 9.6 三维占据网格预测（Occupancy Prediction）的从零开始实现
 
-:label:`sec_occupancy_scratch`
-
 在进入三维占据预测之前，我们先看 BEV 表示。BEVFormer 用网格状 BEV 查询与多相机图像交互，并结合历史 BEV 特征，支持三维目标检测和地图分割 [[Li et al., 2022]](https://arxiv.org/abs/2203.17270)。原论文没有评测轨迹规划，因此这里不把“简化下游规划”写成由该引用直接证明的实验结论。
 
 二维 BEV 特征通常沿高度聚合信息，而三维占据表示把车辆周围空间离散为体素，并预测占用或语义类别。SurroundOcc 研究多相机图像到稠密三维占用的预测 [[Wei et al., 2023]](https://arxiv.org/abs/2303.09551)，OpenOccupancy 提供占用感知基准及多模态基线 [[Xiaofeng Wang et al., 2023b]](https://arxiv.org/abs/2303.03991)，TPVFormer 则用三视图表示进行三维语义占用预测 [[Huang et al., 2023]](https://arxiv.org/abs/2302.07817)。三篇引用分别对应方法或基准贡献，而不是共同证明一个笼统的“奠定基础”判断。
@@ -17,7 +15,6 @@
 假设我们关注车辆周围的一个长方体物理空间。我们定义该空间在世界坐标系下的范围为 $[X_{\min}, X_{\max}] \times [Y_{\min}, Y_{\max}] \times [Z_{\min}, Z_{\max}]$。如果我们在三个维度上的空间分辨率（即每个微小正方体的边长）分别为 $r_x, r_y, r_z$，那么该空间可以被划分为一个三维网格，其网格的维度 $(W, H, D)$ 可以表示为：
 
 $$W = \frac{X_{\max} - X_{\min}}{r_x}, \quad H = \frac{Y_{\max} - Y_{\min}}{r_y}, \quad D = \frac{Z_{\max} - Z_{\min}}{r_z}$$
-:eqlabel:`eq_voxel_grid_dim`
 
 在这个网格系统中，每一个离散的三维坐标索引 $(i, j, k)$（其中 $0 \le i < W, 0 \le j < H, 0 \le k < D$）都唯一对应物理空间中的一个体素微元。
 
@@ -26,12 +23,10 @@ $$W = \frac{X_{\max} - X_{\min}}{r_x}, \quad H = \frac{Y_{\max} - Y_{\min}}{r_y}
 对于网格中的任意体素 $v_{i,j,k}$，它的物理状态最基础的描述是“是否被占据”（Occupied or Free）。这是一个典型的伯努利试验（Bernoulli Trial）。我们设随机变量 $O_{i,j,k} \in \{0, 1\}$ 表示该状态：
 
 $$P(O_{i,j,k} = 1) = p_{i,j,k}$$
-:eqlabel:`eq_occ_prob`
 
 当我们进一步考虑该空间的语义类别（例如：车辆、行人、道路、建筑物等）时，状态空间将扩展为多项分布（Multinomial Distribution）。假设共有 $C$ 个语义类别，并额外增加一个表示“游离态（Free）”的类别，总类别数为 $K = C + 1$。则我们希望模型预测的是条件概率分布：
 
 $$\hat{y}_{i,j,k}^{(c)} = P(S_{i,j,k} = c \mid \mathbf{I})$$
-:eqlabel:`eq_occ_semantic`
 
 其中 $\mathbf{I}$ 表示输入的多视角环视图像序列，$\hat{y}_{i,j,k}^{(c)}$ 表示体素属于第 $c$ 类的概率。
 
@@ -48,7 +43,6 @@ $$\hat{y}_{i,j,k}^{(c)} = P(S_{i,j,k} = c \mid \mathbf{I})$$
 通过特征向量 $\mathbf{f}$ 与概率分布 $\mathbf{p}$ 的外积，我们得到该像素对应的视锥体（Frustum）特征 $\mathbf{F} \in \mathbb{R}^{D \times F}$：
 
 $$\mathbf{F} = \mathbf{p} \otimes \mathbf{f} \implies F_{d, f} = p_d \cdot f_f$$
-:eqlabel:`eq_outer_product`
 
 这意味着，二维像素的特征被沿着相机光心出发的射线，按照深度概率权重播撒到了三维空间中。
 
@@ -58,8 +52,7 @@ $$\mathbf{F} = \mathbf{p} \otimes \mathbf{f} \implies F_{d, f} = p_d \cdot f_f$$
 
 (**我们先定义三维体素查询的初始化代码**)：
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -98,14 +91,12 @@ print("Voxel queries shape:", queries.shape) # 预期: [2, 64, 8, 100, 100]
 对于任意一个三维体素中心点 $(x, y, z)$，我们可以通过相机的内外参矩阵 $\mathbf{P} \in \mathbb{R}^{3 \times 4}$ 将其投影到第 $i$ 个相机的图像平面像素坐标 $(u_i, v_i)$ 上：
 
 $$d [u_i, v_i, 1]^T = \mathbf{P} \cdot [x, y, z, 1]^T$$
-:eqlabel:`eq_3d_to_2d_proj`
 
 其中 $d$ 是该三维点在相机坐标系下的深度值。
 
 如果投影点 $(u_i, v_i)$ 落在了图像边界内，这就意味着该相机能够“看到”这个体素。在此基础上，我们可以使用可变形注意力机制（Deformable Attention）在图像特征图上采样局部特征，来更新体素查询：
 
 $$\mathbf{Q}_{x,y,z}' = \mathbf{Q}_{x,y,z} + \sum_{i \in \mathcal{V}_{x,y,z}} \text{DeformAttn}(\mathbf{Q}_{x,y,z}, \mathbf{F}_i, \mathbf{P}(x,y,z))$$
-:eqlabel:`eq_spatial_cross_attn`
 
 其中 $\mathcal{V}_{x,y,z}$ 表示能观测到该体素的相机集合，$\mathbf{F}_i$ 是第 $i$ 视角的图像特征。
 
@@ -119,8 +110,7 @@ $$\mathbf{Q}_{x,y,z}' = \mathbf{Q}_{x,y,z} + \sum_{i \in \mathcal{V}_{x,y,z}} \t
 
 (**我们利用简化的几何投影机制来实现 3D 到 2D 的特征采样更新**)：
 
-```{.python .input}
-#@tab pytorch
+```python
 class SimpleSpatialCrossAttention(nn.Module):
     def __init__(self, embed_dims):
         super().__init__()
@@ -160,8 +150,7 @@ class SimpleSpatialCrossAttention(nn.Module):
 
 (**定义占据网格的三维卷积预测头**)：
 
-```{.python .input}
-#@tab pytorch
+```python
 class OccupancyHead(nn.Module):
     def __init__(self, in_channels, num_classes):
         super().__init__()
@@ -193,7 +182,6 @@ print("Final logits shape:", final_logits.shape) # [2, 17, 8, 100, 100]
 因此，工程上强制要求使用加权焦点损失（Weighted Focal Loss）。对于类别 $c$ 的体素标签 $y$ 和预测概率 $\hat{y}$，Focal Loss 定义为：
 
 $$L_{focal} = - \alpha_c (1 - \hat{y})^\gamma y \log(\hat{y})$$
-:eqlabel:`eq_focal_loss`
 
 其中 $\alpha_c$ 是针对不同类别的频率所设置的静态权重（频率越低，权重越高），$\gamma$ 是聚焦参数（通常取 2.0），用于降低易分样本（高置信度的 Free 体素）的梯度贡献。
 
@@ -213,7 +201,3 @@ $$L_{focal} = - \alpha_c (1 - \hat{y})^\gamma y \log(\hat{y})$$
 2. 尝试修改 `VoxelQueryGenerator`，不再使用 `nn.Parameter` 初始化全局查询向量，而是用 `torch.meshgrid` 生成网格的三维绝对坐标，并对其应用一层多层感知机（MLP）和正弦位置编码（Sine Positional Encoding）。这会对模型的收敛速度产生什么影响？
    - **提示**：查阅 Transformer 的位置编码机制，思考显式提供空间坐标是否能帮助模型更快学习到 2D-to-3D 的映射几何关系。
 3. 仔细思考 TPVFormer 将 $V \in \mathbb{R}^{W \times H \times D}$ 降维到三个二维张量的思路。这种隐式表示在表达一个中空的管状物体（如隧道）时，会出现哪些信息模糊或混叠？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

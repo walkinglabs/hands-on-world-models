@@ -143,8 +143,7 @@ $$
 
 (**为了将理论落地，我们展示一个简化但严密的联合嵌入预测架构（JEPA）核心模块实现。**) 我们将通过 PyTorch 实现包含了特征提取、前向预测以及 VICReg 正则化损失计算的模型雏形。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

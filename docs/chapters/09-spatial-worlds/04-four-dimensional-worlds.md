@@ -44,8 +44,7 @@ $$ \log P(\mathbf{o}_{1:T} \mid \mathbf{a}_{1:T}) \geq \mathbb{E}_{Q} \left[ \su
 
 (**下面的代码定义了一个极度简化的 4D 时空动力学推演块。**) 为了凸显其对时空张量的处理逻辑，我们展示了该模块如何分离处理 3D 空间维度和 1D 时间维度。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 
@@ -94,62 +93,6 @@ class SpatialTemporalBlock(nn.Module):
 
         # 将形状严密地逆向映射回 4D 张量格式 (B, T, C, D, H, W)
         s_next = s_temporal.view(B, D, H, W, T, C).permute(0, 4, 5, 1, 2, 3)
-        return s_next
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-
-class SpatialTemporalBlock(tf.keras.layers.Layer):
-    """一个简化的 4D 时空推演块，结合了 3D 空间卷积和时间注意力。"""
-    def __init__(self, channels, num_heads, **kwargs):
-        super().__init__(**kwargs)
-        # 3D 卷积用于捕捉空间局部几何特征 (深度, 高度, 宽度)
-        self.spatial_conv3d = tf.keras.layers.Conv3D(
-            filters=channels, kernel_size=3, padding='same'
-        )
-        # 多头注意力机制用于捕捉时间序列上的物理演化与长程依赖
-        self.temporal_attn = tf.keras.layers.MultiHeadAttention(
-            num_heads=num_heads, key_dim=channels
-        )
-        self.layer_norm1 = tf.keras.layers.LayerNormalization()
-        self.layer_norm2 = tf.keras.layers.LayerNormalization()
-
-    def call(self, s_t):
-        """
-        输入 s_t: 隐状态张量，形状为 (批量大小, 时间步, 深度, 高度, 宽度, 通道数)
-                  即 (B, T, D, H, W, C)
-        输出 s_next: 预测并更新后的下一层状态序列，形状不变
-        """
-        input_shape = tf.shape(s_t)
-        B, T = input_shape[0], input_shape[1]
-        D, H, W = input_shape[2], input_shape[3], input_shape[4]
-        C = input_shape[5]
-
-        # 1. 空间特征提取
-        # 将时间和批量维度折叠，进行完全并行的 3D 卷积
-        s_spatial = tf.reshape(s_t, [B * T, D, H, W, C])
-        s_spatial_conv = self.spatial_conv3d(s_spatial)
-        # 恢复形状并施加残差连接
-        s_spatial = tf.reshape(s_spatial_conv, [B, T, D, H, W, C]) + s_t
-
-        # 2. 时间特征演化
-        # 将空间坐标全部压平，以 T 作为序列维度供注意力模型处理
-        # 转换至形状: (B * D * H * W, T, C)
-        s_temporal = tf.transpose(s_spatial, perm=[0, 2, 3, 4, 1, 5])
-        s_temporal = tf.reshape(s_temporal, [-1, T, C])
-        s_temporal = self.layer_norm1(s_temporal)
-
-        # 执行时序信息交融
-        attn_out = self.temporal_attn(s_temporal, s_temporal, s_temporal)
-        s_temporal = s_temporal + attn_out
-        s_temporal = self.layer_norm2(s_temporal)
-
-        # 还原回高维张量形式 (B, T, D, H, W, C)
-        s_next = tf.reshape(s_temporal, [B, D, H, W, T, C])
-        s_next = tf.transpose(s_next, perm=[0, 4, 1, 2, 3, 5])
-
         return s_next
 ```
 

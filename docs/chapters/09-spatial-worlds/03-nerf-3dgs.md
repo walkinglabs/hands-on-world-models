@@ -87,8 +87,7 @@ $$ \mathcal{L} = \sum_{\mathbf{r} \in \mathcal{R}} \left\| \hat{C}(\mathbf{r}) -
 
 (**下面，我们将用代码严谨地复现NeRF的前向计算流程**)，包括射线采样、位置编码和离散体渲染。为了简洁，我们省略了实际复杂的射线生成（即相机参数解析）和分层采样策略。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 

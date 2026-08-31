@@ -1,5 +1,13 @@
 # 世界模型的评估原则与核心指标
 
+> **本章导读**
+>
+> **讲什么：** 本章把前面建成的模型放到同一套检验框架中。我们会区分组件指标与系统结果，检查单步预测、多步漂移、动作反事实、陌生场景和下游控制，再从稳定失败中提出解释、设计对照实验，并形成下一台世界模型的最小改动方案。
+>
+> **为什么漂亮样例和较低损失不能作为终点：** 一个视频模型可以生成清晰画面，却在替换方向盘动作后仍输出相同未来；一个潜在模型也可以有很低的训练误差，却被规划器带到数据之外并自信预测。世界模型的价值取决于它是否保留任务所需的信息、是否响应动作，以及错误是否会在闭环中被放大。
+>
+> **故事线：** `先检查预测与不确定性 → 再检查动作是否改变未来 → 展开长时程并接入下游任务 → 在分布外场景寻找稳定失败 → 比较多种解释 → 用可证伪实验设计下一台模型`
+
 在深度学习的发展历程中，评估（Evaluation）始终是引导模型演进的灯塔。对于监督学习而言，分类准确率或均方误差是直观且明确的评估指标；对于生成模型，我们有基于人类视觉感知的感知度量（如FID分数）。然而，当我们涉足“世界模型”（World Models）这一领域时，如何评估一个模型是否真正“理解”了世界的运作规律，便成了一个极具挑战性的开放问题。
 
 在本节中，我们将深入探讨世界模型的评估原则。我们将从早期模型架构的历史背景出发，严格推导从确定性预测到概率性推断的核心数学指标，并最终落脚于代码实现。
@@ -96,8 +104,7 @@ $$ \mathcal{L}_{\text{Utility}} = \sum_{k=0}^{K} \Big[ l^r(r_{t+k}, \hat{r}_t^k)
 
 为了将上述理论落实，我们将实现多维高斯分布情况下的核心评估指标，包括负对数似然（NLL）和 KL 散度计算。为了保证数值稳定性，在实践中我们通常让神经网络输出均值 $\boldsymbol{\mu}$ 以及对数方差 $\ln(\boldsymbol{\sigma}^2)$。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.distributions as D
@@ -151,52 +158,6 @@ mse, nll, kl = evaluator(prior_mu, prior_logvar, posterior_mu, posterior_logvar,
 print(f"MSE 误差: {mse.item():.4f}")
 print(f"负对数似然 (NLL): {nll.item():.4f}")
 print(f"KL散度动力学惩罚: {kl.item():.4f}")
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-import tensorflow_probability as tfp
-tfd = tfp.distributions
-
-class WorldModelEvaluator(tf.keras.Model):
-    def __init__(self):
-        super().__init__()
-
-    def call(self, prior_mu, prior_logvar, posterior_mu, posterior_logvar, target_z):
-        # (计算确定性状态预测误差 (MSE))
-        prior_std = tf.exp(0.5 * prior_logvar)
-        posterior_std = tf.exp(0.5 * posterior_logvar)
-
-        mse_loss = tf.reduce_mean(tf.keras.losses.MSE(target_z, prior_mu))
-
-        # (构建先验与后验的概率分布对象)
-        prior_dist = tfd.Normal(loc=prior_mu, scale=prior_std)
-        posterior_dist = tfd.Normal(loc=posterior_mu, scale=posterior_std)
-
-        # (计算概率分布的独立高斯对数似然 (NLL))
-        nll_loss = -tf.reduce_mean(tf.reduce_sum(prior_dist.log_prob(target_z), axis=-1))
-
-        # (计算动力学匹配的 KL 散度)
-        kl_divergence = tf.reduce_mean(tf.reduce_sum(tfd.kl_divergence(posterior_dist, prior_dist), axis=-1))
-
-        return mse_loss, nll_loss, kl_divergence
-
-# 构造模拟数据
-batch_size, latent_dim = 32, 64
-prior_mu = tf.random.normal((batch_size, latent_dim))
-prior_logvar = tf.zeros((batch_size, latent_dim))
-
-posterior_mu = prior_mu + 0.1 * tf.random.normal((batch_size, latent_dim))
-posterior_logvar = -2.0 * tf.ones((batch_size, latent_dim))
-
-target_z = posterior_mu + 0.05 * tf.random.normal((batch_size, latent_dim))
-
-evaluator = WorldModelEvaluator()
-mse, nll, kl = evaluator(prior_mu, prior_logvar, posterior_mu, posterior_logvar, target_z)
-print(f"MSE 误差: {mse.numpy():.4f}")
-print(f"负对数似然 (NLL): {nll.numpy():.4f}")
-print(f"KL散度动力学惩罚: {kl.numpy():.4f}")
 ```
 
 在这个实现中，我们可以清晰地看到数学公式是如何一步步转化为张量运算的。尤其是对数方差的处理，在深度学习中这是一种极其重要且广泛使用的技巧，它避免了神经网络在直接输出方差时可能产生的负数问题。

@@ -87,8 +87,7 @@ $$\mathcal{L}_{\text{Diffusion}} = \mathbb{E}_{z_0, \epsilon, n} \left[ \| \epsi
 
 下面，我们将实现一个简化的、基于 Transformer 的动作条件世界模型（Action-Conditioned World Model）核心架构。为了保持严谨性，我们将使用 PyTorch 演示如何将过去的状态 Token、当前的动作以及环境上下文结合，并应用因果掩码。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -192,21 +191,9 @@ class SimpleActionConditionedWorldModel(nn.Module):
         return logits
 ```
 
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-
-# 提供一份等效的占位实现，确保与 PyTorch 版本的接口逻辑一致。
-# 在实际部署中，TensorFlow 用户同样可以使用 tf.keras.layers.MultiHeadAttention
-# 并传入 use_causal_mask=True 来实现相同的时间流约束。
-class DrivingWorldModelBlockTF(tf.keras.layers.Layer):
-    pass
-```
-
 (**让我们验证上述模型的输入输出维度，确保其符合我们对张量计算的严谨预期。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 # 初始化超参数
 batch_size = 4
 seq_length = 16

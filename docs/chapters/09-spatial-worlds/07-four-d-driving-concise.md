@@ -1,7 +1,5 @@
 # 4D 自动驾驶预测模型的简洁实现
 
-:label:sec_4d_driving_concise
-
 在自动驾驶的发展历程中，对物理世界的表征经历了从二维图像面到三维鸟瞰图（Bird's-Eye-View, BEV）的演进。然而，真实的物理世界是动态的。为了在高速行驶或复杂城市路况中做出安全决策，自动驾驶系统不仅需要理解当前的静态空间结构，还必须预测未来时刻的动态演化。这种在三维空间维度 $(X, Y, Z)$ 上引入时间维度 $(T)$ 的建模方式，构成了 4D 空间世界模型（4D Spatial World Models）的核心。
 
 UniAD 把检测、跟踪、地图、运动预测与规划统一到基于查询的 Transformer 框架中，并在 BEV 表征上完成多任务交互 [[Yihan Hu et al., 2023]](https://arxiv.org/abs/2212.10156)；它不是“简单的循环神经网络展开”。二维 BEV 的柱状表示会压缩高度信息，而 OccWorld 等工作进一步使用三维占用表示预测未来场景演化 [[Zheng et al., 2023]](https://arxiv.org/abs/2311.16038)。
@@ -13,14 +11,12 @@ UniAD 把检测、跟踪、地图、运动预测与规划统一到基于查询�
 要理解 4D 模型如何预测未来，我们首先回想高中物理中最基础的匀速直线运动方程。假设一辆汽车在初始时刻 $t$ 的位置为标量 $x_t$，速度为常数 $v_t$，那么经过时间区间 $\Delta t$ 后，汽车在 $t+1$ 时刻的位置 $x_{t+1}$ 可以严格表示为：
 
 $$x_{t+1} = x_t + v_t \Delta t$$
-:eqlabel:eq_kinematics_scalar
 
 在该公式中，$x_t$ 描述了当前状态，而 $v_t \Delta t$ 描述了状态的转移量。现在，我们将这一维度的标量推广到完整的三维空间中。在自动驾驶中，世界状态不再是一个单一的位置标量，而是一个致密的三维特征张量。设 $t$ 时刻的三维空间特征为 $\mathbf{S}_t \in \mathbb{R}^{C \times Z \times H \times W}$，其中 $C$ 为特征通道数，$Z$ 为空间高度维度，$H$ 和 $W$ 分别代表空间的长度和宽度。
 
 如同物理学中状态的演化受到物体内在运动和外力作用，自动驾驶场景中的三维状态演化受到动态障碍物（如其他车辆、行人）的运动律以及自车动作（Ego-action，如转向、加速）的影响。我们引入自车动作控制向量 $\mathbf{a}_t \in \mathbb{R}^{D_a}$，并将该公式升级为由深度神经网络参数化的高度非线性状态转移算子 $\mathcal{F}_\theta$：
 
 $$\mathbf{S}_{t+1} = \mathcal{F}_\theta(\mathbf{S}_t, \mathbf{a}_t)$$
-:eqlabel:eq_4d_transition_tensor
 
 在这里，状态转移算子 $\mathcal{F}_\theta$ 的作用等价于在一组微分方程上进行数值积分。由于直接建模 $\mathcal{F}_\theta$ 异常困难，我们通常将其拆解为空间和时间两个维度的相互交织。
 
@@ -33,14 +29,12 @@ $$\mathbf{S}_{t+1} = \mathcal{F}_\theta(\mathbf{S}_t, \mathbf{a}_t)$$
 对于单个体素，这是一个典型的二分类问题。其伯努利分布下的交叉熵损失函数（Cross-Entropy Loss）为：
 
 $$l(z,y,x) = - \left[ o_{z,y,x} \log p_{z,y,x} + (1 - o_{z,y,x}) \log (1 - p_{z,y,x}) \right]$$
-:eqlabel:eq_bce_scalar
 
 其中 $o_{z,y,x} \in \{0, 1\}$ 是该位置是否被占据的真实标签（Ground Truth），$p_{z,y,x}$ 是模型预测的概率标量。
 
 为了在深度学习框架中高效计算，我们必须将其矢量化到完整的张量维度。设在批次大小（Batch Size）为 $B$ 的情况下，模型的预测输出张量为 $\mathbf{\hat{O}} \in (0, 1)^{B \times Z \times H \times W}$，真实标签张量为 $\mathbf{O} \in \{0, 1\}^{B \times Z \times H \times W}$。利用矩阵的点积与哈达玛乘积（Hadamard product），全空间的时间步占位损失 $\mathcal{L}_{occ}$ 可被严谨定义为：
 
 $$\mathcal{L}_{occ} = -\frac{1}{B \cdot Z \cdot H \cdot W} \sum_{b=1}^{B} \sum_{z=1}^{Z} \sum_{y=1}^{H} \sum_{x=1}^{W} \left( \mathbf{O} \odot \log(\mathbf{\hat{O}}) + (1 - \mathbf{O}) \odot \log(1 - \mathbf{\hat{O}}) \right)$$
-:eqlabel:eq_bce_tensor
 
 通过最小化该公式，我们迫使模型在隐空间中学习到准确的几何动力学转移规律。
 
@@ -48,8 +42,7 @@ $$\mathcal{L}_{occ} = -\frac{1}{B \cdot Z \cdot H \cdot W} \sum_{b=1}^{B} \sum_{
 
 (**接下来我们将实现一个简洁的 4D 自动驾驶预测网络**)。该网络包含一个空间特征提取器（3D 卷积）和一个时间状态转移预测器，以严密地映射出我们在前文推导的状态转移逻辑。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 
@@ -111,69 +104,6 @@ class Simple4DPredictor(nn.Module):
         return state_next, occupancy_prob
 ```
 
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-
-class Conv3DBlock(tf.keras.layers.Layer):
-    """基础的 3D 卷积块用于空间特征提取"""
-    def __init__(self, out_channels):
-        super().__init__()
-        self.conv = tf.keras.layers.Conv3D(out_channels, kernel_size=3, padding='same')
-        self.norm = tf.keras.layers.BatchNormalization()
-        self.relu = tf.keras.layers.ReLU()
-
-    def call(self, x):
-        # x 形状: (B, Z, H, W, C)
-        return self.relu(self.norm(self.conv(x)))
-
-class Simple4DPredictor(tf.keras.Model):
-    """简洁的 4D 世界模型预测器"""
-    def __init__(self, hidden_dim=64, action_dim=2):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.spatial_encoder = Conv3DBlock(hidden_dim)
-        self.action_mlp = tf.keras.Sequential([
-            tf.keras.layers.Dense(hidden_dim),
-            tf.keras.layers.ReLU()
-        ])
-        self.transition_net = tf.keras.Sequential([
-            Conv3DBlock(hidden_dim),
-            Conv3DBlock(hidden_dim)
-        ])
-        self.occupancy_decoder = tf.keras.layers.Conv3D(1, kernel_size=1)
-        self.sigmoid = tf.keras.layers.Activation('sigmoid')
-
-    def call(self, state_t, action_t):
-        """
-        state_t: 当前时刻三维状态 (B, Z, H, W, C)
-        action_t: 当前自车动作 (B, action_dim)
-        """
-        B = tf.shape(state_t)[0]
-        Z = tf.shape(state_t)[1]
-        H = tf.shape(state_t)[2]
-        W = tf.shape(state_t)[3]
-        C = tf.shape(state_t)[4]
-
-        # 1. 编码空间几何
-        spatial_features = self.spatial_encoder(state_t)
-
-        # 2. 处理并广播动作特征
-        act_feat = self.action_mlp(action_t) # (B, C)
-        act_feat_broadcast = tf.reshape(act_feat, [B, 1, 1, 1, C])
-        act_feat_broadcast = tf.tile(act_feat_broadcast, [1, Z, H, W, 1])
-
-        # 3. 状态转移融合
-        fused_state = tf.concat([spatial_features, act_feat_broadcast], axis=-1)
-        state_next = self.transition_net(fused_state)
-
-        # 4. 解码为概率分布
-        occupancy_logits = self.occupancy_decoder(state_next)
-        occupancy_prob = self.sigmoid(occupancy_logits)
-
-        return state_next, occupancy_prob
-```
-
 在上述代码中，我们明确地跟踪了张量维度的流转。动作特征通过广播张量操作延展至全空间，这在数学上等同于对全局控制信号向空间每一个局部微分单元的注入，驱动三维状态的平滑演变。
 
 ## 2025-2026 空间与 4D 世界模型开源前沿深度剖析
@@ -200,7 +130,3 @@ class Simple4DPredictor(tf.keras.Model):
 1. 推导练习：如果自车的运动不仅受到动作 $\mathbf{a}_t$ 的控制，还受到环境风阻等确定性因素的干扰，如何运用泰勒展开（Taylor Expansion）修改并在张量层面扩展该公式？
 2. 代码修改：在预测器中，我们将动作特征通过简单的扩展拼接（Concatenation）注入空间。**提示**：查阅关于空间变换网络（Spatial Transformer Networks）的文献，思考如何利用 $\mathbf{a}_t$ 直接生成仿射变换矩阵（Affine Matrix），对 `spatial_features` 进行基于物理意义的三维旋转和平移操作？
 3. 前沿思考：在使用 4D NeRF 替换传统的 3D 卷积解码器时，计算复杂度的瓶颈会转移到哪里？**提示**：思考可微渲染过程中沿射线的采样积分操作在硬件缓冲区的表现。
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:

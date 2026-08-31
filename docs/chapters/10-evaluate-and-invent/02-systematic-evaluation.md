@@ -118,8 +118,7 @@ $$ d^2(P, Q) = ||\mu_p - \mu_q||_2^2 + \text{Tr}\left(\Sigma_p + \Sigma_q - 2(\S
 
 接下来，我们以深度学习框架的标准代码规范，严谨地实现图像级别的两大基础评测指标：源自 MSE 的 PSNR，以及综合了亮度与方差的 SSIM。同时，我们也将展示如何利用预训练模型提取特征向量以备计算 FID 统计量。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn.functional as F
 import math
@@ -173,8 +172,7 @@ def calculate_ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 11
 
 对于 FID 的计算，其核心工程难点在于跨越像素空间，在深层特征流形上建立概率分布模型。以下代码展示了如何获取这些高维特征并严谨计算多维高斯分布统计量：
 
-```{.python .input}
-#@tab pytorch
+```python
 import numpy as np
 from torchvision.models import inception_v3, Inception_V3_Weights
 
