@@ -125,6 +125,7 @@ const SOURCES = new Map(
     "Rosenblatt, 1958": "https://doi.org/10.1037/h0042519",
     "Ross & Bagnell, 2010": "https://proceedings.mlr.press/v9/ross10a.html",
     "Ross et al., 2011": "https://proceedings.mlr.press/v15/ross11a.html",
+    "Salisbury & Craig, 1982": "https://doi.org/10.1177/027836498200100102",
     "Rubinstein, 1997": "https://doi.org/10.1016/S0377-2217(96)00385-2",
     "Rumelhart et al., 1986": "https://doi.org/10.1038/323533a0",
     "Salimans et al., 2016": "https://arxiv.org/abs/1606.03498",
