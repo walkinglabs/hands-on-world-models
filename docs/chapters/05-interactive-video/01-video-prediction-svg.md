@@ -1,4 +1,4 @@
-# 视频预测网络基础与随机视频生成
+# 5.1 随机视频预测：从单一未来到概率分布
 
 > **本章导读**
 >
@@ -8,25 +8,43 @@
 >
 > **故事线：** `从确定性下一帧走向随机未来 → 把长视频压缩成词元 → 用自回归或扩散生成时空内容 → 用缓存降低逐帧开销 → 注入动作并检验未来是否真的可控`
 
-预测未来是智能体理解世界的基石。对于人类而言，当我们抛出一枚硬币时，即使硬币还在空中翻滚，我们的大脑已经能够粗略预测它下落的轨迹与最终触地的瞬间。在深度学习中，这种“预测未来”的能力往往被抽象为视频预测（Video Prediction）任务：给定一系列历史图像帧，模型需要生成未来可能出现的图像序列。
+视频预测（Video Prediction）给模型一段历史画面，要求它生成接下来可能出现的图像序列。它既要延续可预测的运动，又要表达遮挡、碰撞和未观测因素带来的多种未来。
 
-在这节课中，我们将深入探讨视频预测的理论基础，并详细剖析随机视频生成网络（Stochastic Video Generation, SVG）[[Denton & Fergus, 2018]](https://arxiv.org/abs/1802.07687)的设计哲学。我们将从最直观的物理运动学出发，逐步推导到高维张量的概率生成模型。
+<div align="center">
+<img src="/figures/05-interactive-video/source/01-video-prediction-svg/svg-fig3.png" alt="同一段弹跳数字历史产生清晰但不同的后续轨迹，直观呈现随机视频模型对多种未来的采样。" width="86%">
+
+_图 5.1-1：同一段弹跳数字历史产生清晰但不同的后续轨迹，直观呈现随机视频模型对多种未来的采样。 出处：Emily Denton；Rob Fergus，[Stochastic Video Generation with a Learned Prior](https://arxiv.org/abs/1802.07687)（2018），Figure 3。_
+</div>
+
+本节以随机视频生成模型（Stochastic Video Generation，SVG）[[Denton & Fergus, 2018]](https://arxiv.org/abs/1802.07687) 为主线，从单点预测过渡到逐时刻潜变量，并实现一个只保留先验、后验与循环状态的教学单元。
 
 ## 视频预测的历史脉络与挑战
 
 长短期记忆网络（LSTM）用门控记忆单元改善循环网络中的长程梯度传播 [[Hochreiter & Schmidhuber, 1997]](https://doi.org/10.1162/neco.1997.9.8.1735)。ConvLSTM 又把输入到状态、状态到状态的变换改为卷积，并在降水临近预报任务上验证时空序列建模 [[Shi et al., 2015]](https://arxiv.org/abs/1506.04214)。这些结构后来被用于视频预测；但两篇原论文分别支撑循环记忆和卷积递归结构，不能单独证明某种架构是所有视频任务的“标准方案”。
 
-然而，确定性模型很快遇到了一个难以逾越的瓶颈：**模糊性（Blurriness）**。真实世界充满了随机性与不可控的扰动。假设桌子上有一个正在滚动的玻璃杯，它可能向左掉落，也可能向右掉落。如果模型只能给出一个确定性的预测，为了最小化MSE，网络会倾向于输出所有可能结果的平均值——即同时向左和向右掉落的重影。这种“平均化”策略导致了生成的未来帧随着时间推移变得越来越模糊，丧失了所有的纹理细节。
+<div align="center">
+<img src="/figures/05-interactive-video/source/01-video-prediction-svg/convlstm-fig2.png" alt="ConvLSTM 的卷积门控单元保留二维空间结构，说明视频递归模型如何在时间更新中处理局部邻域。" width="86%">
 
-为了解决这一问题，Denton与Fergus在2018年提出了随机视频生成网络（SVG）。他们引入了随时间变化的隐变量（Latent Variable），将视频预测从一个“确定性回归问题”转变为了一个“概率分布采样问题”，从而使得模型能够生成清晰且具有多样性的未来帧。
+_图 5.1-2：ConvLSTM 的卷积门控单元保留二维空间结构，说明视频递归模型如何在时间更新中处理局部邻域。 出处：Xingjian Shi et al.，[Convolutional LSTM Network: A Machine Learning Approach for Precipitation Nowcasting](https://arxiv.org/abs/1506.04214)（2015），Figure 2。_
+</div>
+
+单点预测与像素 MSE 组合时容易产生**模糊性（Blurriness）**。例如，滚动的杯子既可能向左跌落，也可能向右跌落；条件均值可能把两种结果叠成重影。模糊并不是所有确定性网络的必然结果，它取决于输出分布、损失函数和数据中的多模态程度。
+
+<div align="center">
+<img src="/figures/05-interactive-video/source/01-video-prediction-svg/sv2p-fig1.png" alt="确定性预测把多种方向平均成模糊形状，而随机样本保持单一清晰运动方向。" width="86%">
+
+_图 5.1-3：确定性预测把多种方向平均成模糊形状，而随机样本保持单一清晰运动方向。 出处：Mohammad Babaeizadeh et al.，[Stochastic Variational Video Prediction](https://arxiv.org/abs/1710.11252)（2018），Figure 1。_
+</div>
+
+Denton 与 Fergus 提出的 SVG 在每个时间步引入随机潜变量，使同一历史条件能够采样出不同的未来。论文比较了固定先验和学习先验等变体，并用多样性与预测质量共同评估结果。
 
 ## 从运动学到概率生成模型
 
-为了理解SVG的数学机制，我们不妨先回到高中物理中的运动学。
+先用一个运动学例子理解确定趋势与未建模扰动的区别。
 
 ### 确定性系统
 
-假设我们在时刻 $t-1$ 观察到一个小球的位置 $s_{t-1}$ 和速度 $v_{t-1}$。如果不考虑空气阻力等任何随机因素，下一时刻 $t$ 的位置可以被精确计算：
+假设在时刻 $t-1$ 已知小球的位置 $s_{t-1}$ 和速度 $v_{t-1}$。在匀速近似下，下一时刻的位置为：
 
 $$s_t = s_{t-1} + v_{t-1} \cdot \Delta t$$
 
@@ -34,40 +52,52 @@ $$s_t = s_{t-1} + v_{t-1} \cdot \Delta t$$
 
 $$\mathbf{x}_t = f_{\theta}(\mathbf{x}_{1}, \mathbf{x}_{2}, \dots, \mathbf{x}_{t-1})$$
 
-在该公式中，$\mathbf{x}_t \in \mathbb{R}^{C \times H \times W}$ 表示时刻 $t$ 的图像帧张量，包含通道数、高度和宽度。
+其中 $\mathbf{x}_t \in \mathbb{R}^{C \times H \times W}$ 表示时刻 $t$ 的图像帧张量，三个维度依次对应通道、高度和宽度。
 
 ### 引入随机隐变量
 
-如前文所述，完美的确定性是不存在的。为了模拟世界的不确定性，我们在每一个时间步 $t$ 引入一个服从标准正态分布的高斯噪声，称之为隐变量 $z_t \in \mathbb{R}^d$。这个隐变量 $z_t$ 就像是一阵随机吹来的微风，或者是不可观测的微小扰动。
+为了表示历史帧没有决定的因素，可以在每个时间步引入潜变量 $z_t\in\mathbb{R}^d$。在固定先验变体中它来自标准正态分布；在 SVG-LP 中，先验参数由历史状态预测，因此会随时间和上下文变化。
 
 此时，生成时刻 $t$ 图像的过程就不再是一个固定的函数映射，而是从一个条件概率分布中进行采样：
 
 $$\mathbf{x}_t \sim p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t)$$
 
-其中，$\mathbf{x}_{<t}$ 表示从第 $1$ 帧到第 $t-1$ 帧的所有历史观测。该公式深刻地揭示了SVG模型的核心思想：未来是由确定的历史 $\mathbf{x}_{<t}$ 与随机的扰动 $z_t$ 共同决定的。
+<div align="center">
+<img src="/figures/05-interactive-video/latex/01-video-prediction-svg/stochastic-future-branching.png" alt="固定同一段历史并改变时刻 t 的随机潜变量样本，会从同一条件分布得到多个不同未来帧" width="86%">
+
+_图 5.1-4：历史帧保持不变时，不同的 z_t 样本沿同一条件生成分布产生不同未来，从而避免把多种可能性压成一张平均帧。本文根据上式绘制。_
+</div>
+
+其中，$\mathbf{x}_{<t}$ 表示第 $1$ 帧到第 $t-1$ 帧的历史观测。给定同一段历史，改变 $z_t$ 就能得到不同的条件样本。
 
 ### 时序先验与后验分布
 
 在视频生成中，不同时间步的随机扰动 $z_t$ 并不是完全孤立的。为了让网络学会如何合理地猜测未来的扰动，我们需要定义两个概率分布：
 
 1. **先验分布（Prior Distribution） $p_{\psi}(z_t \mid \mathbf{x}_{<t})$**：在只看到历史帧 $\mathbf{x}_{<t}$ 的情况下，网络对时刻 $t$ 的扰动所作出的预测。
-2. **后验分布（Posterior Distribution） $q_{\phi}(z_t \mid \mathbf{x}_{\leq t})$**：在已经看到（或称为“作弊”看到）了目标帧 $\mathbf{x}_t$ 的情况下，网络推断出的导致这一结果的真实扰动。
+2. **近似后验（Approximate Posterior） $q_{\phi}(z_t \mid \mathbf{x}_{\leq t})$**：训练时额外看到目标帧 $\mathbf{x}_t$，据此推断有助于解释该帧的潜变量分布。它是学习到的近似分布，不是可观测的“真实扰动”。
 
 在训练阶段，后验网络负责提取真实的隐变量以重建图像；而在推理（预测未来）阶段，由于我们不知道未来的 $\mathbf{x}_t$，我们只能依赖先验网络来采样 $z_t$。因此，训练的目标之一就是让先验分布尽可能地逼近后验分布。
 
 ## 变分下界与损失函数
 
 ::: info 说明
-我们在这里使用一个教育学的类比来帮助理解变分推断的核心思想：假设你是一位考古学家（先验网络 $p_{\psi}$），试图根据古代遗迹（历史帧 $\mathbf{x}_{<t}$）预测明天会发掘出什么文物（分布 $z_t$）。而你的导师（后验网络 $q_{\phi}$）已经看到了明天发掘出的文物照片（当前帧 $\mathbf{x}_t$），因此导师能给出极其准确的判断。在长期的训练中，你要尽可能让自己的预测（先验）与导师的判断（后验）保持一致（即最小化KL散度），从而在未来导师不在（没有目标帧）时，你也能做出合理的预测。
+可以把后验看成训练时拥有“答案线索”的老师：它同时读取历史帧和目标帧，为潜变量提供较有信息量的分布。先验只能读取历史帧。KL 项让两者靠近，使测试时没有目标帧可看时，模型仍能从先验采样。
 :::
 
-我们希望最大化观察到真实视频序列 $\mathbf{x}_{1:T}$ 的边缘对数似然 $\log p_{\theta}(\mathbf{x}_{1:T})$。由于直接计算包含了隐变量 $z_{1:T}$ 的积分是不可解的，我们转向最大化其证据下界（Evidence Lower Bound, ELBO）。对于单一时间步 $t$，变分下界可以拆解为重构项与正则化项：
+<div align="center">
+<img src="/figures/05-interactive-video/source/01-video-prediction-svg/svg-fig2.png" alt="SVG-LP 的训练与生成图分开标出后验、学习先验和逐帧预测器，直接对应训练看未来、测试只看历史的差别。" width="86%">
+
+_图 5.1-5：SVG-LP 的训练与生成图分开标出后验、学习先验和逐帧预测器，直接对应训练看未来、测试只看历史的差别。 出处：Emily Denton；Rob Fergus，[Stochastic Video Generation with a Learned Prior](https://arxiv.org/abs/1802.07687)（2018），Figure 2。_
+</div>
+
+我们希望最大化视频序列 $\mathbf{x}_{1:T}$ 的边缘对数似然 $\log p_{\theta}(\mathbf{x}_{1:T})$。由于对高维隐变量积分通常不可解析，我们改为最大化证据下界（Evidence Lower Bound，ELBO）。下面给出简化的单步形式：
 
 $$\mathcal{L}_t = \mathbb{E}_{q_{\phi}(z_t \mid \mathbf{x}_{\leq t})} \left[ \log p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t) \right] - \beta D_{\text{KL}} \left( q_{\phi}(z_t \mid \mathbf{x}_{\leq t}) \,\|\, p_{\psi}(z_t \mid \mathbf{x}_{<t}) \right)$$
 
-让我们极其严谨地拆解该公式中的每一项：
+两项分别承担不同作用：
 
-- 第一项：**重构似然（Reconstruction Likelihood）**。后验网络 $q_{\phi}$ 基于直到当前时刻 $t$ 的所有信息提取隐特征 $z_t$，生成器 $p_{\theta}$ 用它和历史状态还原图像 $\mathbf{x}_t$。由于我们通常假设像素服从高斯分布，最大化对数似然等价于最小化均方误差（MSE）或平均绝对误差（L1 Loss）。
+- 第一项：**重构似然（Reconstruction Likelihood）**。后验网络基于截至 $t$ 的信息采样 $z_t$，生成器再用它和历史状态预测 $\mathbf{x}_t$。固定方差高斯似然对应平方误差；拉普拉斯似然对应 L1，二者不能混为同一个分布假设。
 - 第二项：**KL散度（Kullback-Leibler Divergence）**。它衡量了先验分布与后验分布之间的差异。$\beta$ 是一个超参数（借鉴了 $\beta$-VAE 的思想），用于调节模型在“记忆特定帧细节”与“泛化随机性”之间的平衡。
 
 在序列的整体训练中，我们将每一个时间步的损失相加，即可得到完整的序列损失。
@@ -79,11 +109,9 @@ SVG网络（具体来说是其变体SVG-LP，Learned Prior）由四个核心组�
 1. **帧编码器（Frame Encoder）**：通常是一个卷积神经网络（CNN）。输入单帧图像 $\mathbf{x}_t \in \mathbb{R}^{B \times C \times H \times W}$，输出低维空间特征表达 $h_t \in \mathbb{R}^{B \times d_h}$。
 2. **循环核心（Recurrent Core）**：通常是LSTM单元。它接收过去的特征，维护一个隐藏状态变量 $\mathbf{c}_t \in \mathbb{R}^{B \times d_c}$，代表了对确定性历史的编码。
 3. **推断模块（Inference Module）**：由多层感知机（MLP）构成。先验网络接受历史隐状态 $\mathbf{c}_{t-1}$ 输出先验的高斯分布参数 $(\mu_{p}, \sigma_{p})$；后验网络同时接受 $\mathbf{c}_{t-1}$ 和当前帧特征 $h_t$，输出后验参数 $(\mu_{q}, \sigma_{q})$。两者输出的均值和方差张量维度均为 $\mathbb{R}^{B \times d_z}$。
-4. **帧解码器（Frame Decoder）**：通过转置卷积（Transposed CNN）将隐藏特征 $h_{t-1}$ 与采样的隐变量 $z_t$ 进行拼接后，映射回高维像素空间，得到预测帧 $\hat{\mathbf{x}}_t \in \mathbb{R}^{B \times C \times H \times W}$。
+4. **帧预测器与解码器**：循环预测器结合前一帧特征、潜变量与历史状态，再由解码器映射回像素空间，得到 $\hat{\mathbf{x}}_t \in \mathbb{R}^{B \times C \times H \times W}$。原论文还使用编码器—解码器和跳跃连接；下面的代码不复现这些视觉模块。
 
-(**定义SVG推断网络与生成核心的伪实现**)
-
-下面我们展示在PyTorch中实现SVG核心逻辑的代码。我们将重点放在隐变量的采样与KL散度的计算上。为了保持代码简洁，我们省略了卷积层编解码器的具体定义，聚焦于时序动态变化。
+下面用 PyTorch 写出 SVG 核心逻辑，重点放在潜变量采样和循环状态更新。为保持代码简洁，省略卷积编解码器、跳跃连接和完整损失，因此这是教学骨架而不是论文复现。
 
 ```python
 import torch

@@ -1,38 +1,56 @@
-# 可控视频生成模块的简洁实现
+# 5.6 可控视频生成：交叉注意力与 CFG
 
-在深入探讨了无条件视频生成的理论与工程细节之后，我们自然而然地面临一个更为核心的问题：如何让模型按照我们的意图生成特定的视频内容？对于构建“世界模型”（World Models）而言，这种基于意图的条件生成——特别是基于动作（Action）或文本指令（Text Prompt）的生成——是实现智能体与环境交互的基石。
+无条件视频模型回答“可能出现什么”，可控视频模型还要回答“在这个动作、文本或参考图条件下，会出现什么”。条件可能描述内容，也可能规定运动、姿态或相机轨迹。对世界模型而言，动作条件尤其重要，因为它把智能体的选择与后续观测连接起来。
 
-在本节中，我们将从概率生成模型的条件分布讲起，逐步拆解并实现一个现代的可控视频生成模块。我们将追溯可控生成的学术脉络，从简单的标量条件注入，一路推导至当前工业界广泛采用的交叉注意力机制（Cross-Attention）与无分类器引导（Classifier-Free Guidance）。
+<div align="center">
+<img src="/figures/05-interactive-video/source/06-controllable-video-concise/motionctrl-fig1.png" alt="MotionCtrl 的样例分别改变相机运动、物体轨迹及两者组合，展示可控视频所要求的条件响应。" width="86%">
+
+_图 5.6-1：MotionCtrl 的样例分别改变相机运动、物体轨迹及两者组合，展示可控视频所要求的条件响应。 出处：Zhou et al.，[MotionCtrl: A Unified and Flexible Motion Controller for Video Generation](https://arxiv.org/abs/2312.03641)（2023），Figure 1。_
+</div>
+
+本节从条件分布出发，先看加性条件注入，再实现交叉注意力（Cross-Attention）和无分类器引导（Classifier-Free Guidance, CFG）。代码用于解释这两个机制，不对应某个完整视频系统。
 
 ## 可控生成的学术脉络与概率学基础
 
 条件生成对抗网络把类别等条件输入提供给生成器与判别器 [[Mirza & Osindero, 2014]](https://arxiv.org/abs/1411.1784)。DDPM 建立了基于逐步去噪的生成过程 [[Ho et al., 2020]](https://arxiv.org/abs/2006.11239)；潜在扩散模型进一步在潜空间中使用交叉注意力接收文本等条件 [[Rombach et al., 2022]](https://arxiv.org/abs/2112.10752)，ControlNet 则为预训练扩散模型增加边缘、深度和姿态等空间控制 [[Zhang & Agrawala, 2023]](https://arxiv.org/abs/2302.05543)。Stable Video Diffusion 研究的是图像条件潜在视频扩散及其数据、训练策略 [[Blattmann et al., 2023]](https://arxiv.org/abs/2311.15127)。这些论文分别支撑不同的条件形式，不能合并成一个笼统的“统一控制机制”。
 
-从纯粹的概率学视角来看，无条件视频生成旨在拟合真实视频数据的边缘概率分布 $p(\mathbf{x})$。而可控生成，本质上是将目标转化为拟合一个条件概率分布 $p(\mathbf{x} \mid \mathbf{c})$，其中 $\mathbf{c}$ 代表控制信号。在世界模型中，这个控制信号 $\mathbf{c}$ 通常是智能体在时间步 $t$ 执行的动作序列（Action Sequence）或高维条件图。
+<div align="center">
+<img src="/figures/05-interactive-video/source/06-controllable-video-concise/controlnet-fig1.png" alt="ControlNet 用边缘条件约束扩散生成，为空间条件如何改变输出提供直接证据。" width="86%">
+
+_图 5.6-2：ControlNet 用边缘条件约束扩散生成，为空间条件如何改变输出提供直接证据。 出处：Lvmin Zhang；Maneesh Agrawala，[Adding Conditional Control to Text-to-Image Diffusion Models](https://arxiv.org/abs/2302.05543)（2023），Figure 1。_
+</div>
+
+从概率角度看，无条件生成拟合边缘分布 $p(\mathbf{x})$，可控生成拟合条件分布 $p(\mathbf{x} \mid \mathbf{c})$。$\mathbf{c}$ 可以是动作序列、文本、图像、深度图或其他结构化信号；不同条件适合不同的编码器和注入位置。
+
+<div align="center">
+<img src="/figures/05-interactive-video/source/06-controllable-video-concise/dragnuwa-fig1.png" alt="DragNUWA 将文本、起始图像和轨迹组合，分别控制视频语义、外观与运动路径。" width="86%">
+
+_图 5.6-3：DragNUWA 将文本、起始图像和轨迹组合，分别控制视频语义、外观与运动路径。 出处：Shengming Yin et al.，[DragNUWA: Fine-grained Control in Video Generation by Integrating Text, Image, and Trajectory](https://arxiv.org/abs/2308.08089)（2023），Figure 1。_
+</div>
 
 ## 条件注入的数学推导：从标量到张量
 
-为了严谨地理解控制信号是如何影响视频生成的，我们不能直接跳跃到复杂的注意力机制。相反，让我们退回到最基础的物理运动场景，从一个初中物理中的一维质点运动开始推导。
+先用一维状态说明条件注入，再把它推广到向量和序列。
 
 ### 标量场景：一维质点的运动控制
 
 假设我们正在模拟一个一维空间中质点的运动。质点在当前时间步的位置为一个标量状态 $x \in \mathbb{R}$。我们希望控制质点在下一个时间步的位置 $y \in \mathbb{R}$，而我们的控制信号（例如施加的速度指令）也是一个标量 $c \in \mathbb{R}$。
 
-根据基本的运动学规律，最简单的控制关系是线性的。下一个状态 $y$ 可以表示为当前状态的维持与控制信号的叠加。如果我们引入一组可学习的权重参数，这种关系可以被严谨地表述为：
+一个最简单的可学习模型，是把当前状态与控制信号分别做线性变换后相加：
 
 $$y = w_x x + w_c c + b$$
 
-其中，$w_x, w_c \in \mathbb{R}$ 分别是状态特征和控制信号的权重，$b \in \mathbb{R}$ 是偏置项。该公式告诉我们，控制信号 $c$ 是通过**加法（Addition）**的形式直接注入到目标状态中的。在早期的神经网络中，这等价于将 $x$ 和 $c$ 进行拼接（Concatenation）后通过一个全连接层。
+其中 $w_x,w_c$ 是可学习权重，$b$ 是偏置。它也可写成对拼接向量 $[x;c]$ 的一次线性映射。
 
 ### 向量场景：多维特征空间的映射
 
 在真实的视频生成中，图像的特征不可能只用一个标量来表示。假设我们将一帧图像压缩成了一个 $d$ 维的潜在特征向量 $\mathbf{x} \in \mathbb{R}^d$，而我们的控制动作（例如摇杆的前后左右推力）被编码为一个 $k$ 维的向量 $\mathbf{c} \in \mathbb{R}^k$。
 
-要将 $k$ 维的控制信号注入到 $d$ 维的特征中，我们需要将标量该公式泛化到向量空间。这要求我们引入一个变换矩阵 $\mathbf{W}_c \in \mathbb{R}^{d \times k}$，将控制向量投影到与视觉特征相同的维度空间中：
+把标量推广到向量后，用 $\mathbf{W}_c \in \mathbb{R}^{d \times k}$ 将控制向量投影到视觉特征维度：
 
 $$\mathbf{y} = \mathbf{W}_x \mathbf{x} + \mathbf{W}_c \mathbf{c} + \mathbf{b}$$
 
-该公式就是经典的“特征拼接投影”（Feature Concatenation and Projection）的严格数学表达。由于矩阵乘法是线性变换，这种加性注入方式虽然简单，但存在严重的局限性：**控制信号 $\mathbf{c}$ 对输出 $\mathbf{y}$ 的影响是全局恒定的，它无法根据视觉特征 $\mathbf{x}$ 本身的内容动态地调整控制强度。**
+这仍可看作拼接后的线性投影。它为整个视觉向量注入同一份控制表示，却没有显式机制让不同空间或时间位置选择不同的条件片段。
 
 ### 张量场景：从加性注入到动态匹配（注意力机制前奏）
 
@@ -42,19 +60,19 @@ $$\mathbf{y} = \mathbf{W}_x \mathbf{x} + \mathbf{W}_c \mathbf{c} + \mathbf{b}$$
 
 $$\mathbf{y} = \mathbf{x} + \alpha (\mathbf{W}_v \mathbf{c})$$
 
-在该公式中，如果视觉特征与控制信号高度匹配（内积大），控制信号就会被强烈地注入；反之则被忽略。这一由加法转向乘法（动态加权）的演进，正是现代交叉注意力机制（Cross-Attention）的核心数学基石。
+内积越大，对应控制表示的权重越高。交叉注意力把单个控制向量扩展为一组键和值，让每个视觉位置都能从中进行加权检索。
 
-## 交叉注意力机制的严谨解构
+## 交叉注意力机制
 
 视频是一系列图像帧的序列，这就意味着我们的视觉特征实际上是一个张量。令视觉特征序列为 $\mathbf{X} \in \mathbb{R}^{N \times d}$（$N$ 是空间或时间序列的长度，$d$ 是特征维度），控制信号序列为 $\mathbf{C} \in \mathbb{R}^{M \times k}$（例如 $M$ 个文本词向量或动作序列）。
 
-我们将基于该公式的内积思想，严密推导标准的交叉注意力机制。首先，我们用三个不同的参数矩阵对输入进行线性变换，分别生成查询（Query）、键（Key）和值（Value）。这里，**查询来自于视觉特征，而键和值来自于控制信号**：
+首先用三个参数矩阵生成查询（Query）、键（Key）和值（Value）。这里查询来自视觉特征，键和值来自控制序列：
 
 $$\mathbf{Q} = \mathbf{X} \mathbf{W}_Q, \quad \mathbf{K} = \mathbf{C} \mathbf{W}_K, \quad \mathbf{V} = \mathbf{C} \mathbf{W}_V$$
 
 其中，$\mathbf{W}_Q \in \mathbb{R}^{d \times d_h}$, $\mathbf{W}_K \in \mathbb{R}^{k \times d_h}$, $\mathbf{W}_V \in \mathbb{R}^{k \times d_v}$。此时，$\mathbf{Q} \in \mathbb{R}^{N \times d_h}$ 和 $\mathbf{K} \in \mathbb{R}^{M \times d_h}$ 被投影到了相同的隐含维度 $d_h$。
 
-接下来，我们需要计算每一个视觉特征元素与每一个控制元素的匹配程度。通过矩阵乘法 $\mathbf{Q} \mathbf{K}^\top \in \mathbb{R}^{N \times M}$，我们一次性计算出了所有 $N \times M$ 个组合的内积相似度。为了防止内积值随维度 $d_h$ 增大而导致梯度消失，我们除以缩放因子 $\sqrt{d_h}$，并在每一行应用 Softmax 函数，得到归一化的注意力权重矩阵 $\mathbf{A}$：
+矩阵乘法 $\mathbf{Q} \mathbf{K}^\top \in \mathbb{R}^{N \times M}$ 一次计算所有位置与条件元素的内积。点积的方差会随维度 $d_h$ 增大。除以 $\sqrt{d_h}$ 可控制分数尺度，减少 Softmax 过早饱和，再逐行归一化得到权重矩阵 $\mathbf{A}$：
 
 $$\mathbf{A} = \text{softmax}\left(\frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{d_h}}\right) \in \mathbb{R}^{N \times M}$$
 
@@ -62,37 +80,49 @@ $$\mathbf{A} = \text{softmax}\left(\frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{d_h}}
 
 $$\text{CrossAttention}(\mathbf{X}, \mathbf{C}) = \mathbf{A} \mathbf{V} \in \mathbb{R}^{N \times d_v}$$
 
-::: info 极其克制的唯一类比
-如果我们必须用一个生活中的物理过程来比喻交叉注意力机制：想象你（视觉特征 $\mathbf{X}$）走进一个庞大的中药铺（控制信号集合 $\mathbf{C}$）。你手里拿着一张具体的药方（生成查询 $\mathbf{Q}$），而药铺里的每一个药屉外都贴着标签（生成键 $\mathbf{K}$）。你逐一比对药方上的名字和药屉上的标签（计算点积 $\mathbf{Q}\mathbf{K}^\top$ 并通过 Softmax 决定匹配度 $\mathbf{A}$）。匹配度越高的药屉，你从里面抓取的药材（提取值 $\mathbf{V}$）就越多。最终你带走的是所有药材按比例混合后的一包新药（输出 $\mathbf{A}\mathbf{V}$）。这种“基于查询的加权检索”过程，保证了生成模型能够极其精准地捕捉到与当前视觉区域最相关的控制指令，而不是盲目地接受所有外部输入。
+::: info 把交叉注意力看成检索
+每个视觉位置提出一个查询，与控制序列的键逐一比较，再按权重汇总相应的值。它提供了“按位置选择条件”的通道，但是否选中正确条件仍要通过训练学习。
 :::
 
 ## 无分类器引导（Classifier-Free Guidance）
 
 仅有交叉注意力并不能保证模型严格遵循控制信号。无分类器引导（Classifier-Free Guidance, CFG）在训练时随机丢弃条件，推理时组合条件与无条件预测，从而调节样本质量与条件一致性 [[Ho & Salimans, 2022]](https://arxiv.org/abs/2207.12598)。它被许多扩散生成系统采用，但公开资料不足以支持“所有顶级视频系统都使用 CFG”这一绝对说法。
 
-CFG的数学本质源自对条件概率的贝叶斯重写。根据贝叶斯定理，条件数据分布的对数似然梯度（即得分函数 Score Function）可以分解为：
+<div align="center">
+<img src="/figures/05-interactive-video/source/06-controllable-video-concise/cfg-fig1.png" alt="分类器无关引导原图从左到右增大引导强度，显示条件一致性增强同时也改变样本多样性与饱和度。" width="86%">
+
+_图 5.6-4：分类器无关引导原图从左到右增大引导强度，显示条件一致性增强同时也改变样本多样性与饱和度。 出处：Jonathan Ho；Tim Salimans，[Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598)（2022），Figure 1。_
+</div>
+
+从贝叶斯关系出发，条件分布的得分可以分解为：
 
 $$\nabla_{\mathbf{x}} \log p(\mathbf{x} | c) = \nabla_{\mathbf{x}} \log p(\mathbf{x}) + \nabla_{\mathbf{x}} \log p(c | \mathbf{x})$$
 
-在这个公式中，右侧第二项 $\nabla_{\mathbf{x}} \log p(c | \mathbf{x})$ 可以被视为一种“引导力”，它促使生成的图像 $\mathbf{x}$ 更符合条件 $c$。CFG的核心洞察是：我们可以人为地放大这种引导力。通过引入一个控制强度的标量系数 $w > 0$，我们定义一个修正后的引导得分：
+右侧第二项反映条件 $c$ 对样本方向的影响。若用 $w\ge 0$ 放大这部分，得到：
 
 $$\nabla_{\mathbf{x}} \log p_w(\mathbf{x} | c) = \nabla_{\mathbf{x}} \log p(\mathbf{x}) + (1 + w) \nabla_{\mathbf{x}} \log p(c | \mathbf{x})$$
 
-现在，我们将该公式中的隐式引导项 $\nabla_{\mathbf{x}} \log p(c | \mathbf{x}) = \nabla_{\mathbf{x}} \log p(\mathbf{x} | c) - \nabla_{\mathbf{x}} \log p(\mathbf{x})$ 代入到该公式中，得到：
+再代入 $\nabla_{\mathbf{x}} \log p(c | \mathbf{x}) = \nabla_{\mathbf{x}} \log p(\mathbf{x} | c) - \nabla_{\mathbf{x}} \log p(\mathbf{x})$：
 
 $$\nabla_{\mathbf{x}} \log p_w(\mathbf{x} | c) = (1 + w) \nabla_{\mathbf{x}} \log p(\mathbf{x} | c) - w \nabla_{\mathbf{x}} \log p(\mathbf{x})$$
 
-在扩散模型的框架下，得分函数被参数化的噪声预测网络 $\epsilon_\theta$ 所等价替代。因此，在推理阶段，模型预测的最终噪声 $\tilde{\epsilon}$ 为：
+在采用噪声预测参数化的扩散模型中，相同的线性组合可写为：
 
 $$\tilde{\epsilon}_\theta(\mathbf{x}_t, t, c) = (1 + w) \epsilon_\theta(\mathbf{x}_t, t, c) - w \epsilon_\theta(\mathbf{x}_t, t, \emptyset)$$
 
-该公式优雅地告诉我们：只需要一个同时支持条件输入 $c$ 和空条件 $\emptyset$ 的单一网络，通过取条件预测与无条件预测的线性外推（Extrapolation，因为 $1+w > 1$ 且系数和为1），就能在不引入额外分类器网络的情况下，极其强劲地提升控制信号的服从度。
+<div align="center">
+<img src="/figures/05-interactive-video/latex/06-controllable-video-concise/cfg-affine-extrapolation.png" alt="CFG 从无条件预测指向条件预测并继续外推，正文额外引导量 w 与代码尺度 s 满足 s 等于 1 加 w" width="86%">
+
+_图 5.6-5：正文用 w 表示越过条件预测后的额外外推量，代码常用 s 从无条件预测开始计量；两者满足 s=1+w，所以 w=0 与 s=1 都等于条件预测。本文根据上式绘制。_
+</div>
+
+因此，同一个网络只要同时学过条件输入 $c$ 和空条件 $\emptyset$，推理时就能在两次预测之间做线性外推。增大 $w$ 往往提高条件一致性，但过大也可能降低多样性、放大伪影或使颜色过饱和。
 
 ## 简洁实现
 
-基于上述严谨的数学推导，我们现在开始用代码实现这个可控视频生成模块。我们将首先实现交叉注意力机制，然后将其集成到一个微型的条件去噪网络块中。
+下面先实现交叉注意力，再把它放进一个简化的条件去噪块。
 
-(**我们定义交叉注意力层**)，严格按照这两个公式进行矩阵运算。为了工程上的高效，我们通常使用多头注意力机制（Multi-Head Attention），即在多个子空间中独立执行交叉注意力，最后将结果拼接。
+交叉注意力采用多头形式：多个子空间分别执行检索，再拼接输出。
 
 ```python
 import torch
@@ -153,7 +183,7 @@ class CrossAttention(nn.Module):
         return self.to_out(out)
 ```
 
-接下来，(**我们将交叉注意力层嵌入到生成网络的残差块中**)。在现代扩散模型（如 DiT 或 U-Net）中，自注意力机制负责视觉特征内部的时空一致性，而交叉注意力模块则专门负责吸收外部条件。
+接着把交叉注意力放进残差块。这里用自注意力混合视觉词元，用交叉注意力读取外部条件；真实 U-Net 或 DiT 的层次结构会更完整。
 
 ```python
 class ConditionalVideoBlock(nn.Module):
@@ -193,7 +223,7 @@ class ConditionalVideoBlock(nn.Module):
         return x
 ```
 
-为了支持我们在相关章节中讨论的无分类器引导（CFG），(**我们在模型的前向推理逻辑中必须同时计算条件生成和无条件生成的预测值**)。
+CFG 推理需要条件预测和无条件预测。工程上通常把两份输入沿 batch 维拼接，以一次前向计算得到两者；下面分开书写，便于理解。
 
 ```python
 def classifier_free_guidance_step(model_block, x_t, context, unconditional_context, guidance_scale=7.5):
@@ -209,8 +239,8 @@ def classifier_free_guidance_step(model_block, x_t, context, unconditional_conte
     # 获取无条件预测 eps(x_t, empty)
     eps_uncond = model_block(x_t, unconditional_context)
 
-    # 执行无分类器引导外推公式：公式 (8)
-    eps_cfg = (1 + guidance_scale) * eps_cond - guidance_scale * eps_uncond
+    # 常见约定：s=1 时退化为条件预测；s>1 时向条件方向外推
+    eps_cfg = eps_uncond + guidance_scale * (eps_cond - eps_uncond)
 
     return eps_cfg
 ```
@@ -221,11 +251,11 @@ def classifier_free_guidance_step(model_block, x_t, context, unconditional_conte
 
 $$ \mathcal{L} = \mathbb{E}_{\mathbf{x}_0, c, \epsilon \sim \mathcal{N}(0, \mathbf{I}), t} \left[ \left\| \epsilon - \epsilon_\theta(\mathbf{x}_t, t, c_\phi) \right\|^2_2 \right] $$
 
-其中 $c_\phi$ 有 $(1 - p_{uncond})$ 的概率是真实控制信号 $c$，有 $p_{uncond}$ 的概率是被屏蔽的空信号 $\emptyset$。这确保了单个模型 $\epsilon_\theta$ 在同一个权重空间中同时学会了 $p(\mathbf{x} \mid c)$ 和 $p(\mathbf{x})$ 的去噪能力。
+其中 $c_\phi$ 以概率 $1-p_{uncond}$ 取真实条件 $c$，以概率 $p_{uncond}$ 取空条件 $\emptyset$。这样，同一组参数会同时接触条件与无条件去噪样本，为推理时的两次预测提供基础。
 
 ## 小结
 
 - 可控视频生成的核心是将无条件的边缘概率分布估计转化为**条件分布估计**。
-- 从简单的标量加性注入，到向量空间的拼接，再到现代基于内积度量匹配度的交叉注意力机制，条件注入的方法在数学演进上日益严密且具有表达力。
+- 加性投影提供全局条件，交叉注意力则允许不同视觉位置检索不同的条件片段。
 - **交叉注意力**允许特征序列的每个元素根据查询 $\mathbf{Q}$ 动态检索控制序列的键 $\mathbf{K}$ 并聚合值 $\mathbf{V}$。
-- **无分类器引导（CFG）**利用贝叶斯法则，通过推断阶段的线性外推，极其有效地放大了控制信号的权重，克服了条件坍塌问题。
+- **无分类器引导（CFG）**在条件与无条件预测之间做线性外推，用引导强度交换条件一致性、多样性与稳定性。
