@@ -103,8 +103,7 @@ $$ L_t(\theta) = \sum_{k=0}^K \left( L_k \right) + c \| \theta \|^2 $$
 
 (**首先，我们导入必要的张量运算框架并定义基础常量**)。在此为了简明起见，我们将定义适用于离散动作空间的基于多层感知机（MLP）的玩具网络。在真实场景下，表示网络 $h$ 通常是一个庞大的残差卷积网络（ResNet）。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -129,8 +128,7 @@ class RepresentationNetwork(nn.Module):
 
 (**接下来是核心的动态模型 $g$**)。它不仅负责状态的演进，还要给出奖励的预测。在此，我们将状态和动作拼接后进行前向传播。
 
-```{.python .input}
-#@tab pytorch
+```python
 class DynamicsNetwork(nn.Module):
     """动态函数 g: (hidden_state, action) -> (next_hidden_state, reward_logits)"""
     def __init__(self, hidden_dim, num_actions, support_size):
@@ -159,8 +157,7 @@ class DynamicsNetwork(nn.Module):
 
 (**预测网络 $f$ 直接基于隐状态给出评估**)。我们需要同时预测策略（行动概率）和价值（胜率或预期回报）。
 
-```{.python .input}
-#@tab pytorch
+```python
 class PredictionNetwork(nn.Module):
     """预测函数 f: hidden_state -> (policy_logits, value_logits)"""
     def __init__(self, hidden_dim, num_actions, support_size):
@@ -185,8 +182,7 @@ class PredictionNetwork(nn.Module):
 
 (**将三者组合，即构成了完整的 MuZero 网络**)。在展开训练阶段，我们需要在时间步上进行前向的循环调用。
 
-```{.python .input}
-#@tab pytorch
+```python
 class MuZeroNetwork(nn.Module):
     def __init__(self, obs_dim, hidden_dim, num_actions, support_size):
         super().__init__()

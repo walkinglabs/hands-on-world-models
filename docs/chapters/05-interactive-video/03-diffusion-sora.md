@@ -54,8 +54,7 @@ $$N = \left( \frac{T}{t_p} \right) \times \left( \frac{H}{h_p} \right) \times \l
 
 (**下面我们用代码展示如何构建一个简化的时空补丁嵌入层。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 
@@ -81,34 +80,6 @@ class SpacetimePatchEmbedding(nn.Module):
         B, D, T_prime, H_prime, W_prime = x.shape
         x = x.view(B, D, -1).transpose(1, 2)
         # 最终输出的形状为: (B, N, D)，其中 N = T_prime * H_prime * W_prime
-        return x
-#@tab tensorflow
-import tensorflow as tf
-
-class SpacetimePatchEmbedding(tf.keras.layers.Layer):
-    def __init__(self, in_channels, patch_size, embed_dim):
-        """
-        patch_size: 一个包含 (t_p, h_p, w_p) 的整数元组
-        """
-        super().__init__()
-        self.patch_size = patch_size
-        # 在 TensorFlow 中使用 Conv3D 来实现时空特征提取
-        self.proj = tf.keras.layers.Conv3D(
-            filters=embed_dim,
-            kernel_size=patch_size,
-            strides=patch_size,
-            padding='valid'
-        )
-
-    def call(self, x):
-        # TensorFlow 默认的数据格式为 channels_last，即输入形状为 (B, T, H, W, C)
-        x = self.proj(x)
-        # 卷积后的特征形状变为 (B, T_prime, H_prime, W_prime, embed_dim)
-        # 我们需要将其时空维度展平为一个单一的一维序列维度
-        B = tf.shape(x)[0]
-        D = tf.shape(x)[-1]
-        x = tf.reshape(x, [B, -1, D])
-        # 最终输出形状为: (B, N, D)，其中 N = T_prime * H_prime * W_prime
         return x
 ```
 
@@ -149,10 +120,9 @@ $$\hat{\mathbf{V}}_{pixel} = \mathcal{D}(\hat{\mathbf{Z}}_0)$$
 
 在这一小节，我们将把前面推导的注意力该公式落实到具体的代码逻辑中，编写一个包含层归一化（Layer Normalization）和前馈网络（MLP）的标准 Diffusion Transformer Block。
 
-(**我们分别用 PyTorch 和 TensorFlow 定义一个简化的 Video DiT 块。**)
+(**我们用 PyTorch 定义一个简化的 Video DiT 块。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class VideoDiTBlock(nn.Module):
     def __init__(self, embed_dim, num_heads):
         super().__init__()
@@ -185,42 +155,6 @@ class VideoDiTBlock(nn.Module):
             self.norm1(x_with_cond),
             self.norm1(x_with_cond),
             self.norm1(x_with_cond)
-        )
-        x = x + attn_out  # 残差连接
-
-        # 步骤 2：通过前馈网络完成每个序列元素的独立非线性变换
-        x = x + self.mlp(self.norm2(x))
-        return x
-#@tab tensorflow
-class VideoDiTBlock(tf.keras.layers.Layer):
-    def __init__(self, embed_dim, num_heads):
-        super().__init__()
-        self.norm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        # 实例化多头自注意力层，对应该公式        self.attn = tf.keras.layers.MultiHeadAttention(
-            num_heads=num_heads,
-            key_dim=embed_dim
-        )
-        self.norm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        # 典型的前馈神经网络，用于对局部特征进行非线性高维映射
-        self.mlp = tf.keras.Sequential([
-            tf.keras.layers.Dense(embed_dim * 4, activation='gelu'),
-            tf.keras.layers.Dense(embed_dim)
-        ])
-
-    def call(self, x, t_emb):
-        """
-        x: 降维后的视频补丁序列，形状为 (B, N, D)
-        t_emb: 当前时间步和条件特征（如文本提示）的融合嵌入，形状为 (B, D)
-        """
-        # 在 TensorFlow 中，unsqueeze(1) 的等价操作是 tf.expand_dims
-        x_with_cond = x + tf.expand_dims(t_emb, 1)
-
-        # 步骤 1：利用全序列联合自注意力机制进行时空维度的全局信息交互
-        normed_x = self.norm1(x_with_cond)
-        attn_out = self.attn(
-            query=normed_x,
-            value=normed_x,
-            key=normed_x
         )
         x = x + attn_out  # 残差连接
 

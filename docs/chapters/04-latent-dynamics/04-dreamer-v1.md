@@ -80,8 +80,9 @@ $$V^{\lambda}_{\tau} = r(s_\tau) + \gamma \Big( (1-\lambda) v_{\psi}(s_{\tau+1})
 
 而在 Dreamer 中，因为整个 $H$ 步的推演是完全在**神经网络构成的世界模型**中完成的，这个“假环境”是端到端全可微的（Differentiable）！这就允许我们使用一种更直接、更精准的方式——**解析梯度（Analytic Gradients）**来进行策略优化。
 
-> [!NOTE]
-> 想象我们的大脑不仅能预测打台球时球的轨迹（世界模型），还能敏锐地感知到，当我们手部肌肉的发力角度微调0.1度时，球最终落袋的概率会随之产生确切数学规律上的变化（可导的梯度）。在这个“梦境”里，我们不需要真的去推几千次杆来统计概率（无模型RL的做法），而是可以在大脑里通过解析方程，直接求得最完美的发力角度。这是潜在想象中最具威力的一环。
+::: info 说明
+想象我们的大脑不仅能预测打台球时球的轨迹（世界模型），还能敏锐地感知到，当我们手部肌肉的发力角度微调0.1度时，球最终落袋的概率会随之产生确切数学规律上的变化（可导的梯度）。在这个“梦境”里，我们不需要真的去推几千次杆来统计概率（无模型RL的做法），而是可以在大脑里通过解析方程，直接求得最完美的发力角度。这是潜在想象中最具威力的一环。
+:::
 
 为了实现反向传播通过状态的转移，我们需要应用**重参数化技巧（Reparameterization Trick）**。
 行动者网络输出动作的分布参数（例如高斯分布的均值 $\mu_\phi$ 和标准差 $\sigma_\phi$）。我们将动作 $a_\tau$ 采样过程重写为：
@@ -115,8 +116,7 @@ $$\mathcal{L}_{\text{critic}}(\psi) = \mathbb{E} \left[ \sum_{\tau=t}^{t+H-1} \f
 
 (**首先，我们定义世界模型的桩（Stub）以及行动者与评论家网络。**) 为了聚焦于强化学习本身的算法原理，我们假设状态转移模型 `transition_model` 已经训练完毕，它能够接收当前状态和动作，通过重参数化返回下一个潜在状态。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.distributions as td
@@ -178,8 +178,7 @@ class CriticNet(nn.Module):
 
 (**接下来，我们实现潜在想象的核心循环：前向展开多步，计算递归的 $\lambda$-回报，并更新策略网络。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 def train_imagination_step(
     world_model, actor, critic, start_states,
     actor_optimizer, critic_optimizer, horizon=15, gamma=0.99, lam=0.95):

@@ -53,8 +53,9 @@ $$\hat{\mathbf{S}}_y = g_\phi(\mathbf{S}_c, \mathbf{Z}) \in \mathbb{R}^{N_y \tim
 最终的损失函数在特征维度和目标块的数量上取均方误差：
 $$\mathcal{L}(\theta, \phi) = \frac{1}{N_y} \sum_{i=1}^{N_y} \|\hat{\mathbf{s}}_{y, i} - \mathbf{s}_{y, i}\|_2^2$$
 
-> [!CAUTION]
-> 在 JEPA 的优化过程中，这是一个极其核心的非对称操作：**损失函数 $\mathcal{L}$ 只对上下文编码器的参数 $\theta$ 和预测器的参数 $\phi$ 计算梯度并更新**。目标编码器的参数 $\bar{\theta}$ 被视为常数（Stop-Gradient），绝不能通过反向传播更新。这也是打破对称性、防止网络坍塌到平凡解（Trivial Solution）的根本保证。
+::: warning 注意
+在 JEPA 的优化过程中，这是一个极其核心的非对称操作：**损失函数 $\mathcal{L}$ 只对上下文编码器的参数 $\theta$ 和预测器的参数 $\phi$ 计算梯度并更新**。目标编码器的参数 $\bar{\theta}$ 被视为常数（Stop-Gradient），绝不能通过反向传播更新。这也是打破对称性、防止网络坍塌到平凡解（Trivial Solution）的根本保证。
+:::
 
 为了让目标编码器能够提供高质量、一致的表征目标，参数 $\bar{\theta}$ 采用指数移动平均（Exponential Moving Average, EMA）的方式，根据 $\theta$ 的历史值进行平滑更新：
 $$\bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta$$
@@ -67,18 +68,10 @@ $$\bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta$$
 
 (**首先，我们导入必要的库。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import copy
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-from tensorflow.keras import layers, models
 import copy
 ```
 
@@ -88,8 +81,7 @@ import copy
 
 (**我们定义一个带有残差连接的 MLP 模块，作为特征提取的基础。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class MLPBlock(nn.Module):
     def __init__(self, hidden_dim, mlp_dim):
         super().__init__()
@@ -104,29 +96,13 @@ class MLPBlock(nn.Module):
         return x + self.net(self.norm(x))
 ```
 
-```{.python .input}
-#@tab tensorflow
-class MLPBlock(layers.Layer):
-    def __init__(self, hidden_dim, mlp_dim):
-        super().__init__()
-        self.net = models.Sequential([
-            layers.Dense(mlp_dim, activation='gelu'),
-            layers.Dense(hidden_dim)
-        ])
-        self.norm = layers.LayerNormalization(epsilon=1e-5)
-
-    def call(self, x):
-        return x + self.net(self.norm(x))
-```
-
 ### 上下文与目标编码器
 
 接下来，我们基于上述基础模块构建编码器。正如前文的编码器公式所示，输入数据首先映射到维度为 `d` 的表征空间。
 
 (**我们定义编码器架构。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class Encoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, mlp_dim, num_layers=3):
         super().__init__()
@@ -146,23 +122,6 @@ class Encoder(nn.Module):
         return self.norm(x)
 ```
 
-```{.python .input}
-#@tab tensorflow
-class Encoder(layers.Layer):
-    def __init__(self, input_dim, hidden_dim, mlp_dim, num_layers=3):
-        super().__init__()
-        self.proj = layers.Dense(hidden_dim)
-        self.blocks = [MLPBlock(hidden_dim, mlp_dim) for _ in range(num_layers)]
-        self.norm = layers.LayerNormalization(epsilon=1e-5)
-
-    def call(self, x):
-        # x 形状: (批量大小, 序列长度/块数, 输入特征维度)
-        x = self.proj(x)
-        for block in self.blocks:
-            x = block(x)
-        return self.norm(x)
-```
-
 ### 预测器 (Predictor)
 
 预测器是 JEPA 区别于其他架构的核心。它必须接收上下文表征 $S_c$ 以及指示目标位置的变量 $Z$。
@@ -170,8 +129,7 @@ class Encoder(layers.Layer):
 
 (**我们实现预测器，它根据上下文和位置指示预测目标。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class Predictor(nn.Module):
     def __init__(self, hidden_dim, mlp_dim, num_layers=2):
         super().__init__()
@@ -194,32 +152,13 @@ class Predictor(nn.Module):
         return self.net(x)
 ```
 
-```{.python .input}
-#@tab tensorflow
-class Predictor(layers.Layer):
-    def __init__(self, hidden_dim, mlp_dim, num_layers=2):
-        super().__init__()
-        self.net = models.Sequential([
-            layers.Dense(mlp_dim, activation='gelu')
-        ])
-        for _ in range(num_layers - 1):
-            self.net.add(MLPBlock(mlp_dim, mlp_dim))
-        self.net.add(layers.LayerNormalization(epsilon=1e-5))
-        self.net.add(layers.Dense(hidden_dim))
-
-    def call(self, context_repr, target_position_encoding):
-        x = tf.concat([context_repr, target_position_encoding], axis=-1)
-        return self.net(x)
-```
-
 ### 整合 JEPA 模型与 EMA 机制
 
 现在，我们将上下文编码器、目标编码器和预测器组合成一个完整的 JEPA 模块。这里我们需要特别注意该公式中的 EMA 逻辑的实现。在初始化时，目标编码器是上下文编码器的精确副本。在每次前向传播或优化后，我们需要平滑地更新目标编码器的权重。
 
 (**实现包含 EMA 动量更新的完整 JEPA 架构。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class JEPAModel(nn.Module):
     def __init__(self, input_dim, hidden_dim, mlp_dim, tau=0.996):
         super().__init__()
@@ -269,56 +208,13 @@ class JEPAModel(nn.Module):
             param_k.data.mul_(self.tau).add_((1.0 - self.tau) * param_q.detach().data)
 ```
 
-```{.python .input}
-#@tab tensorflow
-class JEPAModel(tf.keras.Model):
-    def __init__(self, input_dim, hidden_dim, mlp_dim, tau=0.996):
-        super().__init__()
-        self.tau = tau
-
-        self.context_encoder = Encoder(input_dim, hidden_dim, mlp_dim)
-
-        # 深拷贝需要先进行一次构建
-        dummy_input = tf.random.normal((1, 5, input_dim))
-        _ = self.context_encoder(dummy_input)
-
-        self.target_encoder = Encoder(input_dim, hidden_dim, mlp_dim)
-        _ = self.target_encoder(dummy_input)
-        self.target_encoder.set_weights(self.context_encoder.get_weights())
-        self.target_encoder.trainable = False
-
-        self.predictor = Predictor(hidden_dim, mlp_dim)
-
-    def call(self, inputs, training=None):
-        x_context, x_target, z_target_pos = inputs
-
-        s_c_seq = self.context_encoder(x_context)
-        s_c = tf.reduce_mean(s_c_seq, axis=1) # (Batch, hidden_dim)
-
-        # 扩展 s_c
-        N_y = tf.shape(z_target_pos)[1]
-        s_c_expanded = tf.tile(tf.expand_dims(s_c, 1), [1, N_y, 1])
-
-        s_y_hat = self.predictor(s_c_expanded, z_target_pos)
-
-        # target encoder 前向
-        s_y = tf.stop_gradient(self.target_encoder(x_target))
-
-        return s_y_hat, s_y
-
-    def update_target_encoder(self):
-        for param_q, param_k in zip(self.context_encoder.variables, self.target_encoder.variables):
-            param_k.assign(self.tau * param_k + (1.0 - self.tau) * param_q)
-```
-
 ## 损失函数与训练过程
 
 在拥有了完整的架构后，我们可以编写单次迭代的训练逻辑。训练过程严格遵循我们推导的公式：计算前向传播得到预测表征 $\hat{\mathbf{S}}_y$ 和目标表征 $\mathbf{S}_y$，根据该公式计算均方误差（MSE），通过反向传播仅更新 $\theta$ 和 $\phi$，最后调用该公式更新 $\bar{\theta}$。
 
 (**演示一个训练步骤（单步更新）的数据流转。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 # 模拟一些随机输入数据
 batch_size = 8
 N_c = 10 # 上下文序列长度
@@ -356,37 +252,6 @@ optimizer.step()
 jepa.update_target_encoder()
 
 print(f"训练步完成，表征预测损失: {loss.item():.4f}")
-```
-
-```{.python .input}
-#@tab tensorflow
-batch_size = 8
-N_c = 10
-N_y = 4
-input_dim = 64
-hidden_dim = 128
-
-x_context = tf.random.normal((batch_size, N_c, input_dim))
-x_target = tf.random.normal((batch_size, N_y, input_dim))
-z_target_pos = tf.random.normal((batch_size, N_y, hidden_dim))
-
-jepa = JEPAModel(input_dim=input_dim, hidden_dim=hidden_dim, mlp_dim=256)
-optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
-
-# 训练迭代单步
-with tf.GradientTape() as tape:
-    s_y_hat, s_y = jepa((x_context, x_target, z_target_pos))
-    loss = tf.reduce_mean(tf.square(s_y_hat - s_y))
-
-# 仅获取可训练变量 (即 \theta 和 \phi)
-trainable_vars = jepa.context_encoder.trainable_variables + jepa.predictor.trainable_variables
-gradients = tape.gradient(loss, trainable_vars)
-optimizer.apply_gradients(zip(gradients, trainable_vars))
-
-# EMA 更新
-jepa.update_target_encoder()
-
-print(f"训练步完成，表征预测损失: {loss.numpy():.4f}")
 ```
 
 在这个机制中，目标表征 $\mathbf{S}_y$ 由平滑更新的目标编码器生成，起到了一个动态但相对稳定的教师（Teacher）作用。而上下文编码器和预测器则是学生（Student），它们致力于根据片段信息和相对位置去重构“教师”心目中的完整世界。由于在表征空间内进行重构，网络无需理会那些无用的高频像素信息，从而拥有了更深层的语义抽象能力。

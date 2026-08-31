@@ -46,8 +46,9 @@ $$
 \hat{z}_t \sim p_\theta(z_t \mid h_t)
 $$
 
-> [!NOTE]
-> 想象你在一条熟悉的但没有路灯的走廊里蒙眼行走。确定性状态 $h_t$ 就像是你大脑中对之前走过步数的记忆和方向感；先验分布 $p_\theta(z_t \mid h_t)$ 是你根据记忆预测自己当前可能所处的位置分布。而当你稍微睁开一点眼睛，看到周围微弱的轮廓 $o_t$ 时，你结合记忆和所见，得出的更加确信的位置分布，就是后验分布 $q_\phi(z_t \mid h_t, o_t)$。Dreamer 训练世界模型的目标之一，就是让闭着眼睛的预测（先验）尽可能接近睁开眼睛的认知（后验）。
+::: info 说明
+想象你在一条熟悉的但没有路灯的走廊里蒙眼行走。确定性状态 $h_t$ 就像是你大脑中对之前走过步数的记忆和方向感；先验分布 $p_\theta(z_t \mid h_t)$ 是你根据记忆预测自己当前可能所处的位置分布。而当你稍微睁开一点眼睛，看到周围微弱的轮廓 $o_t$ 时，你结合记忆和所见，得出的更加确信的位置分布，就是后验分布 $q_\phi(z_t \mid h_t, o_t)$。Dreamer 训练世界模型的目标之一，就是让闭着眼睛的预测（先验）尽可能接近睁开眼睛的认知（后验）。
+:::
 
 ### 变分下界 (ELBO) 与损失函数
 
@@ -105,8 +106,7 @@ $$
 
 (**我们定义基础的重参数化技巧，以使得随机采样过程可导。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -128,29 +128,9 @@ class ReparameterizedGaussian(nn.Module):
         return mean, std, sample
 ```
 
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-from tensorflow.keras import layers
-
-class ReparameterizedGaussian(tf.keras.Model):
-    def __init__(self, output_dim):
-        super().__init__()
-        self.fc = layers.Dense(output_dim * 2)
-
-    def call(self, x):
-        mean_std = self.fc(x)
-        mean, log_std = tf.split(mean_std, 2, axis=-1)
-        std = tf.math.softplus(log_std) + 0.1
-        noise = tf.random.normal(tf.shape(mean))
-        sample = mean + noise * std
-        return mean, std, sample
-```
-
 (**接下来实现循环状态空间模型（RSSM）的核心类。**) 这包含了确定性路径（GRU）和两条随机推断路径（先验与后验）。
 
-```{.python .input}
-#@tab pytorch
+```python
 class RSSM(nn.Module):
     def __init__(self, action_dim, obs_embed_dim, deter_dim, stoch_dim):
         super().__init__()
@@ -178,30 +158,6 @@ class RSSM(nn.Module):
     def forward_posterior(self, deter, obs_embed):
         # 结合观测特征计算后验分布 q(z_t | h_t, o_t)
         x = torch.cat([deter, obs_embed], dim=-1)
-        mean, std, stoch = self.posterior(x)
-        return stoch, mean, std
-```
-
-```{.python .input}
-#@tab tensorflow
-class RSSM(tf.keras.Model):
-    def __init__(self, action_dim, obs_embed_dim, deter_dim, stoch_dim):
-        super().__init__()
-        self.deter_dim = deter_dim
-        self.stoch_dim = stoch_dim
-
-        self.cell = layers.GRUCell(deter_dim)
-        self.prior = ReparameterizedGaussian(stoch_dim)
-        self.posterior = ReparameterizedGaussian(stoch_dim)
-
-    def forward_prior(self, prev_stoch, prev_action, prev_deter):
-        x = tf.concat([prev_stoch, prev_action], axis=-1)
-        deter, _ = self.cell(x, [prev_deter])
-        mean, std, stoch = self.prior(deter)
-        return deter, stoch, mean, std
-
-    def forward_posterior(self, deter, obs_embed):
-        x = tf.concat([deter, obs_embed], axis=-1)
         mean, std, stoch = self.posterior(x)
         return stoch, mean, std
 ```

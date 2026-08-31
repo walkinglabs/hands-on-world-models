@@ -98,8 +98,7 @@ $$\mathcal{J} = \sum_{t=1}^{T} \mathbb{E}_{q(s_t \mid h_t, o_t)} \left[ \ln p(o_
 
 (**我们首先定义 RSSM 单元，它负责根据方程进行前向推演。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 from torch.distributions import Normal, kl_divergence
@@ -199,8 +198,7 @@ PlaNet 采用了一种名为**交叉熵方法**（Cross-Entropy Method, CEM）�
 
 (**以下是 CEM 规划算法在张量级别的大致实现框架。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 def cem_planning(current_state, current_rnn_hidden, rssm, reward_model,
                  plan_horizon=12, num_samples=1000, num_elites=100, iterations=10, action_dim=6):
     """

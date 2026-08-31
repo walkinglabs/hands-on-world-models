@@ -63,8 +63,9 @@ $$\bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta$$
 
 EMA 与停止梯度让目标网络不会在同一步直接追随预测器，从而提供较慢变化的学习目标。然而，常数解在代数上仍然存在，不能据此证明模型一定保留环境信息。实际系统还会依赖掩码策略、预测器结构、归一化、数据增强或方差—协方差约束等设计，并通过表征方差和下游任务进行检查。
 
-> [!NOTE]
-> 可以把目标编码器理解为更新较慢的参照网络。这个类比只解释目标为何较稳定，不应把它理解为“EMA 必然阻止坍塌”的证明。
+::: info 说明
+可以把目标编码器理解为更新较慢的参照网络。这个类比只解释目标为何较稳定，不应把它理解为“EMA 必然阻止坍塌”的证明。
+:::
 
 ## 6.4.4 多步预测的自回归展开
 
@@ -83,12 +84,11 @@ $$\mathcal{L}_{multi} = \sum_{k=1}^K \lambda_k \left\| \hat{\mathbf{s}}_{t+k} - 
 
 ## 6.4.5 代码实现
 
-下面我们以工业级代码的标准，使用 PyTorch 和 TensorFlow 分别实现一个多层感知机（MLP）版本的动作条件 JEPA 核心架构。我们将明确处理梯度的截断（Stop-Gradient）以及 EMA 参数的更新。
+下面我们以工业级代码的标准，使用 PyTorch 实现一个多层感知机（MLP）版本的动作条件 JEPA 核心架构。我们将明确处理梯度的截断（Stop-Gradient）以及 EMA 参数的更新。
 
 (**首先，我们定义基础的编码器和预测器模块。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import copy
@@ -127,48 +127,9 @@ class ActionPredictor(nn.Module):
         return self.net(x)
 ```
 
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-from tensorflow.keras import layers, models
-
-class Encoder(tf.keras.Model):
-    """一个简化的基于 MLP 的编码器，用于提取隐状态。"""
-    def __init__(self, hidden_dim, latent_dim):
-        super().__init__()
-        self.net = models.Sequential([
-            layers.Dense(hidden_dim),
-            layers.LayerNormalization(),
-            layers.ReLU(),
-            layers.Dense(latent_dim)
-        ])
-
-    def call(self, x):
-        # x: (Batch_Size, obs_dim)
-        return self.net(x)
-
-class ActionPredictor(tf.keras.Model):
-    """动作条件预测器：结合当前隐状态和动作，预测下一步隐状态。"""
-    def __init__(self, hidden_dim, latent_dim):
-        super().__init__()
-        self.net = models.Sequential([
-            layers.Dense(hidden_dim),
-            layers.LayerNormalization(),
-            layers.ReLU(),
-            layers.Dense(latent_dim)
-        ])
-
-    def call(self, state, action):
-        # state: (Batch_Size, latent_dim)
-        # action: (Batch_Size, action_dim)
-        x = tf.concat([state, action], axis=-1)
-        return self.net(x)
-```
-
 (**接下来，我们组装完整的 Action-conditional JEPA 模型，并实现 EMA 更新逻辑。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class ActionConditionalJEPA(nn.Module):
     def __init__(self, obs_dim, action_dim, latent_dim=256, hidden_dim=512, ema_tau=0.99):
         super().__init__()
@@ -217,65 +178,9 @@ class ActionConditionalJEPA(nn.Module):
         return loss, s_t_plus_1_pred
 ```
 
-```{.python .input}
-#@tab tensorflow
-class ActionConditionalJEPA(tf.keras.Model):
-    def __init__(self, action_dim, latent_dim=256, hidden_dim=512, ema_tau=0.99):
-        super().__init__()
-        self.ema_tau = ema_tau
-
-        # 1. 上下文编码器
-        self.context_encoder = Encoder(hidden_dim, latent_dim)
-
-        # 2. 动作条件预测器
-        self.predictor = ActionPredictor(hidden_dim, latent_dim)
-
-        # 3. 目标编码器
-        self.target_encoder = Encoder(hidden_dim, latent_dim)
-        # 初始化时需要调用一次以建立权重
-        dummy_input = tf.zeros((1, 100)) # 假设 obs_dim=100 的占位符，可根据实际调整
-        self.context_encoder(dummy_input)
-        self.target_encoder(dummy_input)
-
-        # 将上下文编码器的权重硬拷贝给目标编码器
-        self.target_encoder.set_weights(self.context_encoder.get_weights())
-
-        # 目标编码器的参数不参与梯度更新
-        self.target_encoder.trainable = False
-
-    def update_target_encoder(self):
-        """执行目标编码器的指数移动平均 (EMA) 更新"""
-        for param_q, param_k in zip(self.context_encoder.weights, self.target_encoder.weights):
-            # \bar{\theta} = \tau * \bar{\theta} + (1 - \tau) * \theta
-            param_k.assign(self.ema_tau * param_k + (1.0 - self.ema_tau) * param_q)
-
-    def call(self, inputs):
-        """
-        前向传播计算单步预测损失
-        inputs: (obs_t, action_t, obs_t_plus_1)
-        """
-        obs_t, action_t, obs_t_plus_1 = inputs
-
-        # (1) 提取当前上下文隐状态
-        s_t = self.context_encoder(obs_t)
-
-        # (2) 预测下一时刻的隐状态
-        s_t_plus_1_pred = self.predictor(s_t, action_t)
-
-        # (3) 获取真实目标并应用 tf.stop_gradient
-        s_t_plus_1_target = self.target_encoder(obs_t_plus_1)
-        s_t_plus_1_target = tf.stop_gradient(s_t_plus_1_target)
-
-        # (4) 计算 MSE 损失
-        loss = tf.reduce_mean(tf.square(s_t_plus_1_pred - s_t_plus_1_target))
-
-        return loss, s_t_plus_1_pred
-```
-
 (**为了观察模型如何避免表征坍塌，我们编写一个简短的训练循环，并监控损失和隐状态的方差。如果模型坍塌，隐状态的方差会迅速趋近于零。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 # 初始化模型和优化器
 obs_dim, action_dim = 128, 4
 jepa = ActionConditionalJEPA(obs_dim=obs_dim, action_dim=action_dim)

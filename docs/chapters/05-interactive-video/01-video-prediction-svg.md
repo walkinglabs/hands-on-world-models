@@ -1,5 +1,13 @@
 # 视频预测网络基础与随机视频生成
 
+> **本章导读**
+>
+> **讲什么：** 本章换一种交付形式：让世界模型直接生成我们可以观看的未来画面，并让动作控制画面如何继续。我们将从随机视频预测出发，经过视频词元化、自回归与扩散生成，再处理实时推理，最后组装一个受动作控制的视频小世界。
+>
+> **为什么单一的下一帧预测不够：** 同一辆车驶到路口，可以左转、右转或直行；如果模型只能输出一个未来，常会把几种可能平均成模糊画面。交互式世界还要求“换一个动作，未来也随之改变”，并且生成速度必须跟得上操作，因此随机性、动作条件和实时性缺一不可。
+>
+> **故事线：** `从确定性下一帧走向随机未来 → 把长视频压缩成词元 → 用自回归或扩散生成时空内容 → 用缓存降低逐帧开销 → 注入动作并检验未来是否真的可控`
+
 预测未来是智能体理解世界的基石。对于人类而言，当我们抛出一枚硬币时，即使硬币还在空中翻滚，我们的大脑已经能够粗略预测它下落的轨迹与最终触地的瞬间。在深度学习中，这种“预测未来”的能力往往被抽象为视频预测（Video Prediction）任务：给定一系列历史图像帧，模型需要生成未来可能出现的图像序列。
 
 在这节课中，我们将深入探讨视频预测的理论基础，并详细剖析随机视频生成网络（Stochastic Video Generation, SVG）[[Denton & Fergus, 2018]](https://arxiv.org/abs/1802.07687)的设计哲学。我们将从最直观的物理运动学出发，逐步推导到高维张量的概率生成模型。
@@ -49,8 +57,9 @@ $$\mathbf{x}_t \sim p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t)$$
 
 ## 变分下界与损失函数
 
-> [!NOTE]
-> 我们在这里使用一个教育学的类比来帮助理解变分推断的核心思想：假设你是一位考古学家（先验网络 $p_{\psi}$），试图根据古代遗迹（历史帧 $\mathbf{x}_{<t}$）预测明天会发掘出什么文物（分布 $z_t$）。而你的导师（后验网络 $q_{\phi}$）已经看到了明天发掘出的文物照片（当前帧 $\mathbf{x}_t$），因此导师能给出极其准确的判断。在长期的训练中，你要尽可能让自己的预测（先验）与导师的判断（后验）保持一致（即最小化KL散度），从而在未来导师不在（没有目标帧）时，你也能做出合理的预测。
+::: info 说明
+我们在这里使用一个教育学的类比来帮助理解变分推断的核心思想：假设你是一位考古学家（先验网络 $p_{\psi}$），试图根据古代遗迹（历史帧 $\mathbf{x}_{<t}$）预测明天会发掘出什么文物（分布 $z_t$）。而你的导师（后验网络 $q_{\phi}$）已经看到了明天发掘出的文物照片（当前帧 $\mathbf{x}_t$），因此导师能给出极其准确的判断。在长期的训练中，你要尽可能让自己的预测（先验）与导师的判断（后验）保持一致（即最小化KL散度），从而在未来导师不在（没有目标帧）时，你也能做出合理的预测。
+:::
 
 我们希望最大化观察到真实视频序列 $\mathbf{x}_{1:T}$ 的边缘对数似然 $\log p_{\theta}(\mathbf{x}_{1:T})$。由于直接计算包含了隐变量 $z_{1:T}$ 的积分是不可解的，我们转向最大化其证据下界（Evidence Lower Bound, ELBO）。对于单一时间步 $t$，变分下界可以拆解为重构项与正则化项：
 
@@ -76,8 +85,7 @@ SVG网络（具体来说是其变体SVG-LP，Learned Prior）由四个核心组�
 
 下面我们展示在PyTorch中实现SVG核心逻辑的代码。我们将重点放在隐变量的采样与KL散度的计算上。为了保持代码简洁，我们省略了卷积层编解码器的具体定义，聚焦于时序动态变化。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 
@@ -149,49 +157,6 @@ class SVGCell(nn.Module):
         # 结合上一步的图像特征与当前步的扰动送入LSTM
         lstm_input = torch.cat([h_t_minus_1, z_t], dim=1)
         next_hidden_state = self.lstm(lstm_input, hidden_state)
-
-        return z_t, mu_p, logvar_p, mu_q, logvar_q, next_hidden_state
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-
-class SVGCell(tf.keras.layers.Layer):
-    def __init__(self, dim_h, dim_z, dim_c):
-        super(SVGCell, self).__init__()
-        self.dim_z = dim_z
-        self.lstm = tf.keras.layers.LSTMCell(dim_c)
-
-        self.prior_net = tf.keras.Sequential([
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(dim_z * 2)
-        ])
-
-        self.posterior_net = tf.keras.Sequential([
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(dim_z * 2)
-        ])
-
-    def reparameterize(self, mu, logvar):
-        std = tf.exp(0.5 * logvar)
-        eps = tf.random.normal(shape=tf.shape(std))
-        return mu + eps * std
-
-    def call(self, h_t, h_t_minus_1, hidden_state):
-        h_lstm, c_lstm = hidden_state
-
-        prior_out = self.prior_net(h_lstm)
-        mu_p, logvar_p = tf.split(prior_out, num_or_size_splits=2, axis=1)
-
-        post_input = tf.concat([h_lstm, h_t], axis=1)
-        post_out = self.posterior_net(post_input)
-        mu_q, logvar_q = tf.split(post_out, num_or_size_splits=2, axis=1)
-
-        z_t = self.reparameterize(mu_q, logvar_q)
-
-        lstm_input = tf.concat([h_t_minus_1, z_t], axis=1)
-        _, next_hidden_state = self.lstm(lstm_input, states=hidden_state)
 
         return z_t, mu_p, logvar_p, mu_q, logvar_q, next_hidden_state
 ```

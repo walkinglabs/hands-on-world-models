@@ -100,8 +100,7 @@ $$
 
 (**下面我们定义 RSSM 的核心模块代码。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.distributions import Normal

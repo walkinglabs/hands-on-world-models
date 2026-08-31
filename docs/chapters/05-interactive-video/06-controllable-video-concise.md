@@ -62,9 +62,9 @@ $$\mathbf{A} = \text{softmax}\left(\frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{d_h}}
 
 $$\text{CrossAttention}(\mathbf{X}, \mathbf{C}) = \mathbf{A} \mathbf{V} \in \mathbb{R}^{N \times d_v}$$
 
-> [!NOTE]
-> **极其克制的唯一类比**
-> 如果我们必须用一个生活中的物理过程来比喻交叉注意力机制：想象你（视觉特征 $\mathbf{X}$）走进一个庞大的中药铺（控制信号集合 $\mathbf{C}$）。你手里拿着一张具体的药方（生成查询 $\mathbf{Q}$），而药铺里的每一个药屉外都贴着标签（生成键 $\mathbf{K}$）。你逐一比对药方上的名字和药屉上的标签（计算点积 $\mathbf{Q}\mathbf{K}^\top$ 并通过 Softmax 决定匹配度 $\mathbf{A}$）。匹配度越高的药屉，你从里面抓取的药材（提取值 $\mathbf{V}$）就越多。最终你带走的是所有药材按比例混合后的一包新药（输出 $\mathbf{A}\mathbf{V}$）。这种“基于查询的加权检索”过程，保证了生成模型能够极其精准地捕捉到与当前视觉区域最相关的控制指令，而不是盲目地接受所有外部输入。
+::: info 极其克制的唯一类比
+如果我们必须用一个生活中的物理过程来比喻交叉注意力机制：想象你（视觉特征 $\mathbf{X}$）走进一个庞大的中药铺（控制信号集合 $\mathbf{C}$）。你手里拿着一张具体的药方（生成查询 $\mathbf{Q}$），而药铺里的每一个药屉外都贴着标签（生成键 $\mathbf{K}$）。你逐一比对药方上的名字和药屉上的标签（计算点积 $\mathbf{Q}\mathbf{K}^\top$ 并通过 Softmax 决定匹配度 $\mathbf{A}$）。匹配度越高的药屉，你从里面抓取的药材（提取值 $\mathbf{V}$）就越多。最终你带走的是所有药材按比例混合后的一包新药（输出 $\mathbf{A}\mathbf{V}$）。这种“基于查询的加权检索”过程，保证了生成模型能够极其精准地捕捉到与当前视觉区域最相关的控制指令，而不是盲目地接受所有外部输入。
+:::
 
 ## 无分类器引导（Classifier-Free Guidance）
 
@@ -94,8 +94,7 @@ $$\tilde{\epsilon}_\theta(\mathbf{x}_t, t, c) = (1 + w) \epsilon_\theta(\mathbf{
 
 (**我们定义交叉注意力层**)，严格按照这两个公式进行矩阵运算。为了工程上的高效，我们通常使用多头注意力机制（Multi-Head Attention），即在多个子空间中独立执行交叉注意力，最后将结果拼接。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -156,8 +155,7 @@ class CrossAttention(nn.Module):
 
 接下来，(**我们将交叉注意力层嵌入到生成网络的残差块中**)。在现代扩散模型（如 DiT 或 U-Net）中，自注意力机制负责视觉特征内部的时空一致性，而交叉注意力模块则专门负责吸收外部条件。
 
-```{.python .input}
-#@tab pytorch
+```python
 class ConditionalVideoBlock(nn.Module):
     """带条件控制的视频生成残差块"""
     def __init__(self, visual_dim, control_dim, num_heads=8):
@@ -197,8 +195,7 @@ class ConditionalVideoBlock(nn.Module):
 
 为了支持我们在相关章节中讨论的无分类器引导（CFG），(**我们在模型的前向推理逻辑中必须同时计算条件生成和无条件生成的预测值**)。
 
-```{.python .input}
-#@tab pytorch
+```python
 def classifier_free_guidance_step(model_block, x_t, context, unconditional_context, guidance_scale=7.5):
     """
     无分类器引导的单步推理。

@@ -1,5 +1,13 @@
 # 联合嵌入预测架构（JEPA）基础理论
 
+> **本章导读**
+>
+> **讲什么：** 本章研究另一条路线：模型不重建每个像素，而是预测目标画面中较抽象的特征。我们会先建立联合嵌入预测架构，再观察“所有输入都映射到同一个特征”这种坍塌解，随后用掩码、目标网络和指数移动平均稳定训练，并把动作加入特征动力学。
+>
+> **为什么可以不预测像素：** 遮住视频下一帧的一角时，树叶具体偏向哪边可能无法确定，但“道路仍在前方、行人正在靠近”仍然可以预测。若任务关心的是规划与控制，逼模型还原每个不可预测的纹理会浪费容量；然而只预测特征又容易找到没有信息的常数答案，因此必须同时解决表示坍塌。
+>
+> **故事线：** `从像素重构改为特征预测 → 用掩码制造上下文与目标 → 暴露常数表示的坍塌解 → 用不对称目标网络与 EMA 稳定学习 → 加入动作并展开多步未来`
+
 自监督学习（Self-Supervised Learning, SSL）在深度学习的黄金十年中占据了举足轻重的地位。然而，当我们试图让机器像人类一样理解世界时，传统的学习范式暴露出了深层的局限性。2022年，Yann LeCun 在其具有里程碑意义的论文 _A Path Towards Autonomous Machine Intelligence_ [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf) 中正式提出了联合嵌入预测架构（Joint Embedding Predictive Architecture, JEPA）。这一架构试图回答一个基础且深刻的问题：机器应该在哪个空间中预测未来或补全缺失的信息？
 
 在本节中，我们将从自监督学习的演进脉络出发，逐步剖析 JEPA 的物理直觉与数学基础，并最终在代码层面构建这一架构的核心组件。
@@ -95,8 +103,7 @@ $$
 (**我们首先定义上下文编码器、目标编码器和预测器。**)
 在这个简化的例子中，我们使用多层感知机（MLP）来替代复杂的 Transformer 骨干网络，以专注于 JEPA 独有的架构设计。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 import copy
@@ -134,8 +141,7 @@ class Predictor(nn.Module):
 
 (**现在，我们将这些组件组合成完整的 JEPA 模型，并实现非对称的指数移动平均（EMA）更新机制。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class JEPA(nn.Module):
     def __init__(self, input_dim, embed_dim, z_dim, ema_tau=0.99):
         super().__init__()

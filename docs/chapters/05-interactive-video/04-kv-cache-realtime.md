@@ -73,8 +73,7 @@ $$\mathcal{K} = \{ \mathbf{K}^{(1)}, \mathbf{K}^{(2)}, \dots, \mathbf{K}^{(M)} \
 
 (**在实现代码时，我们需要密切关注张量的形状变化。**) 特别是缓存中键和值序列长度的动态拼接。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -149,67 +148,6 @@ class KVCacheSelfAttention(nn.Module):
         out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, self.d_model)
         out = self.W_o(out)
 
-        return out, new_kv_cache
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-import math
-
-class KVCacheSelfAttention(tf.keras.layers.Layer):
-    def __init__(self, d_model, num_heads):
-        super().__init__()
-        assert d_model % num_heads == 0, "d_model 必须能被 num_heads 整除"
-        self.d_model = d_model
-        self.num_heads = num_heads
-        self.d_k = d_model // num_heads
-
-        self.W_q = tf.keras.layers.Dense(d_model)
-        self.W_k = tf.keras.layers.Dense(d_model)
-        self.W_v = tf.keras.layers.Dense(d_model)
-        self.W_o = tf.keras.layers.Dense(d_model)
-
-    def call(self, x, kv_cache=None):
-        batch_size = tf.shape(x)[0]
-        seq_len = tf.shape(x)[1]
-
-        # 计算当前步骤的 Q, K, V
-        q = tf.reshape(self.W_q(x), (batch_size, seq_len, self.num_heads, self.d_k))
-        k = tf.reshape(self.W_k(x), (batch_size, seq_len, self.num_heads, self.d_k))
-        v = tf.reshape(self.W_v(x), (batch_size, seq_len, self.num_heads, self.d_k))
-
-        q = tf.transpose(q, perm=[0, 2, 1, 3])
-        k = tf.transpose(k, perm=[0, 2, 1, 3])
-        v = tf.transpose(v, perm=[0, 2, 1, 3])
-
-        # KV 缓存的管理
-        if kv_cache is not None:
-            k_cache, v_cache = kv_cache
-            k = tf.concat([k_cache, k], axis=2)
-            v = tf.concat([v_cache, v], axis=2)
-
-        new_kv_cache = (k, v)
-
-        # 计算注意力得分
-        scores = tf.matmul(q, k, transpose_b=True) / math.sqrt(float(self.d_k))
-
-        if seq_len is not None and seq_len > 1:
-            total_seq_len = tf.shape(k)[2]
-            # 动态生成下三角矩阵以做因果掩码
-            mask = tf.linalg.band_part(tf.ones((seq_len, total_seq_len)), -1, 0)
-            mask = tf.reshape(mask, (1, 1, seq_len, total_seq_len))
-            # 将 0 的位置填充大负数
-            scores = tf.where(tf.equal(mask, 1), scores, tf.fill(tf.shape(scores), -1e9))
-
-        attn_weights = tf.nn.softmax(scores, axis=-1)
-
-        # 聚合值向量
-        out = tf.matmul(attn_weights, v)
-        out = tf.transpose(out, perm=[0, 2, 1, 3])
-        out = tf.reshape(out, (batch_size, seq_len, self.d_model))
-
-        out = self.W_o(out)
         return out, new_kv_cache
 ```
 

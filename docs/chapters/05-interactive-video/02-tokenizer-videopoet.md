@@ -107,8 +107,7 @@ $$\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\fr
 
 (**构建基于布尔化与直通估计器的 LFQ 模块**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 
@@ -164,54 +163,6 @@ quantized_features, token_indices = quantizer(latent_features)
 print("量化后特征图的形状:", quantized_features.shape)
 print("离散 Token 索引序列的形状:", token_indices.shape)
 print("部分离散 Token 的值:", token_indices[0, 0, 0, :5])
-print(f"最大可能索引值 (码本大小-1): {2**8 - 1}")
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-
-class LookupFreeQuantizer(tf.keras.layers.Layer):
-    def __init__(self, codebook_dim):
-        """
-        初始化LFQ模块。
-        codebook_dim: 潜在特征的通道维度 d。
-                      隐式码本大小将为 2^d。
-        """
-        super().__init__()
-        self.codebook_dim = codebook_dim
-        # 创建一个2的幂次权重向量，用于将二进制编码转换为十进制索引
-        powers = tf.range(codebook_dim, dtype=tf.float32)
-        self.binary_weights = tf.pow(2.0, powers)
-
-    def call(self, z):
-        """
-        前向传播函数。
-        """
-        # 1. 严格的二值化量化
-        z_quantized = tf.sign(z)
-        z_quantized = z_quantized + tf.cast(z_quantized == 0, tf.float32)
-
-        # 2. 直通估计器 (Straight-Through Estimator)
-        # tf.stop_gradient 阻断梯度反传
-        z_ste = z + tf.stop_gradient(z_quantized - z)
-
-        # 3. 映射为 0, 1 二进制
-        binary_indices = tf.cast(z_quantized > 0, tf.float32)
-
-        # 4. 计算整数索引
-        indices = tf.cast(tf.reduce_sum(binary_indices * self.binary_weights, axis=-1), tf.int32)
-
-        return z_ste, indices
-
-# 模拟潜在特征图
-latent_features = tf.random.normal(shape=(2, 4, 8, 8, 8))
-quantizer = LookupFreeQuantizer(codebook_dim=8)
-
-quantized_features, token_indices = quantizer(latent_features)
-print("量化后特征图的形状:", quantized_features.shape)
-print("离散 Token 索引序列的形状:", token_indices.shape)
-print("部分离散 Token 的值:", token_indices[0, 0, 0, :5].numpy())
 print(f"最大可能索引值 (码本大小-1): {2**8 - 1}")
 ```
 

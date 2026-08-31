@@ -61,10 +61,13 @@ $$
 \hat{H}_{\mathcal{T}} = g_{\phi}(H_{\mathcal{C}}, P_{\mathcal{T}})
 $$
 
-> [!quote] 唯一的类比：关于特征预测与参数指数移动平均 (EMA)
-> V-JEPA 的架构最反直觉的地方在于：为什么需要两个编码器，并且目标编码器的参数不通过梯度下降更新？
-> 我们可以用一个极度克制的博弈学类比来理解。想象上下文编码器（及预测器）是一个“学生”，而目标编码器是一个“导师”。如果导师和学生一起通过梯度下降来纠正错误，系统极易陷入“特征坍塌”（Feature Collapse）——导师为了让学生永远猜对，干脆把所有的视频内容都映射为一个常数 $0$。
-> 为了防止这种作弊，V-JEPA 规定导师（目标编码器 $\theta_t$）的权重只能是学生（上下文编码器 $\theta_c$）历史权重的缓慢积累，即通过指数移动平均（EMA）更新：$\theta_t \leftarrow \tau \theta_t + (1 - \tau) \theta_c$。导师的判断标准不随当前这道题的对错而急剧改变，迫使学生必须真正学到如何根据上下文推断缺失的时空信息。
+::: info 唯一的类比：关于特征预测与参数指数移动平均（EMA）
+V-JEPA 的架构最反直觉的地方在于：为什么需要两个编码器，并且目标编码器的参数不通过梯度下降更新？
+
+我们可以用一个极度克制的博弈学类比来理解。想象上下文编码器（及预测器）是一个“学生”，而目标编码器是一个“导师”。如果导师和学生一起通过梯度下降来纠正错误，系统极易陷入“特征坍塌”（Feature Collapse）——导师为了让学生永远猜对，干脆把所有的视频内容都映射为一个常数 $0$。
+
+为了防止这种作弊，V-JEPA 规定导师（目标编码器 $\theta_t$）的权重只能是学生（上下文编码器 $\theta_c$）历史权重的缓慢积累，即通过指数移动平均（EMA）更新：$\theta_t \leftarrow \tau \theta_t + (1 - \tau) \theta_c$。导师的判断标准不随当前这道题的对错而急剧改变，迫使学生必须真正学到如何根据上下文推断缺失的时空信息。
+:::
 
 ### 4. 目标函数
 
@@ -84,8 +87,7 @@ $$
 
 首先，我们需要将输入的 4D 张量 `(B, C, T, H, W)` 转换为序列 `(B, N, D)`。我们通过 3D 卷积来实现这一时空切块和线性映射。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -120,8 +122,7 @@ class TubeletEmbedding(nn.Module):
 
 在序列化之后，模型丢失了所有的时空结构信息。对于视频，我们不仅要告诉模型“这个块在什么位置”，还要告诉它“这个块在哪个时刻”。绝对三维位置编码是不可或缺的。为了简洁，在此实现中我们将位置编码作为一个可学习的绝对参数，在实际的大规模应用中往往使用正弦余弦分离编码以应对可变长度。
 
-```{.python .input}
-#@tab pytorch
+```python
 def get_3d_sincos_pos_embed(embed_dim, grid_size, t_size):
     """
     这是一个占位函数，说明 3D 位置编码的生成逻辑。
@@ -134,8 +135,7 @@ def get_3d_sincos_pos_embed(embed_dim, grid_size, t_size):
 
 V-JEPA 的主体由上下文编码器（学生）、目标编码器（导师）以及预测器组成。这里我们直接构建完整的架构。为了保证独立性，我们引入基础的 Transformer 块。由于篇幅限制，这里直接使用 PyTorch 自带的 TransformerEncoderLayer。
 
-```{.python .input}
-#@tab pytorch
+```python
 class VJEPAModel(nn.Module):
     def __init__(self,
                  img_size=224,

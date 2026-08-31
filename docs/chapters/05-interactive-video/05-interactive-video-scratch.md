@@ -57,9 +57,9 @@ $$\mathrm{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}, \mathbf{M}) = \mathrm{s
 
 当 $j > i$ 时，矩阵相加使得相应的对数几率趋近于 $-\infty$，在经过 $\mathrm{softmax}$ 归一化后，其注意力权重将严格等于零，从而在物理学意义上隔绝了未来的“信息泄露”。
 
-> [!NOTE]
-> **类比思考：时间的不可逆性**
-> 我们可以将这种因果掩码视为热力学第二定律在信息流中的具象化体现。时间箭头不可逆，模型在计算当前状态的演化时，其所处的“光锥”（Light Cone）内部绝对不包含来自未来的任何微小光子或信息。这正是 $\mathbf{M}$ 矩阵中 $-\infty$ 所施加的刚性物理边界。
+::: info 类比思考：时间的不可逆性
+我们可以将这种因果掩码视为热力学第二定律在信息流中的具象化体现。时间箭头不可逆，模型在计算当前状态的演化时，其所处的“光锥”（Light Cone）内部绝对不包含来自未来的任何微小光子或信息。这正是 $\mathbf{M}$ 矩阵中 $-\infty$ 所施加的刚性物理边界。
+:::
 
 ## 代码实现：交互式视频生成器的构建
 
@@ -67,8 +67,7 @@ $$\mathrm{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}, \mathbf{M}) = \mathrm{s
 
 (**我们将首先实现多头因果自注意力层，注意掩码矩阵的应用。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -115,61 +114,11 @@ class CausalSelfAttention(nn.Module):
         return self.resid_dropout(self.c_proj(y))
 ```
 
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-
-class CausalSelfAttention(tf.keras.layers.Layer):
-    """带因果掩码的多头自注意力机制 (TensorFlow实现)"""
-    def __init__(self, embed_dim, num_heads, dropout=0.1, **kwargs):
-        super().__init__(**kwargs)
-        assert embed_dim % num_heads == 0, "嵌入维度必须能被注意力头数整除"
-
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
-
-        self.c_attn = tf.keras.layers.Dense(3 * embed_dim)
-        self.c_proj = tf.keras.layers.Dense(embed_dim)
-
-        self.attn_dropout = tf.keras.layers.Dropout(dropout)
-        self.resid_dropout = tf.keras.layers.Dropout(dropout)
-
-    def call(self, x, training=False):
-        B = tf.shape(x)[0]
-        N = tf.shape(x)[1]
-        D = self.embed_dim
-
-        qkv = self.c_attn(x) # (B, N, 3*D)
-        qkv = tf.reshape(qkv, (B, N, 3, self.num_heads, self.head_dim))
-        qkv = tf.transpose(qkv, perm=[2, 0, 3, 1, 4]) # (3, B, num_heads, N, head_dim)
-        q, k, v = qkv[0], qkv[1], qkv[2]
-
-        # 缩放点积
-        scores = tf.matmul(q, k, transpose_b=True) / tf.math.sqrt(tf.cast(self.head_dim, tf.float32))
-
-        # 生成并应用因果掩码
-        mask = tf.linalg.band_part(tf.ones((N, N)), -1, 0)
-        mask = 1.0 - mask
-        scores -= mask * 1e9
-
-        attn = tf.nn.softmax(scores, axis=-1)
-        if training:
-            attn = self.attn_dropout(attn, training=training)
-
-        y = tf.matmul(attn, v) # (B, num_heads, N, head_dim)
-        y = tf.transpose(y, perm=[0, 2, 1, 3])
-        y = tf.reshape(y, (B, N, D))
-
-        return self.resid_dropout(self.c_proj(y), training=training)
-```
-
 接下来，我们基于上述注意力机制构建标准的 Transformer 块。
 
 (**在这个块中，我们交替使用层归一化（Layer Normalization）和残差连接（Residual Connections），以保障深层网络梯度反向传播的稳定性。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class TransformerBlock(nn.Module):
     """标准的自回归 Transformer 块"""
     def __init__(self, embed_dim, num_heads, dropout=0.1):
@@ -191,35 +140,13 @@ class TransformerBlock(nn.Module):
         return x
 ```
 
-```{.python .input}
-#@tab tensorflow
-class TransformerBlock(tf.keras.layers.Layer):
-    """标准的自回归 Transformer 块 (TensorFlow实现)"""
-    def __init__(self, embed_dim, num_heads, dropout=0.1, **kwargs):
-        super().__init__(**kwargs)
-        self.ln_1 = tf.keras.layers.LayerNormalization(epsilon=1e-5)
-        self.attn = CausalSelfAttention(embed_dim, num_heads, dropout)
-        self.ln_2 = tf.keras.layers.LayerNormalization(epsilon=1e-5)
-        self.mlp = tf.keras.Sequential([
-            tf.keras.layers.Dense(4 * embed_dim, activation='gelu'),
-            tf.keras.layers.Dense(embed_dim),
-            tf.keras.layers.Dropout(dropout)
-        ])
-
-    def call(self, x, training=False):
-        x = x + self.attn(self.ln_1(x), training=training)
-        x = x + self.mlp(self.ln_2(x), training=training)
-        return x
-```
-
 ### 序列拼接与完整生成器
 
 为了实现该公式中的序列交错排布，我们需要精心设计位置编码。视频具有内在的时空二维结构，而一维的绝对位置编码往往会破坏这一结构。因此，我们将为每一个空间标记分配一个由“时间步索引”和“空间位置索引”联合决定的复合嵌入。动作标记同样需要融入序列中。
 
 (**下面的类封装了标记映射、位置编码、交错拼接以及最终的多层 Transformer 前向传播过程。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class InteractiveVideoGenerator(nn.Module):
     """交互式视频生成器的核心模块"""
     def __init__(self, vocab_size, action_dim, embed_dim, num_layers, num_heads,
@@ -311,63 +238,6 @@ class InteractiveVideoGenerator(nn.Module):
         return logits
 ```
 
-```{.python .input}
-#@tab tensorflow
-class InteractiveVideoGenerator(tf.keras.Model):
-    """交互式视频生成器的核心模块 (TensorFlow实现)"""
-    def __init__(self, vocab_size, action_dim, embed_dim, num_layers, num_heads,
-                 tokens_per_frame, max_frames, dropout=0.1, **kwargs):
-        super().__init__(**kwargs)
-        self.vocab_size = vocab_size
-        self.tokens_per_frame = tokens_per_frame
-
-        self.tok_emb = tf.keras.layers.Embedding(vocab_size, embed_dim)
-        self.action_proj = tf.keras.layers.Dense(embed_dim)
-
-        self.spatial_pos_emb = self.add_weight(shape=(1, tokens_per_frame, embed_dim), initializer='random_normal', trainable=True)
-        self.temporal_pos_emb = self.add_weight(shape=(1, max_frames, embed_dim), initializer='random_normal', trainable=True)
-        self.action_type_emb = self.add_weight(shape=(1, 1, embed_dim), initializer='random_normal', trainable=True)
-
-        self.dropout = tf.keras.layers.Dropout(dropout)
-
-        self.blocks = [TransformerBlock(embed_dim, num_heads, dropout) for _ in range(num_layers)]
-        self.ln_f = tf.keras.layers.LayerNormalization(epsilon=1e-5)
-        self.lm_head = tf.keras.layers.Dense(vocab_size, use_bias=False)
-
-    def call(self, visual_tokens, actions, training=False):
-        B = tf.shape(visual_tokens)[0]
-        T = tf.shape(visual_tokens)[1]
-        S = tf.shape(visual_tokens)[2]
-
-        token_embeddings = self.tok_emb(visual_tokens)
-
-        spatial_emb = tf.broadcast_to(tf.expand_dims(self.spatial_pos_emb, 1), [1, T, S, self.spatial_pos_emb.shape[-1]])
-        temporal_emb = tf.broadcast_to(tf.expand_dims(self.temporal_pos_emb[:, :T, :], 2), [1, T, S, self.temporal_pos_emb.shape[-1]])
-
-        visual_repr = token_embeddings + spatial_emb + temporal_emb
-
-        sequence = []
-        for t in range(visual_tokens.shape[1]):
-            sequence.append(visual_repr[:, t, :, :])
-            if t < visual_tokens.shape[1] - 1:
-                act = tf.expand_dims(actions[:, t, :], 1)
-                act_emb = self.action_proj(act)
-                act_temp = self.temporal_pos_emb[:, t:t+1, :]
-                act_repr = act_emb + act_temp + self.action_type_emb
-                sequence.append(act_repr)
-
-        h = tf.concat(sequence, axis=1)
-        h = self.dropout(h, training=training)
-
-        for block in self.blocks:
-            h = block(h, training=training)
-
-        h = self.ln_f(h)
-        logits = self.lm_head(h)
-
-        return logits
-```
-
 ## 损失函数与模型训练
 
 在自回归建模框架下，我们的训练目标是最大化序列对数似然度（Log-Likelihood）。由于动作在我们的设定中是作为条件给定的，我们不需要去预测动作，而只关注视觉标记。
@@ -380,8 +250,7 @@ $$\mathcal{L} = -\frac{1}{N_{vis}} \sum_{k=1}^{N_{vis}} \log \frac{\exp(\mathbf{
 
 (**以下演示如何从展平的 logits 序列中提取对应的视觉标记预测，并与目标标签计算交叉熵损失。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 def calculate_loss(logits, visual_tokens, tokens_per_frame):
     """
     计算序列的交叉熵损失，剔除动作标记对应的输出

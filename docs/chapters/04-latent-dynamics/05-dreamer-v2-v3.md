@@ -29,8 +29,9 @@ $$p_i \ge 0, \quad \sum_{i=1}^C p_i = 1.$$
 
 为了解决这个问题，研究人员设计了一种被称为直通估计器（Straight-Through Estimator, STE）的精妙近似方法。STE 的核心思想极为简单：(**在前向传播时，我们严格执行不可导的离散采样；而在反向传播计算梯度时，我们假装这个操作是一个恒等映射，直接将梯度放行**)。
 
-> [!NOTE]
-> 这似乎违背了严格的微积分原则，但在实际应用中，这种“欺骗”梯度的方法被证明对于离散表征学习异常有效。它提供了一种带有偏置但方差极低的梯度估计。
+::: info 说明
+这似乎违背了严格的微积分原则，但在实际应用中，这种“欺骗”梯度的方法被证明对于离散表征学习异常有效。它提供了一种带有偏置但方差极低的梯度估计。
+:::
 
 让我们用数学语言更精确地描述它。假设神经网络输出了一组未归一化的对数概率（Logits），记为 $\mathbf{l} = [l_1, l_2, \dots, l_C]^\top$。我们可以通过 Softmax 函数获得归一化的概率向量 $\mathbf{p}$：
 $$\mathbf{p} = \text{Softmax}(\mathbf{l}) \quad \text{其中} \quad p_i = \frac{\exp(l_i)}{\sum_{j=1}^C \exp(l_j)}.$$
@@ -45,8 +46,7 @@ $$\tilde{\mathbf{z}} = \mathbf{z}_{\text{one-hot}} - \mathbf{p} + \mathbf{p}.$$
 
 我们将通过代码展示这一过程。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn.functional as F
 import torch.distributions as D
@@ -138,8 +138,7 @@ $$ p_k = \frac{v_{k+1} - y}{\Delta} $$
 
 (**我们将把上述理论转化为实际的代码实现**)。这段代码展示了 Symlog 变换和 Two-hot 编码的核心逻辑，它们是构建具备高度泛化能力的 DreamerV3 模型的基石。
 
-```{.python .input}
-#@tab pytorch
+```python
 class SymlogTransform:
     """
     (对称对数变换及其逆变换)

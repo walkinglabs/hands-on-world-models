@@ -73,8 +73,7 @@ $$q_\phi(z_t \mid h_t, x_t) = \mathcal{N}(\mu_\phi(h_t, x_t), \Sigma_\phi(h_t, x
 
 现在，让我们利用 PyTorch 从零构建 `RSSMCell`。这个类负责在单个时间步执行动力学的前向传播和后验推断。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -102,18 +101,9 @@ class RSSMCell(nn.Module):
         self.fc_posterior_stats = nn.Linear(hidden_dim, 2 * stoch_dim)
 ```
 
-#@tab tensorflow
-
-# 在 TensorFlow 对应实现中，通常使用 tf.keras.layers.Dense 和 tf.keras.layers.GRUCell。
-
-# 由于核心张量逻辑完全一致，此处主要关注其严格的数学推导在代码中的映射。
-
-````
-
 我们需要几个辅助函数来帮助我们处理高斯分布的参数计算和重参数化技巧（Reparameterization Trick）。为了保证训练的数值稳定性，方差往往不直接被预测，而是预测标准的对数方差（Log-Variance），或者使用 Softplus 激活函数加上一个极小的偏移量。
 
-```{.python .input}
-#@tab pytorch
+```python
 def extract_stats(stats_tensor, min_std=0.1):
     """
     将网络输出分解为均值和标准差。
@@ -130,7 +120,7 @@ def sample_gaussian(mean, std):
     """
     noise = torch.randn_like(mean)
     return mean + std * noise
-````
+```
 
 ### 实现单步前向传播（Step）
 
@@ -141,8 +131,7 @@ def sample_gaussian(mean, std):
 
 我们实现一个通用的 `forward_step` 函数，它可以根据是否提供观测信息，无缝切换先验推断与后验推断。
 
-```{.python .input}
-#@tab pytorch
+```python
     # 将以下方法补充至 RSSMCell 类内部
     def forward_step(self, prev_deter, prev_stoch, prev_action, obs_embed=None):
         """
@@ -189,8 +178,7 @@ def sample_gaussian(mean, std):
 
 我们接下来实现整个序列展开的逻辑，并在每个时间步记录先验和后验分布。
 
-```{.python .input}
-#@tab pytorch
+```python
 class RSSM(nn.Module):
     """处理整个时间序列的顶层 RSSM 模块。"""
     def __init__(self, action_dim, deter_dim=200, stoch_dim=30, hidden_dim=200):
@@ -253,12 +241,10 @@ class RSSM(nn.Module):
 在得到了长度为 $T$ 的先验统计量和后验统计量之后，我们需要计算 KL 散度。对于两个多变量高斯分布 $p = \mathcal{N}(\mu_1, \Sigma_1)$ 和 $q = \mathcal{N}(\mu_2, \Sigma_2)$（假设方差为对角矩阵），从 $q$ 到 $p$ 的 KL 散度具有解析解：
 
 $$ D_{KL}(q \parallel p) = \frac{1}{2} \sum_{i=1}^{D_z} \left( \log \frac{\sigma_{1,i}^2}{\sigma_{2,i}^2} + \frac{\sigma_{2,i}^2 + (\mu_{2,i} - \mu_{1,i})^2}{\sigma_{1,i}^2} - 1 \right) $$
-:eqlabel:eq_kl_divergence
 
 值得注意的是，RSSM 中通常会将后验分布的参数截断梯度（Stop Gradient）传递给先验，反之亦然。甚至会对这两部分的学习率进行解耦处理。为了保证训练不会因为某一步太大的误差而崩溃，通常还会在 KL 散度中引入一个超参数 $\beta$，或者使用 Free Nats 机制强制设定一个 KL 散度的最小下界。
 
-```{.python .input}
-#@tab pytorch
+```python
 def kl_loss(prior_stats, post_stats, free_nats=3.0):
     """
     计算整个序列上的 KL 散度损失。
@@ -302,7 +288,3 @@ def kl_loss(prior_stats, post_stats, free_nats=3.0):
    > **提示**：观察分母项。
 3. 在现实训练中，如果你发现 KL 散度极低，模型完美地使得先验等同于后验，但此时解码器重构出的图像却极其模糊，这说明发生了什么问题？
    > **提示**：这通常被称为“后验崩溃”（Posterior Collapse）。思考当随机状态不再携带额外信息时，模型实质上退化成了什么？
-
-:begin_tab:pytorch
-[讨论](https://discuss.d2l.ai/t/1234)
-:end_tab:
