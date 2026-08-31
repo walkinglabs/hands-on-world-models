@@ -108,8 +108,9 @@ $$
 \nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot R(\tau) \right]
 $$
 
-> [!CAUTION]
-> 这是一个在强化学习中少有的、允许我们在不知道环境转移概率（即所谓 Model-free）的情况下，仍然可以计算目标函数梯度的公式。这也是 REINFORCE 算法名称中 "Score Function Estimator" 的由来。
+::: warning 注意
+这是一个在强化学习中少有的、允许我们在不知道环境转移概率（即所谓 Model-free）的情况下，仍然可以计算目标函数梯度的公式。这也是 REINFORCE 算法名称中 "Score Function Estimator" 的由来。
+:::
 
 ## 因果性与奖励截断
 
@@ -183,8 +184,7 @@ $$
 
 以下代码展示了如何使用深度学习框架实现带基线的策略梯度优化。我们假设环境提供了一维离散动作空间，并使用多层感知机（MLP）作为策略网络。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -233,50 +233,6 @@ def reinforce_update(policy_net, optimizer, saved_log_probs, rewards):
     optimizer.zero_grad()
     policy_loss.backward()
     optimizer.step()
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-import numpy as np
-
-class PolicyNetwork(tf.keras.Model):
-    def __init__(self, action_dim):
-        super().__init__()
-        self.fc1 = tf.keras.layers.Dense(128, activation='relu')
-        self.fc2 = tf.keras.layers.Dense(action_dim, activation='softmax')
-
-    def call(self, x):
-        x = self.fc1(x)
-        action_probs = self.fc2(x)
-        return action_probs
-
-def compute_returns(rewards, gamma=0.99):
-    returns = []
-    R = 0
-    for r in reversed(rewards):
-        R = r + gamma * R
-        returns.insert(0, R)
-    returns = tf.convert_to_tensor(returns, dtype=tf.float32)
-    returns = (returns - tf.reduce_mean(returns)) / (tf.math.reduce_std(returns) + 1e-8)
-    return returns
-
-def reinforce_update(policy_net, optimizer, saved_log_probs, rewards):
-    returns = compute_returns(rewards)
-
-    policy_loss = []
-    for log_prob, G in zip(saved_log_probs, returns):
-        policy_loss.append(-log_prob * G)
-
-    policy_loss = tf.reduce_sum(policy_loss)
-
-    with tf.GradientTape() as tape:
-        # 这里为了演示对齐 PyTorch 逻辑，实际在 TF 中 log_prob 是通过 tape 计算的
-        # 在实际实现中，通常会将前向采样和 loss 计算一同放在 tape 内部
-        pass
-    # 假设我们从 tape 获取了对网络权重的梯度
-    # gradients = tape.gradient(policy_loss, policy_net.trainable_variables)
-    # optimizer.apply_gradients(zip(gradients, policy_net.trainable_variables))
 ```
 
 在上述代码中，我们定义了策略网络，并在 `reinforce_update` 中展示了该公式的实现逻辑。值得注意的是，我们将原本在该公式中由价值网络估算状态价值的严谨过程，替换为了在张量维度上直接计算所有采样的 `returns` 的均值和标准差。这是一种极简的、计算代价低廉的基线技巧，虽然不如 Actor-Critic 方法那般精准，但依然大幅提升了朴素 REINFORCE 算法的稳定性。

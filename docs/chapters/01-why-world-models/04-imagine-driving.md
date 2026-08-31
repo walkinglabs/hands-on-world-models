@@ -116,8 +116,7 @@ $$
 2. 定义策略网络，并在隐空间中向前自回归推演，展开多步的“梦境”轨迹。
 3. 计算多步累积奖励，并直接调用自动微分（Autograd）引擎对策略网络进行BPTT反向优化。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -206,89 +205,6 @@ batch_size = 32
 initial_state = torch.randn(batch_size, STATE_DIM)
 
 # 执行若干次策略优化迭代
-for i in range(5):
-    avg_reward = imagine_and_optimize(world_model, policy, initial_state, optimizer)
-    print(f"Iteration {i+1}, Imagined Average Reward: {avg_reward:.4f}")
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-
-# 定义全局常量与张量维度配置
-HIDDEN_DIM = 64
-STATE_DIM = 16
-ACTION_DIM = 2
-SEQ_LEN = 10  # 想象未来视界长度 H
-
-class WorldModel(tf.keras.Model):
-    def __init__(self):
-        super(WorldModel, self).__init__()
-        # 简化版动力学模型: f(z_t, a_t) -> z_{t+1}
-        self.dynamics = tf.keras.Sequential([
-            tf.keras.layers.Dense(HIDDEN_DIM, activation='relu'),
-            tf.keras.layers.Dense(STATE_DIM)
-        ])
-        # 奖励评估器: 用于给梦境中的状态打分
-        self.reward_predictor = tf.keras.Sequential([
-            tf.keras.layers.Dense(HIDDEN_DIM, activation='relu'),
-            tf.keras.layers.Dense(1)
-        ])
-
-    def call(self, z, a):
-        """执行隐空间内的单步前向时间跃迁"""
-        x = tf.concat([z, a], axis=-1)
-        # 遵循物理学微小增量的残差结构
-        z_next = z + self.dynamics(x)
-        reward = self.reward_predictor(z_next)
-        return z_next, reward
-
-class PolicyNetwork(tf.keras.Model):
-    def __init__(self):
-        super(PolicyNetwork, self).__init__()
-        # 自动驾驶车辆的策略脑区
-        self.net = tf.keras.Sequential([
-            tf.keras.layers.Dense(HIDDEN_DIM, activation='relu'),
-            tf.keras.layers.Dense(ACTION_DIM, activation='tanh')
-        ])
-
-    def call(self, z):
-        return self.net(z)
-
-def imagine_and_optimize(world_model, policy, initial_state, optimizer):
-    """
-    通过在生成梦境中穿梭，执行梯度上升以优化驾驶动作。
-    """
-    with tf.GradientTape() as tape:
-        z_t = initial_state
-        total_reward = 0.0
-        discount = 0.99
-
-        # [使用张量计算带自动追踪并沿时序维度连续展开计算流]
-        for t in range(SEQ_LEN):
-            a_t = policy(z_t)
-            z_t, r_t = world_model(z_t, a_t)
-            total_reward = total_reward + (discount ** t) * r_t
-
-        # [通过可导计算图定义期望标量，直接构建待优化的代理损失]
-        loss = -tf.reduce_mean(total_reward)
-
-    # 精确推演解析梯度，并直接映射到底层神经元权重之中
-    grads = tape.gradient(loss, policy.trainable_variables)
-    optimizer.apply_gradients(zip(grads, policy.trainable_variables))
-
-    return tf.reduce_mean(total_reward).numpy()
-
-# 实例化架构体系
-world_model = WorldModel()
-policy = PolicyNetwork()
-optimizer = tf.keras.optimizers.Adam(learning_rate=3e-4)
-
-# 构建由32个并行模拟组成的批量初始状态
-batch_size = 32
-initial_state = tf.random.normal((batch_size, STATE_DIM))
-
-# 执行训练迭代流
 for i in range(5):
     avg_reward = imagine_and_optimize(world_model, policy, initial_state, optimizer)
     print(f"Iteration {i+1}, Imagined Average Reward: {avg_reward:.4f}")

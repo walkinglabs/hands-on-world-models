@@ -75,8 +75,7 @@ Lin 系统研究了经验回放 [[Lin, 1992]](https://doi.org/10.1007/BF00992699
 
 (**我们现在从零开始实现一个支持张量运算的经验回放缓冲区。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import numpy as np
 
@@ -127,51 +126,6 @@ class ReplayBuffer:
         )
 ```
 
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-import numpy as np
-
-class ReplayBuffer:
-    """经验回放缓冲区"""
-    def __init__(self, state_dim, action_dim, capacity):
-        self.capacity = capacity
-        self.ptr = 0
-        self.size = 0
-
-        # TensorFlow 中通常使用 tf.Variable 作为可修改的张量容器
-        self.states = tf.Variable(tf.zeros((capacity, state_dim), dtype=tf.float32), trainable=False)
-        self.next_states = tf.Variable(tf.zeros((capacity, state_dim), dtype=tf.float32), trainable=False)
-        self.actions = tf.Variable(tf.zeros((capacity, action_dim), dtype=tf.float32), trainable=False)
-        self.rewards = tf.Variable(tf.zeros((capacity, 1), dtype=tf.float32), trainable=False)
-        self.dones = tf.Variable(tf.zeros((capacity, 1), dtype=tf.float32), trainable=False)
-
-    def add(self, state, action, reward, next_state, done):
-        """向缓冲区添加一条经验"""
-        # 使用 assign 严格替换内存中的值
-        self.states[self.ptr].assign(tf.cast(state, tf.float32))
-        self.actions[self.ptr].assign(tf.cast(action, tf.float32))
-        self.rewards[self.ptr].assign(tf.cast([reward], tf.float32))
-        self.next_states[self.ptr].assign(tf.cast(next_state, tf.float32))
-        self.dones[self.ptr].assign(tf.cast([done], tf.float32))
-
-        self.ptr = (self.ptr + 1) % self.capacity
-        self.size = min(self.size + 1, self.capacity)
-
-    def sample(self, batch_size):
-        """随机采样一个批量的经验"""
-        # 生成随机索引
-        ind = tf.random.uniform(shape=[batch_size], minval=0, maxval=self.size, dtype=tf.int32)
-
-        return (
-            tf.gather(self.states, ind),
-            tf.gather(self.actions, ind),
-            tf.gather(self.rewards, ind),
-            tf.gather(self.next_states, ind),
-            tf.gather(self.dones, ind)
-        )
-```
-
 ## 智能体环境交互主循环与策略评估
 
 在强化学习的训练框架中，最核心的骨架是“交互-收集-更新”循环。在这里，我们模拟一个极简的连续状态空间环境。
@@ -188,8 +142,7 @@ $$L(\theta) = \frac{1}{N} \sum_{i=1}^N \left( Q_\theta(s_i, a_i) - y_i \right)^2
 
 (**下面的代码展示了如何利用缓冲区进行持续的环境交互，并组装批量数据。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 # 我们模拟一个随机与环境交互的过程
 state_dim = 4
 action_dim = 2
@@ -232,48 +185,6 @@ for episode in range(num_episodes):
             # optimizer.step()
 
             # 为了演示，我们仅验证采样的张量维度是否符合预期矩阵运算的形状
-            assert states.shape == (batch_size, state_dim)
-            assert rewards.shape == (batch_size, 1)
-            assert dones.shape == (batch_size, 1)
-
-        if done:
-            break
-
-    print(f"Episode {episode + 1} finished with Total Reward: {episode_reward:.2f}")
-```
-
-```{.python .input}
-#@tab tensorflow
-# 我们模拟一个随机与环境交互的过程
-state_dim = 4
-action_dim = 2
-capacity = 10000
-batch_size = 32
-
-buffer = ReplayBuffer(state_dim, action_dim, capacity)
-
-num_episodes = 5
-max_steps = 100
-
-for episode in range(num_episodes):
-    state = np.random.randn(state_dim)
-    episode_reward = 0
-
-    for step in range(max_steps):
-        action = np.random.randn(action_dim)
-        next_state = np.random.randn(state_dim)
-        reward = np.random.rand()
-        done = 1.0 if step == max_steps - 1 else 0.0
-
-        buffer.add(state, action, reward, next_state, done)
-
-        state = next_state
-        episode_reward += reward
-
-        if buffer.size >= batch_size:
-            states, actions, rewards, next_states, dones = buffer.sample(batch_size)
-
-            # TensorFlow 的维度验证
             assert states.shape == (batch_size, state_dim)
             assert rewards.shape == (batch_size, 1)
             assert dones.shape == (batch_size, 1)

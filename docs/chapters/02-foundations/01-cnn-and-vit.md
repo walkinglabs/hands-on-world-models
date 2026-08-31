@@ -1,5 +1,13 @@
 # 视觉基础模型：从卷积神经网络到视觉变换器
 
+> **本章导读**
+>
+> **讲什么：** 本章准备后续路线都会反复使用的四类积木：从图像中提取信息、在时间上保存信息、把高维观测压缩成较小的表示，以及生成可能的未来。重点不是记住一串模型名称，而是看清每块积木放在世界模型的什么位置、接收什么张量、解决什么困难。
+>
+> **为什么需要这些基础：** 直接用像素预测未来，会同时遇到空间维度高、历史序列长和未来不唯一三个问题。一个模型若不能先看懂局部与全局结构、记住过去、压缩冗余，再表达多种可能性，后面的潜在动力学、视频生成和机器人控制就无从搭建。
+>
+> **故事线：** `从图像提取结构 → 从序列保留历史 → 用连续或离散表示压缩观测 → 用自回归或扩散生成未来 → 从零实现并组装训练循环`
+
 ## 引言与历史追溯
 
 在计算机视觉的发展中，手工特征与神经网络曾长期并行演进。LeCun 等人的早期卷积网络已能从数据中学习用于手写数字识别的特征 [[LeCun et al., 1989]](https://doi.org/10.1162/neco.1989.1.4.541)；2012 年，AlexNet 又在 ImageNet 分类任务上显著降低了错误率 [[Krizhevsky et al., 2012]](https://proceedings.neurips.cc/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html)。这两项工作分别展示了卷积网络的早期可行性与大规模视觉任务上的突破。
@@ -50,8 +58,7 @@ $$
 
 (**我们可以使用 PyTorch 来实现并观察一个多通道卷积层计算后的张量维度：**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 
@@ -90,8 +97,7 @@ $$
 
 (**下面我们实现一个标准的残差块：**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(ResidualBlock, self).__init__()
@@ -145,8 +151,7 @@ $$
 
 (**在 PyTorch 中，我们可以使用步幅等于卷积核大小的普通卷积操作，以极其高效且数学上等价的方式实现块嵌入：**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class PatchEmbedding(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_channels=3, embed_dim=768):
         super().__init__()
@@ -198,13 +203,13 @@ $$
 
 多头注意力（Multi-Head Attention）则是将上述过程在多个并行的子空间中执行 $h$ 次，每次使用独立初始化的投影矩阵。最后将所有头输出的矩阵在隐藏维度上拼接，并通过一个线性层进行最终投影。
 
-> [!NOTE]
-> 在极端复杂的长程依赖建模中，自注意力机制在物理上可被看作一种“基于内容的全局软寻址系统”：查询 $\mathbf{Q}$ 在全图范围内并发检索与其高度匹配的键 $\mathbf{K}$，并在建立高概率连接后提取并融合对应的值 $\mathbf{V}$。这与 CNN 通过卷积核感受野在固定网格上层层向上传递局部信号的机制有着根本性的不同。
+::: info 说明
+在极端复杂的长程依赖建模中，自注意力机制在物理上可被看作一种“基于内容的全局软寻址系统”：查询 $\mathbf{Q}$ 在全图范围内并发检索与其高度匹配的键 $\mathbf{K}$，并在建立高概率连接后提取并融合对应的值 $\mathbf{V}$。这与 CNN 通过卷积核感受野在固定网格上层层向上传递局部信号的机制有着根本性的不同。
+:::
 
 (**下面是包含多头注意力与前馈网络的 ViT 编码器块的核心实现：**)
 
-```{.python .input}
-#@tab pytorch
+```python
 class ViTBlock(nn.Module):
     def __init__(self, embed_dim, num_heads, mlp_ratio=4.0):
         super().__init__()

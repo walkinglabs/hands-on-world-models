@@ -80,8 +80,7 @@ $$ z = \mu + \sigma \cdot \epsilon $$
 
 现在，我们可以用代码来实现一个标准的变分自编码器。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -126,8 +125,7 @@ class VAE(nn.Module):
 
 对应的损失函数，即负的 ELBO（因为我们通常是最小化损失）：
 
-```{.python .input}
-#@tab pytorch
+```python
 def vae_loss_function(recon_x, x, mu, logvar):
     # 重构损失：通常使用二元交叉熵或均方误差
     # 这里我们假设输入是 (0, 1) 之间的像素值，使用 BCE
@@ -178,8 +176,7 @@ $$ L = \underbrace{\| x - D(z_q) \|_2^2}_{\text{Reconstruction}} + \underbrace{\
 
 接下来，我们将严谨地实现 VQ-VAE 中的向量量化层。
 
-```{.python .input}
-#@tab pytorch
+```python
 class VectorQuantizer(nn.Module):
     def __init__(self, num_embeddings, embedding_dim, commitment_cost=0.25):
         super(VectorQuantizer, self).__init__()

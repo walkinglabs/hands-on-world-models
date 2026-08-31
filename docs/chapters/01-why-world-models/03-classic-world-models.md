@@ -125,8 +125,7 @@ $$
 
 基于我们在相关章节中的理论推导，(**我们将构建一个MDN-RNN模块**)。在这个模块中，我们将明确标注所有的张量形状，特别是当融合了批次（Batch Size）、混合成分（Num Mixtures）和潜空间维度（Z Dim）时带来的多维张量变换。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -177,52 +176,6 @@ class MDNRNN(nn.Module):
         sigma = torch.exp(self.fc_sigma(hx)).view(-1, self.num_mixtures, self.z_dim)
 
         return pi, mu, sigma, (hx, cx)
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-from tensorflow.keras import layers
-
-class MDNRNN(tf.keras.Model):
-    def __init__(self, z_dim, action_dim, hidden_dim, num_mixtures):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.num_mixtures = num_mixtures
-        self.z_dim = z_dim
-
-        # 定义 LSTM 单元
-        self.rnn_cell = layers.LSTMCell(hidden_dim)
-
-        # MDN 的线性输出层
-        self.fc_pi = layers.Dense(num_mixtures)
-        self.fc_mu = layers.Dense(num_mixtures * z_dim)
-        self.fc_sigma = layers.Dense(num_mixtures * z_dim)
-
-    def call(self, z, action, states):
-        """
-        参数:
-        z: (batch_size, z_dim)
-        action: (batch_size, action_dim)
-        states: 包含 hx 和 cx 的列表
-        """
-        rnn_input = tf.concat([z, action], axis=-1)
-
-        # 更新 LSTM 状态
-        # hx 为新隐藏状态, new_states 包含传给下一步的记忆
-        hx, new_states = self.rnn_cell(rnn_input, states)
-
-        # pi 的计算
-        pi = tf.nn.softmax(self.fc_pi(hx), axis=-1)
-
-        # 动态获取 batch_size 并调整形状
-        batch_size = tf.shape(hx)[0]
-        mu = tf.reshape(self.fc_mu(hx), [batch_size, self.num_mixtures, self.z_dim])
-
-        # 保证 sigma 为正数
-        sigma = tf.exp(tf.reshape(self.fc_sigma(hx), [batch_size, self.num_mixtures, self.z_dim]))
-
-        return pi, mu, sigma, new_states
 ```
 
 上述代码精确再现了核心的推导逻辑，不仅处理了时序上的传递，更通过合理的张量重塑（Reshape/View）将多模态不确定性参数化。

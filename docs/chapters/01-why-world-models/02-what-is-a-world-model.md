@@ -93,8 +93,7 @@ $$a_t = \pi_\psi(a_t \mid z_t, h_t)$$
 
 (**导入必要的深度学习框架。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 ```
@@ -102,8 +101,7 @@ import torch.nn as nn
 (**定义视觉模型 V 的编码器部分。**)
 在这里，我们将输入的展平图像（例如 $64 \times 64 = 4096$ 维）压缩为一个服从标准正态分布约束的低维隐变量（例如 32 维）。我们输出隐变量分布的均值和对数方差。
 
-```{.python .input}
-#@tab pytorch
+```python
 class VisionModel(nn.Module):
     def __init__(self, input_dim=4096, latent_dim=32):
         super(VisionModel, self).__init__()
@@ -132,8 +130,7 @@ class VisionModel(nn.Module):
 (**定义记忆/动力学模型 M。**)
 M 模型接收当前的隐变量 $z_t$ 和动作 $a_t$，并结合自身的隐藏状态 $h_t$（在这里通过 GRU 维护），来预测下一个时刻隐变量分布的均值和对数方差。这正是对前文 RNN 记忆更新公式和高斯动力学公式的直接代码翻译。
 
-```{.python .input}
-#@tab pytorch
+```python
 class DynamicsModel(nn.Module):
     def __init__(self, latent_dim=32, action_dim=2, hidden_dim=128):
         super(DynamicsModel, self).__init__()

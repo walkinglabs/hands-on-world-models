@@ -1,6 +1,6 @@
 # 2.6 基础模块的简洁实现
 
-在深度学习的早期探索阶段，研究人员常常需要耗费大量精力去手动计算网络层间的导数，并使用底层的语言（如 C 或 CUDA）实现每一个算子的前向和反向传播代码。这种极具侵入性的工程负担在很大程度上阻碍了算法的快速迭代。随着现代深度学习框架（例如 PyTorch [[Paszke et al., 2019]](https://proceedings.neurips.cc/paper/2019/hash/bdbca288fee7f92f2bfa9f7012727740-Abstract.html) 和 TensorFlow [[Abadi et al., 2016]](https://www.usenix.org/conference/osdi16/technical-sessions/presentation/abadi)）的逐渐成熟，计算图抽象与自动微分机制使得深度神经网络的开发变得像搭积木一样自然。
+在深度学习的早期探索阶段，研究人员常常需要耗费大量精力去手动计算网络层间的导数，并使用底层的语言（如 C 或 CUDA）实现每一个算子的前向和反向传播代码。这种极具侵入性的工程负担在很大程度上阻碍了算法的快速迭代。随着现代深度学习框架 PyTorch [[Paszke et al., 2019]](https://proceedings.neurips.cc/paper/2019/hash/bdbca288fee7f92f2bfa9f7012727740-Abstract.html) 的逐渐成熟，计算图抽象与自动微分机制使得深度神经网络的开发变得像搭积木一样自然。
 
 在上一节中，我们完全依赖基础的张量运算，从零开始完整地实现了一个线性模型。我们显式地完成了数据小批量的生成、模型参数的初始化、前向传播的矩阵乘法、损失函数的计算以及随机梯度下降的参数更新过程。虽然这种极其底层的实现方式赋予了我们对每一块内存空间和每一个梯度的绝对掌控力，但在实际的工业界应用与前沿学术研究中，我们绝不会反复去手写这些标准化的底层逻辑。
 
@@ -32,8 +32,7 @@ $$
 
 (**我们首先生成一些服从正态分布的合成数据，并将特征和标签打包成一个数据张量元组，交由数据管道进行管理。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.utils import data
@@ -85,8 +84,7 @@ $$
 
 (**我们使用`nn.Sequential`容器将多个神经网络层按顺序拼装，并向其中传入一个输入维度为 2、输出维度为 1 的线性层`nn.Linear`。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 # 构建模型：这里相当于 y = XW + b
 # PyTorch 的 nn.Linear 第一个参数是输入特征数 d，第二个参数是输出特征数 c
 net = nn.Sequential(nn.Linear(2, 1))
@@ -132,8 +130,7 @@ $$
 
 (**我们将实例化均方误差损失函数用于后续的训练循环。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 loss = nn.MSELoss()
 ```
 
@@ -153,8 +150,7 @@ $$
 
 (**我们实例化一个`SGD`优化器对象，指定要优化的网络参数和学习率。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 trainer = torch.optim.SGD(net.parameters(), lr=0.03)
 ```
 
@@ -173,8 +169,7 @@ trainer = torch.optim.SGD(net.parameters(), lr=0.03)
 
 (**以下是完整的模型训练生命周期代码实现。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 num_epochs = 3
 for epoch in range(num_epochs):
     for X, y in data_iter:

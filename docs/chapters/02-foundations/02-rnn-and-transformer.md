@@ -79,8 +79,7 @@ $$
 
 (**为了深刻理解RNN的机制，我们尝试在PyTorch中从零开始实现单步RNN。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -181,8 +180,7 @@ $$
 
 (**代码实现：利用PyTorch构建缩放点积注意力**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import math
 import torch
 from torch import nn

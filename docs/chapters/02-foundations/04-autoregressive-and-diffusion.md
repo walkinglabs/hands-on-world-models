@@ -40,8 +40,7 @@ $$\mathcal{L}(\theta) = \log p_\theta(\mathbf{x}) = \sum_{t=1}^T \log p_\theta(x
 
 (**首先，我们生成一段含有少量噪声的正弦波时间序列数据作为训练样本。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.utils import data
@@ -58,8 +57,7 @@ x = torch.sin(0.01 * time) + torch.normal(0, 0.2, (T,))
 
 (**接下来，我们将原始时间序列重组为特征矩阵和标签向量，并构建数据迭代器。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 tau = 4
 features = torch.zeros((T - tau, tau))
 for i in range(tau):
@@ -75,8 +73,7 @@ data_iter = data.DataLoader(dataset, batch_size, shuffle=True)
 
 (**我们定义多层感知机模型并编写标准的训练循环。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 # 定义一个包含两个隐藏层的简单MLP
 def get_net():
     net = nn.Sequential(nn.Linear(tau, 10), nn.ReLU(),
@@ -177,8 +174,7 @@ $$\mathcal{L}_{\text{simple}}(\theta) = \mathbb{E}_{t, \mathbf{x}_0, \boldsymbol
 
 (**我们定义预设的总时间步 $T$ 及线性的 $\beta$ 调度，然后利用公式提前计算出所有需要的累积系数 $\bar{\alpha}_t$。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 # 扩散步数
 num_timesteps = 1000
 
@@ -200,8 +196,7 @@ sqrt_one_minus_alphas_bar = torch.sqrt(1.0 - alphas_bar)
 
 (**我们编写前向过程的函数 `q_sample`。该函数能够在单次计算中，直接从初始数据 $\mathbf{x}_0$ 获得任意时间步 $t$ 下带噪结果 $\mathbf{x}_t$。**)
 
-```{.python .input}
-#@tab pytorch
+```python
 def q_sample(x_0, t, noise=None):
     """
     实现了前向扩散过程 x_t = sqrt(alpha_bar_t) * x_0 + sqrt(1 - alpha_bar_t) * epsilon

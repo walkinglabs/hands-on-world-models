@@ -80,8 +80,7 @@ $$ \tau_{t:t+L} = (s_t, a_t, s_{t+1}, a_{t+1}, \dots, s_{t+L}) $$
 
 现在，我们将这些严谨的代数关系映射为具体的 PyTorch 与 NumPy 代码。我们利用 NumPy 数组作为底层的连续内存，以支持极速的内存分配和索引。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import numpy as np
 from typing import Tuple
@@ -141,8 +140,7 @@ class ReplayBuffer:
 
 如上所述，上述实现解决了最基础的单步马尔可夫决策数据需求。接下来，我们拓展缓冲区，使其支持具有时间连贯性的序列采样（Sequence Sampling），这是训练序列世界模型必不可少的一步。
 
-```{.python .input}
-#@tab pytorch
+```python
     def sample_sequences(self, batch_size: int, seq_len: int) -> Tuple[torch.Tensor, ...]:
         """
         (采样具有时间连续性的经验序列)

@@ -34,19 +34,10 @@ $$Q^\pi(s, a) = \mathbb{E}_{s' \sim P, a' \sim \pi} [r_t + \gamma Q^\pi(s', a') 
 
 为了完成这些模块的构建，(**我们首先导入深度学习框架的必备模块以及标准库**)。
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 from torch import nn
 from torch.nn import functional as F
-import collections
-import random
-```
-
-```{.python .input}
-#@tab tensorflow
-import tensorflow as tf
-from tensorflow import keras
 import collections
 import random
 ```
@@ -61,8 +52,7 @@ Lin 系统研究了经验回放（Experience Replay）：保存过去的经验�
 
 (**下面我们通过高级API实现一个简洁而高效的经验回放缓冲区**)。为了实现上的简洁，我们直接利用Python标准库中的 `collections.deque` 来维护固定长度的队列，并在采样时一次性将数据堆叠为张量 (Tensor)。
 
-```{.python .input}
-#@tab pytorch
+```python
 class ReplayBuffer:
     """强化学习的经验回放缓冲区简洁实现"""
     def __init__(self, capacity):
@@ -91,34 +81,6 @@ class ReplayBuffer:
         return len(self.buffer)
 ```
 
-```{.python .input}
-#@tab tensorflow
-class ReplayBuffer:
-    """强化学习的经验回放缓冲区简洁实现"""
-    def __init__(self, capacity):
-        self.buffer = collections.deque(maxlen=capacity)
-
-    def add(self, state, action, reward, next_state, done):
-        """将一步 MDP 转移记录到缓冲区"""
-        self.buffer.append((state, action, reward, next_state, done))
-
-    def sample(self, batch_size):
-        """随机无放回采样，并直接将其转换为多维张量供网络训练"""
-        transitions = random.sample(self.buffer, batch_size)
-        state, action, reward, next_state, done = zip(*transitions)
-
-        # 将数据统一转换为 TensorFlow 张量
-        return (tf.convert_to_tensor(state, dtype=tf.float32),
-                tf.convert_to_tensor(action, dtype=tf.int32),
-                tf.convert_to_tensor(reward, dtype=tf.float32),
-                tf.convert_to_tensor(next_state, dtype=tf.float32),
-                tf.convert_to_tensor(done, dtype=tf.float32))
-
-    def size(self):
-        """查询当前缓冲区中积累的转移样本数量"""
-        return len(self.buffer)
-```
-
 ## 基于多层感知机的策略网络与价值网络
 
 在拥有了稳定的数据来源（经验回放池）之后，我们接下来需要定义算法的“大脑”，即策略网络和价值网络。
@@ -129,8 +91,7 @@ class ReplayBuffer:
 
 得益于深度学习框架提供的顺序容器（如 `nn.Sequential`），我们可以极其紧凑地实现这些高维非线性映射。(**以下展示了如何利用多层感知机 (MLP) 构建简洁的Q网络与策略网络**)。我们采用带有ReLU激活函数的双隐层结构，这在大多数基础强化学习任务中被证明是具备足够表达能力的。
 
-```{.python .input}
-#@tab pytorch
+```python
 class QNetwork(nn.Module):
     """基于多层感知机的动作价值函数近似"""
     def __init__(self, state_dim, action_dim, hidden_dim=64):
@@ -162,38 +123,6 @@ class PolicyNetwork(nn.Module):
         )
 
     def forward(self, state):
-        return self.net(state)
-```
-
-```{.python .input}
-#@tab tensorflow
-class QNetwork(keras.Model):
-    """基于多层感知机的动作价值函数近似"""
-    def __init__(self, state_dim, action_dim, hidden_dim=64):
-        super().__init__()
-        self.net = keras.Sequential([
-            keras.layers.Dense(hidden_dim, activation='relu'),
-            keras.layers.Dense(hidden_dim, activation='relu'),
-            # 输出层不使用激活函数，因为Q值可以是任意实数
-            keras.layers.Dense(action_dim)
-        ])
-
-    def call(self, state):
-        """输入维度为 (batch_size, state_dim)，输出维度为 (batch_size, action_dim)"""
-        return self.net(state)
-
-class PolicyNetwork(keras.Model):
-    """基于多层感知机的随机策略近似"""
-    def __init__(self, state_dim, action_dim, hidden_dim=64):
-        super().__init__()
-        self.net = keras.Sequential([
-            keras.layers.Dense(hidden_dim, activation='relu'),
-            keras.layers.Dense(hidden_dim, activation='relu'),
-            # 输出 logits
-            keras.layers.Dense(action_dim)
-        ])
-
-    def call(self, state):
         return self.net(state)
 ```
 

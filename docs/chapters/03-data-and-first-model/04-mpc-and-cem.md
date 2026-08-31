@@ -111,8 +111,7 @@ $$\sigma^2_{k+1} = \frac{1}{N_e} \sum_{i \in \mathcal{E}_k} (\mathbf{x}_i - \mu_
 
 (**通过张量运算实现高并行的交叉熵方法规划器**)
 
-```{.python .input}
-#@tab pytorch
+```python
 import torch
 import torch.nn as nn
 

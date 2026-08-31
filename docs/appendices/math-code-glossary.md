@@ -4,34 +4,34 @@
 
 ## 概率与期望
 
-\[
+$$
 \mathbb{E}_{x\sim p(x)}[f(x)]
 =
 
 \sum_x p(x)f(x)
 \quad\text{或}\quad
 \int p(x)f(x)\,dx.
-\]
+$$
 
-条件分布 \(p(s_{t+1}\mid s_t,a_t)\) 表示在当前状态和动作已知时，下一个状态的可能性。世界模型通常学习的正是这种条件关系。
+条件分布 $p(s_{t+1}\mid s_t,a_t)$ 表示在当前状态和动作已知时，下一个状态的可能性。世界模型通常学习的正是这种条件关系。
 
 ## 梯度与链式法则
 
-若损失 \(\mathcal{L}\) 依赖中间变量 \(z=f_\theta(x)\)，则
+若损失 $\mathcal{L}$ 依赖中间变量 $z=f_\theta(x)$，则
 
-\[
+$$
 \frac{\partial \mathcal{L}}{\partial \theta}
 =
 
 \frac{\partial \mathcal{L}}{\partial z}
 \frac{\partial z}{\partial \theta}.
-\]
+$$
 
 多步 rollout 会让梯度穿过重复使用的动力学模型。梯度爆炸时先检查序列长度、归一化和梯度裁剪，不要只调学习率。
 
 ## KL 与熵
 
-\[
+$$
 D_{\mathrm{KL}}(q\|p)
 =
 
@@ -39,15 +39,15 @@ D_{\mathrm{KL}}(q\|p)
 \left[
 \log q(z)-\log p(z)
 \right].
-\]
+$$
 
 KL 衡量两个分布的差异，不是对称距离。RSSM 中，posterior 使用当前观测，prior 只使用历史与动作；KL 让 prior 学会在没有未来观测时预测 posterior。
 
 熵
 
-\[
+$$
 \mathcal{H}(p)=-\mathbb{E}_{p(x)}[\log p(x)]
-\]
+$$
 
 衡量分布的不确定性。熵高不等于模型正确，只表示模型给出的分布更分散。
 
