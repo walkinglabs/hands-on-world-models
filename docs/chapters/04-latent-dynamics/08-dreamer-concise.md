@@ -1,38 +1,52 @@
-# Dreamer 智能体的简洁实现
+# 4.8 Dreamer 智能体的简洁实现
 
-在深度强化学习的发展历程中，智能体如何高效地从环境中获取经验一直是一个核心难题。早期的无模型（Model-Free）强化学习算法，虽然在特定任务上取得了超越人类的表现，但往往需要数以千万计的交互步数。这就好比一个完全不具备物理直觉的婴儿，必须通过无数次摔倒才能学会走路。为了打破这种对环境交互的极度依赖，研究者们将目光转向了基于模型的强化学习（Model-Based Reinforcement Learning）。
+强化学习中的一个核心问题，是怎样用较少的环境交互学会有效策略。无模型方法直接从经验学习策略或价值；基于模型的方法则先学习环境如何变化，再利用这个模型辅助决策。两类方法各有适用范围，Dreamer 属于后者。
+
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/08-dreamer-concise/opening-dreamer-cup.gif" alt="Dreamer 控制杯子接住落球，展示潜在想象训练不仅产生运动，还能形成需要时序协调的目标行为。" width="86%">
+
+_图 4.8-1：Dreamer 控制杯子接住落球，展示潜在想象训练不仅产生运动，还能形成需要时序协调的目标行为。 出处：Danijar Hafner；Timothy Lillicrap；Jimmy Ba；Mohammad Norouzi，[Dream to Control: Learning Behaviors by Latent Imagination](https://arxiv.org/abs/1912.01603)（2020），Official behavior GIF: Cup Catch。_
+
+</div>
 
 Dreamer [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603) 建立在 PlaNet [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 的潜在动力学之上。它在学到的世界模型中生成潜在想象轨迹，并用这些轨迹训练 actor 与 critic；论文在视觉连续控制任务上报告了较高的数据效率。这里的 Dreamer 引用应指向 _Dream to Control_，不能误连到 PlaNet。
 
-在本节中，我们将剥开 Dreamer 复杂的工程外衣，从最基础的物理运动规律出发，一步步严谨地推导出循环状态空间模型（Recurrent State Space Model, RSSM）的数学本质，并最终给出 Dreamer 智能体的核心简洁实现。
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/08-dreamer-concise/planet-fig4.png" alt="PlaNet 的逐任务学习曲线给出 Dreamer 所继承潜在规划器在视觉控制基准上的前身表现。" width="86%">
+
+_图 4.8-2：PlaNet 的逐任务学习曲线给出 Dreamer 所继承潜在规划器在视觉控制基准上的前身表现。 出处：Danijar Hafner；Timothy Lillicrap；Ian Fischer；Ruben Villegas；David Ha；Honglak Lee；James Davidson，[Learning Latent Dynamics for Planning from Pixels](https://arxiv.org/abs/1811.04551)（2019），Figure 4。_
+
+</div>
+
+本节先复习 RSSM 的计算顺序，再说明 Dreamer 如何在潜在想象轨迹上训练 actor 和 critic。代码只实现连续高斯 RSSM 的最小骨架，便于观察接口；它不是可直接复现实验结果的完整 Dreamer 智能体。
 
 ## 从物理递推到隐状态的动力学
 
-在我们探讨复杂的深度学习模型之前，让我们先回到高中物理中最经典的抛体运动。假设我们要追踪一个在空中飞行的篮球，如果已知它在 $t$ 时刻的位置 $p_t$ 和速度 $v_t$，我们可以利用运动学公式极其精确地预测它在 $t+1$ 时刻的状态：
+先看一个熟悉的递推例子。忽略空气阻力且假设加速度恒定时，篮球的位置可以近似写成：
 
 $$
 p_{t+1} = p_t + v_t \Delta t + \frac{1}{2} a \Delta t^2
 $$
 
-在这里，$(p_t, v_t)$ 构成了这个物理系统的“状态”（State）。只要我们掌握了状态以及物理规律（转移函数），我们就能预测未来。然而，在强化学习面临的高维环境（例如连续的像素输入）中，我们无法直接获取这种完美的低维状态，只能得到包含大量冗余信息的观测值（Observation）$o_t$。
+这里，$(p_t, v_t)$ 是这个简化系统的状态。强化学习环境往往不给出这样恰到好处的低维状态，而只提供图像等高维观测 $o_t$。
 
 因此，Dreamer 试图寻找一个从高维观测 $o_t$ 到低维隐状态（Latent State）$s_t$ 的映射，并在隐状态空间中建立类似于该公式的转移规律。
 
-但这还不够。真实世界充满了不确定性：一阵突如其来的风可能会改变篮球的轨迹。如果我们仅仅使用一个确定性的函数来预测未来，随着时间的推移，微小的误差将会迅速累积，导致“梦境”坍塌。为了解决这个问题，我们需要引入概率模型。我们不再预测一个绝对的 $s_{t+1}$，而是预测 $s_{t+1}$ 的概率分布。
+环境可能包含随机性、部分可观测性和模型尚未学会的因素。为表达这些不确定性，RSSM 不只输出一个随机状态点，而是参数化它的概率分布。确定性模型并非一定会“坍塌”，但单点预测不足以描述多种可能的未来。
 
 ## 循环状态空间模型 (RSSM) 的数学推导
 
-Dreamer 的核心世界模型被称为循环状态空间模型（RSSM）。RSSM 巧妙地将确定性的循环神经网络（RNN）和随机的状态推断结合在一起。
+Dreamer 的核心世界模型是 RSSM，它把确定性的循环记忆与随机状态推断结合起来。
 
 首先，我们将隐状态拆分为两部分：一个确定性的状态（Deterministic State）$h_t$，和一个随机的状态（Stochastic State）$z_t$。
 
-确定性状态 $h_t$ 负责捕捉长期的历史记忆，它通过一个标准的 GRU（门控循环单元）进行更新：
+确定性状态 $h_t$ 保存对历史的有限维摘要，并由 GRU 更新：
 
 $$
 h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})
 $$
 
-在这里，$a_{t-1}$ 是智能体在上一时刻采取的动作。该公式描述了系统底层的物理惯性。
+其中，$a_{t-1}$ 是上一时刻的动作。这个递推式描述的是模型学到的潜在动力学，不保证等同于环境的真实物理定律。
 
 接下来，我们需要确定随机状态 $z_t$。在模型训练阶段（我们称之为后验推断），智能体不仅能“回想”起历史 $h_t$，还能“看”到真实的当前观测 $o_t$。因此，后验概率分布 $q_\phi(z_t \mid h_t, o_t)$ 结合了对过去的记忆和当前的现实。
 
@@ -52,11 +66,18 @@ $$
 
 ### 变分下界 (ELBO) 与损失函数
 
-为了训练这样一个包含隐变量的生成模型，我们需要最大化观测数据的对数似然 $\log p(o_{1:T} \mid a_{1:T})$。由于直接计算含有隐变量的积分是极其困难的（难以进行解析计算），我们通过引入变分分布 $q_\phi$ 来构造变分下界（Evidence Lower BOund, ELBO）。
+为了训练包含隐变量的生成模型，我们希望最大化观测数据的对数似然 $\log p(o_{1:T} \mid a_{1:T})$。由于对隐变量积分通常没有可用的解析解，我们引入变分分布 $q_\phi$，构造证据下界（Evidence Lower Bound，ELBO）。
 
 考虑单步的生成过程，我们要重构当前的观测 $o_t$ 和奖励 $r_t$。世界模型的总损失函数 $\mathcal{L}_{model}$ 由三个部分组成：
 
-1. **重构损失 (Reconstruction Loss)**：智能体必须能够从隐状态 $(h_t, z_t)$ 中还原出真实的观测。
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/08-dreamer-concise/dreamerv3-fig3.png" alt="DreamerV3 的训练总览把世界模型、想象 actor–critic 与真实数据回放连接起来，展示简洁实现所抽取主路径的后续版本。" width="86%">
+
+_图 4.8-3：DreamerV3 的训练总览把世界模型、想象 actor–critic 与真实数据回放连接起来，展示简洁实现所抽取主路径的后续版本。 出处：Danijar Hafner；Jurgis Pasukonis；Jimmy Ba；Timothy Lillicrap，[Mastering Diverse Domains through World Models](https://arxiv.org/abs/2301.04104)（2023），Figure 3。_
+
+</div>
+
+1. **重构损失 (Reconstruction Loss)**：从隐状态 $(h_t, z_t)$ 预测当前观测。
 2. **奖励预测损失 (Reward Prediction Loss)**：智能体需要预测当前状态下能获得的奖励。
 3. **动态 KL 散度损失 (Dynamics KL Loss)**：如前所述，我们要拉近先验分布和后验分布的距离。
 
@@ -66,19 +87,26 @@ $$
 D_{\text{KL}}(q \parallel p) = \sum q(x) \log \frac{q(x)}{p(x)}
 $$
 
-将其推广到我们的序列多维隐状态，并结合重构项，我们可以写出 RSSM 在时间步 $t$ 的严谨目标函数（我们要最小化它的负值）：
+把它用于序列潜变量后，可以写出下面这个简化的单步负 ELBO；实际 Dreamer 还会根据版本加入继续概率、KL 平衡等项：
 
 $$
-\mathcal{L}_t = \underbrace{-\ln p_\theta(o_t \mid h_t, z_t)}_{\text{观测重构}} \underbrace{-\ln p_\theta(r_t \mid h_t, z_t)}_{\text{奖励预测}} + \underbrace{\beta D_{\text{KL}}\left( q_\phi(z_t \mid h_t, o_t) \parallel p_\theta(z_t \mid h_t) \right)}_{\text{动力学约束}}
+\mathcal{L}_t = \underbrace{-\ln p_\theta(o_t \mid h_t, z_t)}_{\text{观测重构}} + \underbrace{-\ln p_\theta(r_t \mid h_t, z_t)}_{\text{奖励预测}} + \underbrace{\beta D_{\text{KL}}\left( q_\phi(z_t \mid h_t, o_t) \parallel p_\theta(z_t \mid h_t) \right)}_{\text{动力学约束}}
 $$
 
 该公式中的三个项分别对应了图像解码器、奖励预测器和概率推断模块的优化目标。
 
 ## 隐空间中的策略优化
 
-一旦世界模型（RSSM）训练收敛，我们就可以利用它来学习策略。与传统方法不同，Dreamer 的 Actor-Critic 网络的输入不再是高维的像素，而是低维的拼接隐状态 $s_t = [h_t, z_t]$。
+世界模型经过更新后，Dreamer 从经验回放中推断出的状态出发，在潜在空间生成想象轨迹，并用它们更新策略。Actor-Critic 的输入是拼接状态 $s_t=[h_t,z_t]$，而不是原始像素。
 
-在每一次策略更新时，我们从历史经验池中抽取一个真实的隐状态 $s_\tau$ 作为起点。然后，**完全不与真实环境交互**，我们使用先验网络 $p_\theta(z_t \mid h_t)$ 和策略网络 $\pi_\psi(a_t \mid s_t)$ 在隐空间中向前展开 $H$ 步，生成一段由“梦境”组成的轨迹。
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/08-dreamer-concise/dreamer-fig10.png" alt="Dreamer 在连续控制任务中比较解析梯度、强化学习估计与在线规划，说明 actor 学习替代部署时搜索的实验依据。" width="86%">
+
+_图 4.8-4：Dreamer 在连续控制任务中比较解析梯度、强化学习估计与在线规划，说明 actor 学习替代部署时搜索的实验依据。 出处：Danijar Hafner；Timothy Lillicrap；Jimmy Ba；Mohammad Norouzi，[Dream to Control: Learning Behaviors by Latent Imagination](https://arxiv.org/abs/1912.01603)（2020），Figure 10。_
+
+</div>
+
+每次策略更新从经验回放对应的后验状态 $s_\tau$ 出发，随后暂时不调用真实环境，而是用先验 $p_\theta(z_t\mid h_t)$ 和策略 $\pi_\psi(a_t\mid s_t)$ 向前展开 $H$ 步。这段轨迹是模型预测，不是环境中的真实轨迹。
 
 为了优化动作，我们需要评估每个隐状态的价值。设价值网络为 $v_\xi(s_t)$。Dreamer 使用了指数加权的回报估计（类似于 $\text{TD}(\lambda)$）：
 
@@ -104,7 +132,13 @@ $$
 
 接下来，我们将使用纯粹的张量操作，来呈现 Dreamer 核心组件的简洁实现。我们首先定义多层感知机（MLP）作为基础的构建块。
 
-(**我们定义基础的重参数化技巧，以使得随机采样过程可导。**)
+先用重参数化技巧实现一个对角高斯输出层，使梯度能够经过采样表达式传播。
+
+<div align="center"><img src="/figures/04-latent-dynamics/latex/08-dreamer-concise/gaussian-stat-split-reparam.png" alt="网络输出拆分为均值与尺度参数，尺度经 softplus 变成正标准差，再与标准噪声重参数化得到样本" width="86%">
+
+_图 4.8-5：高斯头把 2D_z 个输出等分为均值与尺度参数；正值变换稳定标准差，随机性由独立噪声承担，因此样本仍能对网络参数求导。本文根据上述实现绘制。_
+
+</div>
 
 ```python
 import torch
@@ -117,18 +151,18 @@ class ReparameterizedGaussian(nn.Module):
         self.fc = nn.Linear(input_dim, output_dim * 2)
 
     def forward(self, x):
-        mean_std = self.fc(x)
-        # 将输出分为均值和对数标准差
-        mean, log_std = torch.chunk(mean_std, 2, dim=-1)
+        mean_scale = self.fc(x)
+        # 将输出分为均值和未经约束的尺度参数
+        mean, raw_scale = torch.chunk(mean_scale, 2, dim=-1)
         # 限制标准差的范围以保证数值稳定性
-        std = F.softplus(log_std) + 0.1
+        std = F.softplus(raw_scale) + 0.1
         # 重参数化采样
         noise = torch.randn_like(mean)
         sample = mean + noise * std
         return mean, std, sample
 ```
 
-(**接下来实现循环状态空间模型（RSSM）的核心类。**) 这包含了确定性路径（GRU）和两条随机推断路径（先验与后验）。
+接下来实现 RSSM 的核心类，其中包含确定性路径（GRU）和先验、后验两条随机推断路径。
 
 ```python
 class RSSM(nn.Module):
@@ -143,7 +177,7 @@ class RSSM(nn.Module):
         # 先验网络：基于确定性记忆，预测接下来的随机状态
         self.prior = ReparameterizedGaussian(deter_dim, stoch_dim)
 
-        # 后验网络：结合观测特征和确定性记忆，推断准确的随机状态
+        # 后验网络：结合观测特征和确定性记忆，近似推断随机状态
         self.posterior = ReparameterizedGaussian(deter_dim + obs_embed_dim, stoch_dim)
 
     def forward_prior(self, prev_stoch, prev_action, prev_deter):
@@ -162,10 +196,10 @@ class RSSM(nn.Module):
         return stoch, mean, std
 ```
 
-在训练世界模型时，我们需要通过时间步展开这个网络，并分别利用后验网络生成表示（用于重构观测），以及利用先验网络计算 KL 散度以约束模型预测未来的能力。策略网络的训练则仅依赖于 `forward_prior` 在隐空间中向前做梦推演。通过这些模块的协同，Dreamer 在无需直接操作真实环境物理状态的前提下，仅凭想象便掌握了复杂的控制任务。
+训练世界模型时，需要沿时间展开这个网络：后验样本用于重构观测和预测奖励，先验与后验之间的 KL 则约束没有观测时的预测。训练策略时，`forward_prior` 负责生成想象中的后续状态。完整实现还需要编码器、解码器、奖励与继续概率模型、actor、critic、$\lambda$-return、经验回放以及各优化器；这里的代码只展示 RSSM 接口。
 
 ## 小结
 
-- **基于模型的强化学习**通过构建世界模型（如 RSSM）来摆脱对高频环境交互的依赖。
-- **RSSM** 分离了确定性状态与随机状态，完美契合了记忆与未来不确定性的物理和概率特性。
-- **Dreamer** 通过在隐空间中计算变分下界（ELBO）来联合训练编码器、解码器和动态模型，并在“梦境”内完成了类似于 $\lambda$-return 的价值估计和策略梯度更新。
+- **基于模型的强化学习**利用学到的动力学提高经验利用率，但仍需要真实交互收集和更新数据。
+- **RSSM** 用确定性状态摘要历史，用随机状态表示当前潜变量及其不确定性。
+- **Dreamer** 用变分目标训练世界模型，再在潜在想象轨迹上计算 $\lambda$-return，并更新 actor 与 critic。

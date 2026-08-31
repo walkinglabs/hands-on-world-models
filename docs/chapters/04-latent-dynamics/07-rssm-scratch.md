@@ -1,16 +1,30 @@
-# 潜在动力学（RSSM）的从零开始实现
+# 4.7 RSSM 的从零开始实现
 
-在前几章中，我们探讨了如何通过自编码器将高维观测（如图像）压缩为低维的潜在表示（Latent Representation），并初步介绍了如何使用循环神经网络（RNN）在时间维度上建模这些状态的演化。然而，真实的物理世界充满了不确定性。一个纯粹确定性的动力学模型（如标准的RNN）在面对多条可能的未来分支时，往往会产生模糊的预测，或者因为微小的误差而在长程预测中彻底崩溃。
+前几章介绍了如何把图像压缩为低维表示，再用循环网络描述这些表示随时间的变化。不过，未来往往不止一种：同一个路口既可能左转，也可能直行。若用均方误差训练一个只输出单点预测的模型，它可能把几种未来平均在一起；即使单步误差很小，反复滚动后也可能逐渐偏离真实轨迹。
 
-为了在潜在空间中既能保持对历史信息的长期记忆，又能稳健地模拟未来的不确定性，Hafner等人在他们的经典工作“Learning Latent Dynamics for Planning from Pixels (PlaNet)” [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 中，提出了一种名为**循环状态空间模型**（Recurrent State Space Model, 简称RSSM）的优雅架构。RSSM 并非凭空出现，它是对隐马尔可夫模型（HMM）、卡尔曼滤波（Kalman Filter）以及变分自编码器（VAE）等早期序列生成模型在深度学习时代的集大成者。
+为同时保留历史摘要并表示当前的不确定性，Hafner 等人在 PlaNet [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 中提出了**循环状态空间模型**（Recurrent State Space Model，RSSM）。它把循环网络的确定性记忆与状态空间模型的随机潜变量放在同一递推结构中；在训练方法上，又借用了变分推断的思想。
 
-在本节中，我们将完全从零开始，使用基本张量操作和标准神经网络层，一步步构建出完整的 RSSM。我们将从最基础的标量动力学方程出发，严格推导其多维张量形式，并最终落实到可以直接运行的代码实现上。
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/07-rssm-scratch/opening-rssm-collect.gif" alt="DMLab Collect 的真实帧与 RSSM 预测连续对照，展示从零实现最终要复现的“看过上下文后继续想象”行为。" width="86%">
+
+_图 4.7-1：DMLab Collect 的真实帧与 RSSM 预测连续对照，展示从零实现最终要复现的“看过上下文后继续想象”行为。 出处：Danijar Hafner；Timothy Lillicrap；Jimmy Ba；Mohammad Norouzi，[Dream to Control: Learning Behaviors by Latent Imagination](https://arxiv.org/abs/1912.01603)（2020），Official multi-step prediction GIF: DMLab Collect。_
+
+</div>
+
+本节从一个标量动力学例子出发，再把它翻译成张量形状和 PyTorch 代码。实现刻意省略图像编码器、解码器与奖励头，重点只放在 RSSM 的状态递推、先验和后验。
 
 ## 历史背景与动力学建模的困境
 
-在深度学习处理时间序列的早期，研究者通常依赖确定性的循环神经网络（如 LSTM 或 GRU）来预测未来的状态。以自动驾驶为例，给定过去的视频帧序列，我们希望预测接下来几秒的画面。如果是确定性模型，当路口前方面临左转或直行的可能性时，网络为了最小化预测误差（均方误差），往往会输出左转和直行的“平均图像”——也就是一团模糊的像素。
+确定性的 LSTM 或 GRU 可以很好地保存历史，但若训练目标要求它在多种合理未来中只给出一幅均方误差最小的图像，输出就容易接近这些未来的像素平均。这里的问题不在“确定性网络必然模糊”，而在单点输出、损失函数与多模态数据之间不匹配。
 
-为了引入随机性，变分循环神经网络（Variational RNNs） [[Chung et al., 2015]](https://arxiv.org/abs/1506.02216) 被提出，它们在每个时间步引入一个服从高斯分布的随机变量。然而，纯粹依靠随机状态跨越时间步传递信息的模型，在优化时极难保留跨越数百步的长期依赖。
+变分循环神经网络 [[Chung et al., 2015]](https://arxiv.org/abs/1506.02216) 在每个时间步引入随机变量，使模型能够表示不同的未来分支。RSSM 进一步显式分开两条路径：确定性状态负责递推历史摘要，随机状态负责表达当前潜变量及其不确定性。
+
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/07-rssm-scratch/vrnn-fig2.png" alt="VRNN 将潜变量均值变化、逐时刻 KL 与输入波形对齐，说明随机状态会在序列事件发生处吸收新信息。" width="86%">
+
+_图 4.7-2：VRNN 将潜变量均值变化、逐时刻 KL 与输入波形对齐，说明随机状态会在序列事件发生处吸收新信息。 出处：Junyoung Chung；Kyle Kastner；Laurent Dinh；Kratarth Goel；Aaron Courville；Yoshua Bengio，[A Recurrent Latent Variable Model for Sequential Data](https://arxiv.org/abs/1506.02216)（2015），Figure 2。_
+
+</div>
 
 PlaNet 的 RSSM 在每个时间步同时维护确定性的循环状态与随机状态 [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551)：前者汇总历史，后者表达当前潜变量及其不确定性。DreamerV2 延续这一分解并把随机状态改为离散变量，DreamerV3 继续使用离散 RSSM [[Hafner et al., 2021]](https://arxiv.org/abs/2010.02193); [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104)。
 
@@ -23,19 +37,19 @@ PlaNet 的 RSSM 在每个时间步同时维护确定性的循环状态与随机�
 在一个简化的、一维的离散时间系统中，网球的速度 $v_t$ 可以近似写为：
 $$v_t = v_{t-1} + a \cdot \Delta t + \epsilon_t$$
 
-其中，$a$ 是你施加的加速度，$\epsilon_t$ 则是代表阵风影响的随机噪声。我们可以敏锐地发现，等式的右边由两部分组成：
+其中，$a$ 是加速度，$\epsilon_t$ 表示未建模的阵风等扰动。等式右边可以分成两部分：
 
-1. **确定性部分**（$v_{t-1} + a \cdot \Delta t$）：它精确记录了系统在此前的状态以及受控输入，这部分是完全可以被物理法则（或网络权重）确定的。
-2. **随机性部分**（$\epsilon_t$）：这是系统不可预知的外部扰动，或者说是一种内在的不确定性。
+1. **确定性部分**（$v_{t-1} + a \cdot \Delta t$）：根据已有状态和输入计算出的趋势。
+2. **随机部分**（$\epsilon_t$）：当前模型没有解释的扰动或不确定性。
 
-在真实的非线性世界中，我们将上述系统推广。令 $h_t$ 为存储过去所有历史信息的确定性状态，令 $z_t$ 为捕捉当前时刻随机性的随机状态。如果我们在时间步 $t$ 执行了动作 $a_t$，系统的动力学可以拆解为以下三个严谨的组件。
+推广到非线性系统时，令 $h_t$ 表示对过去信息的有限维摘要，$z_t$ 表示当前随机潜变量。若上一时刻执行动作 $a_{t-1}$，RSSM 的一步计算可以拆成下面三个组件。
 
 ### 确定性状态更新方程
 
-确定性状态 $h_t$ 必须融合上一时刻的记忆 $h_{t-1}$、上一时刻的具体遭遇 $z_{t-1}$ 以及上一时刻的动作 $a_{t-1}$。这是一个纯粹的非线性映射：
+确定性状态 $h_t$ 融合上一时刻的记忆 $h_{t-1}$、随机状态 $z_{t-1}$ 和动作 $a_{t-1}$：
 $$h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})$$
 
-这里，$f_\theta$ 通常被实现为一个门控循环单元（GRU）。需要极其注意的是，$h_t$ 的更新**不依赖**当前时刻 $t$ 的任何新观测，它仅仅是对过去的总结。
+这里，$f_\theta$ 通常由 GRU 实现。按照这一计算顺序，$h_t$ 先由上一状态和上一动作得到；当前观测随后进入后验网络，修正对 $z_t$ 的判断。
 
 ### 先验动力学（Prior Dynamics）
 
@@ -46,17 +60,24 @@ $$p_\theta(z_t \mid h_t) = \mathcal{N}(\mu_\theta(h_t), \Sigma_\theta(h_t))$$
 
 ### 后验推断（Posterior Inference）
 
-当我们睁开眼睛，切实看到了时刻 $t$ 的画面（观测 $x_t$）后，我们需要更新我们的认知。结合过去的记忆 $h_t$ 和当前的观测特征，我们提取出当前真实的随机状态 $z_t$。这就是**后验分布**：
+看到时刻 $t$ 的观测 $x_t$ 后，推断网络结合 $h_t$ 与观测特征，得到对当前随机状态的近似后验：
 $$q_\phi(z_t \mid h_t, x_t) = \mathcal{N}(\mu_\phi(h_t, x_t), \Sigma_\phi(h_t, x_t))$$
 
-后验推断由编码器提供支持，其分布必须在训练阶段作为先验分布试图逼近的目标（Target）。
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/07-rssm-scratch/dkf-fig2.png" alt="Deep Kalman Filter 的重建、采样与未见数字推断展示深度状态空间模型如何用后验校正再向前生成。" width="86%">
+
+_图 4.7-3：Deep Kalman Filter 的重建、采样与未见数字推断展示深度状态空间模型如何用后验校正再向前生成。 出处：Rahul G. Krishnan；Uri Shalit；David Sontag，[Deep Kalman Filters](https://arxiv.org/abs/1511.05121)（2015），Figure 2。_
+
+</div>
+
+训练时，后验为重构任务提供带有当前观测信息的状态；KL 项则约束先验和后验不要相差过远。不同 RSSM 变体会用不同的梯度截断和 KL 权重，因此后验并不是一个在所有梯度路径上都固定不动的“标签”。
 
 > 💡 **复杂机制的直觉映射：**
 > 想象你在黑暗中摸索前行（先验动力学预测可能的位置 $h_t \to z_t$），突然你打开手电筒看清了周围的陈设（观测 $x_t$），此时你在脑海中立刻修正了对自己确切位置的判断（后验推断 $h_t, x_t \to z_t$）。在训练世界模型时，我们要让闭着眼睛摸索的预测，尽可能贴近睁开眼睛看到的真实结果（这正是最小化 KL 散度的物理意义）。
 
-## 严谨的维度推演
+## 张量维度推演
 
-在实现代码之前，我们必须对网络中流动的数据张量的形状（Shape）有极其精确的掌控。设批大小为 $B$，序列长度为 $T$。
+实现前先列出张量形状。设批大小为 $B$，序列长度为 $T$。
 
 1. **确定性状态维度（Deterministic State Dimension）**：$D_h$。对于一般的复杂任务，通常取 200 到 1024。
 2. **随机状态维度（Stochastic State Dimension）**：$D_z$。由于它是高斯分布采样的结果，其维度表示潜在因子的数量，通常取 32 到 256。
@@ -101,7 +122,7 @@ class RSSMCell(nn.Module):
         self.fc_posterior_stats = nn.Linear(hidden_dim, 2 * stoch_dim)
 ```
 
-我们需要几个辅助函数来帮助我们处理高斯分布的参数计算和重参数化技巧（Reparameterization Trick）。为了保证训练的数值稳定性，方差往往不直接被预测，而是预测标准的对数方差（Log-Variance），或者使用 Softplus 激活函数加上一个极小的偏移量。
+下面用两个辅助函数处理高斯分布参数和重参数化采样。这里网络输出的是未经约束的尺度参数，经 Softplus 转为正的标准差，再加上最小值以改善数值稳定性；它并不是“对数方差”。
 
 ```python
 def extract_stats(stats_tensor, min_std=0.1):
@@ -138,23 +159,23 @@ def sample_gaussian(mean, std):
         执行单个时间步的状态推导。
         如果 obs_embed 为 None，则纯粹执行先验想象；否则计算后验分布。
         """
-        # (**计算确定性状态更新**)
-        # 对应该公式        za_cat = torch.cat([prev_stoch, prev_action], dim=-1)
+        # 计算确定性状态更新
+        za_cat = torch.cat([prev_stoch, prev_action], dim=-1)
         gru_input = F.elu(self.fc_state_action(za_cat))
 
         # GRU 内部状态更新
         # h_t = GRU(input_t, h_{t-1})
         deter_state = self.cell(gru_input, prev_deter)
 
-        # (**计算先验分布**)
-        # 对应该公式        prior_hidden = F.elu(self.fc_prior_hidden(deter_state))
+        # 计算先验分布
+        prior_hidden = F.elu(self.fc_prior_hidden(deter_state))
         prior_stats = self.fc_prior_stats(prior_hidden)
         prior_mean, prior_std = extract_stats(prior_stats)
         prior_stoch = sample_gaussian(prior_mean, prior_std)
 
-        # (**计算后验分布（如果有观测）**)
+        # 计算后验分布（如果有观测）
         if obs_embed is not None:
-            # 对应该公式            # 将当前确定性状态与当前观测嵌入进行拼接
+            # 将当前确定性状态与当前观测嵌入进行拼接
             h_x_cat = torch.cat([deter_state, obs_embed], dim=-1)
             post_hidden = F.elu(self.fc_posterior_hidden(h_x_cat))
             post_stats = self.fc_posterior_stats(post_hidden)
@@ -173,7 +194,7 @@ def sample_gaussian(mean, std):
 
 这里的损失函数源自变分下界（Variational Lower Bound，通常称为 ELBO）。我们将极大化对数似然转化为最小化以下两项之和：
 
-1. **重构损失（Reconstruction Loss）**：利用后验推断出的状态 $(h_t, z_t)$ 必须能够解码还原出当前的图像 $x_t$ 和对应的奖励 $r_t$。
+1. **重构与预测损失**：利用后验状态 $(h_t, z_t)$ 解码当前图像 $x_t$，并预测对应奖励 $r_t$。
 2. **动态 KL 散度（Dynamics KL Divergence）**：在每一个时间步 $t$，先验预测的分布 $p_\theta(z_t \mid h_t)$ 与后验计算的分布 $q_\phi(z_t \mid h_t, x_t)$ 应该尽可能接近。这确保了模型在没有观测时依然能做出现实合理的想象。
 
 我们接下来实现整个序列展开的逻辑，并在每个时间步记录先验和后验分布。
@@ -213,7 +234,7 @@ class RSSM(nn.Module):
 
         # 沿时间维度展开
         for t in range(seq_len):
-            # [**调用核心单元执行单步前向推断**]
+            # 调用核心单元执行单步前向推断
             (prev_deter, prior_stoch, prior_mean, prior_std,
              prev_stoch, post_mean, post_std) = self.cell.forward_step(
                  prev_deter, prev_stoch, actions[t], obs_embeds[t]
@@ -238,11 +259,24 @@ class RSSM(nn.Module):
 
 ### KL 散度与信息瓶颈
 
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/07-rssm-scratch/planet-fig8.png" alt="PlaNet 的消融网格比较标准变分目标与 latent overshooting，展示多步一致性约束对 RSSM 学习的实验作用。" width="86%">
+
+_图 4.7-4：PlaNet 的消融网格比较标准变分目标与 latent overshooting，展示多步一致性约束对 RSSM 学习的实验作用。 出处：Danijar Hafner；Timothy Lillicrap；Ian Fischer；Ruben Villegas；David Ha；Honglak Lee；James Davidson，[Learning Latent Dynamics for Planning from Pixels](https://arxiv.org/abs/1811.04551)（2019），Figure 8。_
+
+</div>
+
 在得到了长度为 $T$ 的先验统计量和后验统计量之后，我们需要计算 KL 散度。对于两个多变量高斯分布 $p = \mathcal{N}(\mu_1, \Sigma_1)$ 和 $q = \mathcal{N}(\mu_2, \Sigma_2)$（假设方差为对角矩阵），从 $q$ 到 $p$ 的 KL 散度具有解析解：
 
 $$ D_{KL}(q \parallel p) = \frac{1}{2} \sum_{i=1}^{D_z} \left( \log \frac{\sigma_{1,i}^2}{\sigma_{2,i}^2} + \frac{\sigma_{2,i}^2 + (\mu_{2,i} - \mu_{1,i})^2}{\sigma_{1,i}^2} - 1 \right) $$
 
-值得注意的是，RSSM 中通常会将后验分布的参数截断梯度（Stop Gradient）传递给先验，反之亦然。甚至会对这两部分的学习率进行解耦处理。为了保证训练不会因为某一步太大的误差而崩溃，通常还会在 KL 散度中引入一个超参数 $\beta$，或者使用 Free Nats 机制强制设定一个 KL 散度的最小下界。
+<div align="center"><img src="/figures/04-latent-dynamics/latex/07-rssm-scratch/diagonal-gaussian-kl-terms.png" alt="对角高斯 KL 逐维包含方差尺度比、后验扩散和均值错配三类贡献" width="86%">
+
+_图 4.7-5：每个潜变量维度同时比较 q 与 p 的尺度、后验扩散和均值位置；这些贡献相加后才得到整条潜状态的 KL。本文根据上式绘制。_
+
+</div>
+
+不同 Dreamer 版本会把 KL 拆成带不同 stop-gradient 方向的两项，用来分别训练动力学先验和表示后验；基础 RSSM 并不要求只有这一种写法。常见的稳定化手段还包括 KL 权重 $\beta$ 与 free nats。后者把小于阈值的 KL **损失贡献**截在阈值处，使模型不必继续压缩这部分信息；它并不会把分布本身的 KL 强行改成该数值。
 
 ```python
 def kl_loss(prior_stats, post_stats, free_nats=3.0):
@@ -260,7 +294,7 @@ def kl_loss(prior_stats, post_stats, free_nats=3.0):
     # 计算 KL 散度，并在潜变量维度求和
     kl = torch.distributions.kl.kl_divergence(post_dist, prior_dist).sum(dim=-1)
 
-    # 应用 Free Nats（最小限度信息约束）
+    # Free nats：阈值以下的 KL 不再产生额外梯度
     free_nats_tensor = torch.full_like(kl, free_nats)
     kl_constrained = torch.max(kl, free_nats_tensor)
 
@@ -270,7 +304,7 @@ def kl_loss(prior_stats, post_stats, free_nats=3.0):
 
 ## 训练循环的高层视点
 
-到目前为止，我们已经用极致详尽的代码将极其复杂的 RSSM 分解。为了让你能够一览众山小，我们来简要梳理一下在每一次网络权重更新前，数据到底经历了怎样的流动：
+最后把一次世界模型更新中的数据流串起来：
 
 1. 从重播缓冲区（Replay Buffer）中提取出一批包含视频帧图像和动作的历史轨迹。
 2. 将图像 $x_{1:T}$ 送入卷积自编码器的**编码器**，压缩得到观测嵌入 `obs_embeds`。
@@ -278,7 +312,7 @@ def kl_loss(prior_stats, post_stats, free_nats=3.0):
 4. 将 $h_t$ 与 $z_t$ 拼接，送入**解码器**（重构出 $\hat{x}_t$），并送入**奖励预测器**（预测 $\hat{r}_t$）。
 5. 计算重构均方误差（MSE），同时使用 `kl_loss` 计算先验与后验的差异。将这些误差反向传播回所有网络。
 
-这种极其解耦而又自成一体的结构设计，直接奠定了今天世界模型在解决复杂环境决策任务时的统治地位。
+这套分工让模型既能借助观测推断当前状态，也能在没有未来观测时仅靠先验向前滚动。它因此成为 PlaNet 和 Dreamer 系列的重要基础模块。
 
 ## 练习
 
@@ -286,5 +320,5 @@ def kl_loss(prior_stats, post_stats, free_nats=3.0):
    > **提示**：如果在上一步遇到了一阵无法预期的侧风（由 $z_{t-1}$ 捕获），这阵风带来的影响是否应当被记忆在 $h_t$ 中以指导未来的推断？
 2. `extract_stats` 中我们加上了 `min_std=0.1`。如果没有这个常数限制，KL 散度的计算中该公式哪一项最可能发生数值爆炸（NaN）现象？
    > **提示**：观察分母项。
-3. 在现实训练中，如果你发现 KL 散度极低，模型完美地使得先验等同于后验，但此时解码器重构出的图像却极其模糊，这说明发生了什么问题？
+3. 如果训练中 KL 散度很低，而解码器重构的图像仍然很模糊，这可能说明什么？
    > **提示**：这通常被称为“后验崩溃”（Posterior Collapse）。思考当随机状态不再携带额外信息时，模型实质上退化成了什么？

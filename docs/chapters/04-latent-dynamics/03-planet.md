@@ -1,14 +1,21 @@
-# 深度规划网络 (PlaNet)
+# 4.3 PlaNet：在潜在空间中规划
 
-在强化学习的早期发展中，无模型（Model-Free）方法虽然在诸如雅达利游戏和围棋等复杂任务上取得了令人瞩目的成绩，但其代价是极其高昂的采样复杂性。这意味着智能体需要与环境进行数百万甚至数千万次的交互才能学习到有效的策略。当我们希望将强化学习应用于现实世界的机器人或自动驾驶时，这种对海量数据的依赖成为了不可逾越的鸿沟。
+许多无模型（Model-Free）强化学习方法需要大量环境交互才能学到有效策略。在模拟器中这主要消耗计算时间；在机器人等真实系统中，还会带来采集成本、设备磨损和安全约束。
 
-为了解决这一问题，基于模型（Model-Based）的强化学习重新回到了研究者的视野。如果我们能让智能体在脑海中建立一个“世界模型”（World Model），预测其动作可能引发的后果，那么智能体就可以在“想象”中进行反复试错和规划，从而极大地减少在真实物理世界中的试错成本。
+基于模型（Model-Based）强化学习先从交互数据学习动力学，再用模型评估候选动作。这样可以复用已有数据进行多次规划，但收益取决于模型误差是否足够小。
 
-然而，当环境的观测是高维度的图像时，准确地预测未来图像（即在像素级别进行规划）被证明是极其困难的。图像中包含了大量与任务无关的冗余信息（例如背景的微小扰动、树叶的飘动）。让神经网络耗费算力去预测每一个像素的精确变化，不仅效率低下，而且容易累积误差。
+当观测是图像时，逐像素滚动预测需要处理大量细节，其中一部分与奖励和控制无关。潜在模型希望把规划放到较小的表示空间中，同时在训练时仍通过观测与奖励目标约束表示。
 
 在这样的背景下，Hafner 等人提出了**深度规划网络**（Deep Planning Network，PlaNet）[[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551)。PlaNet 学习紧凑的潜在动力学，并在潜在空间中规划；训练阶段仍包含观测解码与重构似然，因此不能说它“彻底摒弃”了像素建模。为结合确定性记忆与随机状态，论文引入了**循环状态空间模型**（Recurrent State Space Model, RSSM）。
 
-在本节中，我们将从最基础的序列建模出发，逐步推导 RSSM 的设计逻辑，并详细剖析如何在纯粹的潜在空间中利用交叉熵方法（Cross-Entropy Method, CEM）进行高效规划。
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/03-planet/planet-fig10.png" alt="PlaNet 在六类视觉控制任务中从五帧上下文继续开环预测，展示学得潜在动力学实际维持运动的能力。" width="86%">
+
+_图 4.3-1：PlaNet 在六类视觉控制任务中从五帧上下文继续开环预测，展示学得潜在动力学实际维持运动的能力。 出处：Danijar Hafner；Timothy Lillicrap；Ian Fischer；Ruben Villegas；David Ha；Honglak Lee；James Davidson，[Learning Latent Dynamics for Planning from Pixels](https://arxiv.org/abs/1811.04551)（2019），Figure 10。_
+
+</div>
+
+本节先回顾 PlaNet 中的 RSSM，再说明交叉熵方法（Cross-Entropy Method, CEM）如何在学到的潜在动力学中优化动作序列。
 
 ## 潜在空间动力学：为什么我们需要它？
 
@@ -16,17 +23,24 @@
 
 这就是**潜在空间**（Latent Space）的物理直觉。在数学上，我们将高维的观测（例如图像）$o_t \in \mathbb{R}^{H \times W \times C}$ 映射到一个低维的潜在状态变量 $s_t \in \mathbb{R}^{d}$，其中 $d \ll H \times W \times C$。
 
-传统的基于像素的预测模型试图直接拟合映射 $o_{t+1} = f(o_t, a_t)$。这相当于求解一个极其庞大且病态的非线性方程组。而潜在动力学模型则将其分解为以下几个独立的组件：
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/03-planet/e2c-fig10.png" alt="E2C 三连杆机械臂的真实帧与模型预测并排，说明控制所需转移可以在低维表征中学习。" width="86%">
+
+_图 4.3-2：E2C 三连杆机械臂的真实帧与模型预测并排，说明控制所需转移可以在低维表征中学习。 出处：Manuel Watter；Jost Tobias Springenberg；Joschka Boedecker；Martin Riedmiller，[Embed to Control: A Locally Linear Latent Dynamics Model for Control from Raw Images](https://arxiv.org/abs/1506.07365)（2015），Figure 10。_
+
+</div>
+
+直接预测 $o_{t+1}=f(o_t,a_t)$ 需要输出高维观测。潜在动力学把问题拆成几个组件：
 
 1. **表征模型**（Representation Model）：将观测压缩为潜在状态 $s_t = \text{Encoder}(o_t)$。
 2. **动力学模型**（Dynamics Model/Transition Model）：在潜在空间中预测未来 $s_{t+1} = \text{Transition}(s_t, a_t)$。
 3. **奖励模型**（Reward Model）：根据当前的潜在状态预测奖励 $r_t = \text{Reward}(s_t)$。
 
-通过这种分解，规划（Planning）过程只需依赖动力学模型和奖励模型，完全不需要生成任何未来的图像，从而极大地提高了计算效率。
+训练时仍使用观测模型提供学习信号；规划时只需滚动动力学与奖励模型，无需把每个候选轨迹都解码成图像。
 
 ## 循环状态空间模型 (RSSM)
 
-要构建一个能够准确描述环境演化的动力学模型，我们必须处理环境中的两个关键特性：**时间依赖性**（历史决定未来）和**随机性**（未来是不确定的）。
+潜在动力学需要同时利用历史，并表达给定历史后的不确定性。
 
 ### 确定性路径：RNN 的局限性
 
@@ -36,7 +50,7 @@ $$h_t = f_{\theta}(h_{t-1}, a_{t-1}, o_t)$$
 
 这里 $h_t$ 是 RNN 的隐藏状态。这是一种完全**确定性**（Deterministic）的建模方式。只要给定历史，未来的状态就唯一确定了。
 
-然而，现实世界充满了不可见的部分和固有的随机性（例如掷骰子，或者其他智能体的不可预测行为）。如果强制要求网络预测一个单一的确定性未来，网络通常会输出所有可能未来的“平均值”，导致预测出的潜在状态变得模糊且缺乏物理意义。
+若确定性模型配合单峰像素损失训练，多模态未来容易被折中成平均预测。也可以用更丰富的输出分布缓解这一问题，因此关键不只是“有没有 RNN”，还包括状态与似然如何参数化。
 
 ### 随机路径：引入状态空间模型
 
@@ -48,11 +62,11 @@ $$s_t \sim p(s_t \mid s_{t-1}, a_{t-1})$$
 
 $$o_t \sim p(o_t \mid s_t)$$
 
-在 SSM 中，$s_t$ 是一个从高斯分布等概率模型中采样得到的随机变量，能够很好地表达不确定性。但纯粹的 SSM 难以记住长期的历史信息，因为马尔可夫假设（Markov Property）限制了它只能依赖前一个状态。
+在 SSM 中，$s_t$ 可由高斯等分布参数化以表达不确定性。马尔可夫假设并不意味着模型只能记住一步：若状态本身足够充分，它可以携带过去信息。实践困难在于，所有长期信息都要经过随机状态逐步传递，训练与优化可能更脆弱。
 
-### RSSM：确定性与随机性的完美融合
+### RSSM：组合确定性与随机状态
 
-PlaNet 的核心创新——**循环状态空间模型 (RSSM)**——巧妙地将 RNN 的长期记忆能力与 SSM 的不确定性表达能力结合在了一起。
+PlaNet 的 **RSSM** 把确定性循环状态与随机状态放在同一转移模型中。
 
 我们可以将 RSSM 的动力学分解为两部分：一个确定性的隐藏状态 $h_t$，以及一个随机的后验状态 $s_t$。
 
@@ -60,7 +74,7 @@ PlaNet 的核心创新——**循环状态空间模型 (RSSM)**——巧妙地�
 
 1. **确定性状态更新** (Deterministic State Update)：
    $$h_t = f_{\text{RNN}}(h_{t-1}, s_{t-1}, a_{t-1})$$
-   这里 $h_t$ 聚合了所有直到时间步 $t$ 的历史信息。
+   这里 $h_t$ 汇总截至时间步 $t$、对预测有用的历史信息。
 
 2. **先验模型** (Prior Model / Transition Model)：
    $$p(s_t \mid h_t) = \mathcal{N}(\mu_{\text{prior}}(h_t), \sigma_{\text{prior}}(h_t))$$
@@ -68,13 +82,13 @@ PlaNet 的核心创新——**循环状态空间模型 (RSSM)**——巧妙地�
 
 3. **后验模型** (Posterior Model / Representation Model)：
    $$q(s_t \mid h_t, o_t) = \mathcal{N}(\mu_{\text{post}}(h_t, o_t), \sigma_{\text{post}}(h_t, o_t))$$
-   后验模型结合了历史信息 $h_t$ 和当前的真实观测 $o_t$，推断出 $s_t$ 最准确的概率分布。
+   后验模型结合历史状态与当前观测，构造训练时使用的近似后验。
 
 4. **奖励预测与观测重建**：
    $$r_t \sim p(r_t \mid h_t, s_t)$$
    $$o_t \sim p(o_t \mid h_t, s_t)$$
 
-请注意，在**模型训练**阶段，我们拥有所有的观测数据 $o_t$，因此我们使用后验模型 $q(s_t \mid h_t, o_t)$ 来提取状态；而在**规划（想象未来）**阶段，我们没有未来的观测，只能依靠先验模型 $p(s_t \mid h_t)$ 进行一步步的自回归展开。这正是 RSSM 架构设计的绝妙之处。
+训练阶段使用观测后验估计当前状态；规划阶段没有未来观测，只能从先验逐步采样。KL 项负责缩小两种状态分布之间的差异。
 
 ## 变分目标函数：优化 RSSM
 
@@ -84,19 +98,19 @@ PlaNet 的核心创新——**循环状态空间模型 (RSSM)**——巧妙地�
 
 $$\mathcal{J} = \sum_{t=1}^{T} \mathbb{E}_{q(s_t \mid h_t, o_t)} \left[ \ln p(o_t \mid h_t, s_t) + \ln p(r_t \mid h_t, s_t) \right] - \beta \sum_{t=1}^{T} \text{KL}\left( q(s_t \mid h_t, o_t) \| p(s_t \mid h_t) \right)$$
 
-让我们像拆解精密的机械手表一样，仔细剖析该公式中的每一项：
+这个示意目标包含三类项：
 
-1. **观测重建项** $\ln p(o_t \mid h_t, s_t)$：迫使潜在状态 $h_t$ 和 $s_t$ 必须保留足够的信息以还原原始图像。通常使用均方误差（MSE）。
-2. **奖励预测项** $\ln p(r_t \mid h_t, s_t)$：迫使潜在状态必须包含与任务目标（奖励）相关的信息。这使得我们的潜在空间是任务导向的。
-3. **KL 散度项** $\text{KL}(q \| p)$：这是最关键的一项。它迫使**先验分布** $p(s_t \mid h_t)$（仅靠历史预测未来）尽可能地去接近**后验分布** $q(s_t \mid h_t, o_t)$（看到真实结果后的信念）。在规划时，我们只能依靠先验，因此先验预测得越准，规划效果越好。$\beta$ 则是用来控制正则化强度的超参数。
+1. **观测对数似然** $\ln p(o_t\mid h_t,s_t)$：鼓励潜在状态保留解释观测所需的信息；高斯像素似然对应按尺度加权的平方误差。
+2. **奖励对数似然** $\ln p(r_t\mid h_t,s_t)$：鼓励状态保留与控制目标相关的信息。
+3. **KL 散度** $\mathrm{KL}(q\|p)$：让历史先验接近观测辅助后验。式中的 $\beta$ 是教学中常见的权重写法；具体 PlaNet 实现与后续工作还会使用不同的平衡和正则策略。
 
-为了使梯度能够反向传播穿过随机采样的 $s_t$，我们必须使用重参数化技巧（Reparameterization Trick），即 $s_t = \mu + \sigma \odot \epsilon$，其中 $\epsilon \sim \mathcal{N}(0, I)$。
+连续高斯状态通常使用重参数化 $s_t=\mu+\sigma\odot\epsilon$，其中 $\epsilon\sim\mathcal{N}(0,I)$，以获得路径梯度。
 
 ## 代码实现：构建 RSSM 核心组件
 
-现在，我们将上述数学公式转化为实际的代码。
+下面把状态更新写成代码。
 
-(**我们首先定义 RSSM 单元，它负责根据方程进行前向推演。**)
+先定义 RSSM 单元。
 
 ```python
 import torch
@@ -177,26 +191,40 @@ class RSSMCell(nn.Module):
         return state, rnn_hidden, prior_dist, post_dist
 ```
 
-这段代码精准地映射了我们之前推导的数学公式。在 `step_posterior` 中，我们同时计算了先验和后验分布，为下一步计算 KL 散度做好了准备。
+`step_posterior` 同时返回先验与后验，便于外部计算 KL。完整 PlaNet 还需要观测编码器、解码器、奖励模型和序列损失，这里只保留状态核心。
 
 ## 潜在空间中的决策：交叉熵方法 (CEM)
 
-拥有了训练好的 RSSM，我们的智能体便具备了“想象未来”的能力。接下来，我们必须回答：**如何利用这些想象来选择当前的最佳动作？**
+训练好 RSSM 后，可以用它评估候选动作序列。PlaNet 采用**交叉熵方法**（Cross-Entropy Method, CEM）做无导数优化。
 
-PlaNet 采用了一种名为**交叉熵方法**（Cross-Entropy Method, CEM）的无导数优化算法。尽管它的名字带有“交叉熵”，但在这里它的核心思想更接近于进化算法或粒子滤波。
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/03-planet/planet-fig12.png" alt="PlaNet 用规划地平线、候选数、精英比例和迭代次数的网格实验显示 CEM 搜索预算如何改变控制性能。" width="86%">
 
-假设我们要在潜在空间中规划未来 $H$ 步。CEM 的算法流程极其优雅直观：
+_图 4.3-3：PlaNet 用规划地平线、候选数、精英比例和迭代次数的网格实验显示 CEM 搜索预算如何改变控制性能。 出处：Danijar Hafner；Timothy Lillicrap；Ian Fischer；Ruben Villegas；David Ha；Honglak Lee；James Davidson，[Learning Latent Dynamics for Planning from Pixels](https://arxiv.org/abs/1811.04551)（2019），Figure 12。_
+
+</div>
+
+CEM 反复采样、筛选高回报样本并重估采样分布。它与粒子滤波都使用样本，但目标与更新规则不同，不应把两者视为同一种算法。
+
+假设规划未来 $H$ 步，流程如下：
 
 1. **初始化**：假设每一步的动作服从正态分布，初始时，在规划区间 $H$ 上的动作序列分布的均值为 $\mu_a = 0$，方差为 $\sigma_a^2 = I$。
 2. **采样轨迹**：从当前的动作分布 $\mathcal{N}(\mu_a, \sigma_a^2)$ 中采样 $N$ 条可能的未来动作序列（每条序列长为 $H$）。
 3. **在脑海中模拟**：对于每一条采样的动作序列，利用 RSSM 的**先验模型**（即前文的确定性状态更新方程和先验转移分布方程），自回归地推演未来的潜在状态 $s_{t+1}, \dots, s_{t+H}$。
 4. **评估轨迹**：使用奖励模型 $r_{\tau} = \text{Reward}(s_{\tau})$ 评估这 $N$ 条轨迹的累积奖励（Return）。
 5. **精英筛选与分布更新**：挑出累积奖励最高的 $K$ 条轨迹（称为“精英集”，通常 $K \ll N$）。用这 $K$ 条精英动作序列的均值和方差，来更新我们的动作分布参数 $\mu_a$ 和 $\sigma_a^2$。
+
+<div align="center"><img src="/figures/04-latent-dynamics/latex/03-planet/cem-elite-refit-loop.png" alt="从动作序列分布采样并在潜空间评分，选出高回报精英后用其均值和方差更新下一轮分布" width="86%">
+
+_图 4.3-4：CEM 用当前分布采样候选序列，按想象回报选出 top-K 精英，再以精英样本矩重估下一轮分布；这一更新不需要奖励梯度。本文根据上述步骤绘制。_
+
+</div>
+
 6. **迭代**：重复步骤 2-5 若干次（如 10 次）。最终，最优动作分布 $\mu_a$ 的第一个时间步动作，即为智能体当前要执行的真实物理动作。执行该动作，接收新观测，重新开始规划（这是模型预测控制 MPC 的思想）。
 
-由于我们在模拟中根本不需要生成高维图像，仅在低维潜在状态 $s_t$ 和 $h_t$ 之间进行极轻量级的矩阵乘法，CEM 可以极其快速地在一秒钟内模拟成千上万条轨迹。
+因为候选轨迹无需解码成图像，单次滚动通常比像素模型便宜。但实际速度取决于样本数、规划视界、模型大小与硬件，不能统一承诺“一秒钟内”完成多少轨迹。
 
-(**以下是 CEM 规划算法在张量级别的大致实现框架。**)
+下面给出张量级教学实现。
 
 ```python
 def cem_planning(current_state, current_rnn_hidden, rssm, reward_model,
@@ -238,16 +266,23 @@ def cem_planning(current_state, current_rnn_hidden, rssm, reward_model,
 
         # 更新均值和标准差以用于下一轮迭代
         action_mean = elite_actions.mean(dim=0)
-        action_std = elite_actions.std(dim=0)
+        action_std = elite_actions.std(dim=0).clamp_min(1e-4)
 
     # 返回规划出的最优序列的第一步动作
     return action_mean[0]
 ```
 
-正如你所见，整个规划过程是一个纯粹的张量运算流水线，这也是 PlaNet 能够打破传统模型计算瓶颈的核心秘诀。
+实际 MPC 还会处理动作边界、折扣、终止信号与分布平滑；这段代码只展示 CEM 的采样—筛选—重估主循环。
 
 ## 小结
 
-PlaNet 代表了基于模型强化学习范式的一次重要飞跃。它告诉我们，智能体不需要在复杂的现实细节中泥足深陷。通过构建**循环状态空间模型 (RSSM)**，智能体学会了提取一个同时具备确定性记忆和随机表达能力的抽象潜在空间。基于变分推断的训练框架保证了该空间的有效性，而无梯度的 CEM 方法则在这个紧凑的空间中提供了高效的远景规划能力。
+PlaNet 用 RSSM 学习确定性记忆与随机状态，并在潜在空间用 CEM 规划。变分目标提供观测与奖励学习信号，但模型误差仍会随规划视界累积；CEM 也需要大量候选轨迹。因此，这套方法是在样本复用、模型偏差和在线规划开销之间做权衡。
+
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/03-planet/pilco-fig11.png" alt="PILCO 在真实小车倒立摆上的连续快照展示早期数据高效模型式控制如何落到物理系统。" width="86%">
+
+_图 4.3-5：PILCO 在真实小车倒立摆上的连续快照展示早期数据高效模型式控制如何落到物理系统。 出处：Marc Peter Deisenroth；Diether Fox；Carl Edward Rasmussen，[PILCO: A Model-Based and Data-Efficient Approach to Policy Search](https://doi.org/10.1109/TPAMI.2013.218)（2015），Figure 11。_
+
+</div>
 
 在后续的发展中，研究者们发现 CEM 虽然灵活，但在处理高维度长周期的规划时依然存在局限。这为后来 Dreamer 算法直接在潜在空间中训练策略网络埋下了伏笔（我们将在下一节详细探讨）。

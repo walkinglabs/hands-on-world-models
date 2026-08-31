@@ -1,4 +1,4 @@
-# 世界模型（World Models）绪论
+# 4.1 World Models：压缩观测并预测潜在未来
 
 > **本章导读**
 >
@@ -12,22 +12,29 @@
 
 在这样的背景下，Ha 和 Schmidhuber 给出了由视觉模型、记忆模型与控制器组成的 **World Models** 框架 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。它把表征学习、动力学建模与控制器优化拆成可以分别训练的组件。CarRacing 实验在真实环境中优化控制器，并使用世界模型提供的潜在特征；VizDoom 实验才把控制器完全放到学到的潜在环境中训练，再迁回真实游戏。论文没有证明该方法能以极少交互适用于任意复杂任务。
 
-本章我们将从最基础的物理规律出发，严谨推演世界模型的数学结构，并剖析其为何必须依赖潜空间（Latent Space）与序列生成模型。
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/01-world-models/wm-fig10.png" alt="同一帧 CarRacing 画面经 VAE 压缩再解码后，道路走向和车辆位置仍被保留，说明控制相关信息可以进入紧凑潜变量。" width="86%">
+
+_图 4.1-1：同一帧 CarRacing 画面经 VAE 压缩再解码后，道路走向和车辆位置仍被保留，说明控制相关信息可以进入紧凑潜变量。 出处：David Ha；Jürgen Schmidhuber，[World Models](https://arxiv.org/abs/1803.10122)（2018），Figure 10。_
+
+</div>
+
+本节从状态转移出发，说明为什么可以先把图像压缩到潜空间（Latent Space），再用序列模型预测潜变量的变化。这里介绍的是 Ha 与 Schmidhuber 的具体架构，不代表所有世界模型都必须采用 VAE 与 RNN。
 
 ## 从基础物理到状态转移：预测的本质
 
-在正式引入深度学习框架之前，让我们先回到高中物理中关于运动学最基础的描述。这是理解一切“动态预测”模型的起点。
+先看一个最简单的离散时间动力学例子。
 
-假设有一个质点在直线上运动，已知其在 $t$ 时刻的位置为 $x_t \in \mathbb{R}$。如果我们对该质点施加一个动作（在此场景下，假设动作为提供一个恒定的速度 $v_t$），并在一个极小的时间间隔 $\Delta t$ 内保持不变，那么在 $t+1$ 时刻（即 $t + \Delta t$），质点的位置可以被唯一且精确地计算出来：
+假设质点在 $t$ 时刻的位置为 $x_t \in \mathbb{R}$，并在时间间隔 $\Delta t$ 内保持速度 $v_t$ 不变，则欧拉离散化给出：
 
 $$
 x_{t+1} = x_t + v_t \Delta t
 $$
 
-在该公式中，我们实际上构建了一个极简的**环境模型**。它包含三个核心要素：
+这个简化的**环境模型**包含三个量：
 
 1. $x_t$：当前状态（State），在这里退化为一个标量。
-2. $v_t$：智能体在 $t$ 时刻采取的动作（Action）。
+2. $v_t$：该时间段内的速度；在控制问题中，它可由动作间接影响，但不必等同于动作本身。
 3. $x_{t+1}$：动作施加于当前状态后，环境反馈出的未来状态。
 
 在现代控制理论与强化学习中，我们将这种关系推广至高维向量空间。假设系统的状态由一个多维向量 $\mathbf{s}_t \in \mathbb{R}^n$ 描述，动作由向量 $\mathbf{a}_t \in \mathbb{R}^m$ 描述。一个确定性的状态转移函数（Deterministic Transition Function）可抽象地表示为：
@@ -36,43 +43,57 @@ $$
 \mathbf{s}_{t+1} = f(\mathbf{s}_t, \mathbf{a}_t)
 $$
 
-然而，真实物理世界往往充满着观测噪声、隐藏变量（部分可观测性）以及环境本身的固有随机性。这就要求我们将确定性的函数映射升级为条件概率分布（Conditional Probability Distribution）。即在给定当前状态与动作的前提下，未来状态服从某一种概率分布：
+若系统存在观测噪声、隐藏变量或随机转移，单个确定性映射就不足以描述全部可能结果。此时可建模条件分布：
 
 $$
 P(\mathbf{s}_{t+1} \mid \mathbf{s}_t, \mathbf{a}_t)
 $$
 
-深度学习视角下的“世界模型”，本质上就是用神经网络来高精度地拟合该公式所描述的这个条件概率分布。
+在强化学习中，世界模型通常学习状态转移，并可能同时预测观测、奖励或终止信号。它不必重建所有像素，只需保留下游预测或决策需要的信息。
+
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/01-world-models/e2c-fig1.png" alt="E2C 把图像编码、局部线性潜在转移与图像解码连成控制模型，展示潜空间动力学在 World Models 之前的控制脉络。" width="86%">
+
+_图 4.1-2：E2C 把图像编码、局部线性潜在转移与图像解码连成控制模型，展示潜空间动力学在 World Models 之前的控制脉络。 出处：Manuel Watter；Jost Tobias Springenberg；Joschka Boedecker；Martin Riedmiller，[Embed to Control: A Locally Linear Latent Dynamics Model for Control from Raw Images](https://arxiv.org/abs/1506.07365)（2015），Figure 1。_
+
+</div>
 
 ## 维度的诅咒与潜空间降维
 
 如果我们将环境直接设定为一个自动驾驶的仿真画面，此时观测空间（状态） $\mathbf{s}_t$ 是一张 $64 \times 64$ 的 RGB 图像。那么该状态空间的维度是 $D = 64 \times 64 \times 3 = 12288$。
 
-如果我们试图直接在包含 $12288$ 个变量的原始像素空间中拟合转移概率分布 $P(\mathbf{s}_{t+1} \mid \mathbf{s}_t, \mathbf{a}_t)$，我们将面临极度严重的“维度诅咒”。更为关键的是，像素空间充满了对决策毫无意义的冗余信息。天空中云朵形状的细微变化、树叶随风摇曳的阴影，都会引起大量像素值的剧烈变化，但这对于车辆是否需要刹车完全没有影响。
+直接预测 12288 个像素变量需要较大的模型与计算量，而且像素误差会同等惩罚任务相关和无关的细节。若道路边缘、车速和姿态决定控制，背景纹理的微小变化却未必值得分配同样的预测容量。
 
-因此，[[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122) 将预测系统优雅解耦为两个独立训练的模块：**视觉模型**（V Model）与**记忆模型**（M Model）。
+World Models 将感知与预测拆成两个分别训练的模块：**视觉模型**（V Model）和**记忆模型**（M Model）。
 
 ### 视觉模型 (V Model)：空间压缩
 
-视觉模型的任务是将高维的观测图像 $\mathbf{x}_t \in \mathbb{R}^D$ 映射到一个极其紧凑的低维潜空间（Latent Space）特征向量 $\mathbf{z}_t \in \mathbb{R}^d$，其中 $d \ll D$。
+视觉模型把高维观测 $\mathbf{x}_t \in \mathbb{R}^D$ 编码为较低维的潜变量 $\mathbf{z}_t \in \mathbb{R}^d$，其中 $d \ll D$。
 
-经典实现采用变分自编码器（Variational Autoencoder, VAE）[[Kingma & Welling, 2013]](https://arxiv.org/abs/1312.6114)。VAE 通过 KL 项把近似后验约束到标准正态先验附近，而不是让每个样本的潜变量都严格服从标准正态分布；这种正则化有助于得到较连续、便于采样的潜空间。其优化目标是最大化证据下界（ELBO）：
+原论文使用变分自编码器（Variational Autoencoder, VAE）[[Kingma & Welling, 2013]](https://arxiv.org/abs/1312.6114)。VAE 通过 KL 项把近似后验约束到标准正态先验附近，而不是让每个样本的潜变量都严格服从标准正态分布。若把训练目标写成需要最小化的负 ELBO，可表示为：
 
 $$
 \mathcal{L}_{\text{VAE}} = \mathbb{E}_{q_\phi(\mathbf{z}|\mathbf{x})}[-\log p_\theta(\mathbf{x}|\mathbf{z})] + D_{\text{KL}}(q_\phi(\mathbf{z}|\mathbf{x}) \parallel \mathcal{N}(\mathbf{0}, \mathbf{I}))
 $$
 
-在该公式中，第一项为重建损失（保证 $\mathbf{z}$ 包含了恢复原始图像必需的信息），第二项为 KL 散度（约束潜空间的分布形态）。通过训练完毕的编码器 $q_\phi$，我们可以将每一帧极其庞大的像素矩阵 $\mathbf{x}_t$ 压缩为几十维的向量 $\mathbf{z}_t$。
+第一项是负重构对数似然，鼓励潜变量保留解码观测所需的信息；第二项约束近似后验与先验之间的差异。编码器随后把每一帧像素观测压缩为潜变量 $\mathbf{z}_t$。
 
 ### 记忆模型 (M Model)：时间序列与混合密度推导
 
-经过 V 模型的处理后，环境的动态演化问题被完全转移到了低维的潜空间中。现在的目标是建模潜状态的演变律：
+经过 V 模型编码后，记忆模型在潜空间中预测下一步：
 
 $$
 P(\mathbf{z}_{t+1} \mid \mathbf{z}_{\le t}, \mathbf{a}_{\le t})
 $$
 
-这里的下标 $\le t$ 表示从 $0$ 时刻到 $t$ 时刻的完整历史轨迹。由于部分可观测性（单帧图像无法提供速度、加速度等时间衍生信息），我们需要利用循环神经网络（RNN）来压缩历史信息。设 RNN 在 $t$ 时刻的隐藏状态为 $\mathbf{h}_t \in \mathbb{R}^h$，它可以被视为对过去所有历史信息的聚合：
+下标 $\le t$ 表示截至 $t$ 的轨迹。在部分可观测环境中，单帧通常不足以推断速度等量，因此 RNN 用有限维隐藏状态 $\mathbf{h}_t$ 汇总与预测有关的历史；它不保证无损保存全部过去：
+
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/01-world-models/vrnn-fig3.png" alt="VRNN 与 RNN-GMM 的语音序列样本对照显示，逐时刻随机潜变量能够表达序列中的局部变化。" width="86%">
+
+_图 4.1-3：VRNN 与 RNN-GMM 的语音序列样本对照显示，逐时刻随机潜变量能够表达序列中的局部变化。 出处：Junyoung Chung；Kyle Kastner；Laurent Dinh；Kratarth Goel；Aaron Courville；Yoshua Bengio，[A Recurrent Latent Variable Model for Sequential Data](https://arxiv.org/abs/1506.02216)（2015），Figure 3。_
+
+</div>
 
 $$
 \mathbf{h}_{t} = \text{RNN}(\mathbf{z}_{t}, \mathbf{a}_{t}, \mathbf{h}_{t-1})
@@ -84,15 +105,22 @@ $$
 P(\mathbf{z}_{t+1} \mid \mathbf{z}_{\le t}, \mathbf{a}_{\le t}) \approx P(\mathbf{z}_{t+1} \mid \mathbf{h}_{t})
 $$
 
-为了极其严密地建模 $P(\mathbf{z}_{t+1} \mid \mathbf{h}_{t})$，我们需要回答一个问题：这个分布应该长什么样？
+接下来需要为 $P(\mathbf{z}_{t+1} \mid \mathbf{h}_{t})$ 选择合适的分布族。
 
-如果使用均方误差（MSE）作为损失函数来直接预测 $\mathbf{z}_{t+1}$，就隐式地假设了下一时刻的状态服从各向同性的单模态高斯分布，且我们只关心预测其均值。但这在现实中是不成立的。
+若用 MSE 直接预测 $\mathbf{z}_{t+1}$，在概率解释下相当于采用固定方差的单峰高斯似然并学习其均值。面对多个可能未来，这个假设可能产生折中的平均预测。
 
 ::: info 理论抽象（仅有的一处类比）
 我们可以将这种多模态预测，视作一位在十字路口观察的向导（即RNN的隐藏状态 $\mathbf{h}_t$）。向导知道车辆可能会向左转（概率 $\pi_1$，目标分布均值 $\mu_1$，路线不确定度 $\sigma_1$），也可能会向右转（概率 $\pi_2$），但他绝不会建议车辆“直直地撞向正前方的隔离墩”（这是两个不同决策所对应高斯分布的简单平均）。这种用多个带权重的正态分布来严密拼接、包络未知世界未来可能性的方式，正是**混合密度网络（MDN, [[Bishop, 1994]](https://www.microsoft.com/en-us/research/publication/mixture-density-networks/)）**的本质。
 :::
 
-让我们首先考察单维变量 $z \in \mathbb{R}$ 下的标准高斯分布：
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/01-world-models/wm-fig23.png" alt="World Models 附录将 RNN 时间展开与每步高斯混合输出并列，直接呈现 MDN-RNN 如何为下一潜变量给出多模态分布。" width="86%">
+
+_图 4.1-4：World Models 附录将 RNN 时间展开与每步高斯混合输出并列，直接呈现 MDN-RNN 如何为下一潜变量给出多模态分布。 出处：David Ha；Jürgen Schmidhuber，[World Models](https://arxiv.org/abs/1803.10122)（2018），Figure 23。_
+
+</div>
+
+先写出一维高斯密度：
 
 $$
 \mathcal{N}(z \mid \mu, \sigma^2) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left( -\frac{(z - \mu)^2}{2\sigma^2} \right)
@@ -106,32 +134,38 @@ $$
 
 其中混合权重满足 $\sum_{k=1}^K \pi_k = 1$ 且 $\pi_k \ge 0$。
 
-将其拓展到我们维度为 $d$ 的潜状态空间向量 $\mathbf{z} \in \mathbb{R}^d$。在原始世界模型论文的严谨设定中，为了计算高效，假设在给定同一个混合分量 $k$ 时，潜变量各维度之间是条件独立的（即协方差矩阵为对角阵）。这使得多维的高斯联合分布可以拆解为单维高斯分布的连乘积：
+下面采用一个共享混合分量、分量内对角协方差的简化 MDN。给定分量 $k$ 时，各潜变量维度条件独立，因此联合密度可写成一维密度的乘积。需要注意，原始 World Models 的 MDN-RNN 实现细节与这个教学版参数化并不完全相同。
 
 $$
 P(\mathbf{z}_{t+1} \mid \mathbf{h}_t) = \sum_{k=1}^K \pi_{k, t} \prod_{i=1}^d \mathcal{N}(z_{t+1,i} \mid \mu_{k,i,t}, \sigma_{k,i,t}^2)
 $$
 
-在上述该公式中，所有关于 $t$ 时刻的分布参数：混合权重 $\boldsymbol{\pi}_t$、各分量均值矩阵 $\boldsymbol{\mu}_t$ 以及方差矩阵 $\boldsymbol{\sigma}_t$，都必须由当前时刻的 RNN 隐藏状态 $\mathbf{h}_t$ 经过一个线性层严格映射得出：
+混合权重 $\boldsymbol{\pi}_t$、均值 $\boldsymbol{\mu}_t$ 和标准差 $\boldsymbol{\sigma}_t$ 都由当前 RNN 隐藏状态 $\mathbf{h}_t$ 经输出层得到：
 
 $$
 [\boldsymbol{\hat{\pi}}_t, \boldsymbol{\hat{\mu}}_t, \boldsymbol{\hat{\sigma}}_t] = W_o \mathbf{h}_t + \mathbf{b}_o
 $$
 
-在经过非线性激活以满足物理量约束（例如 $\pi$ 需要 Softmax 归一化，$\sigma$ 需要 Softplus 或 Exponential 保证严格为正）后，我们通过最小化负对数似然（Negative Log-Likelihood, NLL）来对 M 模型进行梯度下降优化：
+Softmax 使 $\pi$ 非负且和为 1，Softplus 或指数函数使标准差为正。训练时最小化负对数似然（Negative Log-Likelihood, NLL）：
 
 $$
 \mathcal{L}_{\text{MDN}} = \mathbb{E}_{t} \left[ -\log \left( \sum_{k=1}^K \pi_{k,t} \prod_{i=1}^d \frac{1}{\sqrt{2\pi\sigma_{k,i,t}^2}} \exp\left(-\frac{(z_{t+1,i} - \mu_{k,i,t})^2}{2\sigma_{k,i,t}^2}\right) \right) \right]
 $$
 
+<div align="center"><img src="/figures/04-latent-dynamics/latex/01-world-models/mdn-log-reduction-order.png" alt="MDN 先沿潜变量维累加对数高斯密度，再加入混合权重并沿混合分量执行 log-sum-exp" width="86%">
+
+_图 4.1-5：分量内的维度乘积在对数域先化为求和；加入各分量的 log 权重后，才在混合分量轴上执行 log-sum-exp。本文根据上式绘制。_
+
+</div>
+
 ## 架构与核心代码实现：MDN-RNN
 
-在透彻理解了底层的严密推导后，我们将使用 PyTorch 构建记忆模型（M Model）最核心的 `MDNRNN` 模块。
+下面用 PyTorch 构建教学版 `MDNRNN`。
 
-为了使张量维度映射绝对清晰，我们预设潜变量维度 $d=32$，RNN隐藏维度 $h=256$，混合高斯分量数 $K=5$。
+设潜变量维度 $d=32$、RNN 隐藏维度 $h=256$、高斯分量数 $K=5$。
 该模块接收 $t$ 时刻的动作序列和潜变量序列，在内部推演 RNN 的隐状态，最终输出下一步潜在分布的参数。
 
-(**我们首先定义MDN-RNN的前向传播逻辑与损失计算**)
+先定义 MDN-RNN 的前向传播。
 
 ```python
 import torch
@@ -183,21 +217,21 @@ class MDNRNN(nn.Module):
         mu = mu.view(batch_size, seq_len, self.num_gaussians, self.latent_dim)
 
         # 计算 sigma: [batch_size, seq_len, num_gaussians, latent_dim]
-        # 使用 exp（或 softplus）保证方差参数严格大于 0，并具备良好的数值稳定性
-        sigma = torch.exp(self.fc_sigma(rnn_out))
+        # Softplus 保证标准差为正；下限避免退化为零方差
+        sigma = F.softplus(self.fc_sigma(rnn_out)) + 1e-4
         sigma = sigma.view(batch_size, seq_len, self.num_gaussians, self.latent_dim)
 
         return pi, mu, sigma, hidden
 ```
 
-在获得了由 `MDNRNN` 吐出的三个分布参数张量 `pi`、`mu` 和 `sigma` 后，我们需要计算对应的负对数似然损失。我们在设计损失函数计算时必须采取极为严谨的数值稳定措施。
+得到 `pi`、`mu` 和 `sigma` 后，在对数域计算混合分布的负对数似然，以避免直接连乘小概率造成下溢。
 
-(**实现混合密度网络的对数似然损失计算逻辑**)
+损失函数如下。
 
 ```python
 def mdn_loss(pi, mu, sigma, target_z):
     """
-    严谨计算公式(4.1.9)对应的 MDN 负对数似然损失。
+    计算教学版对角高斯混合模型的负对数似然。
     输入参数：
         pi: [batch_size, seq_len, num_gaussians]
         mu: [batch_size, seq_len, num_gaussians, latent_dim]
@@ -240,6 +274,6 @@ def mdn_loss(pi, mu, sigma, target_z):
 
 ## 小结
 
-至此，我们已经详尽推演了世界模型在架构层面的基础逻辑与核心数学范式。从简单的一维状态迁移方程起步，我们将问题逐渐升维，直到触碰到原始高维像素空间所面临的巨大挑战，进而引入了通过 **VAE（V模型）**降维到连续潜空间，并利用**混合密度神经网络 MDN-RNN（M模型）**来进行多模态时序预测的整体思想。
+本节从状态转移出发，介绍了 World Models 的两级表示：**VAE（V 模型）**压缩单帧观测，**MDN-RNN（M 模型）**根据历史潜变量和动作预测下一潜变量分布。教学代码使用共享混合分量的对角高斯，重点是展示张量形状与对数似然计算，不应视为原论文实现的逐行复刻。
 
-在下一节中，我们将深入探讨在获得了强大的“脑内模拟器”之后，**控制器（Controller）**如何利用进化的手段去优化最终的动作策略。
+下一节转向 RSSM，观察确定性记忆与随机状态如何在同一个序列模型中协同工作。
