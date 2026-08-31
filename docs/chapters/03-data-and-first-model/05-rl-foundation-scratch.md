@@ -2,11 +2,18 @@
 
 在前面的章节中，我们已经探讨了监督学习和世界模型中的基础预测机制。然而，当我们的模型不仅需要被动地预测未来，还需要在环境中主动做出决策以最大化某种长期收益时，我们就踏入了强化学习（Reinforcement Learning, RL）的领域。强化学习的理论基础可以追溯到理查德·贝尔曼（Richard Bellman）在动态规划（Dynamic Programming）上的开创性工作 [[Bellman, 1957]](https://press.princeton.edu/books/paperback/9780691146683/dynamic-programming)，以及随后由 Sutton 和 Barto 建立的现代时序差分学习框架 [[Sutton & Barto, 1998]](http://incompleteideas.net/book/first/the-book.html)。在深度学习时代，将强大的神经网络与强化学习结合，催生了诸如深度Q网络（DQN） [[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602) 和近端策略优化（PPO） [[Schulman et al., 2017]](https://arxiv.org/abs/1707.06347) 等突破性算法。
 
-在深入探索复杂的深度强化学习算法之前，我们必须首先极其严谨地理解强化学习中最核心的几个数学概念：马尔可夫决策过程（MDP）、价值函数、贝尔曼方程，以及它们在代码级别是如何被实例化为基础模块的（如经验回放缓冲区和环境交互循环）。本节将坚持从最基础的标量运算起步，逐步推导至张量化的矩阵运算，并最终从零开始实现这些强化学习的基础设施。
+本节把马尔可夫决策过程（MDP）、回报、价值函数和贝尔曼方程落实到两个基础模块：经验回放缓冲区与环境交互循环。推导从标量递推开始，再对应到批量张量。
 
 ## 马尔可夫决策过程的严格表述
 
 要用数学语言描述“在环境中做决策”，我们需要一个标准化的框架，即马尔可夫决策过程（Markov Decision Process, MDP）。MDP 由一个五元组 $(\mathcal{S}, \mathcal{A}, P, R, \gamma)$ 构成。
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/05-rl-foundation-scratch/lin-fig1.png" alt="Lin 的 AHCON 框架把策略网络、评价网络、环境传感与强化信号连接为早期 actor–critic 数据流。" width="86%">
+
+_图 3.5-1：Lin 的 AHCON 框架把策略网络、评价网络、环境传感与强化信号连接为早期 actor–critic 数据流。 出处：Long-Ji Lin，[Self-Improving Reactive Agents Based on Reinforcement Learning, Planning and Teaching](https://doi.org/10.1007/BF00992699)（1992），Figure 1。_
+
+</div>
 
 首先，我们定义状态集合 $\mathcal{S}$ 和动作集合 $\mathcal{A}$。在离散时间步 $t = 0, 1, 2, \dots$ 中，智能体在时间步 $t$ 观察到环境的状态 $s_t \in \mathcal{S}$，并基于某种规则选择一个动作 $a_t \in \mathcal{A}$。
 
@@ -30,7 +37,7 @@ $$R(s, a) = \mathbb{E}[r_{t+1} \mid s_t = s, a_t = a]$$
 
 $$G_t = r_{t+1} + \gamma r_{t+2} + \gamma^2 r_{t+3} + \dots = \sum_{k=0}^{\infty} \gamma^k r_{t+k+1}$$
 
-通过提取公因式 $\gamma$，我们可以将上式写成一种极其优雅的递归形式：
+提取公因子 $\gamma$ 后，回报可以递归表示：
 
 $$G_t = r_{t+1} + \gamma (r_{t+2} + \gamma r_{t+3} + \dots) = r_{t+1} + \gamma G_{t+1}$$
 
@@ -48,7 +55,7 @@ $$Q^\pi(s, a) = \mathbb{E}_\pi [G_t \mid s_t = s, a_t = a]$$
 
 ### 贝尔曼期望方程
 
-结合前文的回报递归公式和价值函数的定义，我们可以进行极其严密的数学推导，将 $V^\pi(s)$ 展开为贝尔曼期望方程（Bellman Expectation Equation）。这一方程是连接当前状态价值与未来状态价值的桥梁。
+把回报递推代入价值函数定义，并对下一状态与动作取条件期望，可得贝尔曼期望方程。它把当前价值写成即时奖励与下一状态价值之和。
 
 $$
 \begin{aligned}
@@ -58,6 +65,13 @@ V^\pi(s) &= \mathbb{E}_\pi [r_{t+1} + \gamma G_{t+1} \mid s_t = s] \\
 &= \sum_{a \in \mathcal{A}} \pi(a \mid s) \left( R(s, a) + \gamma \sum_{s' \in \mathcal{S}} P(s' \mid s, a) V^\pi(s') \right)
 \end{aligned}
 $$
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/latex/05-rl-foundation-scratch/bellman-double-reduction.png" alt="贝尔曼价值先按转移概率汇聚下一状态，再按策略概率汇聚动作" width="86%">
+
+_图 3.5-2：内层 Σ_s' 在固定动作下对环境后继状态取期望，外层 Σ_a 再按策略概率汇聚动作，两次归约的随机来源不同。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
 
 同理，对于动作价值函数 $Q^\pi(s, a)$，其贝尔曼期望方程为：
 
@@ -73,7 +87,7 @@ Lin 系统研究了经验回放 [[Lin, 1992]](https://doi.org/10.1007/BF00992699
 
 为了保证计算效率，我们不能使用 Python 原生的列表（list）来存储百万级别的经验，而是必须在一开始就预分配一块连续的张量（Tensor）内存，通过指针循环覆盖旧数据。
 
-(**我们现在从零开始实现一个支持张量运算的经验回放缓冲区。**)
+下面从零实现支持批量张量采样的经验回放缓冲区。
 
 ```python
 import torch
@@ -132,15 +146,31 @@ class ReplayBuffer:
 
 为了计算我们在前文推导出的动作价值，深度强化学习将参数化的神经网络 $Q_\theta(s, a)$ 引入。网络的目标是最小化时序差分误差（TD Error）。假设我们利用当前经验元组 $(s, a, r, s', d)$，其中 $d$ 为指示当前回合是否结束的二值变量（1为结束，0为未结束）。根据贝尔曼最优方程的单步近似，目标值 $y$ 被构造为：
 
-$$y = r + \gamma (1 - d) \max_{a'} Q_{\theta^{-}}(s', a')$$
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/05-rl-foundation-scratch/dqn-fig3.png" alt="Seaquest 的价值曲线与对应画面显示 DQN 的动作价值如何随危险和奖励事件变化。" width="86%">
+
+_图 3.5-3：Seaquest 的价值曲线与对应画面显示 DQN 的动作价值如何随危险和奖励事件变化。 出处：Volodymyr Mnih et al.，[Playing Atari with Deep Reinforcement Learning](https://arxiv.org/abs/1312.5602)（2013），Figure 3。_
+
+</div>
+
+$$
+y = r + \gamma (1 - d) \max_{a'} Q_{\theta^{-}}(s', a')
+$$
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/latex/05-rl-foundation-scratch/terminal-mask-td-target.png" alt="终止标志经过一减 d 门控下一状态价值，使终止转移只保留即时奖励" width="86%">
+
+_图 3.5-4：d=0 时 bootstrap 项原样进入目标；d=1 时门值变成 0，目标严格退化为即时奖励 r。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
 
 其中 $Q_{\theta^{-}}$ 是缓慢更新的目标网络，用于稳定训练（我们将在后续具体算法章节详细讨论其梯度截断机制）。此时的损失函数即为均方误差：
 
 $$L(\theta) = \frac{1}{N} \sum_{i=1}^N \left( Q_\theta(s_i, a_i) - y_i \right)^2$$
 
-项 $(1-d)$ 极其关键。它的物理意义是：如果当前步导致回合结束（$d=1$），那么未来再也没有任何奖励，即下一状态的价值应当被严格截断为 0。
+因子 $(1-d)$ 控制是否 bootstrap。若 $d=1$ 表示真正的终止状态，下一状态价值应置为 0；若只是时间上限造成的截断，则是否置零取决于环境接口和算法约定，不能把两类边界混在一起。
 
-(**下面的代码展示了如何利用缓冲区进行持续的环境交互，并组装批量数据。**)
+下面用一个简化环境循环展示收集转移和组装批量数据的顺序。
 
 ```python
 # 我们模拟一个随机与环境交互的过程
@@ -197,4 +227,11 @@ for episode in range(num_episodes):
 
 ## 小结
 
-在本节中，我们严格地定义了**马尔可夫决策过程**的数学基础，并从累积折扣回报出发，详细推导了**贝尔曼期望方程**的数学形式。我们强调了在实现阶段，如何利用**经验回放缓冲区**从连续的时间序列中提取独立同分布（IID）近似的批量张量。通过预分配连续的内存块，我们将复杂的内存管理映射为极其高效的张量索引操作，从而为接下来实现诸如 DQN 和 PPO 等高阶深度强化学习算法奠定了坚实的底层工程基础。
+本节从折扣回报推出贝尔曼期望方程，并实现了预分配经验缓冲区和交互循环。随机回放减弱批内时间相关性，但不把交互数据变成严格 IID。这里的缓冲区直接服务于 DQN 一类 off-policy 方法；PPO 通常使用新近采集的 on-policy 轨迹缓冲区，数据流不同。
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/05-rl-foundation-scratch/ppo-fig3.png" alt="多种 MuJoCo 环境中的算法曲线展示 PPO 这类 on-policy 数据流与离策略回放方法的不同评测对象。" width="86%">
+
+_图 3.5-5：多种 MuJoCo 环境中的算法曲线展示 PPO 这类 on-policy 数据流与离策略回放方法的不同评测对象。 出处：John Schulman et al.，[Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)（2017），Figure 3。_
+
+</div>
