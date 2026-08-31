@@ -6,7 +6,7 @@
 
 DQN 使用一个延迟更新的**目标网络（Target Network）**计算时序差分目标 [[Mnih et al., 2015]](https://doi.org/10.1038/nature14236)。在线网络持续更新，而目标网络的参数会冻结一段时间，再从在线网络复制。这样可以在若干次参数更新期间保持回归目标相对稳定；论文同时还使用了经验回放，因此不能把训练稳定性完全归因于目标网络一个组件。
 
-随后，动量编码器进入自监督学习。MoCo 用动量编码器维护较一致的键表示，但仍依赖队列中的负样本 [[He et al., 2020]](https://arxiv.org/abs/1911.05722)；BYOL 才展示了不使用显式负样本的在线网络—目标网络方案 [[Grill et al., 2020]](https://arxiv.org/abs/2006.07733)。data2vec [[Baevski et al., 2022]](https://arxiv.org/abs/2202.03555) 与 I-JEPA [[Assran et al., 2023]](https://arxiv.org/abs/2301.08243) 也使用停止梯度与 EMA 目标编码器来提供稳定的学习目标。
+随后，动量编码器进入自监督学习。MoCo 用动量编码器维护较一致的键表示，但仍依赖队列中的负样本 [[He et al., 2020]](https://arxiv.org/abs/1911.05722)。
 
 <div align="center">
   <img src="/figures/06-jepa/source/03-target-network-ema/moco-fig1.png" alt="MoCo 的查询编码器、动量键编码器与队列图显示 EMA 目标分支最初如何服务于一致的对比字典。" width="86%">
@@ -15,12 +15,16 @@ _图 6.3-1：MoCo 的查询编码器、动量键编码器与队列图显示 EMA 
 
 </div>
 
+BYOL 进一步展示了不使用显式负样本的在线网络—目标网络方案 [[Grill et al., 2020]](https://arxiv.org/abs/2006.07733)。
+
 <div align="center">
   <img src="/figures/06-jepa/source/03-target-network-ema/byol-fig2.png" alt="BYOL 的在线分支与目标分支图明确标出预测器、停止梯度和动量更新形成的不对称结构。" width="86%">
 
 _图 6.3-2：BYOL 的在线分支与目标分支图明确标出预测器、停止梯度和动量更新形成的不对称结构。 出处：Jean-Bastien Grill et al.，[Bootstrap Your Own Latent: A New Approach to Self-Supervised Learning](https://arxiv.org/abs/2006.07733)（2020），Figure 2。_
 
 </div>
+
+data2vec [[Baevski et al., 2022]](https://arxiv.org/abs/2202.03555) 与 I-JEPA [[Assran et al., 2023]](https://arxiv.org/abs/2301.08243) 也使用停止梯度与 EMA 目标编码器来提供稳定的学习目标。
 
 ## 6.3.2 自举预测与表征坍塌的代数本质
 

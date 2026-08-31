@@ -26,7 +26,7 @@ _图 1.4-2：DreamerV2 的 Atari 汇总结果显示纯粹在世界模型内部�
 
 </div>
 
-在自动驾驶领域，真实世界交互的成本与风险推动了两类相关探索。MILE 从离线驾驶数据中学习潜在动力学与驾驶策略，并能在学到的模型中想象未来 [[Hu et al., 2022]](https://arxiv.org/abs/2210.07729)；GAIA-1 则根据视频、文本和车辆动作生成未来驾驶场景 [[Anthony Hu et al., 2023]](https://arxiv.org/abs/2309.17080)。前者包含策略学习，后者主要展示条件视频生成；不能把 GAIA-1 的生成结果直接等同于已经验证的轨迹规划器。
+在自动驾驶领域，真实世界交互的成本与风险推动了两类相关探索。MILE 从离线驾驶数据中学习潜在动力学与驾驶策略，并能在学到的模型中想象未来 [[Hu et al., 2022]](https://arxiv.org/abs/2210.07729)。
 
 <div align="center">
   <img src="/figures/01-why-world-models/source/04-imagine-driving/mile-fig2.png" alt="MILE 对同一路口生成两条八秒未来，展示潜在动力学对交通灯变化保留多模态分支。" width="86%">
@@ -34,6 +34,8 @@ _图 1.4-2：DreamerV2 的 Atari 汇总结果显示纯粹在世界模型内部�
 _图 1.4-3：MILE 对同一路口生成两条八秒未来，展示潜在动力学对交通灯变化保留多模态分支。 出处：Anthony Hu et al.，[Model-Based Imitation Learning for Urban Driving](https://arxiv.org/abs/2210.07729)（2022），Figure 2。_
 
 </div>
+
+GAIA-1 则根据视频、文本和车辆动作生成未来驾驶场景 [[Anthony Hu et al., 2023]](https://arxiv.org/abs/2309.17080)。MILE 包含策略学习，GAIA-1 主要展示条件视频生成；不能把后者的生成结果直接等同于已经验证的轨迹规划器。
 
 <div align="center">
   <img src="/figures/01-why-world-models/source/04-imagine-driving/gaia1-fig1.png" alt="GAIA-1 的条件生成样例展示视频、文本与车辆动作共同控制未来驾驶场景。" width="86%">

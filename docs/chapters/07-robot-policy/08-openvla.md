@@ -1,5 +1,7 @@
 # OpenVLA：开源具身大模型
 
+OpenVLA 接收一张机器人视角图像和一条语言指令，例如“拿起蓝色杯子”，随后生成七个动作维度对应的离散词元，再还原成连续控制量。它是一个 70 亿参数的开源视觉—语言—动作模型，基于 Open X-Embodiment 的 97 万条机器人轨迹训练 [[Kim et al., 2024]](https://arxiv.org/abs/2406.09246)。开放权重、代码和微调流程，让研究者可以在自己的机器人数据上复现实验并检查模型边界。
+
 <div align="center">
 
 <img src="/figures/07-robot-policy/source/08-openvla/openvla-fig1.png" alt="OpenVLA 在多种真实机器人与任务上执行语言条件控制，呈现开源模型的实际对象边界。" width="86%">
@@ -7,8 +9,6 @@
 _图 7.8-1：OpenVLA 在多种真实机器人与任务上执行语言条件控制，呈现开源模型的实际对象边界。 出处：[OpenVLA: An Open-Source Vision-Language-Action Model，Moo Jin Kim et al.，2024](https://arxiv.org/abs/2406.09246)。_
 
 </div>
-
-OpenVLA 接收一张机器人视角图像和一条语言指令，例如“拿起蓝色杯子”，随后生成七个动作维度对应的离散词元，再还原成连续控制量。它是一个 70 亿参数的开源视觉—语言—动作模型，基于 Open X-Embodiment 的 97 万条机器人轨迹训练 [[Kim et al., 2024]](https://arxiv.org/abs/2406.09246)。开放权重、代码和微调流程，让研究者可以在自己的机器人数据上复现实验并检查模型边界。
 
 本节从自回归动作建模出发，说明 OpenVLA 如何量化连续动作、融合两种视觉特征，并用 LoRA 降低任务适配的训练参数量。
 

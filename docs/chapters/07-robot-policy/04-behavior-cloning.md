@@ -10,6 +10,8 @@ _图 7.4-1：NAVLAB 是 ALVINN 道路测试所用真实车辆，连接监督模�
 
 </div>
 
+先看三个驾驶样本：车辆偏左时专家向右修正，位于中心时保持方向，偏右时向左修正。行为克隆把这些“观测—动作”对当作监督学习数据，拟合从状态到动作的函数。它不需要奖励函数，但只能直接学习演示数据覆盖到的状态。
+
 <div align="center">
 
 <img src="/figures/07-robot-policy/source/04-behavior-cloning/alvinn-fig1.png" alt="ALVINN 把道路图像与测距输入直接映射为离散转向输出。" width="86%">
@@ -17,8 +19,6 @@ _图 7.4-1：NAVLAB 是 ALVINN 道路测试所用真实车辆，连接监督模�
 _图 7.4-2：ALVINN 把道路图像与测距输入直接映射为离散转向输出。 出处：[ALVINN: An Autonomous Land Vehicle in a Neural Network，Dean A. Pomerleau，1989](https://proceedings.neurips.cc/paper/1988/hash/812b4ba287f5ee0bc9d43bbf5bbe87fb-Abstract.html)。_
 
 </div>
-
-先看三个驾驶样本：车辆偏左时专家向右修正，位于中心时保持方向，偏右时向左修正。行为克隆把这些“观测—动作”对当作监督学习数据，拟合从状态到动作的函数。它不需要奖励函数，但只能直接学习演示数据覆盖到的状态。
 
 ## 数学公式推导与建模
 

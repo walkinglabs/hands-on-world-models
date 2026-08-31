@@ -27,6 +27,8 @@ _图 3.2-1：Blind Cliffwalk 链显示相同转移按不同顺序回放会显著
 
 </div>
 
+优先经验回放进一步指出，即使转移都保存在同一个缓冲区里，它们在当前训练阶段的学习价值也可能不同。把整块记忆中的 TD 误差画出来，可以看见少数高误差区域会随训练不断迁移；这正是后续设计非均匀采样概率的直觉来源。
+
 <div align="center">
   <img src="/figures/03-data-and-first-model/source/02-replay-buffer-and-splits/per-fig10.png" alt="整块回放记忆中的 TD 误差热图显示不同转移在训练过程中具有不同学习价值。" width="86%">
 
