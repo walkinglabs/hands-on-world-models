@@ -1661,7 +1661,7 @@ aside.VPSidebar {
 }
 
 /* ===================================================
-   6. Code Blocks (Apple 风格：去阴影、去边框)
+   6. Code Blocks (Shiki + VS Code editor chrome)
    =================================================== */
 .vp-doc :not(pre) > code {
   font-family: var(--font-mono);
@@ -1674,22 +1674,79 @@ aside.VPSidebar {
   border: none;
 }
 
-.vp-doc pre {
+.vp-doc div[class*="language-"] {
+  overflow: hidden;
+  border: 1px solid #d9d9d9;
   border-radius: var(--radius-lg);
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.vp-doc div[class*="language-"]::before {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  height: 38px;
+  border-bottom: 1px solid #dddddd;
+  background:
+    radial-gradient(circle at 18px 19px, #ff5f57 0 5px, transparent 6px),
+    radial-gradient(circle at 36px 19px, #febc2e 0 5px, transparent 6px),
+    radial-gradient(circle at 54px 19px, #28c840 0 5px, transparent 6px),
+    #f3f3f3;
+  content: "";
+}
+
+.vp-doc div[class*="language-"] pre {
+  border: 0;
+  border-radius: 0;
+  background: #ffffff !important;
   box-shadow: none;
-  border: none;
-  background: var(--surface-secondary) !important;
+  padding-top: 56px;
   transition: background 0.2s ease;
 }
 
-.vp-doc pre:hover {
-  background: var(--surface-quaternary) !important;
+.vp-doc div[class*="language-"] pre:hover {
+  background: #ffffff !important;
 }
 
-.vp-doc pre code {
+.vp-doc div[class*="language-"] pre code {
   font-family: var(--font-mono);
   font-size: 0.85em;
   line-height: 1.65;
+}
+
+.vp-doc div[class*="language-"] .line-numbers-wrapper {
+  top: 38px;
+  border-right-color: #e5e5e5;
+  padding-top: 18px;
+  color: #9b9b9b;
+  background: #f8f8f8;
+}
+
+.vp-doc div[class*="language-"] > span.lang {
+  top: 9px;
+  right: 58px;
+  z-index: 3;
+  color: #616161;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.vp-doc div[class*="language-"] > button.copy {
+  top: 5px;
+  right: 7px;
+  border-color: transparent;
+  width: 30px;
+  height: 28px;
+  background-color: transparent;
+  opacity: 0.55;
+}
+
+.vp-doc div[class*="language-"]:hover > button.copy,
+.vp-doc div[class*="language-"] > button.copy:focus {
+  opacity: 1;
 }
 
 .dark .vp-doc :not(pre) > code {
@@ -1697,12 +1754,34 @@ aside.VPSidebar {
   --code-text: #f5f5f7;
 }
 
-.dark .vp-doc pre {
-  background: var(--surface-secondary) !important;
+.dark .vp-doc div[class*="language-"] {
+  border-color: #3c3c3c;
+  background: #1e1e1e;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
 }
 
-.dark .vp-doc pre:hover {
-  background: var(--surface-tertiary) !important;
+.dark .vp-doc div[class*="language-"]::before {
+  border-bottom-color: #3c3c3c;
+  background:
+    radial-gradient(circle at 18px 19px, #ff5f57 0 5px, transparent 6px),
+    radial-gradient(circle at 36px 19px, #febc2e 0 5px, transparent 6px),
+    radial-gradient(circle at 54px 19px, #28c840 0 5px, transparent 6px),
+    #252526;
+}
+
+.dark .vp-doc div[class*="language-"] pre,
+.dark .vp-doc div[class*="language-"] pre:hover {
+  background: #1e1e1e !important;
+}
+
+.dark .vp-doc div[class*="language-"] .line-numbers-wrapper {
+  border-right-color: #333333;
+  color: #858585;
+  background: #181818;
+}
+
+.dark .vp-doc div[class*="language-"] > span.lang {
+  color: #cccccc;
 }
 
 /* ===================================================

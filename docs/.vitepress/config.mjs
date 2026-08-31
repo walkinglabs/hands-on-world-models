@@ -9,6 +9,11 @@ export default defineConfig({
   lastUpdated: true,
   markdown: {
     math: true,
+    lineNumbers: true,
+    theme: {
+      light: "light-plus",
+      dark: "dark-plus",
+    },
   },
   head: [
     ["meta", { name: "theme-color", content: "#25636a" }],
