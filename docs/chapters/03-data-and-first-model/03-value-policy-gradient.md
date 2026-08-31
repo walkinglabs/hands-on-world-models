@@ -2,19 +2,31 @@
 
 ## 强化学习的优化范式追溯
 
-在深度学习的早期，监督学习依赖于明确的标签（即专家的示范）来更新模型。然而，在诸如游戏、机器人控制或自动驾驶等开放环境中，获取逐帧的最优决策标签是极其昂贵甚至不可能的。强化学习（Reinforcement Learning, RL）提供了一种替代范式：智能体（Agent）通过与环境的交互，收集奖励（Reward）信号，并以此为导向优化自身的行为。
+监督学习需要输入对应的目标标签；序贯决策中，逐步给出“正确动作”往往比给出成功、失败或任务得分更困难。强化学习（Reinforcement Learning, RL）使用交互产生的奖励信号评价整段行为，再据此调整策略。
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/03-value-policy-gradient/ppo-fig5.png" alt="PPO 学到的人形策略连续转向并奔向目标，展示策略梯度最终优化的是可观察行为。" width="86%">
+
+_图 3.3-1：PPO 学到的人形策略连续转向并奔向目标，展示策略梯度最终优化的是可观察行为。 出处：John Schulman et al.，[Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)（2017），Figure 5。_
+
+</div>
 
 Williams 给出了用采样回报更新随机策略参数的 REINFORCE 算法 [[Williams, 1992]](https://doi.org/10.1007/BF00992696)。Sutton 等人随后给出策略梯度定理，并讨论结合函数近似价值函数的 actor–critic 形式 [[Sutton et al., 1999]](https://proceedings.neurips.cc/paper/1999/hash/464d828b85b0bed98e80ade0a5c43b0f-Abstract.html)。本节从概率论推导策略梯度，并说明价值基线如何降低梯度估计方差；这两篇引用分别对应算法估计器与定理。
 
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/03-value-policy-gradient/ddpg-fig1.png" alt="DDPG 在摆杆、机械臂、跑步与驾驶任务上的画面展示确定性策略梯度的连续控制范围。" width="86%">
+
+_图 3.3-2：DDPG 在摆杆、机械臂、跑步与驾驶任务上的画面展示确定性策略梯度的连续控制范围。 出处：Timothy P. Lillicrap et al.，[Continuous Control with Deep Reinforcement Learning](https://arxiv.org/abs/1509.02971)（2016），Figure 1。_
+
+</div>
+
 ## 策略与轨迹的数学描述
 
-在我们引入任何复杂的张量运算之前，首先必须对智能体与环境的交互过程进行严格的数学定义。
-假设我们处于一个马尔可夫决策过程（MDP）中，时间由离散的步长 $t=0, 1, 2, \dots$ 组成。
+先在有限时域马尔可夫决策过程（MDP）中定义策略、轨迹和回报。时间步为 $t=0,1,2,\dots,T-1$。
 
 ### 策略函数的定义
 
-(**定义策略（Policy）作为条件概率分布**)
-我们将策略定义为在给定当前状态 $s$ 的情况下，选择某个动作 $a$ 的条件概率分布。如果策略由参数 $\theta$（例如神经网络的权重）参数化，我们将其记为：
+策略（Policy）是在给定状态 $s$ 时选择动作 $a$ 的条件分布。参数化策略记为：
 
 $$
 \pi_\theta(a|s) = P(A_t=a | S_t=s; \theta)
@@ -46,7 +58,7 @@ $$
 
 ## 目标函数与对数导数技巧
 
-强化学习的终极目标是找到一组最优参数 $\theta^*$，使得轨迹的总回报的期望值（Expected Return）最大化。我们将这个目标函数记为 $J(\theta)$。
+目标是寻找使期望回报尽可能大的参数 $\theta$，记目标函数为 $J(\theta)$。
 
 $$
 J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} [R(\tau)] = \int P(\tau | \theta) R(\tau) d\tau
@@ -75,7 +87,7 @@ $$
 \nabla_\theta P(\tau|\theta) = P(\tau|\theta) \nabla_\theta \log P(\tau|\theta)
 $$
 
-这个简单的公式是整个策略梯度算法的灵魂所在。回到我们的目标函数梯度：
+把这个恒等式代回目标函数梯度：
 
 $$
 \begin{aligned}
@@ -86,7 +98,7 @@ $$
 \end{aligned}
 $$
 
-这里我们做了一次极其关键的转换：将原本对概率分布本身的求导，转化为了对“某个随机变量求期望”的形式。因为在实际应用中，我们不可能穷举所有的轨迹来积分，但我们可以通过让智能体在环境中运行多次来**采样**轨迹，进而利用蒙特卡洛方法（Monte Carlo method）来无偏地估计这个期望值。
+这样便把对轨迹概率的求导改写为一个可采样的期望。实际训练不必枚举所有轨迹，而是运行策略收集轨迹，用蒙特卡洛平均估计梯度。
 
 ### 拆解轨迹概率的对数梯度
 
@@ -96,57 +108,76 @@ $$
 \log P(\tau|\theta) = \log P(s_0) + \sum_{t=0}^{T-1} \left( \log \pi_\theta(a_t|s_t) + \log P(s_{t+1}|s_t, a_t) \right)
 $$
 
-现在，对等式两边关于 $\theta$ 求梯度。奇妙的事情发生了：在这个式子中，初始状态分布 $P(s_0)$ 和环境的状态转移概率 $P(s_{t+1}|s_t, a_t)$ 完全与参数 $\theta$ 无关！因此，它们的梯度统统为零。
+若环境动力学和初始状态分布不依赖策略参数 $\theta$，它们的对数梯度为零，只剩策略项：
 
 $$
 \nabla_\theta \log P(\tau|\theta) = \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t)
 $$
 
-将该公式代回该公式，我们得到了经典的 REINFORCE 策略梯度公式：
+<div align="center">
+  <img src="/figures/03-data-and-first-model/latex/03-value-policy-gradient/trajectory-score-cancellation.png" alt="轨迹概率中的策略因子依赖参数 theta，而初始分布和环境转移项梯度为零" width="86%">
+
+_图 3.3-3：轨迹连乘取对数后变成逐时刻求和；只有策略因子含 θ，因此初始分布和环境转移项在求导时消失。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
+
+代回目标梯度，可得经典的 REINFORCE 估计式：
 
 $$
 \nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot R(\tau) \right]
 $$
 
 ::: warning 注意
-这是一个在强化学习中少有的、允许我们在不知道环境转移概率（即所谓 Model-free）的情况下，仍然可以计算目标函数梯度的公式。这也是 REINFORCE 算法名称中 "Score Function Estimator" 的由来。
+这个估计式不要求写出或求导环境转移概率，因此可用于 model-free 场景。$\nabla_\theta\log\pi_\theta$ 常称为 score function；REINFORCE 是 Williams 给出的采样更新算法名称。
 :::
 
 ## 因果性与奖励截断
 
-该公式虽然形式严密，但在方差（Variance）上存在巨大的问题。让我们仔细观察公式中的项 $\nabla_\theta \log \pi_\theta(a_t|s_t) \cdot R(\tau)$。它表示时间步 $t$ 采取动作 $a_t$ 的对数概率梯度，乘以整条轨迹的**总回报** $R(\tau)$。
+这个估计式的方差通常较高。项 $\nabla_\theta\log\pi_\theta(a_t\mid s_t)R(\tau)$ 用整条轨迹回报评价时刻 $t$ 的动作，其中还包含动作发生前已经得到的奖励。
 
 从基本的逻辑因果律（Causality）出发：在时刻 $t$ 采取的动作 $a_t$，绝对不可能影响时刻 $t$ 之前的奖励 $r_{1}, r_{2}, \dots, r_t$。动作只能影响未来的奖励。因此，用整条轨迹的总回报来评估某个中间动作的好坏，引入了大量无意义的噪声。
 
-我们可以严格证明（篇幅所限，此处不展开纯代数推导），对于任意 $t' < t$，有 $\mathbb{E} [ \nabla_\theta \log \pi_\theta(a_t|s_t) \gamma^{t'} r_{t'+1} ] = 0$。因此，我们可以心安理得地将总回报 $R(\tau)$ 替换为从时刻 $t$ 开始的**未来累积回报**（Return to go），通常记为 $G_t$：
+在标准因果假设下，动作发生前的奖励与当前动作的 score 项期望为零。因此可把整条轨迹回报替换为从时刻 $t$ 开始的**未来累积回报**（return-to-go）$G_t$：
 
 $$
 G_t = \sum_{t'=t}^{T-1} \gamma^{t'-t} r_{t'+1}
 $$
 
-由此，策略梯度公式被改良为：
+<div align="center">
+  <img src="/figures/03-data-and-first-model/latex/03-value-policy-gradient/reward-to-go-causal-triangle.png" alt="每个动作只连接其后续奖励，过去奖励对应的梯度期望为零" width="86%">
+
+_图 3.3-4：因果连线形成下三角支持区域；a_t 只能影响未来奖励，所以策略梯度用 G_t 而不是整条轨迹的总回报。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
+
+由于 $R(\tau)$ 中从时刻 $t$ 开始的奖励权重是 $\gamma^{t'}$，而 $G_t$ 把首项重新缩放为 1，所以还要保留外层因子 $\gamma^t$：
 
 $$
-\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot G_t \right]
+\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T-1} \gamma^t \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot G_t \right]
 $$
 
-这个公式直观地表达了强化学习的本质原理：如果一个动作导致了较高的未来累积回报 $G_t > 0$，那么其对数概率的梯度方向就会被放大，网络在下一次遇到类似状态时，输出该动作的概率就会提高；反之亦然。
+在梯度上升中，正的 $G_t$ 会沿提高已采样动作对数概率的方向更新，负的 $G_t$ 则相反。回报的绝对零点会影响这种解释，因此实践中常减去基线，改为比较“比当前状态的通常结果好多少”。
 
 ## 价值函数的引入与基线技巧
 
 尽管因果性截断降低了一部分方差，但蒙特卡洛采样的本质决定了 $G_t$ 的波动仍然极大。为了进一步稳定训练，我们需要引入**价值函数（Value Function）**的概念。
 
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/03-value-policy-gradient/a3c-fig2.png" alt="A3C 在多款 Atari 游戏上的分数散点把 actor–critic 的策略更新与经验性能联系起来。" width="86%">
+
+_图 3.3-5：A3C 在多款 Atari 游戏上的分数散点把 actor–critic 的策略更新与经验性能联系起来。 出处：Volodymyr Mnih et al.，[Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783)（2016），Figure 2。_
+
+</div>
+
 ### 状态价值与动作价值
 
-(**定义状态价值函数（State Value Function）**)
-状态价值 $V^\pi(s)$ 衡量了智能体处于状态 $s$，并遵循策略 $\pi$ 进行决策，直至回合结束所能期望获得的累积回报：
+状态价值函数 $V^\pi(s)$ 是从状态 $s$ 出发并遵循策略 $\pi$ 时的期望累积回报：
 
 $$
 V^\pi(s) = \mathbb{E}_{\tau \sim \pi} [G_t | S_t = s]
 $$
 
-(**定义动作价值函数（Action Value Function）**)
-动作价值 $Q^\pi(s, a)$ 衡量了智能体处于状态 $s$，**首先采取动作 $a$**，随后严格遵循策略 $\pi$ 所能期望获得的累积回报：
+动作价值函数 $Q^\pi(s,a)$ 是在状态 $s$ 先采取动作 $a$、随后遵循策略 $\pi$ 时的期望累积回报：
 
 $$
 Q^\pi(s, a) = \mathbb{E}_{\tau \sim \pi} [G_t | S_t = s, A_t = a]
@@ -162,9 +193,25 @@ $$
 
 在该公式中，我们用 $G_t$ 作为评估动作好坏的权重。然而，如果环境的所有奖励都是非常大的正数（例如总是给 +100 到 +200 之间的奖励），那么所有的 $G_t$ 都会很大，策略梯度会不加区分地尝试提高所有动作的概率。
 
-> 唯一的精炼类比：假设你是一家公司的老板（策略网络），你需要给员工（动作）发奖金来鼓励他们。如果公司整体效益很好，每个员工都发了一百万奖金（$G_t$ 很大），这并不能反映出哪个员工的贡献最突出。更好的方法是设定一个“公司平均绩效”（基线）。如果某个员工的业绩超过了平均绩效，我们才重点提拔他（提高概率），否则即使他赚了钱，只要低于平均，我们也应该削减他的奖金（相对降低概率）。
+> 若某个状态下所有动作通常都能得到约 100 分，那么一次 101 分的结果只是略好于常态。减去该状态的平均水平后，更新权重由 101 变为约 1，更直接地表示这次动作的相对表现。
 
-在数学上，我们可以证明，在策略梯度的计算式中减去任意一个不依赖于具体动作 $a_t$ 的基线函数 $b(s_t)$，都不会改变梯度的无偏期望值。最自然、最合理的基线选择，正是状态价值函数 $V^\pi(s_t)$。
+在数学上，我们可以证明，在策略梯度的计算式中减去任意一个不依赖于具体动作 $a_t$ 的基线函数 $b(s_t)$，都不会改变梯度的无偏期望值。
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/latex/03-value-policy-gradient/baseline-zero-expectation.png" alt="同一状态基线乘各动作 score 后按动作概率求和为零" width="86%">
+
+_图 3.3-6：同一个 b(s) 被所有动作分支共享，可移出动作求和；剩余 score 的期望等于归一化概率总和 1 的梯度，因此为零。本文根据上述基线性质绘制；TikZ/LaTeX 编译。_
+
+</div>
+
+最自然、最合理的基线选择，正是状态价值函数 $V^\pi(s_t)$。
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/03-value-policy-gradient/ppo-fig4.png" alt="三种 3D 人形控制任务的学习曲线显示带价值估计的策略优化如何随训练提升。" width="86%">
+
+_图 3.3-7：三种 3D 人形控制任务的学习曲线显示带价值估计的策略优化如何随训练提升。 出处：John Schulman et al.，[Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)（2017），Figure 4。_
+
+</div>
 
 我们定义**优势函数（Advantage Function）** 为动作价值与状态价值之差：
 
@@ -172,10 +219,10 @@ $$
 A^\pi(s_t, a_t) = Q^\pi(s_t, a_t) - V^\pi(s_t)
 $$
 
-利用优势函数，最终的、同时具备极低方差和无偏特性的策略梯度定理（Actor-Critic 架构的理论基础）可以写为：
+若使用真实优势函数，策略梯度可写为：
 
 $$
-\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot A^\pi(s_t, a_t) \right]
+\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T-1} \gamma^t \nabla_\theta \log \pi_\theta(a_t|s_t) \cdot A^\pi(s_t, a_t) \right]
 $$
 
 在实际代码实现中，如果我们只使用纯粹的 REINFORCE 算法，往往只会减去一个基于蒙特卡洛采样的基线。下面，我们将通过具体的代码来实现带有基线的 REINFORCE 算法。
@@ -211,21 +258,21 @@ def compute_returns(rewards, gamma=0.99):
         R = r + gamma * R
         returns.insert(0, R)
     returns = torch.tensor(returns)
-    # 标准化回报（引入基线的最简单替代方案，降低方差）
+    # 批内标准化回报：常见的数值稳定技巧，不等同于学习到的状态价值基线
     returns = (returns - returns.mean()) / (returns.std() + 1e-8)
     return returns
 
-def reinforce_update(policy_net, optimizer, saved_log_probs, rewards):
-    # 计算带有标准化基线的 G_t
-    returns = compute_returns(rewards)
+def reinforce_update(policy_net, optimizer, saved_log_probs, rewards, gamma=0.99):
+    # 计算并标准化 G_t
+    returns = compute_returns(rewards, gamma)
 
     policy_loss = []
     # 遍历轨迹中的每一步，计算对数梯度与回报的乘积
-    for log_prob, G in zip(saved_log_probs, returns):
+    for t, (log_prob, G) in enumerate(zip(saved_log_probs, returns)):
         # 策略梯度的实现：我们希望最大化目标函数 J，即最小化 -J
         # 由于 PyTorch 的优化器执行的是梯度下降（Gradient Descent）
         # 因此我们在前向附加一个负号
-        policy_loss.append(-log_prob * G)
+        policy_loss.append(-(gamma ** t) * log_prob * G)
 
     # 对时间步求和，反向传播
     policy_loss = torch.stack(policy_loss).sum()
@@ -235,7 +282,7 @@ def reinforce_update(policy_net, optimizer, saved_log_probs, rewards):
     optimizer.step()
 ```
 
-在上述代码中，我们定义了策略网络，并在 `reinforce_update` 中展示了该公式的实现逻辑。值得注意的是，我们将原本在该公式中由价值网络估算状态价值的严谨过程，替换为了在张量维度上直接计算所有采样的 `returns` 的均值和标准差。这是一种极简的、计算代价低廉的基线技巧，虽然不如 Actor-Critic 方法那般精准，但依然大幅提升了朴素 REINFORCE 算法的稳定性。
+代码保留了与起点折扣目标一致的外层 $\gamma^t$。一些实现会省略这个因子，相当于采用不同的时间步加权约定，阅读代码时应先核对目标定义。这里没有训练 $V^\pi(s)$，而是对一条采样轨迹中的 returns 做批内标准化。减均值与除标准差常能改善数值尺度，但它不是状态条件基线，有限批次下也不能直接套用“任意动作无关基线保持严格无偏”的结论。Actor–Critic 会另行训练价值网络，并用估计优势更新策略。
 
 ## 小结
 
@@ -246,4 +293,4 @@ def reinforce_update(policy_net, optimizer, saved_log_probs, rewards):
 3. 遵循严格的因果时间序律，我们使用未来累积回报取代了轨迹总回报。
 4. 为了抑制蒙特卡洛采样带来的巨大方差，我们引入了状态价值、动作价值的严格定义，并通过推导优势函数，引入了用于修正权重的**基线（Baseline）**概念。
 
-这些数学基础是深度强化学习后续所有高级算法（诸如 PPO、TRPO、SAC）不可或缺的底层逻辑。理解并能够自行手推上述的每一步公式转换，将为您理解复杂环境下的决策智能打下最坚实的基石。
+轨迹概率、score-function 估计、return-to-go 和基线是理解 PPO、TRPO 等策略优化方法的共同基础。SAC 还引入熵正则和 off-policy 价值学习，不能只由本节公式直接得到。

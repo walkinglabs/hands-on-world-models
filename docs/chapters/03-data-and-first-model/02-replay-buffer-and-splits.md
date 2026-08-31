@@ -1,8 +1,8 @@
 # 经验回放缓冲区与数据切分
 
-在强化学习与世界模型的训练中，数据并非像传统的图像分类任务那样静态地以完整的数据集形式存在。相反，智能体（Agent）在与环境的持续交互中，不断生成如流水线般的时间序列数据。这种在线数据收集方式带来了两个致命的挑战：时间相关性（Temporal Correlation）与样本效率（Sample Efficiency）。为了克服这两个挑战，经验回放（Experience Replay）机制应运而生。
+强化学习与世界模型的数据通常来自持续交互，而不是训练前固定好的样本集合。相邻状态相关，同一条交互经验又可能很昂贵。经验回放（Experience Replay）把已收集的转移保存起来，并在后续更新中重新采样，用来缓和时间相关性并提高数据复用率。
 
-早在强化学习探索的早期，Lin (1992) [[Lin, 1992]](https://doi.org/10.1007/BF00992699) 就探讨了在连接主义模型中缓存过去经验的思想，但真正让其在深度学习时代声名大噪的，是 DeepMind 团队在处理雅达利（Atari）游戏时提出的深度Q网络（DQN）[[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602)。通过引入经验回放缓冲区，DQN 成功地将深度神经网络与强化学习稳定地结合在一起。在本节中，我们将从最基础的统计假设出发，严谨推导经验回放缓冲区的数学机制，并将其物理实现映射到张量操作中。
+Lin 较早系统研究了缓存并重放过去经验的机制 [[Lin, 1992]](https://doi.org/10.1007/BF00992699)。DQN 随后把随机经验回放与目标网络结合，用卷积网络从 Atari 画面学习动作价值 [[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602)。本节关注三个实现问题：单步转移怎样均匀采样、固定容量怎样循环覆盖、序列与数据切分怎样避免越过回合边界。
 
 ## 打破时间相关性：从独立同分布假设起步
 
@@ -12,14 +12,27 @@
 
 $$ \theta_{t+1} = \theta_t - \alpha \nabla_{\theta} \mathcal{L}(x_t, y_t; \theta) $$
 
-为了保证梯度下降能够无偏地逼近整体期望梯度，即 $\mathbb{E}_{(x, y)} [\nabla \mathcal{L}] = \nabla \mathbb{E}[\mathcal{L}]$，每次采样的样本 $(x_t, y_t)$ 必须是从总体数据分布中独立抽取的。
+在常见正则条件下，从目标数据分布采样得到的小批量梯度可以估计总体期望梯度。独立同分布会让这一分析更直接，但神经网络训练并不要求每一次样本都严格独立；关键是理解相关采样会怎样改变梯度估计的方差与偏差。
 
-然而，在强化学习中，智能体在时间步 $t$ 观测到状态 $s_t$，采取动作 $a_t$，获得奖励 $r_t$，并转移到下一个状态 $s_{t+1}$。这一系列变量构成了马尔可夫决策过程（MDP）中的一条轨迹（Trajectory）。由于物理规律的连续性，$s_{t+1}$ 极大概率在空间上与 $s_t$ 极度接近。如果我们直接按照时间顺序 $(s_1, s_2, \dots)$ 将这些高度相关的数据持续喂给神经网络，模型将会在一段局部时间内只看到高度相似的特征，导致梯度更新的方向产生严重偏差。这种连续的同质化梯度会使得网络极其迅速地“遗忘”之前学过的其他状态的知识，引发灾难性遗忘（Catastrophic Forgetting）。
+在强化学习轨迹中，$s_{t+1}$ 由 $s_t$、$a_t$ 和环境随机性共同产生。连续样本往往来自相近区域，按时间顺序更新会让一个小批量覆盖的状态较窄，梯度也更相关。这样可能降低优化效率并加剧对近期经验的偏置，但后果取决于环境、算法和数据分布，不能简单等同于必然发生灾难性遗忘。
 
-> 引用块类比：
-> 想象一个试图学习“驾驶”的系统。如果它连续一小时都在笔直的高速公路上行驶，它会不断调整权重以强化“保持直行”的指令。当它突然驶出高速进入连续弯道时，由于参数已经极度拟合直行，面对转弯它将不知所措。解决之道并非只学当前，而是将其在高速公路和弯道的记忆混合起来，每次随机抽取一段来复习。这是全篇唯一一次类比，旨在说明在线连续学习时为何会发生权重坍缩。
+> 一段驾驶轨迹可能连续数百步都在直道上。若训练只使用最新片段，小批量几乎全是“保持直行”；把直道、弯道与纠偏片段混合采样，能让每次更新覆盖更宽的状态范围。
 
-这就是经验回放缓冲区的核心动机：通过构建一个容量庞大的数据池，存储过去的历史经验，并在训练时从中进行均匀随机采样，从而人为地打破样本之间的时间相关性，使其重新近似满足独立同分布的假设。同时，同一条经验可以被反复抽取和学习，极大地提升了样本效率。
+经验回放据此保存过去经验，并从较大的时间跨度中抽取训练批次。它能减弱相邻样本直接排在同一批中的相关性，并允许一条经验被多次使用；它不会让数据自动变成真正的独立同分布样本，也不会消除行为策略随训练变化造成的分布漂移。
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/02-replay-buffer-and-splits/per-fig1.png" alt="Blind Cliffwalk 链显示相同转移按不同顺序回放会显著改变价值传播速度。" width="86%">
+
+_图 3.2-1：Blind Cliffwalk 链显示相同转移按不同顺序回放会显著改变价值传播速度。 出处：Tom Schaul et al.，[Prioritized Experience Replay](https://arxiv.org/abs/1511.05952)（2016），Figure 1。_
+
+</div>
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/02-replay-buffer-and-splits/per-fig10.png" alt="整块回放记忆中的 TD 误差热图显示不同转移在训练过程中具有不同学习价值。" width="86%">
+
+_图 3.2-2：整块回放记忆中的 TD 误差热图显示不同转移在训练过程中具有不同学习价值。 出处：Tom Schaul et al.，[Prioritized Experience Replay](https://arxiv.org/abs/1511.05952)（2016），Figure 10。_
+
+</div>
 
 ## 经验回放的数学公式与张量表示
 
@@ -34,6 +47,13 @@ $$ e_t = (s_t, a_t, r_t, s_{t+1}, d_t) $$
 $$ \mathcal{D} = \{ e_1, e_2, \dots, e_{|\mathcal{D}|} \} $$
 
 在每一次模型更新时，我们从 $\mathcal{D}$ 中均匀随机地抽取一个批量大小（Batch Size）为 $B$ 的小批量（Mini-batch）数据 $\mathcal{B}$。对于批量中的每一个样本 $i \in \{1, 2, \dots, B\}$，从集合中抽取特定经验 $e_k$ 的概率为：
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/02-replay-buffer-and-splits/rainbow-fig4.png" alt="Rainbow 的逐游戏消融图显示，把均匀回放改为优先经验回放后，各 Atari 任务性能变化并不相同。" width="86%">
+
+_图 3.2-3：Rainbow 的逐游戏消融图显示，把均匀回放改为优先经验回放后，各 Atari 任务性能变化并不相同。 出处：Matteo Hessel et al.，[Rainbow: Combining Improvements in Deep Reinforcement Learning](https://arxiv.org/abs/1710.02298)（2018），Figure 4。_
+
+</div>
 
 $$ P(e_i = e_k) = \frac{1}{|\mathcal{D}|} $$
 
@@ -58,7 +78,16 @@ $$ P(e_i = e_k) = \frac{1}{|\mathcal{D}|} $$
 1. 将 $e_t$ 写入数组的第 $p$ 个位置。
 2. 更新指针至下一个位置：
 
-$$ p \leftarrow (p + 1) \pmod N $$
+$$
+p \leftarrow (p + 1) \pmod N
+$$
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/latex/02-replay-buffer-and-splits/ring-buffer-modulo.png" alt="固定容量槽位上的写指针经模 N 运算从末端回绕到零号槽" width="86%">
+
+_图 3.2-4：写入 p=N−1 后，(p+1) mod N 令下一指针回到 0，因此无需移动数组就能覆盖最旧槽位。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
 
 由于模运算的存在，当存入的数据量超过容量 $N$ 时，新数据会自动覆盖掉最古老的数据（即回到索引 $0$ 的位置开始重新覆盖）。这样我们在 $\mathcal{O}(1)$ 的恒定时间复杂度内实现了数据的先进先出（FIFO）淘汰机制，同时彻底避免了内存的动态反复分配。
 
@@ -66,19 +95,35 @@ $$ p \leftarrow (p + 1) \pmod N $$
 
 在标准强化学习中，上述的独立同分布单步随机采样已经足够。然而，在构建**世界模型（World Models）**时，我们的目标不仅仅是拟合单步的价值，而是要通过循环神经网络（RNN）或 Transformer 来预测未来的连续演化轨迹。此时，我们必须从缓冲区中抽取长度为 $L$ 的连续序列块（Sequence Chunks）。
 
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/02-replay-buffer-and-splits/drqn-fig2.png" alt="DRQN 以单帧卷积特征驱动 LSTM，直观说明序列块怎样为循环状态提供时间上下文。" width="86%">
+
+_图 3.2-5：DRQN 以单帧卷积特征驱动 LSTM，直观说明序列块怎样为循环状态提供时间上下文。 出处：Matthew Hausknecht; Peter Stone，[Deep Recurrent Q-Learning for Partially Observable MDPs](https://arxiv.org/abs/1507.06527)（2015），Figure 2。_
+
+</div>
+
 假设序列长度为 $L$，每次采样的不再是孤立的 $e_t$，而是一个完整的序列：
 
-$$ \tau_{t:t+L} = (s_t, a_t, s_{t+1}, a_{t+1}, \dots, s_{t+L}) $$
+$$
+\tau_{t:t+L} = (s_t, a_t, s_{t+1}, a_{t+1}, \dots, s_{t+L})
+$$
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/latex/02-replay-buffer-and-splits/sequence-boundary-mask.png" alt="连续序列在终止标志处重置隐藏状态并阻断跨回合梯度" width="86%">
+
+_图 3.2-6：当序列内部出现 d_k=1，下一回合的隐藏状态必须重置，反向梯度也不能跨越这条边界。本文根据上式及边界说明绘制；TikZ/LaTeX 编译。_
+
+</div>
 
 这就引入了额外的物理约束：**环境截断（Episode Boundary）**。在真实世界或游戏中，一段交互随时可能因为失败或通关而终止（$d_k = 1$）。如果我们在采样一段长度为 $L$ 的序列时，恰好跨越了这个终止边界，那么序列的前半部分属于上一局游戏，后半部分属于新一局游戏。这种不连续的数据如果强行喂给世界模型的 RNN，会导致模型试图去寻找两局毫无关联的游戏之间的“物理连贯性”，从而彻底破坏内部的状态表征。
 
 因此，在序列张量的处理中，当读取到 $d_k = 1$ 的终止标志时，我们需要在随后的计算步骤中使用“掩码（Mask）”或重置 RNN 的隐藏状态（Hidden States），确保梯度不会逆向流过截断边界。
 
-同时，为了评估世界模型是否真正学到了环境的内在动态规律，而不是简单地死记硬背了缓冲区里的训练轨迹，我们必须引入严谨的**数据切分（Data Splits）**机制。时间序列数据的切分方式必须避免未来信息泄露：通常我们在交互初期将完整回合（Episodes）或一定时间块独立分配给专门的验证集缓冲区（Validation Buffer），该缓冲区仅用于评估测试损失，绝不参与梯度反向传播。
+验证集必须在序列边界上切分。优先把完整回合分配给训练集或验证集；连续任务则按互不重叠的时间块切分，并在边界留出必要间隔。先随机拆散单步转移再切分，会让同一轨迹中几乎相同的相邻状态同时进入训练与验证，从而高估泛化能力。验证缓冲区只用于评估，不参与参数更新或训练采样。
 
 ## 代码实现：构建高效环形缓冲区
 
-现在，我们将这些严谨的代数关系映射为具体的 PyTorch 与 NumPy 代码。我们利用 NumPy 数组作为底层的连续内存，以支持极速的内存分配和索引。
+下面用 NumPy 预分配底层数组，并在采样时转换为 PyTorch 张量。
 
 ```python
 import torch
@@ -138,44 +183,46 @@ class ReplayBuffer:
         return s, a, r, s_next, d
 ```
 
-如上所述，上述实现解决了最基础的单步马尔可夫决策数据需求。接下来，我们拓展缓冲区，使其支持具有时间连贯性的序列采样（Sequence Sampling），这是训练序列世界模型必不可少的一步。
+单步采样只需索引各行。序列采样还要先恢复环形数组中的时间顺序，再排除跨越回合终点的起点。
 
 ```python
     def sample_sequences(self, batch_size: int, seq_len: int) -> Tuple[torch.Tensor, ...]:
         """
         (采样具有时间连续性的经验序列)
         """
-        # 防止采样到尚未被填充数据的末端，或越界情况
-        valid_start_size = self.size - seq_len
-        if valid_start_size <= 0:
+        if self.size < seq_len:
             raise ValueError("缓冲区当前数据量不足以采样指定长度的序列。")
 
-        # 注意：在完全严谨的生产环境中，这里还需要过滤掉跨越指针 p 的错位序列
-        start_indices = np.random.choice(valid_start_size, batch_size, replace=False)
+        # 未写满时 0 是最旧位置；写满后 p 指向下一次写入位置，也就是当前最旧数据。
+        oldest = 0 if self.size < self.capacity else self.p
+        chronological = (oldest + np.arange(self.size)) % self.capacity
 
-        # 初始化列表，用于按时间步展开序列
-        seq_s, seq_a, seq_r, seq_d = [], [], [], []
+        valid_sequences = []
+        for start in range(self.size - seq_len + 1):
+            idx = chronological[start:start + seq_len]
+            # 最后一条转移可以终止，但不能在序列内部提前进入下一回合。
+            if not self.dones[idx[:-1]].any():
+                valid_sequences.append(idx)
 
-        for i in range(seq_len):
-            idx = start_indices + i
-            seq_s.append(self.states[idx])
-            seq_a.append(self.actions[idx])
-            seq_r.append(self.rewards[idx])
-            seq_d.append(self.dones[idx])
+        if len(valid_sequences) < batch_size:
+            raise ValueError("满足回合边界约束的序列数量不足。")
+
+        chosen = np.random.choice(len(valid_sequences), batch_size, replace=False)
+        indices = np.stack([valid_sequences[i] for i in chosen], axis=0)
 
         # 在时间轴（axis=1）上堆叠序列并转换为张量
         # 变换后的张量维度为：(Batch Size, Sequence Length, Feature Dimension)
-        s = torch.tensor(np.stack(seq_s, axis=1), device=self.device)
-        a = torch.tensor(np.stack(seq_a, axis=1), device=self.device)
-        r = torch.tensor(np.stack(seq_r, axis=1), device=self.device)
-        d = torch.tensor(np.stack(seq_d, axis=1), device=self.device)
+        s = torch.tensor(self.states[indices], device=self.device)
+        a = torch.tensor(self.actions[indices], device=self.device)
+        r = torch.tensor(self.rewards[indices], device=self.device)
+        d = torch.tensor(self.dones[indices], device=self.device)
 
         return s, a, r, d
 ```
 
 ## 小结
 
-- **经验回放**利用历史数据缓存并打乱提取顺序，人为打破了在线强化学习中序列数据极强的时间相关性，重新逼近独立同分布假设。
+- **经验回放**从更大的历史窗口随机抽样，减弱批内时间相关性并复用数据，但不保证样本严格独立同分布。
 - 利用基础模运算（Modulo Arithmetic）构建的**环形缓冲区**，在保证极高运行效率的同时，将内存空间限制在了可控范围内。
 - 面向世界模型的序列采样，引入了时间维度，但这也伴随着如何处理环境截断边界的严峻挑战，其核心在于正确维护隐藏状态的连续性。
 - **分离训练和验证缓冲区**的数据切分策略，是阻止网络单纯记忆并评估其泛化能力的必要屏障。
