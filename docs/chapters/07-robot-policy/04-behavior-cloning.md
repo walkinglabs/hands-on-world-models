@@ -2,15 +2,29 @@
 
 Pomerleau 的 ALVINN 用人类驾驶样本训练神经网络，把摄像头与激光测距输入映射为道路方向输出，并在改装车辆上进行道路测试 [[Pomerleau, 1989]](https://proceedings.neurips.cc/paper/1988/hash/812b4ba287f5ee0bc9d43bbf5bbe87fb-Abstract.html)。它是早期端到端学习驾驶的实例。所谓**行为克隆**（Behavior Cloning, BC），就是把专家观测—动作对当作监督学习数据；ALVINN 可以作为这一思路的历史案例，但单篇论文不足以承担整个模仿学习范式的起源判断。
 
-为了理解行为克隆的本质，我们可以暂时抛开深度学习中繁杂的专有名词，回到高中数学中最基础的函数拟合问题。假设我们在进行一项物理实验，记录了弹簧的形变量 $x$ 和对应的弹力 $y$。我们的目标是寻找一个映射函数 $f$，使得 $y = f(x)$。当我们收集了大量实验数据对 $(x_i, y_i)$ 后，我们会尝试拟合出一条直线或曲线。
+<div align="center">
 
-行为克隆的底层逻辑与这种基于已知数据对的“函数拟合”完全一致。不同的是，这里的输入变量变成了机器人在某一具体时刻观察到的环境状态（State），输出变量变成了人类专家在该特定状态下所执行的操作动作（Action）。通过海量收集人类专家的操作记录，我们希望训练一个参数化模型，使其能够严丝合缝地“克隆”专家的行为策略。
+<img src="/figures/07-robot-policy/source/04-behavior-cloning/alvinn-fig3.png" alt="NAVLAB 是 ALVINN 道路测试所用真实车辆，连接监督模仿与实体部署。" width="86%">
+
+_图 7.4-1：NAVLAB 是 ALVINN 道路测试所用真实车辆，连接监督模仿与实体部署。 出处：[ALVINN: An Autonomous Land Vehicle in a Neural Network，Dean A. Pomerleau，1989](https://proceedings.neurips.cc/paper/1988/hash/812b4ba287f5ee0bc9d43bbf5bbe87fb-Abstract.html)。_
+
+</div>
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/04-behavior-cloning/alvinn-fig1.png" alt="ALVINN 把道路图像与测距输入直接映射为离散转向输出。" width="86%">
+
+_图 7.4-2：ALVINN 把道路图像与测距输入直接映射为离散转向输出。 出处：[ALVINN: An Autonomous Land Vehicle in a Neural Network，Dean A. Pomerleau，1989](https://proceedings.neurips.cc/paper/1988/hash/812b4ba287f5ee0bc9d43bbf5bbe87fb-Abstract.html)。_
+
+</div>
+
+先看三个驾驶样本：车辆偏左时专家向右修正，位于中心时保持方向，偏右时向左修正。行为克隆把这些“观测—动作”对当作监督学习数据，拟合从状态到动作的函数。它不需要奖励函数，但只能直接学习演示数据覆盖到的状态。
 
 ## 数学公式推导与建模
 
 ### 标量场景下的损失函数
 
-为了严谨地描述这一函数拟合过程，让我们首先考虑一个最为简化的场景：假设机器人的状态可以由一个单一的标量 $s \in \mathbb{R}$ 描述（例如，当前车辆重心偏离车道中心线的横向距离），而机器人的控制动作同样是一个标量 $a \in \mathbb{R}$（例如，方向盘的转动角度）。
+先考虑标量场景。令状态 $s \in \mathbb{R}$ 表示车辆偏离车道中心线的距离，动作 $a \in \mathbb{R}$ 表示方向盘转角。
 
 假设我们拥有了一位经验丰富的人类驾驶员，我们在其驾驶过程中以固定的采样频率记录了 $N$ 个时间步的数据，从而构建了专家数据集（Dataset）：
 
@@ -18,7 +32,7 @@ $$ \mathcal{D} = \{(s_1, a_1), (s_2, a_2), \dots, (s_N, a_N)\} $$
 
 我们希望构建一个由参数 $\theta$ 所定义和驱动的策略（Policy）函数，记作 $\pi_\theta(s)$。在给定任意输入状态 $s$ 时，策略网络输出动作的预测值 $\hat{a} = \pi_\theta(s)$。
 
-为了衡量策略函数的预测动作 $\hat{a}$ 与真实且权威的专家动作 $a$ 之间的误差程度，最直观且在数学上最易处理的方式是计算它们之间差值的平方。对于数据集中的单一数据点 $(s_i, a_i)$，这种平方误差（Squared Error）被严格定义为：
+对于数据集中的单个样本 $(s_i,a_i)$，平方误差为：
 
 $$ e_i = (\pi_\theta(s_i) - a_i)^2 $$
 
@@ -36,21 +50,36 @@ $$ \mathcal{L}(\theta) = \frac{1}{N} \sum_{i=1}^N \|\pi_\theta(\mathbf{s}_i) - \
 
 $$ \theta^* = \mathop{\mathrm{arg\,min}}_{\theta} \mathcal{L}(\theta) $$
 
-上述优化过程在数学本质上与现代深度学习中的标准**监督学习**（Supervised Learning）并无二致。这正是行为克隆备受工业界青睐的最大优势所在：研究者可以无缝接入且直接利用高度成熟的监督学习优化器算法（如随机梯度下降法 SGD 及其高级变体 Adam）来进行大规模、高吞吐量的模型训练。
+这个优化目标就是标准的**监督学习**（Supervised Learning），因此可以直接使用小批量训练、SGD 或 Adam 等常见工具。需要注意，训练损失只衡量专家数据分布上的动作拟合，并不等价于闭环控制性能。
 
 ## 协变量偏移问题（Covariate Shift）
 
-尽管目标该公式在数学表达上极其优美，且易于通过反向传播算法进行优化，但纯粹的行为克隆在处理实际的序列决策（Sequential Decision Making）问题时，往往会遭遇一种被称为**协变量偏移**（Covariate Shift）的致命理论缺陷。在此，我们允许引入全篇唯一一次精炼的物理类比来揭示这一反直觉现象的本质。
+监督学习假设训练与测试输入来自相近分布，闭环控制却会让策略自己的动作改变下一步状态。若演示只包含车道中央附近的驾驶，策略一旦偏离，就可能进入没有纠偏样本的区域。这种训练状态分布与部署状态分布的差异称为**协变量偏移**（Covariate Shift）。
 
-> **高空走钢丝的类比**：想象一位体操运动员在训练高空走钢丝。如果教练（代表人类专家）始终完美地行走在钢丝的正中央，并且从未失误，那么记录下来的专家数据集将全部是“在绝对中心位置，保持直立姿态”的数据。如果学生（代表模型）严格按照最小化误差的原则克隆这些动作，只要在执行时遭遇一阵微弱的侧风导致其略微偏离了绝对中心，由于学生在训练集中从未见过“如何在偏离状态下纠正姿态”的专家纠错数据，就会因为无所适从而迅速坠落。
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/04-behavior-cloning/dagger-fig2.png" alt="DAgger 在交互式收集数据后显著减少赛道失误，直接对应分布偏移的累积后果。" width="86%">
+
+_图 7.4-3：DAgger 在交互式收集数据后显著减少赛道失误，直接对应分布偏移的累积后果。 出处：[A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning，Stéphane Ross; Geoffrey Gordon; Drew Bagnell，2011](https://proceedings.mlr.press/v15/ross11a.html)。_
+
+</div>
 
 在严密的学术语言中，这意味着专家演示数据所隐含生成的状态边缘分布 $P_{\text{expert}}(\mathbf{s})$，与模型在实际环境闭环执行时自身诱导生成的状态分布 $P_{\pi_\theta}(\mathbf{s})$ 存在显著且不可忽视的统计学差异。
 
 在训练阶段，模型是在独立同分布（i.i.d.）的强假设下，基于专家状态边缘分布 $P_{\text{expert}}(\mathbf{s})$ 进行误差最小化的：
 
-$$ \mathbb{E}_{\mathbf{s} \sim P_{\text{expert}}} \left[ \|\pi_\theta(\mathbf{s}) - \pi_{\text{expert}}(\mathbf{s})\|_2^2 \right] $$
+$$ \mathbb{E}_{\mathbf{s} \sim P_{\text{expert}}} \left[ |\pi_\theta(\mathbf{s}) - \pi_{\text{expert}}(\mathbf{s})|_2^2 \right]
+$$
 
-然而，在部署与测试阶段，当策略模型 $\pi_\theta$ 开始自主控制环境状态流转时，一旦在某一个时间步 $t$ 产生了极其微小的预测误差 $\epsilon$，这个微小的动作偏差就会通过动力学系统导致下一步的状态 $\mathbf{s}_{t+1}$ 偏离专家原本的轨迹流形（Manifold）。因为模型是在一种其从未见过的偏离状态下继续进行非线性外推预测，误差会随着时间的推移不断累积。
+<div align="center">
+
+<img src="/figures/07-robot-policy/latex/04-behavior-cloning/covariate-shift-rollout.png" alt="单步动作偏差使闭环轨迹逐渐离开专家状态分布" width="86%">
+
+_图 7.4-4：训练损失只约束专家访问的状态；一次动作偏差改变后续状态后，策略会进入自身诱导且未充分覆盖的分布。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
+
+部署时，策略 $\pi_\theta$ 的动作会改变下一步状态。某一步的预测误差 $\epsilon$ 可能让 $\mathbf{s}_{t+1}$ 偏离专家轨迹，使模型继续在训练数据较少覆盖的状态上预测，误差因而可能沿闭环累积。
 
 Ross 和 Bagnell 分析了监督式模仿学习中的分布偏移：若学习策略在专家状态分布上的单步错误率为 $\epsilon$，有限时域 $T$ 下的期望代价差在一般情形可达到 $\mathcal{O}(T^2\epsilon)$ [[Ross & Bagnell, 2010]](https://proceedings.mlr.press/v9/ross10a.html)。这里的平方项描述的是代价差界，而不是说每一种任务中的“动作错误数量”都必然按平方增长。
 
@@ -58,14 +87,14 @@ Ross 和 Bagnell 分析了监督式模仿学习中的分布偏移：若学习策
 
 下面我们将通过工程代码，具体且详尽地实现一个行为克隆的完整计算流图。为了保持示例的纯粹性与学术可重复性，我们将人为构造一个确定性的专家策略（例如一个理想状态下的线性反馈状态调节器），从而合成专家数据集，随后构建并训练一个前馈多层感知机（MLP）来严格克隆该专家的控制流形。
 
-(**首先，我们导入深度学习张量计算所需的依赖库，并严谨地生成合成的专家演示数据。**)
+首先生成一个二维线性反馈专家的数据。
 
 ```python
 import torch
 from torch import nn
 from torch.utils.data import TensorDataset, DataLoader
 
-# 设置全局张量随机种子，以确保学术实验的严格可复现性
+# 固定随机种子，便于复现实验输出
 torch.manual_seed(42)
 
 # 1. 假设环境状态向量的几何维度为 2 (例如: [相对位置, 相对速度])
@@ -159,9 +188,12 @@ for epoch in range(num_epochs):
         print(f"Epoch {epoch+1:03d}/{num_epochs}, 经验风险 MSE Loss: {epoch_loss:.6f}")
 ```
 
-如上述抽象出来的基础代码所示，行为克隆的工程实现极为简练，其核心计算流图仅仅是状态空间到动作空间的高维非线性回归。在实验室标准测试集的开环验证中，只要专家数据的统计分布足够充分，且神经网络参数容量足够大，策略网络往往能在训练集上迅速收敛，实现惊人的重构精度。
+这段代码完成的是开环动作回归。即使训练集 MSE 很低，也仍需把策略放回环境，检查偏离专家轨迹后能否恢复；这正是离线拟合与闭环评测的边界。
 
 ## 小结
 
-- **行为克隆（Behavior Cloning, BC）**是将复杂的模仿学习转化为标准深度监督学习的最基础、最直接的数学范式，其优化目标是最小化策略网络的预测动作与专家展示动作之间的几何差异。
-- 虽然行为克隆在处理短时域开环预测时表现出了极佳的收敛效率，但由于**协变量偏移（Covariate Shift）**引起的级联误差现象，其在长周期的闭环环境交互中存在着极其严峻的鲁棒性与稳定性隐患。
+- **行为克隆（Behavior Cloning, BC）**把专家观测—动作对转化为监督学习问题。
+- 开环动作误差与闭环任务成功率是两种不同指标；协变量偏移会把早期小误差带到训练数据未覆盖的状态。
+
+$$
+$$

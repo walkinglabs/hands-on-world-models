@@ -8,23 +8,39 @@
 >
 > **故事线：** `融合身体与环境观测 → 理解接触和全身控制约束 → 用行为克隆建立基线并观察分布偏移 → 用扩散与动作分块表达多种连续动作 → 用语言和大规模数据扩展任务 → 用世界模型检查动作后果`
 
-在前面的章节中，我们主要探讨了在纯视觉或纯文本环境下的深度学习模型。然而，真正的智能体（Agent）并非“缸中之脑”，它们生存在复杂的物理世界中，需要通过躯体与环境发生持续的物理交互。这种强调智能体与环境物理形态耦合的智能范式，被称为**具身智能**（Embodied AI）。
+先看一个抓杯子的控制时刻。相机图像给出杯子在桌面上的位置，关节编码器给出机械臂当前姿态，夹爪传感器则反映接触力。只有图像，策略不知道手臂能否到达；只有关节角，策略又不知道杯子在哪里。
 
-在具身智能的设定下，智能体（例如一台双足机器人或一条机械臂）在执行任务时，不仅能通过摄像头“看”到外部世界，还能通过关节编码器和力矩传感器“感受”到自身的姿态与受力。如何将这些维度、采样频率、物理语义截然不同的信息源有效地整合在一起，形成对当前状态的统一理解？这就是**多模态观测**（Multimodal Observation）所要解决的核心问题。
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/01-multimodal-observation/levine-fig1.png" alt="相机画面与机械臂构型共同进入视觉运动策略，输出直接驱动真实机器人。" width="86%">
+
+_图 7.1-1：相机画面与机械臂构型共同进入视觉运动策略，输出直接驱动真实机器人。 出处：[End-to-End Training of Deep Visuomotor Policies，Sergey Levine; Chelsea Finn; Trevor Darrell; Pieter Abbeel，2016](https://arxiv.org/abs/1504.00702)。_
+
+</div>
+
+机器人需要把这些物理含义、维度和采样频率不同的信号组合起来。这样的输入称为**多模态观测**（Multimodal Observation）；强调智能体通过身体持续感知并作用于环境的研究范式，称为**具身智能**（Embodied AI）。
 
 ## 7.1.1 历史脉络与学术追溯
 
-具身智能的思想可以追溯到人工智能的早期。1986年，Robotics领域的先驱Rodney Brooks在论文《A robust layered control system for a mobile robot》[[Brooks, 1986]](https://doi.org/10.1109/JRA.1986.1087032) 中提出了包容体系结构（Subsumption Architecture），严厉批评了当时主流的“感知-建模-规划-行动”这种自上而下的符号计算范式。他主张智能应当直接从感觉运动（Sensorimotor）的交互中涌现。
+1986 年，Rodney Brooks 在论文《A Robust Layered Control System for a Mobile Robot》中提出包容体系结构（Subsumption Architecture），用分层的感觉—动作模块控制移动机器人 [[Brooks, 1986]](https://doi.org/10.1109/JRA.1986.1087032)。这项工作代表了一条重要路线：控制不必总从完整的符号世界模型开始，也可以由与环境紧密耦合的行为层组成。
 
 Levine 等人用引导策略搜索训练深度视觉运动策略，使卷积网络根据相机图像与机器人构型输出电机转矩 [[Levine et al., 2016]](https://arxiv.org/abs/1504.00702)。这项工作直接展示了端到端视觉运动策略在多项机器人操作任务上的训练与执行；论文不需要承担“最早把 CNN 与强化学习结合”这一优先权判断。
 
 Transformer 为序列中的跨位置信息交互提供了通用结构 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762)。RT-1 根据相机图像序列与自然语言任务描述预测离散化机器人动作 [[Brohan et al., 2022]](https://arxiv.org/abs/2212.06817)；RT-2 又把机器人动作表示为文本词元，并联合利用互联网视觉—语言数据与机器人轨迹训练视觉—语言—动作模型 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818)。这两篇论文不能用来证明系统输入包含 RGB-D 或任意高维本体感受，因此这里只列出原文明确使用的模态。
 
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/01-multimodal-observation/rt2-fig1.png" alt="RT-2 把机器人动作表示为语言 token，连接视觉语言推理与低层控制。" width="86%">
+
+_图 7.1-2：RT-2 把机器人动作表示为语言 token，连接视觉语言推理与低层控制。 出处：[RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control，Anthony Brohan et al.，2023](https://arxiv.org/abs/2307.15818)。_
+
+</div>
+
 ## 7.1.2 物理量的降维映射：从单摆到机器人状态空间
 
 为了理解多模态观测的必要性，我们不妨先回到高中物理中最经典的单摆模型。
 
-假设我们要完全描述一个单摆在某一时刻的物理状态，我们需要哪些信息？根据经典力学，我们只需要知道单摆当前的摆角 $\theta$ 和它的角速度 $\dot{\theta}$。只要知道了这两个标量，我们就能利用运动学和动力学方程预测它未来的所有行为。
+假设单摆的长度、重力参数和外部输入均已知。此时，摆角 $\theta$ 与角速度 $\dot{\theta}$ 构成一个足以继续积分动力学方程的状态；二者缺一不可，因为相同摆角可能对应向左或向右运动。
 
 在机器人学中，这种对自身内在物理状态的测量，被称为**本体感受**（Proprioception）。对于一个拥有 $n$ 个自由度的机器人，其本体状态可以通过广义坐标 $\mathbf{q} \in \mathbb{R}^n$（例如各关节的角度）和广义速度 $\dot{\mathbf{q}} \in \mathbb{R}^n$（各关节的角速度）来严格定义。我们将其拼接为一个本体观测向量：
 
@@ -32,7 +48,7 @@ $$
 \mathbf{o}_{\text{prop}} = [\mathbf{q}^\top, \dot{\mathbf{q}}^\top]^\top \in \mathbb{R}^{2n}
 $$
 
-然而，机器人并不是在一个空无一物的真空中运动。假设我们要让机械臂去抓取桌子上的一个苹果，仅仅知道机械臂自身的关节角度显然是不够的，它还必须知道苹果在空间中的位置。这种对外部环境的感知，被称为**外感受**（Exteroception）。在现代机器人系统中，最常见的外感受器就是RGB摄像头，它提供了一个三维张量 $\mathbf{I} \in \mathbb{R}^{H \times W \times 3}$。
+抓取桌上的苹果时，机械臂不仅要知道自身关节角度，还要估计苹果的位置。这种对外部环境的感知称为**外感受**（Exteroception）。RGB 摄像头是常见的外感受器，输出可写成三维张量 $\mathbf{I} \in \mathbb{R}^{H \times W \times 3}$。
 
 因此，在时间步 $t$，具身智能体所接收到的完整多模态观测 $\mathbf{o}_t$ 至少包含了视觉和本体两个模态：
 
@@ -44,7 +60,7 @@ $$
 
 ## 7.1.3 模态对齐与融合的数学推导
 
-视觉图像 $\mathbf{I}$ 是一个具有极高空间冗余度的高维张量（通常有几十万甚至上百万个像素），而本体状态 $\mathbf{o}_{\text{prop}}$ 则是一个维度极低、但物理意义极其密集的向量。将它们直接相加显然是荒谬的。我们需要通过编码器（Encoder）将它们映射到同一个潜空间（Latent Space）中。
+视觉图像 $\mathbf{I}$ 是高维张量，本体状态 $\mathbf{o}_{\text{prop}}$ 则是较短的向量。二者的形状和单位不同，不能直接逐元素相加。通常先用各自的编码器（Encoder）提取特征，再在兼容的表示空间中融合。
 
 首先，我们分别独立地对两种模态进行编码：
 
@@ -60,7 +76,7 @@ $$
 
 接下来，我们需要将 $\mathbf{z}_{\text{vis}}$ 和 $\mathbf{z}_{\text{prop}}$ 融合。最直观也是最简单的方法是**拼接（Concatenation）与线性投影**。
 
-假设我们退化到最极端的一维情况，即视觉特征提取出了一个标量 $z_v \in \mathbb{R}$，本体特征提取出了一个标量 $z_p \in \mathbb{R}$。我们希望得到一个综合特征 $z \in \mathbb{R}$。最简单的线性融合就是对它们赋予不同的权重，并加上偏置：
+先看一维情况。设视觉编码器输出标量 $z_v \in \mathbb{R}$，本体编码器输出标量 $z_p \in \mathbb{R}$，线性融合就是分别加权后再加偏置：
 
 $$
 z = w_1 z_v + w_2 z_p + b
@@ -72,13 +88,21 @@ $$
 \mathbf{z}_{\text{fused}} = \sigma \left( \mathbf{W} \begin{bmatrix} \mathbf{z}_{\text{vis}} \\ \mathbf{z}_{\text{prop}} \end{bmatrix} + \mathbf{b} \right)
 $$
 
-这种被称为“后期融合（Late Fusion）”的策略在早期深度强化学习中非常普遍。然而，它的局限性在于：权重矩阵 $\mathbf{W}$ 在训练完成后是静态的，这意味着无论机器人处于何种姿态，视觉特征和本体特征之间的组合方式是不变的。
+这是一种**后期融合**（Late Fusion）。它实现简单，但同一组投影参数会用于所有样本；如果任务需要“由当前本体状态决定应读取哪个图像区域”，单次拼接不一定能显式表达这种选择关系。
 
 ## 7.1.4 跨模态注意力机制（Cross-Modal Attention）
 
 在高度动态的物理交互中，静态融合往往是不够的。
 
-> 想象你正在驾驶汽车（本体感受：方向盘转角、车速）。当你在空旷直行时，你会关注正前方的路况；而当你打转向灯准备在高速公路上变道时（特定本体状态），你的注意力会自动集中在后视镜的特定区域（视觉状态的动态聚焦）。这种**由本体状态主导的、对视觉特征进行动态空间选择**的机制，在数学上可以通过跨模态注意力（Cross-Modal Attention）来严谨刻画。
+以移动机器人变道为例，当前转向角和速度可以作为查询，图像中的前方道路、后视镜和邻车区域则提供候选视觉信息。跨模态注意力（Cross-Modal Attention）用本体特征计算查询，再对不同视觉区域分配随状态变化的权重。
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/01-multimodal-observation/rt1-fig13.png" alt="RT-1 的注意力可视化展示不同层和头如何聚焦任务相关图像区域。" width="86%">
+
+_图 7.1-3：RT-1 的注意力可视化展示不同层和头如何聚焦任务相关图像区域。 出处：[RT-1: Robotics Transformer for Real-World Control at Scale，Anthony Brohan et al.，2022](https://arxiv.org/abs/2212.06817)。_
+
+</div>
 
 我们不再将视觉图像编码为单一的全局向量，而是保留其空间结构，将其编码为 $N$ 个局部特征块（Patch Embeddings），即 $\mathbf{Z}_{\text{vis}} \in \mathbb{R}^{N \times d_v}$。
 
@@ -106,13 +130,22 @@ $$
 
 $$
 \text{CrossAttention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax} \left( \frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}} \right) \mathbf{V} \in \mathbb{R}^{1 \times d_v}
+
 $$
 
-通过这种方式，神经网络能够学会根据当前的机器人的关节状态，动态地“注视”图像中对其下一步动作最具指导意义的区域。
+<div align="center">
+
+<img src="/figures/07-robot-policy/latex/01-multimodal-observation/cross-attention-row-softmax.png" alt="单个本体查询沿视觉 patch 维做行 Softmax，再汇聚 Value" width="86%">
+
+_图 7.1-4：单个本体查询与 N 个视觉键形成一行分数，Softmax 只沿 patch 维归一化，再用同组权重汇聚 Value。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
+
+这样得到的视觉汇总会随本体状态变化。注意力权重可以提示模型正在使用哪些区域，但不能自动等同于因果解释。
 
 ## 7.1.5 代码实现：构建多模态观测编码器
 
-(**下面我们将基于 PyTorch，实现一个包含视觉CNN、本体MLP以及拼接融合机制的基础多模态观测编码器。**)
+下面用 PyTorch 实现一个视觉 CNN、本体 MLP 与拼接融合组成的最小编码器。
 
 ```python
 import torch
