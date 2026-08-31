@@ -1,10 +1,34 @@
 # 世界模型与具身控制的闭环
 
-具身智能（Embodied AI）的核心挑战在于，智能体必须在一个高度复杂、充满不确定性且代价高昂的物理世界中进行连续的感知与决策。传统的无模型强化学习（Model-Free RL）方法依赖于在真实环境中的海量试错，这在硬件磨损、安全风险以及数据采集效率等方面均存在不可逾越的瓶颈。
+真实机器人每执行一次探索动作，都要付出时间、能耗和硬件风险。World Models 先从像素学习潜在动力学，再在模型生成的轨迹中训练控制器，并把控制器放回 CarRacing 环境闭环驾驶。这个思路减少了部分真实试错需求，却把难点转移到了模型误差与分布外想象上。
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/11-world-model-body-loop/wm-fig9.png" alt="World Models 控制器在 CarRacing 中沿赛道闭环驾驶，是模型内训练回到真实环境的输出。" width="86%">
+
+_图 7.11-1：World Models 控制器在 CarRacing 中沿赛道闭环驾驶，是模型内训练回到真实环境的输出。 出处：[World Models，David Ha; Jürgen Schmidhuber，2018](https://arxiv.org/abs/1803.10122)。_
+
+</div>
 
 Ha 和 Schmidhuber 展示了从像素数据学习潜在动力学，并在模型生成的轨迹中训练控制器的可行性 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。RSSM 最初由 PlaNet 引入；Dreamer 在此基础上使用潜在想象轨迹训练 actor 与 critic [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)。这些结果来自特定游戏与控制基准，构成了“视觉—模型—策略”闭环的实例，而不是对所有复杂具身任务的完整证明。
 
-本节我们将深入探讨世界模型是如何在具身控制中形成闭环的。我们将从最基础的物理运动学出发，逐步推导出隐空间中的状态转移概率，最终在可微的“梦境”中实现策略的精确求解。
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/11-world-model-body-loop/wm-fig14.png" alt="同一 World Models 方法在真实 VizDoom 环境中躲避火球，展示另一类闭环控制输出。" width="86%">
+
+_图 7.11-2：同一 World Models 方法在真实 VizDoom 环境中躲避火球，展示另一类闭环控制输出。 出处：[World Models，David Ha; Jürgen Schmidhuber，2018](https://arxiv.org/abs/1803.10122)。_
+
+</div>
+
+本节从运动学状态开始，说明 RSSM 如何结合历史与随机隐变量，再解释 Dreamer 类方法如何在潜在轨迹中训练 actor 和 critic。这里的梯度是对学习模型的梯度估计，不是对真实物理世界的精确求解。
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/11-world-model-body-loop/wm-fig8.png" alt="V、M、C 三组件把视觉压缩、潜在动力学与控制器连接成闭环。" width="86%">
+
+_图 7.11-3：V、M、C 三组件把视觉压缩、潜在动力学与控制器连接成闭环。 出处：[World Models，David Ha; Jürgen Schmidhuber，2018](https://arxiv.org/abs/1803.10122)。_
+
+</div>
 
 ## 从真实物理世界到隐空间投影
 
@@ -25,25 +49,25 @@ $$
 \mathbf{s}_{t+1} = f(\mathbf{s}_t, \mathbf{a}_t)
 $$
 
-然而，在具身控制的真实场景（例如四足机器人或多自由度机械臂）中，系统的状态极其庞杂。更严峻的是，智能体通常无法直接获得完美的真实物理状态 $\mathbf{s}_t$。它所能依赖的，只有传感器（如RGB摄像头）传回的极其高维、充满噪声的观测数据（Observation）$\mathbf{o}_t$。
+在四足机器人或多自由度机械臂中，状态维度更高，智能体也通常无法直接获得完整物理状态 $\mathbf{s}_t$，只能使用相机、本体传感器等产生的高维观测 $\mathbf{o}_t$。
 
-面对数以万计的像素，直接在像素空间中寻找类似该公式的转移函数是极其困难且低效的。因此，世界模型的第一个核心步骤是空间维度的降维。我们引入一个基于变分自编码器（VAE）思想的编码器模型 $E_\phi$，将高维的观测数据 $\mathbf{o}_t$ 压缩到一个低维且紧凑的隐状态（Latent State）空间中：
+直接在像素空间建模转移需要同时处理任务相关结构和大量视觉细节。作为暂时忽略历史的入门写法，可以先用编码器 $E_\phi$ 把高维观测 $\mathbf{o}_t$ 压缩到潜在状态空间：
 
 $$
-\mathbf{z}_t \sim q_\phi(\mathbf{z}_t \mid \mathbf{o}_t)
+\mathbf{z}_t \sim q_\phi^{\mathrm{frame}}(\mathbf{z}_t \mid \mathbf{o}_t)
 $$
 
-这里，$\mathbf{z}_t$ 就是智能体大脑中对当前世界局势的“抽象表征”。它不再是具体的像素，而是环境关键物理属性（如物体的相对位置、姿态及其不确定性）的低维概率分布。
+这里，$\mathbf{z}_t$ 是观测的随机隐表示。我们希望它包含物体相对位置、姿态等控制相关信息，但这些语义需要通过下游任务或表征分析确认。
 
 ## 循环状态空间模型（RSSM）：梦境的引擎
 
 既然有了隐状态 $\mathbf{z}_t$，我们是否可以直接在隐空间中构建简单的马尔可夫转移函数 $\mathbf{z}_{t+1} = f(\mathbf{z}_t, \mathbf{a}_t)$ 呢？
 
-答案是否定的。原因在于马尔可夫性（Markov Property）在单帧投影中遭到破坏。单帧图像的隐状态 $\mathbf{z}_t$ 无法提供速度、加速度等时序动态信息。此外，真实物理环境充满了由摩擦力扰动或传感器缺陷导致的随机性。
+不一定可以。单帧观测通常不能确定速度或被遮挡物体的状态，因此单帧编码 $\mathbf{z}_t$ 未必满足马尔可夫性。此外，接触、传感器噪声和未观测变量也需要用不确定性表示。
 
 为了解决这个问题，循环状态空间模型（Recurrent State Space Model, RSSM）被提出。RSSM 将世界模型的状态一分为二：确定性隐状态（Deterministic Hidden State）$\mathbf{h}_t$ 和随机性隐状态（Stochastic Latent State）$\mathbf{z}_t$。
 
-> 我们可以将这种确定性与随机性的解耦，视为“经典力学轨道”与“量子不确定性”的结合。在经典力学中，如果知道初始状态和受力情况，物体未来的轨迹是唯一确定的（这对应于模型中的确定性隐状态 $\mathbf{h}_t$，它像一个拥有记忆的循环核心，负责传递系统宏观上的历史演化规律）。然而，在复杂的真实环境中，微小的扰动和观测噪声使得具体的物理状态不可避免地呈现出概率分布的特性（这对应于随机状态 $\mathbf{z}_t$）。世界模型通过 $\mathbf{h}_t$ 描绘一条宏观的确定性演化轨道，并在每个时刻用 $\mathbf{z}_t$ 来捕捉无法被轨道完全决定的局部随机性。
+确定性状态 $\mathbf{h}_t$ 由循环网络汇总历史，随机状态 $\mathbf{z}_t$ 表示当前时刻在该历史条件下仍需用分布描述的信息。两者是模型的计算分工，不对应“经典”与“量子”两类真实物理量。
 
 RSSM 的内部动力学机制可以通过以下严谨的概率模型定义：
 
@@ -53,16 +77,28 @@ RSSM 的内部动力学机制可以通过以下严谨的概率模型定义：
    \mathbf{h}_t = f_\theta(\mathbf{h}_{t-1}, \mathbf{z}_{t-1}, \mathbf{a}_{t-1})
    $$
 
-2. **先验动态模型（Dynamics Predictor）**：在没有接收当前真实物理观测的情况下，仅凭大脑中的历史记忆推测当前的随机状态：
+2. **先验动态模型（Dynamics Predictor）**：在没有接收当前观测时，根据历史状态预测当前随机状态：
 
    $$
    \hat{\mathbf{z}}_t \sim p_\theta(\hat{\mathbf{z}}_t \mid \mathbf{h}_t)
    $$
 
 3. **后验表征模型（Representation Model）**：当接收到当前真实的视觉观测 $\mathbf{o}_t$ 后，结合历史记忆，得出对当前真实世界更精准的概率认知（用于修正内部模型和现实对齐）：
+
    $$
    \mathbf{z}_t \sim q_\phi(\mathbf{z}_t \mid \mathbf{h}_t, \mathbf{o}_t)
    $$
+
+   $$
+   $$
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/latex/11-world-model-body-loop/rssm-prior-posterior-split.png" alt="RSSM 同一时刻的无观测先验与有观测后验分支" width="86%">
+
+_图 7.11-4：h_t 由上一状态与动作递推；prior 只看 h_t，posterior 额外读取真实观测 o_t，并在训练时校正同一时刻的随机状态。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
 
 除此之外，具身控制还必须衡量行为的优劣，世界模型需要预测基于当前状态所能获得的奖励（Reward）：
 
@@ -74,35 +110,45 @@ $$
 
 ## 隐空间中的想象与解析梯度优化
 
-一旦世界模型（引擎）收敛，智能体就可以切断与真实世界传感器的连接，闭上眼睛在“梦境”中学习如何决策。这是闭环的最后一块拼图。
+训练世界模型后，智能体可以从真实观测得到的后验状态出发，在隐空间展开有限长度的想象轨迹。它仍需持续用真实数据校正模型，不能永久切断传感器。
 
-在一个具体的时刻 $t$，智能体根据真实的视觉观测 $\mathbf{o}_t$ 计算出当前的后验状态 $\mathbf{z}_t$ 和历史特征 $\mathbf{h}_t$。从这个初始状态出发，智能体完全利用该公式和该公式在隐空间中向未来展开推演。
+<div align="center">
 
-假设我们要优化的动作策略可以表示为一个概率分布 $\mathbf{a}_\tau \sim \pi_\psi(\mathbf{a}_\tau \mid \hat{\mathbf{z}}_\tau, \mathbf{h}_\tau)$，参数为 $\psi$。在梦境中，我们将时间轴从当前真实时刻 $\tau = t$ 展开到未来截断时刻 $\tau = t + H$。此时，智能体大脑中生成的虚拟轨迹（Trajectory）为：
+<img src="/figures/07-robot-policy/source/11-world-model-body-loop/dreamer-fig1.png" alt="Dreamer 在潜在动力学中展开想象轨迹，并用预测价值更新行为。" width="86%">
+
+_图 7.11-5：Dreamer 在潜在动力学中展开想象轨迹，并用预测价值更新行为。 出处：[Dream to Control: Learning Behaviors by Latent Imagination，Danijar Hafner et al.，2020](https://arxiv.org/abs/1912.01603)。_
+
+</div>
+
+在时刻 $t$，智能体根据真实观测 $\mathbf{o}_t$ 计算后验状态 $\mathbf{z}_t$ 和历史特征 $\mathbf{h}_t$，再使用 RSSM 的状态转移与奖励模型向前推演。
+
+假设动作策略为 $\mathbf{a}_\tau \sim \pi_\psi(\mathbf{a}_\tau \mid \hat{\mathbf{z}}_\tau, \mathbf{h}_\tau)$。从真实时刻 $t$ 向前展开 $H$ 步，模型生成的潜在轨迹为：
 
 $$
 (\mathbf{h}_t, \mathbf{z}_t), \mathbf{a}_t, r_t, (\mathbf{h}_{t+1}, \hat{\mathbf{z}}_{t+1}), \mathbf{a}_{t+1}, r_{t+1}, \dots, (\mathbf{h}_{t+H}, \hat{\mathbf{z}}_{t+H})
 $$
 
-强化学习的终极目标是最大化累积回报。考虑到未来收益的衰减效应，我们引入极限级数求和中的折扣因子（Discount Factor）$\gamma \in (0, 1)$。该想象轨迹的价值函数（Value Function）被定义为对未来衰减奖励之和的期望估计：
+策略目标是最大化累积回报。给定折扣因子 $\gamma \in (0,1)$，一段长度为 $H$ 的想象轨迹可以用价值网络补上截断后的回报：
 
 $$
-V(\mathbf{z}_\tau, \mathbf{h}_\tau) \approx \mathbb{E}_{p_\theta, \pi_\psi} \left[ \sum_{k=0}^{H-\tau} \gamma^k r_{\tau+k} + \gamma^{H-\tau+1} v_\xi(\hat{\mathbf{z}}_{t+H+1}, \mathbf{h}_{t+H+1}) \right]
+G_\tau = \sum_{k=0}^{H-1} \gamma^k \hat r_{\tau+k}
++ \gamma^H v_\xi(\mathbf{h}_{\tau+H},\hat{\mathbf{z}}_{\tau+H})
 $$
 
-该公式中尾部的 $v_\xi$ 是一个独立训练的价值网络，用于在截断视野 $H$ 之外近似无穷远处的长尾收益。
+$v_\xi$ 是独立训练的价值网络，用来估计截断点之后的回报。Dreamer 实际使用的回报目标还包含 continuation 和 $\lambda$-return 等细节，这里只写最简单的 bootstrap 形式。
 
-传统无模型强化学习最深沉的痛点在于：真实的物理世界是一个极其复杂的黑盒系统。从执行动作 $\mathbf{a}_t$ 到环境反馈状态与奖励，这一客观物理演化过程在数学上是**不可导的**。这使得我们只能依赖计算代价昂贵且方差巨大的策略梯度（Policy Gradient）算法来摸索优化方向。
+真实环境通常不向学习算法提供可直接反向传播的动力学计算图。无模型方法因此使用策略梯度、价值估计等采样式估计器；它们的方差和样本效率取决于具体算法。
 
-但在世界模型的控制闭环中，情况发生了彻底的数学质变。梦境中的环境，完全是由我们已经训练好的神经网络矩阵（动力学网络 $f_\theta$、先验推断 $p_\theta$、奖励映射 $p_\theta$）组合而成的。这意味着，动作流经整个“世界”的每一帧画面、每一笔奖励预测，本质上都是一系列标准的张量乘法和非线性激活函数，**这一切都是连续可微的！**
+学习到的动力学与奖励模型由神经网络构成。对连续动作和可重参数化的随机状态，可以沿想象轨迹使用路径导数，把回报梯度传回 actor。离散变量、不可重参数化采样或停止梯度的位置则需要其他估计器。
 
-因此，我们不需要进行任何试错式的梯度近似，微积分中的多元函数链式法则（Chain Rule）能够直接穿透整个梦境时空，极其精确地计算出奖励目标的变动对策略参数 $\psi$ 的导数：
+actor 的目标可以写成想象回报的期望：
 
 $$
-\nabla_\psi \mathbb{E}[V] = \mathbb{E} \left[ \sum_{k=0}^{H} \gamma^k \nabla_{\mathbf{a}} r_{\tau+k} \cdot \nabla_\psi \pi_\psi(\mathbf{a}_{\tau+k}) \right]
+J(\psi)=\mathbb{E}_{p_\theta,\pi_\psi}[G_\tau],
+\qquad \nabla_\psi J(\psi)=\nabla_\psi\mathbb{E}[G_\tau]
 $$
 
-[**我们将这种求解范式称为解析梯度（Analytic Gradient）。在实现时，我们只需通过深度学习框架的自动微分引擎，反向传播穿越“梦境”（即世界模型的连续演化计算图），直接更新策略网络（Actor）的权重参数。**]
+自动微分会计算动作对所有后续隐状态和奖励的总导数，而不只是单步的 $\partial r/\partial a$。这常称为 dynamics gradients 或 pathwise gradients。它对学习模型而言可以精确计算，但相对于真实环境仍有模型偏差。
 
 ## 代码实现：在梦境计算图中推演闭环
 
@@ -157,8 +203,7 @@ class RSSMCell(nn.Module):
         # [步骤2: 利用先验网络预测微观随机状态 z_t]
         mean, std = self.forward_prior(h_t)
 
-        # 采用重参数化技巧 (Reparameterization Trick) 采样 z_t
-        # 保证在采样操作切断计算图后，依然能向 mean 和 std 回传梯度
+        # rsample使用重参数化采样，计算图不会在采样处被切断
         dist = Normal(mean, std)
         z_t = dist.rsample()
 
@@ -167,7 +212,6 @@ class RSSMCell(nn.Module):
         reward_pred = self.reward_predictor(state_feature)
 
         return h_t, z_t, reward_pred
-
 
 class Actor(nn.Module):
     """在梦境中输出控制信号的策略网络"""
@@ -193,6 +237,9 @@ horizon = 15 # 定义梦境推演的时间视野长度 H
 
 rssm = RSSMCell(action_dim, hidden_dim, latent_dim)
 actor = Actor(hidden_dim + latent_dim, action_dim)
+# actor更新时冻结世界模型参数，但仍保留状态对动作的梯度
+for parameter in rssm.parameters():
+    parameter.requires_grad_(False)
 optimizer = torch.optim.Adam(actor.parameters(), lr=1e-3)
 
 # 假设我们在真实的具身环境中，通过视觉观测刚刚建立起对当前 t 时刻局势的认知
@@ -201,6 +248,7 @@ z_t = torch.zeros(batch_size, latent_dim)
 
 # [开始闭合控制环：Latent Imagination Loop]
 total_predicted_reward = 0
+gamma = 0.99
 
 # 在循环内部，智能体切断传感器，完全靠神经网络在时间轴上向未来延展梦境
 for t in range(horizon):
@@ -212,7 +260,7 @@ for t in range(horizon):
     # 世界引擎承接动作，演化出下一步的时空状态和奖励
     h_t, z_t, reward = rssm.step(action, h_t, z_t)
 
-    total_predicted_reward = total_predicted_reward + reward
+    total_predicted_reward = total_predicted_reward + (gamma ** t) * reward
 
 # 计算策略目标，我们期望最大化梦境中的总期望奖励
 # 由于需要执行梯度下降，这里直接取负值作为损失函数
@@ -220,17 +268,17 @@ loss = -total_predicted_reward.mean()
 
 # 清空梯度
 optimizer.zero_grad()
-# 解析梯度可以直接通过整个循环的 15 步动态推演链条，精确定位到策略网络的参数上！
+# 梯度沿固定世界模型中的15步想象轨迹传回策略参数
 loss.backward()
 optimizer.step()
 
-print("梦境推演与策略反向传播完成！")
+print("想象轨迹与策略反向传播完成")
 ```
 
-观察上述代码中 `loss.backward()` 这一震撼人心的调用。世界模型的绝对威力就在于：环境反馈的采样瓶颈被优雅地转化为张量的连乘运算。智能体的实体骨骼和马达并未在物理世界中移动分毫，它仅仅依靠神经网络中参数矩阵的激活与流转，就历经了动作执行后引发的未来时空演化，并以最高效的梯度下降法优化了自身的控制行为。
+`loss.backward()` 沿想象轨迹把预测回报对动作的影响传回 actor。示例省略了后验编码器、观测解码器、critic、continuation 模型和 $\lambda$-return，也没有展示世界模型训练，因此它只说明路径梯度的计算图，而不是完整 Dreamer 实现。
 
 ## 小结
 
-- **具身控制的世界模型闭环**完整涵盖了观测降维、序列动态预测以及隐空间内的极速策略规划三个步骤。
-- **循环状态空间模型（RSSM）**通过结构上解耦确定性历史状态传递与随机状态建模，完美契合了复杂物理系统的动态时序规律。
-- 将环境转移严格建模为可微分的网络架构的最大红利在于，在策略求解阶段，算法脱离了方差巨大的采样估算，实现了微积分层面的**“解析梯度”反向传播**，极大提升了训练样本效率。
+- 世界模型闭环包含真实观测编码、潜在动力学学习、想象轨迹和真实环境再校正。
+- **RSSM** 用确定性状态汇总历史，用随机状态表示条件不确定性；这种结构是否合适要由预测与控制结果检验。
+- 对连续、可重参数化的想象轨迹，可以用路径梯度训练 actor。它减少真实交互，却仍受模型偏差、价值估计和分布外轨迹影响。

@@ -1,14 +1,30 @@
 # 基于 JEPA 的视觉-语言-动作模型（VLA-JEPA/WAM）
 
-在具身智能（Embodied AI）与机器人控制的演进历程中，如何让系统不仅能“感知”当前状态，还能理解物理世界的运作规律并据此做出精准的“动作预测”，一直是学术界的核心难题。传统端到端行为克隆（Behavior Cloning）往往缺乏对环境未来动态的前瞻能力，而基于生成式模型（如扩散模型或自动编码器）的世界模型则倾向于在像素级别进行严苛的重构验证。然而，真实世界充满了高度的偶然认知不确定性（Aleatoric Uncertainty）——风吹动的树叶、水面的反光、相机镜头的噪点。将宝贵的网络容量和算力浪费在预测这些与任务本身毫无关联的视觉高频细节上，从信息论的角度看是极为低效的。
+机器人推开抽屉时，真正影响动作的是把手位置、机械臂姿态和抽屉的运动状态；光照闪烁或背景里晃动的树叶通常不是控制目标。像素生成式世界模型需要预测大量视觉细节，而 JEPA 路线尝试改在表征空间预测未来，让模型有机会把容量集中到更稳定的结构上。这里的“有机会”很重要：网络不会仅凭架构就自动忽略所有无关信息。
 
 2022 年，Yann LeCun 系统阐述了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）[[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)，主张在表征空间中预测与任务有关的信息。V-JEPA 随后把这一思路用于视频表征学习 [[Bardes et al., 2024]](https://arxiv.org/abs/2404.08471)。把预测状态与生成动作结合的机器人模型仍是快速演进中的研究范式；“World Action Model（WAM）”是对多种相关架构的统称，而不是 V-JEPA 论文定义的单一标准模型 [[Wang et al., 2026]](https://arxiv.org/abs/2605.12090)。本节中的“VLA-JEPA”因此表示一种教学性的组合设计，不声称复现某篇同名论文。
 
-本节将从经典力学中的系统状态变量建模起步，严格推导 VLA-JEPA 的数学体系与优化博弈机制，并展示如何用这一架构为机器人构建一个既严谨又极其高效的策略大脑。
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/09-vla-jepa-wam/wam-fig1.png" alt="WAM 谱系图把显式、隐式、扩散式与联合 WAM 放入统一历史坐标。" width="86%">
+
+_图 7.9-1：WAM 谱系图把显式、隐式、扩散式与联合 WAM 放入统一历史坐标。 出处：[World Action Models: The Next Frontier in Embodied AI，Siyin Wang et al.，2026](https://arxiv.org/abs/2605.12090)。_
+
+</div>
+
+本节从经典力学的状态变量出发，构造一个用于教学的动作条件 JEPA，并说明目标编码器、预测器和 EMA 更新各自解决什么问题。
 
 ## 从经典力学状态空间到隐变量抽象
 
-为了深刻理解 JEPA 在数学上所追求的终极目标，我们暂且抛开深层神经网络的参数矩阵，回到经典力学中最基础的系统状态建模。
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/09-vla-jepa-wam/vjepa-fig1.png" alt="V-JEPA 的特征预测与冻结评估说明隐空间预测为何可避开像素细节。" width="86%">
+
+_图 7.9-2：V-JEPA 的特征预测与冻结评估说明隐空间预测为何可避开像素细节。 出处：[Revisiting Feature Prediction for Learning Visual Representations from Video，Adrien Bardes et al.，2024](https://arxiv.org/abs/2404.08471)。_
+
+</div>
+
+先从经典力学的状态建模理解“预测表征而非像素”的动机。
 
 在牛顿力学中，假设我们在考察一个质点在三维空间中的抛体运动。尽管质点可能由数以亿计的原子构成，或者它在不同的光照下呈现出截然不同的视觉反光，但我们要预测它在时间 $\Delta t$ 之后的空间演变，只需要抽取极少数的几个本质物理量：初始位置向量 $\mathbf{p}_0 \in \mathbb{R}^3$ 和速度向量 $\mathbf{v}_0 \in \mathbb{R}^3$。
 
@@ -18,13 +34,21 @@ $$
 \mathbf{p}_1 = \mathbf{p}_0 + \mathbf{v}_0 \Delta t + \frac{1}{2} \left( \mathbf{g} + \frac{\mathbf{F}}{m} \right) \Delta t^2
 $$
 
-在该公式中，$(\mathbf{p}_0, \mathbf{v}_0, m)$ 构成了这个物理系统的一组**完备的隐状态抽象**。在这个低维度的流形（Manifold）上，未来的演变仅仅是当前状态与外部动作的代数函数，而无需关心质点表面的微观纹理。
+在质量 $m$、重力和外力都已知的这个简化模型里，$(\mathbf{p}_0, \mathbf{v}_0)$ 足以预测下一时刻；若空气阻力或接触条件未知，状态还需要补充。低维状态的意义，是保留预测所需变量，而不是复现质点表面的纹理。
 
-在具身机器人的 VLA 任务中，我们面临着完全等价的拓扑映射挑战。机器人无法直接获取环境完美的物理状态向量。它只能接收到维度极高的传感器观测数据矩阵 $\mathbf{X}_t \in \mathbb{R}^{H \times W \times C}$（高度、宽度及颜色通道）。同时，其任务意图并不总是简单的力学方程，而是由高维离散的自然语言指令序列 $l$ 所定义。
+具身机器人的学习问题只在“从高维观测提取可预测状态”这一点上与它相似，并不与理想质点模型等价。机器人通常从图像 $\mathbf{X}_t \in \mathbb{R}^{H \times W \times C}$ 和本体传感器估计环境状态，任务目标还可能由语言指令 $l$ 给出。
 
 本节构造的教学模型使用深层神经网络把观测 $\mathbf{X}_t$ 映射到低维向量，并在该空间内做动作条件预测。这个向量是否真的等价于完整物理状态，必须通过探针、下游控制与反事实实验验证，不能由网络结构本身保证。
 
 ## VLA-JEPA 的数学体系基础
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/09-vla-jepa-wam/wam-fig2.png" alt="WAM 路线图按表征、架构、学习与评估拆解动作世界模型的设计空间。" width="86%">
+
+_图 7.9-3：WAM 路线图按表征、架构、学习与评估拆解动作世界模型的设计空间。 出处：[World Action Models: The Next Frontier in Embodied AI，Siyin Wang et al.，2026](https://arxiv.org/abs/2605.12090)。_
+
+</div>
 
 为了实现上述构想，VLA-JEPA 定义了一套由三个核心神经网络模块组成的数学闭环：上下文编码器（Context Encoder）$E_\theta$、目标编码器（Target Encoder）$E_{\bar{\theta}}$ 和预测器（Predictor）$P_\phi$。
 
@@ -36,7 +60,7 @@ $$
 \mathbf{s}_t = E_\theta(\mathbf{X}_t, \mathbf{l}), \quad \mathbf{s}_t \in \mathbb{R}^{D_s}
 $$
 
-这里，$D_s$ 表示隐空间的特征维度。$\mathbf{s}_t$ 是一个高度浓缩的张量，它剔除了所有无助于任务规划的背景高频噪声，仅保留了物体的位姿、机械臂的空间距离以及语义交互焦点。
+这里，$D_s$ 是隐空间维度。训练目标希望 $\mathbf{s}_t$ 保留有助于未来预测的结构，但它究竟编码了物体位姿、背景还是其他统计线索，需要额外实验验证。
 
 类似地，环境在下一个时间步（或未来第 $k$ 步）的真实观测 $\mathbf{X}_{t+1}$ 被馈入目标编码器 $E_{\bar{\theta}}$，产生目标隐状态 $\bar{\mathbf{s}}_{t+1}$：
 
@@ -44,11 +68,19 @@ $$
 \bar{\mathbf{s}}_{t+1} = E_{\bar{\theta}}(\mathbf{X}_{t+1}, \mathbf{l}), \quad \bar{\mathbf{s}}_{t+1} \in \mathbb{R}^{D_s}
 $$
 
-(**请严谨区分目标编码器参数 $\bar{\theta}$ 与上下文编码器参数 $\theta$**)。在 VLA-JEPA 中，由于其非对比学习的底层逻辑，$\bar{\theta}$ 绝不是通过梯度反向传播直接优化的独立变量。
+目标编码器参数 $\bar{\theta}$ 与上下文编码器参数 $\theta$ 的更新方式不同：前者不接受当前损失的反向传播，而由后者的指数移动平均更新。
 
 ### 2. 隐空间上的预测闭环
 
 当系统获取了当前时刻的隐状态 $\mathbf{s}_t$ 后，机器人执行了特定的多维连续动作 $\mathbf{a}_t \in \mathbb{R}^{D_a}$（例如 $SE(3)$ 空间内的末端执行器位姿增量与夹爪开合度）。预测器 $P_\phi$ 则充当了该公式中物理方程的角色，负责在隐空间内进行时间向前的动态推演：
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/09-vla-jepa-wam/wam-fig4.png" alt="世界模型可分别支持 VLA 模仿、强化学习、奖励建模与策略评估。" width="86%">
+
+_图 7.9-4：世界模型可分别支持 VLA 模仿、强化学习、奖励建模与策略评估。 出处：[World Action Models: The Next Frontier in Embodied AI，Siyin Wang et al.，2026](https://arxiv.org/abs/2605.12090)。_
+
+</div>
 
 $$
 \hat{\mathbf{s}}_{t+1} = P_\phi(\mathbf{s}_t, \mathbf{a}_t), \quad \hat{\mathbf{s}}_{t+1} \in \mathbb{R}^{D_s}
@@ -59,16 +91,14 @@ $$
 在定义了架构之后，我们自然需要衡量预测与真实目标之间的差距。在欧几里得隐空间中，最直接的损失度量是预测向量 $\hat{\mathbf{s}}_{t+1}$ 与目标向量 $\bar{\mathbf{s}}_{t+1}$ 之间的均方误差（MSE）：
 
 $$
-\mathcal{L}_{MSE}(\theta, \phi) = \frac{1}{D_s} \sum_{i=1}^{D_s} \left( \hat{\mathbf{s}}_{t+1}^{(i)} - \bar{\mathbf{s}}_{t+1}^{(i)} \right)^2 = \left\| P_\phi(E_\theta(\mathbf{X}_t, \mathbf{l}), \mathbf{a}_t) - E_{\bar{\theta}}(\mathbf{X}_{t+1}, \mathbf{l}) \right\|_2^2
+\mathcal{L}_{MSE}(\theta, \phi) = \frac{1}{D_s} \sum_{i=1}^{D_s} \left( \hat{\mathbf{s}}_{t+1}^{(i)} - \bar{\mathbf{s}}_{t+1}^{(i)} \right)^2 = \frac{1}{D_s}\left\| P_\phi(E_\theta(\mathbf{X}_t, \mathbf{l}), \mathbf{a}_t) - E_{\bar{\theta}}(\mathbf{X}_{t+1}, \mathbf{l}) \right\|_2^2
 $$
 
-然而，在该公式中潜藏着一个致命的优化陷阱，学术界称之为**特征坍缩（Feature Collapse）**。
+这个目标存在一个需要防范的退化解，称为**特征坍缩（Feature Collapse）**。
 
-由于 $E_\theta$, $E_{\bar{\theta}}$ 和 $P_\phi$ 都是参数化的、可自由更新的神经网络算子，如果允许网络通过梯度下降自由地最小化该损失，优化器将会迅速发现一条最省力的拓扑“捷径”：使得编码器对于任意输入的 $\mathbf{X}$ 均输出零向量（即 $\mathbf{s}_t = \mathbf{0}, \bar{\mathbf{s}}_{t+1} = \mathbf{0}$），且预测器恒等输出零向量。此时损失函数瞬间归零，但整个特征空间坍缩到了一个奇异的质点上，失去了任何表达环境演变的能力。
+如果两个编码器和预测器都直接追随同一个 MSE 目标，常量表示也是一个零损失解：任意输入都映射到同一向量，预测器再输出同一向量。此时损失很小，但表示不再区分环境状态。训练是否真的走向该解取决于架构和优化过程，不能简单断言会“迅速归零”。
 
-> 💡 **不对称知识蒸馏的博弈论视角**
->
-> 我们可以将这种架构看作一场师生间的知识博弈。如果教师（目标编码器）和学生（上下文编码器与预测器）同时看着同一本无字的答案书，并且都被允许修改答案书的内容来证明“我们达成了一致”，那么最快达成一致的方法就是双双把书撕掉（坍缩为零）。为了防止这种情况，必须强制要求“教师的知识必须是过去历史中稳定积累的，且在此刻不可被随意篡改”。
+上下文编码器与预测器接受梯度，目标编码器只缓慢跟随在线编码器，这种更新不对称使预测目标在单个训练步内保持固定。
 
 为降低退化到平凡解的风险，本节采用 I-JEPA 风格的不对称参数更新。**上下文编码器 $\theta$ 与预测器 $\phi$ 通过梯度反向传播更新：**
 
@@ -80,13 +110,30 @@ $$
 
 $$
 \bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta
+
 $$
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/latex/09-vla-jepa-wam/ema-target-update.png" alt="旧目标参数和在线参数按 EMA 权重合成新目标参数" width="86%">
+
+_图 7.9-5：目标参数不由当前损失反向更新，而是把旧目标与当前在线参数按 τ 和 1−τ 做跨步平滑。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
 
 其中衰减率参数 $\tau \in [0.99, 1)$。$\bar{\theta}$ 提供随时间缓慢变化的目标，经验上有助于稳定训练。它与停止梯度、预测器和数据掩码共同降低坍塌风险，但不能单独给出“不发生坍塌”的数学保证。
 
 ## 基于 Transformer 的架构映射
 
 在现代实现中，上述的向量表示通常会被延展为 Transformer 架构下的序列张量。假设输入图像通过 ViT（Vision Transformer）被切分为 $N$ 个不重叠的图块（Patch），时间窗口长度为 $T$。
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/09-vla-jepa-wam/wam-fig5.png" alt="级联 WAM 的显式动作、隐式动作与几何提取三种结构承担不同接口角色。" width="86%">
+
+_图 7.9-6：级联 WAM 的显式动作、隐式动作与几何提取三种结构承担不同接口角色。 出处：[World Action Models: The Next Frontier in Embodied AI，Siyin Wang et al.，2026](https://arxiv.org/abs/2605.12090)。_
+
+</div>
 
 设视觉观测张量 $\mathcal{X} \in \mathbb{R}^{T \times N \times D_{patch}}$，语言嵌入张量 $\mathcal{L} \in \mathbb{R}^{M \times D_{lang}}$（其中 $M$ 为语言指令的分词长度）。
 在上下文编码器 $E_\theta$ 中，视觉和语言张量经过线性投影对齐维度后，会沿着序列维度拼接。多头自注意力机制（Self-Attention）将负责在它们之间建立密集的语义交互：
@@ -95,12 +142,12 @@ $$
 \mathcal{S} = \text{Softmax}\left( \frac{\mathcal{Q} \mathcal{K}^T}{\sqrt{d_k}} \right) \mathcal{V}
 $$
 
-其中 $\mathcal{Q}$ 通常来自于视觉 Token，而 $\mathcal{K}, \mathcal{V}$ 则由视觉与语言 Token 的联合拼接提供。经过多层 Transformer 块处理后，输出的时空融合状态 $\mathbf{S}_t \in \mathbb{R}^{N \times D_s}$ 成为隐空间的严谨表达。
+在一种可选的交叉注意力实现中，$\mathcal{Q}$ 来自视觉词元，$\mathcal{K},\mathcal{V}$ 来自视觉与语言词元。具体来源取决于网络设计，公式本身并不限定它们。多层 Transformer 输出时空融合状态 $\mathbf{S}_t \in \mathbb{R}^{N \times D_s}$。
 同理，预测器 $P_\phi$ 也是一个多层因果 Transformer。连续动作向量 $\mathbf{a}_t$ 首先经过多层感知机（MLP）编码为动作 Token，并作为额外的序列元素前置于状态序列 $\mathbf{S}_t$。因果掩码（Causal Mask）保证了模型只能严格利用 $t$ 及之前的状态和动作来推演 $t+1$ 时刻的隐状态分布。
 
 ## 代码实现
 
-现在，让我们利用严谨的面向对象思想，将 VLA-JEPA 的上述数学推导一一落实到代码中。注意我们如何利用 `torch.no_grad()` 阻断目标编码器的梯度，并显式实现参数的 EMA 动量更新。
+下面的代码只保留 MLP 编码器、动作条件预测器和 EMA 更新，以便看清计算图。它不是前文 Transformer 架构的复现。
 
 ```python
 import torch
@@ -225,4 +272,4 @@ class VLA_JEPA(nn.Module):
 
 ## 小结
 
-在本节中，我们详尽推导了基于 JEPA 架构的**视觉-语言-动作模型**。不同于传统的端到端控制或者深度依赖像素重构的扩散生成模型，VLA-JEPA 坚守了“在高度抽象的隐空间内预测事物物理本质”的设计信念。通过精心引入参数的**不对称 EMA 更新机制**，该架构从纯数学角度严谨地规避了表征空间的**特征坍缩**问题，构建了一个极具鲁棒性的世界模型。对于面临复杂随机环境的具身智能体而言，这种机制使其能够果断剔除无关的高频环境噪声，将最为核心的网络计算资源全部投入到环境语义与系统动力学的核心规律学习中。
+本节的 VLA-JEPA 是一个教学组合：上下文编码器从图像与语言得到状态表征，动作条件预测器预测未来表征，目标编码器由 EMA 更新。表征空间预测可以避免逐像素重构，但不会自动得到“物理本质”，也不会自动滤除全部背景。EMA、停止梯度、预测器和数据设计共同降低坍塌风险；最终仍要用下游控制、表征探针和反事实测试验证模型学到了什么。
