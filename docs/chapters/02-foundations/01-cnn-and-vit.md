@@ -1,4 +1,4 @@
-# 视觉基础模型：从卷积神经网络到视觉变换器
+# 2.1 视觉基础模型：从卷积神经网络到视觉变换器
 
 > **本章导读**
 >
@@ -12,9 +12,23 @@
 
 在计算机视觉的发展中，手工特征与神经网络曾长期并行演进。LeCun 等人的早期卷积网络已能从数据中学习用于手写数字识别的特征 [[LeCun et al., 1989]](https://doi.org/10.1162/neco.1989.1.4.541)；2012 年，AlexNet 又在 ImageNet 分类任务上显著降低了错误率 [[Krizhevsky et al., 2012]](https://proceedings.neurips.cc/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html)。这两项工作分别展示了卷积网络的早期可行性与大规模视觉任务上的突破。
 
-CNN 的成功很大程度上归功于其内置的**归纳偏置**（Inductive Bias）——特别是**平移不变性**（Translation Invariance）和**局部性**（Locality）。这些偏置使得 CNN 能够在相对较少的数据集上高效学习。然而，随着数据规模的指数级增长和计算能力的提升，研究人员开始质疑这种强偏置是否限制了模型的上限。
+<div align="center">
+  <img src="/figures/02-foundations/source/01-cnn-and-vit/lenet-fig2.png" alt="LeNet-5 的完整识别流水线把局部感受野、共享特征图和逐级下采样连接到最终分类。" width="86%">
+
+_图 2.1-1：LeNet-5 的完整识别流水线把局部感受野、共享特征图和逐级下采样连接到最终分类。 出处：Yann LeCun; Léon Bottou; Yoshua Bengio; Patrick Haffner，[Gradient-Based Learning Applied to Document Recognition](https://leon.bottou.org/papers/lecun-98h)（1998），Figure 2。_
+
+</div>
+
+CNN 的成功很大程度上归功于其内置的**归纳偏置**（Inductive Bias），尤其是局部连接与权重共享。严格地说，卷积层首先带来的是**平移等变性**（Translation Equivariance）：输入发生平移时，特征图会相应平移；经过池化或全局聚合后，整个网络才可能获得一定程度的平移不变性。这些偏置让 CNN 能用较少参数学习图像结构，也使它在数据量有限时通常更容易训练。
 
 2020 年，Dosovitskiy 等人提出视觉变换器（Vision Transformer, ViT） [[Dosovitskiy et al., 2020]](https://arxiv.org/abs/2010.11929)，这一工作沿用了自然语言 Transformer 的序列建模结构 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762)。ViT 将图像分割为一系列小块（Patches），再用自注意力聚合全局信息。原论文报告，在足够大规模的数据上预训练后，ViT 在多项图像分类基准上达到或超过当时的卷积网络基线；这项结论依赖论文中的预训练规模和评测设置。
+
+<div align="center">
+  <img src="/figures/02-foundations/source/01-cnn-and-vit/vit-fig1.png" alt="ViT 总览展示图像块经线性嵌入和位置编码后进入标准 Transformer 编码器的完整路径。" width="86%">
+
+_图 2.1-2：ViT 总览展示图像块经线性嵌入和位置编码后进入标准 Transformer 编码器的完整路径。 出处：Alexey Dosovitskiy et al.，[An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale](https://arxiv.org/abs/2010.11929)（2021），Figure 1。_
+
+</div>
 
 在本章中，我们将从最基础的数学定义出发，逐步推导并实现这两种奠定了现代视觉基础模型地位的核心架构。
 
@@ -29,11 +43,11 @@ $$
 h_{i, j} = \sum_{k=1}^{H} \sum_{l=1}^{W} W_{i, j, k, l} x_{k, l} + b_{i, j}
 $$
 
-在这里，权重 $\mathbf{W}$ 是一个四阶张量，包含 $(H \times W) \times (H \times W)$ 个参数。对于一张仅仅是 $1000 \times 1000$ 像素的图像，这个全连接层的权重参数量将达到惊人的 $10^{12}$，这不仅会耗尽任何现代计算机的内存，更会导致模型极易过拟合。
+在这里，权重 $\mathbf{W}$ 是一个四阶张量，包含 $(H \times W) \times (H \times W)$ 个参数。在这个“输入与输出空间尺寸相同、且都只有一个通道”的简化例子中，$1000 \times 1000$ 像素就对应 $10^{12}$ 个权重。实际网络还要计入输入、输出通道，因此直接用全连接映射处理高分辨率图像通常并不现实。
 
 为了减少参数并利用图像的内在几何结构，我们引入两个重要的原则：
 
-1. **平移不变性**：在图像中，一个物体无论出现在左上角还是右下角，模型对其特征的响应机制应该是相同的。这意味着权重张量 $\mathbf{W}$ 不应该依赖于输出的绝对物理位置 $(i, j)$，而只应该依赖于输入和输出位置的相对偏移量。我们令 $k = i + a$ 和 $l = j + b$，则权重可以严格重写为 $V_{a, b} = W_{i, j, i+a, j+b}$。
+1. **平移等变性**：同一种局部模式出现在不同位置时，卷积核使用同一组参数进行检测。权重张量 $\mathbf{W}$ 因而不再依赖输出的绝对位置 $(i, j)$，而只依赖输入与输出之间的相对偏移。令 $k = i + a$、$l = j + b$，可写成 $V_{a, b} = W_{i, j, i+a, j+b}$。
 2. **局部性**：图像中的像素通常只与其周围邻近的像素有较强的物理和统计相关性。因此，我们在计算 $h_{i,j}$ 时，只需考察距离 $(i,j)$ 较近的输入像素，即限制偏移量 $a$ 和 $b$ 的范围在 $[-\Delta, \Delta]$ 之间。
 
 结合上述两个原则，该公式可以被极大地简化为：
@@ -54,9 +68,15 @@ $$
 h_{d, i, j} = \sum_{c=1}^{C_{in}} \sum_{a=-\Delta}^{\Delta} \sum_{b=-\Delta}^{\Delta} V_{d, c, a, b} x_{c, i+a, j+b} + b_d
 $$
 
+<div align="center"><img src="/figures/02-foundations/latex/01-cnn-and-vit/multichannel-conv-reduction.png" alt="每个输入通道的局部像素与对应卷积核切片相乘后，沿通道与空间偏移求和" width="86%">
+
+_图 2.1-3：固定输出通道与位置后，每个输入通道都有一片对应的卷积核；各通道的局部乘积最终归约为一个输出标量。本文根据上式绘制。_
+
+</div>
+
 此时，权重张量 $\mathbf{V}$ 的维度变为 $\mathbb{R}^{C_{out} \times C_{in} \times K_h \times K_w}$，其中 $K_h$ 和 $K_w$ 为卷积核的高度和宽度。这种多通道的卷积操作使得网络不仅能够捕获空间上的局部特征，还能够在通道维度融合更加抽象的信息。
 
-(**我们可以使用 PyTorch 来实现并观察一个多通道卷积层计算后的张量维度：**)
+下面用 PyTorch 检查一个多通道卷积层的输入、输出与权重形状。
 
 ```python
 import torch
@@ -79,6 +99,13 @@ print(f"权重形状: {conv_layer.weight.shape}")
 
 随着网络层数增加，简单堆叠网络可能出现训练误差反而升高的退化问题。He 等人提出残差网络，并用恒等快捷连接使网络学习残差函数；原论文展示了这种结构能够训练更深的图像分类网络 [[He et al., 2015]](https://arxiv.org/abs/1512.03385)。这项引用直接支持退化问题与残差结构，不应笼统表述为解决了所有梯度消失问题。
 
+<div align="center">
+  <img src="/figures/02-foundations/source/01-cnn-and-vit/resnet-fig2.png" alt="ResNet 的原始残差块让两层权重映射学习 F(x)，再由恒等捷径与输入 x 相加。" width="86%">
+
+_图 2.1-4：ResNet 的原始残差块让两层权重映射学习 F(x)，再由恒等捷径与输入 x 相加。 出处：Kaiming He; Xiangyu Zhang; Shaoqing Ren; Jian Sun，[Deep Residual Learning for Image Recognition](https://arxiv.org/abs/1512.03385)（2016），Figure 2。_
+
+</div>
+
 ### 残差连接的数学机制
 
 假设我们将网络中的某个块（由若干个卷积层组成）拟合为一个非线性映射 $\mathcal{F}(\mathbf{x})$。在传统的网络设计中，该块的输出直接就是 $\mathcal{F}(\mathbf{x})$。然而，ResNet 引入了一个严格的跳跃连接（Skip Connection），要求该网络块去拟合残差映射 $\mathcal{F}(\mathbf{x}) = \mathcal{H}(\mathbf{x}) - \mathbf{x}$，因此其实际输出变为了：
@@ -93,9 +120,9 @@ $$
 \frac{\partial \mathcal{L}}{\partial \mathbf{x}} = \frac{\partial \mathcal{L}}{\partial \mathbf{y}} \frac{\partial \mathbf{y}}{\partial \mathbf{x}} = \frac{\partial \mathcal{L}}{\partial \mathbf{y}} \left( \frac{\partial \mathcal{F}(\mathbf{x})}{\partial \mathbf{x}} + \mathbf{I} \right)
 $$
 
-这里的 $\mathbf{I}$ 是单位矩阵。该公式揭示了残差网络为何能够避免梯度消失的核心数学机制：由于加法项 $\mathbf{I}$ 的存在，即使在极深的网络中梯度 $\frac{\partial \mathcal{F}}{\partial \mathbf{x}}$ 趋近于零（即经过多次卷积导致信号衰减），由后方传来的梯度 $\frac{\partial \mathcal{L}}{\partial \mathbf{y}}$ 也总能通过单位矩阵直接、无损地传递回上一层，保证了底层网络参数的有效更新。
+这里的 $\mathbf{I}$ 是单位矩阵。它为梯度提供了一条较短的恒等路径，使残差分支不必独自承担整个映射。不过，这并不保证梯度在任意深度下都“无损”传播：多层 Jacobian 的组合、归一化方式和优化状态仍会影响梯度大小。残差连接更准确的作用，是显著改善深层网络的信号与梯度传播条件。
 
-(**下面我们实现一个标准的残差块：**)
+下面实现一个标准的残差块。
 
 ```python
 class ResidualBlock(nn.Module):
@@ -133,7 +160,7 @@ class ResidualBlock(nn.Module):
 
 ## 视觉变换器 (Vision Transformer, ViT)
 
-虽然卷积在提取局部特征上极其高效，但要捕获距离较远的两个像素之间的关联，CNN 需要堆叠非常深的层，使得其感受野（Receptive Field）能够扩大到覆盖整个图像。相比之下，视觉变换器（ViT）摒弃了局部性假设，通过自注意力机制一步到位地建立了全局依赖。
+卷积擅长提取局部模式；若要让相距较远的位置相互影响，CNN 通常需要通过多层堆叠逐步扩大感受野。ViT 则把图像变成词元序列，使每一层的自注意力都能在全局范围内交换信息。它并非完全“摒弃局部性”：图像块大小、训练增强与后续结构仍会引入不同程度的局部偏置。
 
 ### 图像块的嵌入与序列化
 
@@ -147,9 +174,9 @@ $$
 \mathbf{z}_0 = [\mathbf{x}_{class}; \, \mathbf{x}_{p}^1 \mathbf{E}; \, \mathbf{x}_{p}^2 \mathbf{E}; \, \dots; \, \mathbf{x}_{p}^N \mathbf{E}] + \mathbf{E}_{pos}
 $$
 
-在这里，$\mathbf{x}_{class} \in \mathbb{R}^{1 \times D}$ 是一个特殊的可学习向量，被称为分类标记（Class Token），它的最终输出状态将被用作整个图像的全局聚合表示。$\mathbf{E}_{pos} \in \mathbb{R}^{(N+1) \times D}$ 则是位置编码矩阵。与 CNN 固有的位置敏感性不同，Transformer 架构及其基于点积的注意力机制本身是对序列元素的绝对排列位置不可知的（Permutation Invariant）。如果不显式地注入位置信息，模型将无法分辨图像块的相对空间关系。
+在这里，$\mathbf{x}_{class} \in \mathbb{R}^{1 \times D}$ 是一个特殊的可学习向量，被称为分类标记（Class Token），它的最终输出状态将被用作整个图像的全局聚合表示。$\mathbf{E}_{pos} \in \mathbb{R}^{(N+1) \times D}$ 则是位置编码矩阵。不含位置编码的自注意力对词元排列是置换等变的：打乱输入词元，输出也会按同样方式打乱。ViT 因此需要显式加入位置表示；它可以是可学习的位置嵌入，也可以采用正弦编码或相对位置偏置等形式。
 
-(**在 PyTorch 中，我们可以使用步幅等于卷积核大小的普通卷积操作，以极其高效且数学上等价的方式实现块嵌入：**)
+在 PyTorch 中，使用“卷积核大小等于步幅”的卷积即可实现不重叠的块嵌入。
 
 ```python
 class PatchEmbedding(nn.Module):
@@ -183,7 +210,7 @@ $$
 s_{i,j} = \mathbf{q}_i \cdot \mathbf{k}_j^T = \sum_{d=1}^{D_h} q_{i,d} k_{j,d}
 $$
 
-由于内积的值域会随着特征维度 $D_h$ 的增加而呈指数级剧烈波动，这将导致后续的 Softmax 激活函数迅速进入梯度极小饱和区（即梯度趋近于零），因此我们必须引入缩放因子 $\sqrt{D_h}$。随后使用 Softmax 函数对得分进行概率归一化，得到注意力权重：
+若查询和键的各维分量近似独立、方差相近，内积的方差会随维度 $D_h$ 线性增长。除以 $\sqrt{D_h}$ 可把得分尺度保持在较稳定的范围，避免 Softmax 过早变得尖锐。随后对缩放后的得分归一化，得到注意力权重：
 
 $$
 \alpha_{i,j} = \frac{\exp(s_{i,j} / \sqrt{D_h})}{\sum_{m=1}^{N+1} \exp(s_{i,m} / \sqrt{D_h})}
@@ -207,7 +234,7 @@ $$
 在极端复杂的长程依赖建模中，自注意力机制在物理上可被看作一种“基于内容的全局软寻址系统”：查询 $\mathbf{Q}$ 在全图范围内并发检索与其高度匹配的键 $\mathbf{K}$，并在建立高概率连接后提取并融合对应的值 $\mathbf{V}$。这与 CNN 通过卷积核感受野在固定网格上层层向上传递局部信号的机制有着根本性的不同。
 :::
 
-(**下面是包含多头注意力与前馈网络的 ViT 编码器块的核心实现：**)
+下面是包含多头注意力与前馈网络的 ViT 编码器块核心实现。
 
 ```python
 class ViTBlock(nn.Module):
@@ -239,4 +266,4 @@ class ViTBlock(nn.Module):
 
 ## 小结
 
-在本章中，我们详尽探讨了现代计算机视觉中两大至关重要的基础模型架构。**卷积神经网络（CNN）**通过严格的局部卷积操作和权重空间共享，确立了强大的**空间几何归纳偏置**，在中小规模数据集的训练中具有极高的参数效率与稳定性。**视觉变换器（ViT）**则打破了局部网格感受野的限制，通过将连续图像离散化建模为词元序列，并施加全局自注意力矩阵乘法运算，在全局特征的融合上展现出了无与伦比的上限。
+本节比较了两类常见的视觉骨干。**卷积神经网络（CNN）**通过局部连接与空间权重共享，以较少参数提取局部模式；**视觉变换器（ViT）**把图像分块为词元，并用自注意力直接聚合远距离信息。两者并非简单的替代关系：CNN 的局部偏置往往更节省数据，自注意力则提供更短的全局交互路径，但标准实现的注意力矩阵需要 $O(N^2)$ 的时间与内存。选择哪一种结构，要结合数据规模、分辨率和计算预算。

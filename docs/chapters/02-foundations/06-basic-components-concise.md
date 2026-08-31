@@ -1,16 +1,30 @@
 # 2.6 基础模块的简洁实现
 
-在深度学习的早期探索阶段，研究人员常常需要耗费大量精力去手动计算网络层间的导数，并使用底层的语言（如 C 或 CUDA）实现每一个算子的前向和反向传播代码。这种极具侵入性的工程负担在很大程度上阻碍了算法的快速迭代。随着现代深度学习框架 PyTorch [[Paszke et al., 2019]](https://proceedings.neurips.cc/paper/2019/hash/bdbca288fee7f92f2bfa9f7012727740-Abstract.html) 的逐渐成熟，计算图抽象与自动微分机制使得深度神经网络的开发变得像搭积木一样自然。
+早期神经网络系统常要求研究者自行实现许多算子的前向与反向计算。PyTorch 等现代框架 [[Paszke et al., 2019]](https://proceedings.neurips.cc/paper/2019/hash/bdbca288fee7f92f2bfa9f7012727740-Abstract.html) 用张量算子、计算图和自动微分封装了这些重复工作，使模型代码可以更直接地表达数学结构。
 
-在上一节中，我们完全依赖基础的张量运算，从零开始完整地实现了一个线性模型。我们显式地完成了数据小批量的生成、模型参数的初始化、前向传播的矩阵乘法、损失函数的计算以及随机梯度下降的参数更新过程。虽然这种极其底层的实现方式赋予了我们对每一块内存空间和每一个梯度的绝对掌控力，但在实际的工业界应用与前沿学术研究中，我们绝不会反复去手写这些标准化的底层逻辑。
+<div align="center">
+  <img src="/figures/02-foundations/source/06-basic-components-concise/pytorch-fig1.png" alt="PyTorch 的原始执行轨迹显示 Python 主机控制流如何提前排队 GPU 算子，直观体现 eager 执行的运行时行为。" width="86%">
 
-本节我们将改变视角，站在高层抽象的维度，学习如何利用深度学习框架中的高级 API（应用程序编程接口）来实现基础的神经网络模块。我们将严格剖析数据管道、线性层、数值稳定的损失函数以及优化器在底层是如何被优雅地封装的。这不仅是为了教导大家如何“偷懒”，更是为了帮助我们理解现代深度学习框架背后的抽象哲学。
+_图 2.6-1：PyTorch 的原始执行轨迹显示 Python 主机控制流如何提前排队 GPU 算子，直观体现 eager 执行的运行时行为。 出处：Adam Paszke et al.，[PyTorch: An Imperative Style, High-Performance Deep Learning Library](https://proceedings.neurips.cc/paper/2019/hash/bdbca288fee7f92f2bfa9f7012727740-Abstract.html)（2019），Figure 1。_
+
+</div>
+
+上一节用基础张量操作显式实现了数据批处理、参数初始化、前向传播、损失和 SGD。本节改用框架提供的标准模块完成同一任务，同时保留对形状、归约方式和梯度状态的检查。
+
+我们依次使用数据迭代器、`nn.Linear`、损失函数和优化器，并说明每个封装隐藏了哪些数学步骤。
 
 ## 2.6.1 深度学习框架的演进与抽象哲学
 
-在讨论具体的代码实现之前，我们有必要先回顾一下深度学习框架的历史脉络。在早期，诸如 Theano [[Bergstra et al., 2010]](https://doi.org/10.25080/Majora-92bf1922-003) 和 Caffe [[Jia et al., 2014]](https://arxiv.org/abs/1408.5093) 等框架，要求用户在提供任何实际数据之前，先显式地、完全地定义出整个静态的符号计算图（Symbolic Computation Graph）。这种设计虽然能在编译期实现极致的硬件优化，但其僵化的设计使得控制流（如循环、条件分支）的实现极为痛苦，且调试过程如同黑盒一般。
+Theano [[Bergstra et al., 2010]](https://doi.org/10.25080/Majora-92bf1922-003) 以符号表达式构建并编译计算图，Caffe [[Jia et al., 2014]](https://arxiv.org/abs/1408.5093) 则以网络层和配置驱动模型定义。这类设计便于统一优化执行计划，但对数据依赖控制流和交互式调试不够直接。
 
-如今以 PyTorch 为代表的动态计算图（Dynamic Computation Graph，即 Eager Execution）框架，则采用了完全不同的哲学。它允许我们在执行普通的宿主语言（如 Python）控制流的同时，在后台隐式地构建计算图。这种机制意味着每一次前向传播都会实时生成一个新的计算图，极大地释放了表达能力。我们将在本节中看到，如何利用这种动态性，通过高层抽象类（如 `nn.Module`）来将复杂的数据流与参数管理解耦。
+<div align="center">
+  <img src="/figures/02-foundations/source/06-basic-components-concise/theano-fig2.png" alt="Theano 原论文用符号变量、损失与梯度更新代码展示先定义计算图再编译执行的静态工作流。" width="86%">
+
+_图 2.6-2：Theano 原论文用符号变量、损失与梯度更新代码展示先定义计算图再编译执行的静态工作流。 出处：James Bergstra et al.，[Theano: A CPU and GPU Math Compiler in Python](https://www.iro.umontreal.ca/~lisa/pointeurs/theano_scipy2010.pdf)（2010），Figure 2。_
+
+</div>
+
+PyTorch 的 eager 执行允许普通 Python 控制流参与前向计算，并为实际执行的张量操作记录自动微分图。现代框架也常结合图捕获或编译优化，因此“静态”与“动态”更像一组实现权衡，而不是互斥阵营。
 
 ## 2.6.2 数据处理的管道化：从数组到迭代器
 
@@ -26,11 +40,18 @@ $$
 L_B(\mathbf{\theta}) = \frac{1}{B} \sum_{i \in \mathcal{B}} l(f_{\mathbf{\theta}}(\mathbf{x}_i), y_i)
 $$
 
-由于 $\mathcal{B}$ 是从全量数据中均匀无放回抽样得到的子集，理论上小批量梯度的期望严格等于全量梯度，这就保证了优化的正确方向。
+若 $\mathcal{B}$ 从数据集中均匀抽样，并对批内损失取正确平均，则小批量梯度是全量平均梯度的无偏估计。单个批次仍含采样噪声，并不保证每一步都沿全量损失的下降方向。
 
 在框架中，数据的加载和批处理被抽象为了迭代器。我们只需要提供张量格式的数据，框架就会自动为我们处理打乱（Shuffle）和切片（Slicing）的逻辑。
 
-(**我们首先生成一些服从正态分布的合成数据，并将特征和标签打包成一个数据张量元组，交由数据管道进行管理。**)
+<div align="center">
+  <img src="/figures/02-foundations/source/06-basic-components-concise/caffe-fig1.png" alt="Caffe 的 MNIST 网络图把数据层、卷积与池化层、参数 blob 和损失层连接为显式训练管线。" width="86%">
+
+_图 2.6-3：Caffe 的 MNIST 网络图把数据层、卷积与池化层、参数 blob 和损失层连接为显式训练管线。 出处：Yangqing Jia et al.，[Caffe: Convolutional Architecture for Fast Feature Embedding](https://arxiv.org/abs/1408.5093)（2014），Figure 1。_
+
+</div>
+
+先生成合成数据，并用 `TensorDataset` 与 `DataLoader` 组成数据管道。
 
 ```python
 import torch
@@ -72,17 +93,17 @@ $$
 \mathbf{y} = \mathbf{x} \mathbf{W} + \mathbf{b}
 $$
 
-最终，为了充分利用 GPU 的海量并发计算单元，我们必须采用式该公式中提到的小批量形式。我们将 $n$ 个样本堆叠起来，形成输入设计矩阵 $\mathbf{X} \in \mathbb{R}^{n \times d}$。根据矩阵乘法的法则，输出张量 $\mathbf{Y}$ 的形状自然演变为 $n \times c$：
+为了批量计算，把 $n$ 个样本堆叠成输入矩阵 $\mathbf{X} \in \mathbb{R}^{n \times d}$。矩阵乘法后，输出 $\mathbf{Y}$ 的形状为 $n \times c$：
 
 $$
 \mathbf{Y} = \mathbf{X} \mathbf{W} + \mathbf{b}
 $$
 
-在式该公式中，矩阵 $\mathbf{X} \mathbf{W}$ 的形状为 $n \times c$，而偏置向量 $\mathbf{b}$ 的形状为 $1 \times c$。这里隐藏着深度学习框架中最关键的张量机制——**广播机制（Broadcasting）**。框架会自动将偏置向量 $\mathbf{b}$ 在第 $0$ 维度（样本维度）上复制 $n$ 次，使得两个张量的形状完全匹配后进行逐元素相加，这一切发生得既隐蔽又高效。
+上式中，$\mathbf{X}\mathbf{W}$ 的形状为 $n \times c$，偏置 $\mathbf{b}$ 的形状为 $1 \times c$。框架通过**广播（Broadcasting）**在样本维复用同一个偏置；概念上可视作复制 $n$ 次，实际实现通常不需要真的分配一份完整副本。
 
 在 PyTorch 中，上述整个维度的推导、权重的显存分配以及初始化逻辑，都被无缝封装在一个名为“全连接层”（Fully-Connected Layer）或“线性层”（Linear Layer）的抽象类中。
 
-(**我们使用`nn.Sequential`容器将多个神经网络层按顺序拼装，并向其中传入一个输入维度为 2、输出维度为 1 的线性层`nn.Linear`。**)
+这里用 `nn.Sequential` 包装一个输入维度为 2、输出维度为 1 的 `nn.Linear`。
 
 ```python
 # 构建模型：这里相当于 y = XW + b
@@ -110,25 +131,31 @@ $$
 l(\mathbf{y}, \mathbf{\hat{y}}) = - \sum_{j=1}^c y_j \log \hat{y}_j
 $$
 
-如果我们将式该公式代入式该公式，我们得到：
+把 Softmax 概率代入对数项可得：
 
 $$
 \log \hat{y}_j = o_j - \log \left( \sum_{k=1}^c \exp(o_k) \right)
 $$
 
-这就引出了严重的**数值溢出（Numerical Overflow/Underflow）**风险。在计算机中，浮点数的表达范围是有限的。假设在训练初期，某个逻辑值 $o_k$ 的数值因为梯度爆炸而变得非常大（例如 $o_k = 1000$）。当我们计算 $\exp(1000)$ 时，超出了单精度浮点数的上限，结果会变成 `NaN`（Not a Number）或 `Inf`。反之，如果 $o_k$ 全是巨大的负数，指数项会下溢为 $0$，此时计算 $\log(0)$ 得到负无穷大。
+浮点数的表示范围有限。若某个 $o_k$ 很大，例如 $1000$，直接计算 $\exp(1000)$ 通常会溢出为 `Inf`，后续的除法或对数还可能产生 `NaN`。若所有 logit 都是很大的负数，指数项又可能下溢为 $0$，使 $\log(0)$ 变成负无穷。
 
-现代深度学习框架通过优雅地合并 Softmax 和 Cross-Entropy 的计算，彻底解决了这个问题。框架在底层自动采用了 **LogSumExp 技巧**。我们在每次计算前，先找到当前逻辑值中的最大项 $M = \max(o_k)$，并在分子分母中同时提出 $\exp(M)$：
+常用实现会合并 Softmax 与交叉熵，并采用 **LogSumExp 技巧**。先取最大 logit $M = \max(o_k)$，再统一减去 $M$：
 
 $$
 \log \hat{y}_j = (o_j - M) - \log \left( \sum_{k=1}^c \exp(o_k - M) \right)
 $$
 
-通过式该公式的巧妙变换，最大的指数项被强制缩放为 $\exp(0) = 1$，从而绝不可能发生上溢；同时，因为至少存在一个项等于 $1$，求和项总大于等于 $1$，因此其对数运算也绝不会产生负无穷大。由于框架在底层的 C++ 算子级别实现了这一优化，开发者只需简单调用 `nn.CrossEntropyLoss()`，即可安全、高效地进行反向传播。
+<div align="center"><img src="/figures/02-foundations/latex/06-basic-components-concise/logsumexp-stabilization.png" alt="所有逻辑值减去最大值后，指数不超过一且指数和至少为一" width="86%">
+
+_图 2.6-4：统一减去最大 logit 不改变 Softmax 比例，却把最大指数固定为 1，并保证求和项不会变成 0。本文根据上式绘制。_
+
+</div>
+
+变换后最大的指数项为 $\exp(0)=1$，其他指数项都不超过 $1$，从而避免这一处的指数上溢；求和项至少为 $1$，也不会在此处出现 $\log 0$。极小项下溢为零通常只表示其概率贡献可忽略。`nn.CrossEntropyLoss()` 直接接收未经过 Softmax 的 logits，并在内部使用数值稳定的组合计算。
 
 而在本节的线性回归演示中，我们直接使用 MSE 损失。
 
-(**我们将实例化均方误差损失函数用于后续的训练循环。**)
+在线性回归示例中，直接使用均方误差损失。
 
 ```python
 loss = nn.MSELoss()
@@ -144,11 +171,11 @@ $$
 \mathbf{\theta}_{t} = \mathbf{\theta}_{t-1} - \eta \nabla_{\mathbf{\theta}} L_B(\mathbf{\theta}_{t-1})
 $$
 
-其中 $\eta$ 表示学习率（Learning Rate），它严格控制了我们每一次朝着梯度方向迈出步伐的长度。如果 $\eta$ 设定得过大，优化轨迹可能会在峡谷的两壁间来回震荡，甚至发散；如果过小，则收敛速度将变得如同蜗牛漫步。
+其中 $\eta$ 表示学习率（Learning Rate），控制参数更新尺度。过大时优化可能震荡或发散，过小时收敛会变慢。
 
 在框架中，所有的参数矩阵（如 `net[0].weight` 和 `net[0].bias`）在内部都维护着两个连续的内存块：一个存储当前的参数值数据 `.data`，另一个存储刚刚计算出来的梯度信息 `.grad`。我们不再需要手动书写遍历和相减的代码。框架将整个更新法则和超参数管理器统筹在 `torch.optim` 模块中。我们只需将待优化的参数列表交由优化器对象托管即可。
 
-(**我们实例化一个`SGD`优化器对象，指定要优化的网络参数和学习率。**)
+下面实例化 `SGD` 优化器，并指定参数与学习率。
 
 ```python
 trainer = torch.optim.SGD(net.parameters(), lr=0.03)
@@ -156,7 +183,7 @@ trainer = torch.optim.SGD(net.parameters(), lr=0.03)
 
 ## 2.6.6 端到端的模型训练生命周期
 
-至此，我们将前面讨论的所有高级抽象模块——数据迭代器、网络模型结构、数值稳定的损失函数以及 SGD 优化器——组合在一起，形成一段极其紧凑却功能完备的训练脚本。
+现在把数据迭代器、网络、损失函数和 SGD 优化器组合成完整训练脚本。
 
 在深层框架的视角下，每一次训练迭代（Step）都遵循着一段严格的生命周期逻辑，不可随意颠倒：
 
@@ -165,9 +192,9 @@ trainer = torch.optim.SGD(net.parameters(), lr=0.03)
 3. 计算标量损失值 `l = loss(y_hat, y)`。
 4. **清理遗留状态**：在反向传播前，必须调用 `trainer.zero_grad()`。这是因为框架的底层设计为了支持复杂的循环神经网络等架构，默认会将计算出的梯度累加到原有梯度上，而不是替换。
 5. **触发反向传播**：调用 `l.backward()`。此时框架的自动微分引擎会自顶向下遍历整个动态计算图，利用链式法则计算出所有叶子节点（即模型参数）的梯度，并将其填充到参数的 `.grad` 属性中。
-6. **执行更新步**：调用 `trainer.step()`。优化器会遍历其托管的参数列表，严格按照式该公式执行就地（In-place）的数值减法。
+6. **执行更新步**：调用 `trainer.step()`。优化器按设定的更新规则修改其托管参数。
 
-(**以下是完整的模型训练生命周期代码实现。**)
+完整训练代码如下。
 
 ```python
 num_epochs = 3
@@ -182,11 +209,11 @@ for epoch in range(num_epochs):
     print(f'epoch {epoch + 1}, loss {l:f}')
 ```
 
-通过这一节的解析，我们不难发现：尽管高级 API 的使用代码极为简洁，往往只有区区几行，但其下掩藏的是极其严密的数学推导与深刻的工程权衡。无论是自动维度广播、LogSumExp 的防溢出技巧，还是动态图与梯度累加的解耦，都是深度学习发展十余年来沉淀下的智慧结晶。对这些“黑盒”底层原理的敬畏与透彻理解，正是进阶成为顶级人工智能研究者的必经之路。
+高级 API 虽然简洁，但没有改变底层数学：线性层仍是矩阵乘法与广播，交叉熵仍需稳定地计算 LogSumExp，自动微分仍按计算图应用链式法则。掌握这些对应关系，才能在出现形状、数值或梯度问题时判断封装内部发生了什么。
 
 ## 2.6.7 练习
 
 1. 如果我们将本节中用于生成合成数据的真实标签权重从一个二维向量变为形状为 $2 \times 3$ 的矩阵，我们需要对数据迭代器、模型维度和损失函数的形状进行哪些改动？
-   - **提示**：回顾式该公式中的矩阵乘法维度推演。当输出维度 $c = 3$ 时，偏置向量 $\mathbf{b}$ 在广播时的维度是什么？
+   - **提示**：回顾小批量矩阵乘法的维度。当输出维度 $c = 3$ 时，偏置向量 $\mathbf{b}$ 在广播时的维度是什么？
 2. 试着在训练循环内部，将 `trainer.zero_grad()` 这一行注释掉。观察几轮训练后的损失值变化，并用微积分链式法则和梯度累加的机制解释这一现象。
 3. 在 `nn.MSELoss` 的文档中存在一个名为 `reduction` 的参数。探索如果将其从默认的 `'mean'` 改为 `'sum'`，为了保证收敛，我们需要对优化器的学习率做何种数值量级上的等比例缩放？
