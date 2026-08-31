@@ -69,7 +69,7 @@ const SOURCES = new Map(
       "https://doi.org/10.1162/neco.1997.9.8.1735",
     "Howell et al., 2022": "https://arxiv.org/abs/2212.00541",
     "Hu et al., 2021": "https://arxiv.org/abs/2106.09685",
-    "Hu et al., 2022": "https://arxiv.org/abs/2203.08104",
+    "Hu et al., 2022": "https://arxiv.org/abs/2210.07729",
     "Anthony Hu et al., 2023": "https://arxiv.org/abs/2309.17080",
     "Yihan Hu et al., 2023": "https://arxiv.org/abs/2212.10156",
     "Huang et al., 2023": "https://arxiv.org/abs/2302.07817",
