@@ -71,12 +71,30 @@ _图 9.5-4：GAIA-1 将视频、动作与文本编码为序列，由世界模型
 </div>
 
 ### 2. 环视多相机重叠区几何重投影一致性约束
-在环视六相机系统中，相邻相机（例如前向主目与左前侧目）之间存在大约 $15\% \sim 20\%$ 的视场重叠区域。
-为了防止不同相机的预测画面在接缝处出现车身断裂或错位，系统引入了**多视角几何对齐损失（Cross-View Geometric Consistency Loss）**：
+在环视六相机系统中，相邻相机（例如前向主目 $i$ 与左前侧目 $j$）之间存在大约 $15\% \sim 20\%$ 的视场重叠区域。
 
-$$\mathcal{L}_{\text{overlap}} = \frac{1}{|\Omega_{ij}|} \sum_{\mathbf{p} \in \Omega_{ij}} \left\| I_t^{(j)}(\mathbf{p}) - I_t^{(i)}\left( \pi_i(\pi_j^{-1}(\mathbf{p}, D_j(\mathbf{p}))) \right) \right\|_1$$
+设前向相机像素点 $\mathbf{p}_i = (u_i, v_i)$ 的物理深度为 $D_i(\mathbf{p}_i)$。该像素点在世界坐标系中的三维物理位置为：
 
-利用上一节学过的投影矩阵 $\pi_i = \mathbf{K}_i [\mathbf{R}_i \mid \mathbf{t}_i]$ 与深度图 $D_j$，将第 $j$ 个相机的重叠像素点投影回第 $i$ 个相机的像素平面，强制两者的重投影误差趋近于 0，确保了生成的六路视频在空间几何上的绝对自洽。
+$$P_w = \mathbf{R}_i^\top \left( D_i(\mathbf{p}_i) \cdot \mathbf{K}_i^{-1} \begin{bmatrix} u_i \\ v_i \\ 1 \end{bmatrix} - \mathbf{t}_i \right)$$
+
+将该世界点代入左前侧目相机 $j$ 的投影矩阵，得到在相机 $j$ 中的对应重投影像素位置 $\mathbf{p}_{i \to j}$：
+
+$$\mathbf{p}_{i \to j} = \pi_j(P_w) = \frac{1}{Z_{c, j}} \mathbf{K}_j \left( \mathbf{R}_j P_w + \mathbf{t}_j \right)$$
+
+为了防止不同相机生成的未来视频在接缝处产生错位、断裂或重影，系统引入了**跨视角几何重投影一致性损失（Cross-View Geometric Consistency Loss）**：
+
+$$\mathcal{L}_{\text{overlap}} = \frac{1}{|\Omega_{ij}|} \sum_{\mathbf{p}_i \in \Omega_{ij}} \left\| I_t^{(j)}(\mathbf{p}_{i \to j}) - I_t^{(i)}(\mathbf{p}_i) \right\|_1$$
+
+**手算代入算例**：
+设前向相机 1 拍摄到一个像素点 $\mathbf{p}_1 = (400, 300)$，测得物理深度 $D_1 = 10.0\text{ m}$，内参 $f_x=1000, c_x=400, f_y=1000, c_y=300$，无旋转平移（$\mathbf{R}_1 = \mathbf{I}, \mathbf{t}_1 = \mathbf{0}$）。
+1. 反求空间三维坐标：
+   $$X_w = \frac{400 - 400}{1000} \times 10 = 0.0\text{ m}, \quad Y_w = \frac{300 - 300}{1000} \times 10 = 0.0\text{ m}, \quad Z_w = 10.0\text{ m}$$
+2. 侧前相机 2 安装于左侧 $\mathbf{t}_2 = [1.0, 0.0, 0.0]^\top$，朝向向左旋转 $30^\circ$（$\cos 30^\circ = 0.866, \sin 30^\circ = 0.5$）。
+   在相机 2 坐标系下的点为 $P_{c, 2} = \mathbf{R}_2 P_w + \mathbf{t}_2$；
+3. 代入内参投影后，精确计算出该物理点在相机 2 画面中的对应像素为 $(550, 300)$；
+4. 损失函数强制前向相机在 $(400, 300)$ 的 RGB 颜色必须严格等于侧向相机在 $(550, 300)$ 的 RGB 颜色！
+
+通过初等代数的几步矩阵推导，多相机环视画面的几何缝合得到了严密的物理数学保证！
 
 <details>
 <summary><b>深入推导：变分信息瓶颈（VIB）在时序自回归潜在动力学中的下界严密推导（点击展开查看完整推导）</b></summary>
@@ -114,6 +132,16 @@ $$\tilde{\boldsymbol{\epsilon}}_\theta(\mathbf{x}_t, t, \mathbf{a}) = \boldsymbo
 > **初等代数直觉**：
 > 这一公式将网络输出改写为：$\tilde{\boldsymbol{\epsilon}} = \boldsymbol{\epsilon}_{\text{uncond}} + s \cdot \Delta \boldsymbol{\epsilon}_{\text{action}}$。
 > 当 $s > 1$ 时，动作信号对画面特征梯度的干预被成倍放大，确保了生成的多视角视频与驾驶员的方向盘控制具有极高的物理契合度！
+
+**手算代入算例**：
+设在某个噪声步 $t$，无条件网络预测的基准噪声向量为 $\boldsymbol{\epsilon}_{\emptyset} = [0.2, -0.1]^\top$；在给定“右打方向盘 $30^\circ$”的动作条件后，条件网络预测的噪声向量为 $\boldsymbol{\epsilon}_{\mathbf{a}} = [0.5, 0.3]^\top$。设定引导因子 $s = 4.0$。
+
+1. 计算动作带来的修正差分增量：
+   $$\Delta \boldsymbol{\epsilon} = \boldsymbol{\epsilon}_{\mathbf{a}} - \boldsymbol{\epsilon}_{\emptyset} = [0.5 - 0.2, 0.3 - (-0.1)]^\top = [0.3, 0.4]^\top$$
+2. 执行 CFG 放大外推：
+   $$\tilde{\boldsymbol{\epsilon}} = [0.2, -0.1]^\top + 4.0 \times [0.3, 0.4]^\top = [0.2 + 1.2, -0.1 + 1.6]^\top = [1.4, 1.5]^\top$$
+
+动作偏置响应被强力放大了 4 倍，使生成的画面以极其鲜明清晰的动态完全遵从方向盘动作的物理演变！
 
 <details>
 <summary><b>深入推导：无分类器引导（CFG）隐空间概率流 ODE 贝叶斯最优得分流证明（点击展开查看完整推导）</b></summary>

@@ -95,9 +95,9 @@ LSS 提出了著名的 **前缀和技巧（Cumsum Trick）**：
 
 ---
 
-## 9.2.3 核心数学推导二：BEVFormer 的可变形交叉注意力
+## 9.2.3 核心数学推导二：BEVFormer 的可变形时空交叉注意力
 
-LSS 采用的是“自底向上（Bottom-Up）”的特征显式提升路径；而在 2022 年，中国科学院与商汤科技联合提出了 **BEVFormer**，开创了“自顶向下（Top-Down）”的查询采样范式。
+LSS 采用的是“自底向上（Bottom-Up）”的特征显式提升路径，它必须在三维视锥空间中密集铺设数百万个点，显存与计算开销巨大。而在 2022 年，中国科学院与商汤科技联合提出了 **BEVFormer**，开创了“自顶向下（Top-Down）”的时空查询采样范式。
 
 <div align="center">
 
@@ -115,17 +115,72 @@ _图 9.2-5：TPVFormer 并列比较体素、BEV 与三正交平面表示，说�
 
 </div>
 
-### 1. 空间可变形交叉注意力（Spatial Cross-Attention）
-在 BEVFormer 中，系统在地面网格上预设一系列可学习的 **BEV 查询词元（BEV Queries）** $\mathbf{Q} \in \mathbb{R}^{H_{\text{bev}} \times W_{\text{bev}} \times C}$。
-对于网格上的某个平面位置 $(x, y)$：
-1. 沿高度方向抬起 $N_{\text{pts}}$ 个空间高度锚点：$\{(x, y, z_1), (x, y, z_2), \dots, (x, y, z_{N_{\text{pts}}})\}$；
-2. 利用上一节学过的投影矩阵 $\mathbf{P}_i = \mathbf{K}_i [\mathbf{R}_i \mid \mathbf{t}_i]$，将这些三维锚点投影回各个相机的二维像素平面；
-3. 利用**可变形注意力（Deformable Attention）**，仅在投影像素周围采样极少数关键特征点进行双线性插值并加权汇聚。
+### 1. 空间可变形交叉注意力（Spatial Cross-Attention, SCA）的四步严密推导
+BEVFormer 在自车周围的二维地面上，预设一个分辨率为 $H_{\text{bev}} \times W_{\text{bev}}$ 的可学习网格。网格中的每一个栅格单元被称为一个 **BEV 查询词元（BEV Query, $\mathbf{Q}_p \in \mathbb{R}^C$）**，其中 $p = (x, y)$ 是该查询在自车物理坐标系下的平面公制坐标。
 
-这种自顶向下的查询机制，完全绕开了计算昂贵的稠密视锥体云构建，实现了跨相机视野的自然缝合与远距离物体的精准感知。
+为了让这个处于二维地面的查询词元“感知”到空中不同高度的障碍物（如卡车车厢、高架桥或行人头部），BEVFormer 设计了一套由 3D 向 2D 反向采样的精妙机制：
+
+#### 步骤一：垂直升维——沿高度方向抬起 $N_{\text{ref}}$ 个三维空间高度锚点
+对于平面网格点 $p = (x, y)$，我们在其正上方沿垂直高度 $Z$ 轴均匀撒下 $N_{\text{ref}}$ 个三维物理参考点（通常取 $N_{\text{ref}} = 4$）：
+
+$$\mathcal{P}_p = \left\{ P_{p, j} = \begin{bmatrix} x \\ y \\ z_j \end{bmatrix} \;\middle|\; z_j = z_{\min} + \frac{j - 0.5}{N_{\text{ref}}} (z_{\max} - z_{\min}), \; j \in \{1, 2, \dots, N_{\text{ref}}\} \right\}$$
+
+例如，设自车周围高度范围为 $[-5\text{ m}, 3\text{ m}]$，$N_{\text{ref}} = 4$，则每一个 BEV 栅格上方都会垂直竖立 4 颗探测探针：高度分别为 $-4\text{ m}, -2\text{ m}, 0\text{ m}, 2\text{ m}$。
+
+#### 步骤二：透视回投——将三维锚点投射到各个相机的二维像素坐标
+利用各相机的投影矩阵 $\mathbf{P}_i = \mathbf{K}_i [\mathbf{R}_i \mid \mathbf{t}_i]$（其中 $i \in \{1, 2, \dots, N_{\text{cam}}\}$ 为相机编号），将每个三维高度锚点 $P_{p, j}$ 投影回第 $i$ 个相机的图像平面：
+
+$$\tilde{\mathbf{p}}_{p, j, i} = \mathbf{K}_i \left( \mathbf{R}_i P_{p, j} + \mathbf{t}_i \right) = \begin{bmatrix} \tilde{u} \\ \tilde{v} \\ \tilde{w} \end{bmatrix} \implies \mathbf{p}_{p, j, i} = \begin{bmatrix} \tilde{u} / \tilde{w} \\ \tilde{v} / \tilde{w} \end{bmatrix} \in \mathbb{R}^2$$
+
+同时检查该投影点是否落在第 $i$ 个相机的有效成像区域内（且深度 $\tilde{w} > 0$），定义相机视场命中集合：
+
+$$\mathcal{V}_p = \left\{ i \in \{1, \dots, N_{\text{cam}}\} \;\middle|\; \exists j, \; \mathbf{p}_{p, j, i} \text{ 落在相机 } i \text{ 的视锥内部} \right\}$$
+
+#### 步骤三：可变形稀疏采样（Deformable Sampling）
+传统的自注意力需要与整张图像的所有像素计算点积，复杂度高达 $\mathcal{O}(H W)$。
+可变形注意力（Deformable Attention）让 BEV 查询 $\mathbf{Q}_p$ 自己预测 $K$ 个微小的二维局部偏移量 $\Delta \mathbf{p}_{p, j, i, k} \in \mathbb{R}^2$ 以及对应的注意力权重 $A_{p, j, i, k} \in [0, 1]$（满足 $\sum_{k=1}^K A_{p, j, i, k} = 1$）：
+
+$$\text{Sampled\_Feat}(P_{p, j}, \mathbf{F}_i) = \sum_{k=1}^K A_{p, j, i, k} \cdot \text{BilinearSample}\left( \mathbf{F}_i, \; \mathbf{p}_{p, j, i} + \Delta \mathbf{p}_{p, j, i, k} \right)$$
+
+#### 步骤四：多高度与多相机加权聚合
+最终，该 BEV 查询词元 $\mathbf{Q}_p$ 的空间交叉注意力更新公式为所有命中相机与所有高度锚点采样特征的归一化均值：
+
+$$\text{SCA}(\mathbf{Q}_p, \mathcal{F}) = \frac{1}{|\mathcal{V}_p|} \sum_{i \in \mathcal{V}_p} \sum_{j=1}^{N_{\text{ref}}} \mathbf{W}_{\text{proj}} \cdot \text{Sampled\_Feat}(P_{p, j}, \mathbf{F}_i)$$
+
+> **公式符号逐一拆解**：
+> - $\mathbf{Q}_p \in \mathbb{R}^C$：位于自车平面坐标 $p = (x, y)$ 的目标 BEV 查询特征；
+> - $\mathcal{V}_p$：能够看到该地面柱状空间的所有相机集合；
+> - $P_{p, j}$：该柱子上的第 $j$ 个高度锚点；
+> - $\mathbf{F}_i \in \mathbb{R}^{C \times H \times W}$：第 $i$ 个相机的多尺度图像特征图；
+> - $\mathbf{W}_{\text{proj}}$：输出特征线性变换矩阵。
+
+**手算代入算例**：
+设自车正前方有一个 BEV 网格点 $p = (x=0\text{ m}, y=10\text{ m})$。
+1. 沿高度方向选取 $N_{\text{ref}} = 2$ 个锚点：$P_{p, 1} = [0, 10, -1]^\top, P_{p, 2} = [0, 10, 1]^\top$；
+2. 前向主相机内参 $f_x = 1000, c_x = 400, f_y = 1000, c_y = 300$，安装于车顶且无旋转无平移（$\mathbf{R} = \mathbf{I}, \mathbf{t} = \mathbf{0}$，深度 $Z_c = y = 10\text{ m}$）；
+   - 对锚点 1：$u_1 = 1000 \times \frac{0}{10} + 400 = 400$，$v_1 = 1000 \times \frac{-1}{10} + 300 = -100 + 300 = 200$；
+   - 对锚点 2：$u_2 = 1000 \times \frac{0}{10} + 400 = 400$，$v_2 = 1000 \times \frac{1}{10} + 300 = 100 + 300 = 400$；
+3. 在特征图上以 $(400, 200)$ 和 $(400, 400)$ 为中心采样关键特征：
+   若在 $(400, 200)$ 处采样到车顶特征 $\mathbf{f}_1 = [1.0, 0.5]^\top$，在 $(400, 400)$ 处采样到底盘特征 $\mathbf{f}_2 = [0.0, 1.5]^\top$；
+4. 聚合求和：$\mathbf{f}_{\text{BEV}} = \mathbf{f}_1 + \mathbf{f}_2 = [1.0, 2.0]^\top$！
+
+无需构建数百万个点云的大视锥体，仅凭两次精准的像素级插值采样，BEV 网格就轻松捕获了该位置从底盘到车顶的完整三维特征！
+
+### 2. 时序自注意力（Temporal Self-Attention, TSA）与自车运动补偿
+自动驾驶不仅需要单帧感知，更需要利用历史帧信息消除暂时性盲区与遮挡。
+
+在时刻 $t$，系统将上一时刻已经计算好的历史 BEV 特征图 $\mathbf{B}_{t-1}$，根据自车在前后两帧之间的位姿变化量 $\Delta \mathbf{T}_{t \to t-1} = (\Delta x, \Delta y, \Delta \theta)$ 进行**刚体平移与旋转对齐（Ego-Motion Warping）**：
+
+$$\mathbf{B}_{t-1}'(x, y) = \text{GridSample}\left( \mathbf{B}_{t-1}, \; \mathbf{R}_{\Delta \theta} \begin{bmatrix} x \\ y \end{bmatrix} + \begin{bmatrix} \Delta x \\ \Delta y \end{bmatrix} \right)$$
+
+随后，当前时刻的查询 $\mathbf{Q}_t$ 与对齐后的历史特征 $\mathbf{B}_{t-1}'$ 进行时序自注意力融合：
+
+$$\mathbf{B}_t = \text{TemporalAttn}(\mathbf{Q}_t, \mathbf{B}_{t-1}') + \mathbf{Q}_t$$
+
+通过时序自注意力，即使前方目标在当前帧被大卡车完全遮挡，系统依然能够从历史对齐特征中“回忆”出被遮挡目标的位置与速度，实现了极其稳健的长程动态追踪。
 
 <details>
-<summary><b>深入推导：空间可变形注意力双线性插值采样与全微分几何反向传播（点击展开查看完整推导）</b></summary>
+<summary><b>深入推导：可变形注意力双线性插值采样与空间梯度流反向传播（点击展开查看完整推导）</b></summary>
 
 设投影二维采样点为 $\mathbf{p} = (u, v)$，其在特征图 $\mathbf{X}$ 上的双线性插值响应为：
 $$\text{Sample}(\mathbf{X}, \mathbf{p}) = \sum_{i, j} \max(0, 1 - |u - i|) \max(0, 1 - |v - j|) \mathbf{X}[i, j]$$
@@ -270,4 +325,4 @@ if __name__ == "__main__":
 回顾本节内容，我们建立了多视角透视向全局统一空间投影的严密理论脉络：
 1. **射线多义性破局**：单目像素沿视线具有深度不确定性，LSS 通过预测离散深度概率分布化解了多义性；
 2. **外积特征提升（Lift）**：利用语义特征与深度分布的外积张量 $\mathbf{p} \otimes \mathbf{c}$，自适应地将 2D 信息铺设到 3D 视锥空间中；
-3. **空间池化与 BEV 转换**：通过外参刚体几何逆变换与柱状体体积积分，多相机视场被无缝缝合为一个上帝视角的全局公制特征地图。
+3. **自顶向下可变形查询（BEVFormer）**：通过在 BEV 网格上撒下高度锚点反向透视投影，利用可变形注意力实现了跨相机缝合与历史时序自运动补偿。
