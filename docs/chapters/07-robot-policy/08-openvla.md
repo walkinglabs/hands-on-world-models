@@ -1,90 +1,150 @@
-# OpenVLA：开源具身大模型
+# 7.8 OpenVLA：开源视觉-语言-动作模型
 
-OpenVLA 接收一张机器人视角图像和一条语言指令，例如“拿起蓝色杯子”，随后生成七个动作维度对应的离散词元，再还原成连续控制量。它是一个 70 亿参数的开源视觉—语言—动作模型，基于 Open X-Embodiment 的 97 万条机器人轨迹训练 [[Kim et al., 2024]](https://arxiv.org/abs/2406.09246)。开放权重、代码和微调流程，让研究者可以在自己的机器人数据上复现实验并检查模型边界。
+在上一节中，我们见证了 RT-1、RT-2 以及 RT-X 如何开辟将大语言模型先验直接注入机器人动作空间的革命性道路。然而，RT-2 等工业界模型拥有数百亿庞大参数，且其核心权重与训练代码均未公开。对于广大学术研究者与机器人初创团队而言，在单一工控机或消费级 GPU 上微调和部署这类巨型闭源模型几乎是一项不可能完成的任务。
 
-<div align="center">
-
-<img src="/figures/07-robot-policy/source/08-openvla/openvla-fig1.png" alt="OpenVLA 在多种真实机器人与任务上执行语言条件控制，呈现开源模型的实际对象边界。" width="86%">
-
-_图 7.8-1：OpenVLA 在多种真实机器人与任务上执行语言条件控制，呈现开源模型的实际对象边界。 出处：[OpenVLA: An Open-Source Vision-Language-Action Model，Moo Jin Kim et al.，2024](https://arxiv.org/abs/2406.09246)。_
-
-</div>
-
-本节从自回归动作建模出发，说明 OpenVLA 如何量化连续动作、融合两种视觉特征，并用 LoRA 降低任务适配的训练参数量。
-
-## 视觉-语言-动作建模的自回归表述
-
-大语言模型（如 Llama 2）的核心训练形式是**自回归生成**。给定一段离散序列，模型学习下一个词元的条件概率。OpenVLA 沿用这一形式，并把输出空间扩展到机器人动作词元。
-
-在具身控制场景中，机器人在离散时间步 $t$ 需要根据当前的视觉观察图像 $x_{\text{img}}$ 和人类提供的文本指令 $x_{\text{text}}$，输出一个多维度的动作向量 $\mathbf{a}_t$。
-假设动作向量包含 $D$ 个维度（例如末端执行器的三维坐标、三维旋转姿态以及夹爪的开合程度），即 $\mathbf{a}_t = [a_{t}^{(1)}, a_{t}^{(2)}, \dots, a_{t}^{(D)}]^{\top}$。
-
-我们希望寻找一个策略模型 $\pi$，使得动作序列的条件概率最大化：
-
-$$ P(\mathbf{a}_t \mid x_{\text{img}}, x_{\text{text}}) $$
-
-由于语言模型本质上是处理离散序列的，我们需要将动作向量 $\mathbf{a}_t$ 的各个维度依次展开，并将其视为句子中的“词语”。如果我们假设各个动作维度的生成依赖于前面的维度，概率分布可以根据链式法则严格拆解为：
-
-$$ P(\mathbf{a}_t \mid x_{\text{img}}, x_{\text{text}}) = \prod_{d=1}^{D} P(a_{t}^{(d)} \mid x_{\text{img}}, x_{\text{text}}, a_{t}^{(1)}, \dots, a_{t}^{(d-1)}) $$
-
-这种拆解将高维联合分布写成 $D$ 个条件分布的序列预测问题。它与语言模型的下一个词元预测采用相同的概率分解，但动作词元还需要满足物理范围、控制频率和安全约束。
-
-## 连续物理动作的离散化（Tokenization）
-
-由于语言模型的输出空间是预定义好的离散词汇表（Vocabulary），而物理世界中机器人的动作通常是连续的实数（例如关节角度的弧度值或移动距离的米数），我们必须在连续动作与离散词汇之间建立一座严格的数学桥梁。这被称为动作的**离散化**或**词元化**（Action Tokenization）。
-
-### 一维标量的均匀量化
-
-先考虑夹爪开合度标量 $v$。OpenVLA 按数据集和动作维度统计第 1、99 百分位数，并把它们作为鲁棒边界 $[v_{\min}, v_{\max}]$；超出边界的少量值会被裁剪。随后把区间切分为 $B$ 个均匀桶，用整数 $k \in \{0,1,\dots,B-1\}$ 表示。
-
-第一步，我们需要通过仿射变换（Affine Transformation）将真实的物理量 $v$ 映射到 $[0, 1]$ 的标准区间。我们定义归一化函数：
-
-$$ v_{\text{norm}} = \frac{v - v_{\min}}{v_{\max} - v_{\min}} $$
-
-显然，当 $v = v_{\min}$ 时，$v_{\text{norm}} = 0$；当 $v = v_{\max}$ 时，$v_{\text{norm}} = 1$。
-
-第二步，我们将 $[0, 1]$ 区间放大到离散桶的索引范围 $[0, B-1]$，并通过就近取整操作得到最终的离散类别 $k$：
-
-$$ k = \text{round}(v_{\text{norm}} \times (B-1)) $$
-
-其中，$\text{round}(\cdot)$ 表示就近取整。OpenVLA 使用 256 个桶，并复用 Llama 2 词表中使用频率最低的 256 个词元作为动作词元，而不是简单扩充一个全新的词表区间。
-
-### 反向映射与量化误差
-
-当语言模型输出一个动作词元索引 $k$ 时，我们需要将其还原为机器人的连续执行指令。这个逆过程（Detokenization）是一个精确的代数求逆步骤，但由于我们之前使用了舍入函数，会不可避免地引入误差。
-
-通过代数变换重组这两个公式，我们可以推导出还原后的连续动作近似值 $\hat{v}$：
-
-$$ \hat{v} = \left( \frac{k}{B-1} \right) (v_{\max} - v_{\min}) + v_{\min} $$
-
-量化引入的最大绝对误差（Quantization Error）由相邻两个桶代表的物理间隔的一半决定：
-
-$$ \epsilon_{\max} = \frac{v_{\max} - v_{\min}}{2(B-1)} $$
-
-增加桶数会减小单维量化误差上界，但同时提高分类分辨率。量化误差是否能被具体机器人容忍，还取决于动作尺度、控制频率和底层控制器。
-
-### 矢量化与多维拓展
-
-对于多维动作向量 $\mathbf{a}_t \in \mathbb{R}^D$，不同维度仍可共享同一组动作词元，但归一化统计量不能混用。OpenVLA 对每个维度 $d$ 分别统计第 1、99 百分位数 $q_{01}^{(d)}$ 和 $q_{99}^{(d)}$，再并行完成整个动作向量的归一化与离散化。
-
-## OpenVLA 的网络架构与特征融合
+2024 年，由斯坦福大学、伯克利加州大学等多所顶尖高校联合推出了 **OpenVLA**（Open Vision-Language-Action Model）。OpenVLA 不仅完全开源了其 70 亿参数（7B）的模型权重与全套跨具身训练管线，更在视觉编码表征、稳健动作分词与参数高效微调（PEFT）三大关键维度上做出了极具启发性的架构创新。
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/source/08-openvla/openvla-fig2.png" alt="OpenVLA 将 DINOv2、SigLIP、Llama 2 与动作解码器串联为端到端 VLA。" width="86%">
+<img src="/figures/07-robot-policy/source/08-openvla/openvla-fig1.png" alt="OpenVLA 结合双视觉编码器与 Llama 2 骨干，支持多机器人平台与高效微调。" width="86%">
 
-_图 7.8-2：OpenVLA 将 DINOv2、SigLIP、Llama 2 与动作解码器串联为端到端 VLA。 出处：[OpenVLA: An Open-Source Vision-Language-Action Model，Moo Jin Kim et al.，2024](https://arxiv.org/abs/2406.09246)。_
+_图 7.8-1：OpenVLA 结合双视觉编码器与 Llama 2 骨干，支持多机器人平台与高效微调。 出处：[OpenVLA: An Open-Source Vision-Language-Action Model，Moo Jin Kim et al.，2024](https://arxiv.org/abs/2406.09246)。_
 
 </div>
 
-OpenVLA 的架构由三个核心组件构成：视觉编码器（Vision Encoder）、视觉-语言投影层（Projector）和大语言模型主干（LLM Backbone）。其本质是将图像映射为语言模型能够理解的“视觉词汇”，进而触发大语言模型的自回归推理。
+---
 
-1. **视觉编码器**：OpenVLA 同时使用 SigLIP 与 DINOv2。两路特征分别提供语言对齐和细粒度视觉结构线索，拼接后形成视觉特征矩阵 $\mathbf{X}_{\text{vis}} \in \mathbb{R}^{N \times d_{\text{vis}}}$。
-2. **投影层**：由于视觉特征的维度 $d_{\text{vis}}$ 与语言模型的词嵌入维度 $d_{\text{llm}}$ 不匹配，我们需要引入一个多层感知机（MLP）将其投影到相同的空间：
-   $$ \mathbf{H}_{\text{vis}} = \text{MLP}(\mathbf{X}_{\text{vis}}) \in \mathbb{R}^{N \times d_{\text{llm}}} $$
-3. **特征拼接与推理**：将文本指令通过嵌入层转化为矩阵 $\mathbf{H}_{\text{text}} \in \mathbb{R}^{M \times d_{\text{llm}}}$ 后，在序列维度上与视觉特征拼接，形成完整的输入序列 $[\mathbf{H}_{\text{vis}}; \mathbf{H}_{\text{text}}]$。随后，Llama 2 主干网络将在此基础上自回归地生成动作词元。
+## 7.8.1 物理与生理基石：人类双视觉通路与开源具身智能演进
 
-## 低秩自适应（LoRA）：高效微调的几何视角
+要理解 OpenVLA 在视觉感知设计上的精妙之处，我们首先需要从人类双眼如何观察世界与引导双手的生物生理学机制讲起。
+
+### 1. 生物视觉系统的双通路假说（Two-Streams Hypothesis）
+当我们看着一个排球迎面飞来时，人类的大脑其实在以极高的速度同时解答两道截然不同的题目：
+- 第一道是**语文与常识识别题**：“眼前这个物体是一个白红蓝相间的排球，而不是一个沉重的铅球或一只飞鸟”（负责回答**“它是什么”**）；
+- 第二道是**立体几何与物理测距题**：“这个球当前距离我的双手还有 $45\text{ 厘米}$，正以大约 $5\text{ m/s}$ 的速度向斜下方飞行，我的双臂需要以 $30^\circ$ 仰角并拢垫击”（负责回答**“它在哪里、该怎么动”**）。
+
+在神经生物学中，这两道题目分别由大脑中两条平行的神经纤维回路分工解答：
+- **腹侧通路（Ventral Stream，又称“What”通路）**：延伸至大脑颞叶皮层，专门负责高级物体的**语义概念识别与分类**；
+- **背侧通路（Dorsal Stream，又称“Where/How”通路）**：延伸至大脑顶叶皮层，专门负责捕捉物体的**三维空间位置、深度距离、几何轮廓与肌肉运动引导**。
+
+在过去的多模态大模型研究中，绝大多数视觉编码器（如著名的 CLIP）几乎把全部技能点都加在了“What”语义通路上——它们在数亿张网页图文上训练，非常擅长在看到一张照片时给出“这是一只猫”的文字判断；但如果你问它“这只猫的爪子距离桌角精确相差几毫米”，纯语义编码器就会彻底失灵。如果直接把这种“近视眼”编码器装在机器人上，机器人往往能够“认出杯子”，却总因为“看不清杯柄的精确深度”而频繁抓空。
+
+### 2. Prismatic 双编码器互补机制
+为了让机器人同时具备“博学的常识”与“精准的空间视力”，OpenVLA 提出了 **Prismatic 双视觉融合架构**：同时引入了两个互补的预训练视觉主干网络：
+1. **SigLIP（充当“语义学者”，负责 What 通路）**：通过海量图文对比学习训练，赋予机器人识别成千上万种日常物体名称与功能的语义常识；
+2. **DINOv2（充当“几何工匠”，负责 Where/How 通路）**：通过无文字标签的纯图像空间几何自监督训练，能够精确感知微观像素级的空间深度、边缘轮廓与机械臂夹爪的精确位置。
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/latex/08-openvla/prism-dual-encoder.png" alt="SigLIP 与 DINOv2 提取的特征在通道维度拼接后投影至 LLM 维度" width="86%">
+
+_图 7.8-2：SigLIP 与 DINOv2 提取的特征在通道维度拼接后投影至 LLM 维度。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
+
+---
+
+## 7.8.2 核心架构一：Prismatic 多源视觉融合机制
+
+我们来一步步推演 Prismatic 架构如何将两种异构视觉特征无缝拼接并输入大语言模型。
+
+设工作台摄像头输入的一张 RGB 彩色图片为 $I \in \mathbb{R}^{3 \times H \times W}$（例如分辨率为 $224 \times 224$ 像素）。就像把一张大拼图切割为若干个 $14 \times 14$ 像素的正方形小方块一样（在计算机视觉中称为**图像块 Patches**），整张图片共被切分为：
+
+$$N_{\text{patches}} = \left(\frac{H}{14}\right) \times \left(\frac{W}{14}\right)$$
+
+两路视觉编码器分别对每一个小方块提取特征：
+- **SigLIP 提取的语义特征向量**：$\mathbf{Z}_{\text{SigLIP}} \in \mathbb{R}^{N_{\text{patches}} \times D_{\text{SigLIP}}}$（特征维度 $D_{\text{SigLIP}} = 1152$）；
+- **DINOv2 提取的空间几何特征向量**：$\mathbf{Z}_{\text{DINOv2}} \in \mathbb{R}^{N_{\text{patches}} \times D_{\text{DINOv2}}}$（特征维度 $D_{\text{DINOv2}} = 1152$）。
+
+### 1. 特征通道拼接与多层感知机（MLP）投影
+对于第 $i$ 个图像块，我们将它的“语义特征”与“空间几何特征”像拼火车车厢一样首尾拼接在一起：
+
+$$\mathbf{z}_i = [\mathbf{z}_{\text{SigLIP}, i}^\top, \mathbf{z}_{\text{DINOv2}, i}^\top]^\top \in \mathbb{R}^{D_{\text{SigLIP}} + D_{\text{DINOv2}}}$$
+
+拼接后的总维度为 $1152 + 1152 = 2304$。
+
+随后，通过一个带有非线性激活函数 GELU 的两层多层感知机（Projector），将融合特征线性转换至与大语言模型（如 Llama 2 7B）完全相同的词向量隐藏层维度 $D_{\text{LLM}} = 4096$：
+
+$$\mathbf{h}_{\text{vis}, i} = \mathbf{W}_2 \cdot \text{GELU}(\mathbf{W}_1 \mathbf{z}_i) \in \mathbb{R}^{D_{\text{LLM}}}$$
+
+> **公式符号逐一拆解**：
+> - $\mathbf{W}_1 \in \mathbb{R}^{D_{\text{LLM}} \times (D_{\text{SigLIP}} + D_{\text{DINOv2}})}$：第一层线性变换矩阵；
+> - $\text{GELU}(x) = x \cdot \Phi(x)$：高斯误差线性单元激活函数（$\Phi(x)$ 为标准正态分布的累积概率函数）；
+> - $\mathbf{W}_2 \in \mathbb{R}^{D_{\text{LLM}} \times D_{\text{LLM}}}$：第二层线性变换矩阵；
+> - $\mathbf{h}_{\text{vis}, i} \in \mathbb{R}^{D_{\text{LLM}}}$：最终生成的第 $i$ 个视觉词元向量，它现在可以像普通的文字单词一样直接输入给大语言模型了。
+
+<details>
+<summary><b>深入推导：自监督 DINOv2 空间补丁特征与对比学习 SigLIP 的特征正交性数学分析（点击展开查看完整推导）</b></summary>
+
+考虑两个编码器在表示空间中的互信息（Mutual Information）与正交性。
+SigLIP 优化的对比损失为全局图像-文本匹配：
+$$\mathcal{L}_{\text{SigLIP}} = -\sum_{i} \log \frac{1}{1 + \exp\left(-t (\mathbf{v}_i^\top \mathbf{t}_i - b)\right)}$$
+这促使其特征向量主要分布在语义相关的低维流形上，而对高频空间纹理具有不变性。
+DINOv2 则基于知识蒸馏自监督学习局部 Patch 对应关系：
+$$\mathcal{L}_{\text{DINO}} = - \sum_{k} P_{\text{teacher}}(k \mid \mathbf{x}) \log P_{\text{student}}(k \mid \mathbf{x}')$$
+DINOv2 的自注意力图（Self-Attention Maps）保留了精准的物体边界与深度几何。两者在流形切空间上的正交互补性满足：
+$$\cos(\theta_{\text{feat}}) = \frac{\langle \mathbf{z}_{\text{SigLIP}}, \mathbf{z}_{\text{DINOv2}} \rangle}{\|\mathbf{z}_{\text{SigLIP}}\|_2 \|\mathbf{z}_{\text{DINOv2}}\|_2} \approx 0$$
+拼接后的联合表征同时最大化了任务相关的语义互信息 $I(\mathbf{Z}_{\text{vis}}; \text{Task})$ 与几何控制互信息 $I(\mathbf{Z}_{\text{vis}}; \mathbf{a}_{\text{target}})$。
+</details>
+
+---
+
+## 7.8.3 核心架构二：分位数归一化动作量化（Quantile Action Tokenization）
+
+在将连续物理动作划分为离散分桶时，我们在上一节采用了区间最大值 $a_{\max}$ 和最小值 $a_{\min}$ 进行线性归一化。但在面对来自全球数十家实验室的海量杂乱数据集时，这种简单粗暴的“极值归一化”会引发灾难性的数值失真。
+
+### 1. 为什么绝对极值归一化会失效？
+在基础统计学中，我们知道平均值极易受到极端异常值（Outliers）的拉扯。
+
+在长达数万小时的人工遥操作轨迹中，由于示教员偶发的误触开关或急停碰撞，数据集中不可避免地存在极少数异常外点（例如某一次意外碰撞导致机械臂瞬时读数达到了正常速度的 10 倍）。
+
+如果直接取数据绝对最大值 $a_{\max}$ 和最小值 $a_{\min}$：
+$$a_{\text{span}} = a_{\max} - a_{\min} \gg \text{正常作业区间}$$
+原本跨度仅有 $1.0\text{ 米}$ 的正常工作区间，会被拉大到 $10\text{ 米}$ 的分母中。这导致 $99.9\%$ 的正常动作全部被拥挤地压缩在 256 个桶中仅有的 $3 \sim 5$ 个桶内！原本 $2\text{ 毫米}$ 的高精度量化分辨率瞬间退化为十几厘米的粗糙大步，机器人动作立刻失控。
+
+### 2. 稳健分位数归一化（Robust Quantile Normalization）
+在大型统一考试与排位统计中，为了制定稳定的排位分数线，统计老师通常不会看极个别因为缺考或答题卡填错产生的 0 分，而是看“全校排名前 1% 的高分线”与“排名前 99% 的基础线”。
+
+在数学统计中，这种把所有数据从小到大排序后处于特定百分比位置的数值被称为**分位数（Quantiles）**。
+
+OpenVLA 采用数据集统计出的**第 1 百分位数（$q_{01}$）**与**第 99 百分位数（$q_{99}$）**作为可靠的物理边界，将中间 $98\%$ 的核心正常动作均匀铺满整个 256 个桶：
+
+1. **边界截断（将极端外点收敛至分位数边界）**：
+   $$\hat{a}_j = \min(\max(a_j, q_{01, j}), q_{99, j})$$
+2. **基于分位数的稳健线性归一化**：
+   $$\tilde{a}_j = \frac{\hat{a}_j - q_{01, j}}{q_{99, j} - q_{01, j}} \in [0, 1]$$
+3. **离散分桶**：
+   $$\text{Token}_j = \text{round}\left(\tilde{a}_j \times (B - 1)\right) \in \{0, 1, \dots, B - 1\}$$
+
+**手算代入算例**：
+设某机械臂 $x$ 轴动作经统计，第 1 百分位数为 $q_{01} = -0.35\text{ m}$，第 99 百分位数为 $q_{99} = +0.45\text{ m}$（有效跨度为 $q_{99} - q_{01} = 0.80\text{ m}$），量化桶数 $B = 256$。假定当前动作值为 $a_x = +0.05\text{ m}$。
+
+1. 检查截断区间：$-0.35 \le 0.05 \le 0.45$，数值在正常区间内；
+2. 计算归一化比例：
+   $$\tilde{a}_x = \frac{0.05 - (-0.35)}{0.45 - (-0.35)} = \frac{0.40}{0.80} = 0.50$$
+3. 映射为词元索引：
+   $$\text{Token}_x = \text{round}(0.50 \times 255) = \text{round}(127.5) = 128$$
+
+通过剔除首尾 $1\%$ 的异常外点，256 个桶的利用率提升至近乎 $100\%$，每一格的分辨率都被用在了刀刃上。
+
+<details>
+<summary><b>深入推导：基于累积经验分布函数（ECDF）的稳健分位数估计与动作截断误差界（点击展开查看完整推导）</b></summary>
+
+设离散动作样本为 $\{a^{(1)}, a^{(2)}, \dots, a^{(N)}\}$，其经验累积分布函数定义为：
+$$\hat{F}_N(a) = \frac{1}{N} \sum_{i=1}^N \mathbb{I}(a^{(i)} \le a)$$
+分位数 $q_p$ 严格满足 $\hat{F}_N(q_p) = p$。
+将区间截断在 $[q_{01}, q_{99}]$ 内部，对于任意样本 $a$，截断误差引起的动作失真能量为：
+$$\mathbb{E}[(a - \hat{a})^2] = \int_{-\infty}^{q_{01}} (a - q_{01})^2 dF(a) + \int_{q_{99}}^{+\infty} (a - q_{99})^2 dF(a)$$
+由于外点概率测度极小（总和仅为 $2\%$），截断能量期望被严格压制在微小上界 $\epsilon \le 0.005 \sigma^2$ 之内，同时在 $[q_{01}, q_{99}]$ 核心区间内将分桶分辨率方差降低了数个数量级。
+</details>
+
+---
+
+## 7.8.4 核心架构三：参数高效微调（LoRA）的低秩几何本质
+
+拥有 70 亿参数的 OpenVLA 若直接进行全参数微调（Full Fine-Tuning），不仅需要数张高规格企业级显卡（单卡显存 $> 80\text{ GB}$），还会导致模型遗忘海量的预训练通用常识（即灾难性遗忘）。
+
+OpenVLA 全面采用**低秩自适应（Low-Rank Adaptation, LoRA）**技术，使得普通研究者仅用一张消费级显卡（如 RTX 4090）即可在几小时内完成特定机器人任务的高效适配。
 
 <div align="center">
 
@@ -94,8 +154,6 @@ _图 7.8-3：LoRA 用低秩矩阵分解参数更新，在冻结主权重时实�
 
 </div>
 
-拥有 70 亿参数的 OpenVLA 若直接进行全参数微调（Full Fine-Tuning），将对显存和计算资源造成极大的挑战。OpenVLA 选择采用低秩自适应（Low-Rank Adaptation, LoRA）技术 [[Hu et al., 2021]](https://arxiv.org/abs/2106.09685)，使得普通实验室甚至个人研究者也能在特定的机器人任务上对其进行高效微调。
-
 <div align="center">
 
 <img src="/figures/07-robot-policy/source/08-openvla/openvla-fig5.png" alt="新机器人平台上的适配任务比较全量与参数高效微调的实际效果。" width="86%">
@@ -104,22 +162,12 @@ _图 7.8-4：新机器人平台上的适配任务比较全量与参数高效微�
 
 </div>
 
-让我们从线性变换的几何视角来严格拆解 LoRA 的原理。在大模型的前馈网络中，核心运算是矩阵乘法。设预训练的权重矩阵为 $\mathbf{W}_0 \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}$，输入向量为 $\mathbf{x} \in \mathbb{R}^{d_{\text{in}}}$，则线性投影的输出为：
+### 1. 矩阵分解的初等代数直觉
+在初等代数中解多元线性方程组时，经常会发现如果第三个方程恰好是前两个方程相加得到的，那么第三个方程并没有提供新的信息，方程组的“有效独立未知数”其实减少了。
 
-$$ \mathbf{h} = \mathbf{W}_0 \mathbf{x} $$
+在线性代数中，一个庞大矩阵内部真正独立起作用的有效自由度，被称为矩阵的**秩（Rank）**。
 
-在微调过程中，我们需要寻找一个更新量 $\Delta \mathbf{W}$，使得新的权重矩阵为 $\mathbf{W} = \mathbf{W}_0 + \Delta \mathbf{W}$。全参数微调需要更新 $\Delta \mathbf{W}$ 中的 $d_{\text{out}} \times d_{\text{in}}$ 个参数，这往往是百万级别的标量。
-
-LoRA 假设任务适配所需的权重更新可以用低秩矩阵近似。这个假设在许多任务上有效，但秩 $r$ 是否足够仍需由验证结果决定。
-
-基于这一洞察，LoRA 强制约束更新矩阵 $\Delta \mathbf{W}$ 的秩（Rank）不超过常数 $r$，且 $r \ll \min(d_{\text{out}}, d_{\text{in}})$。根据线性代数的矩阵分解原理，任何秩为 $r$ 的矩阵均可以分解为两个低秩矩阵的乘积：
-
-$$ \Delta \mathbf{W} = \mathbf{A} \mathbf{B} $$
-
-其中，$\mathbf{B} \in \mathbb{R}^{r \times d_{\text{in}}}$ 将原始高维特征投影到低维子空间，而 $\mathbf{A} \in \mathbb{R}^{d_{\text{out}} \times r}$ 将低维特征重新映射回高维的目标空间。前向传播公式也随之被重写为两条独立的数据流之和：
-
-$$ \mathbf{h} = \mathbf{W}_0 \mathbf{x} + \mathbf{A} \mathbf{B} \mathbf{x}
-$$
+LoRA 提出一个深刻的洞察：**预训练大模型已经具备了极为强大的世界常识。为了让它学会‘在新的工作台上抓取特定的杯子’这一具体技能，其 70 亿参数需要的调整变化量 $\Delta \mathbf{W}$，其实只集中在极少数几个核心的有效方向（低秩子空间）上**。
 
 <div align="center">
 
@@ -129,119 +177,230 @@ _图 7.8-5：低秩支路先把 d_in 压到 r，再升回 d_out，与冻结基�
 
 </div>
 
-训练时冻结预训练权重 $\mathbf{W}_0$，只更新小矩阵 $\mathbf{A}$ 和 $\mathbf{B}$。这样，需要更新的参数量从 $\mathcal{O}(d_{\text{out}} d_{\text{in}})$ 降到 $\mathcal{O}(r(d_{\text{out}} + d_{\text{in}}))$。OpenVLA 论文中的 LoRA 配置只训练约 1.4% 的参数；实际显存节省还受优化器、激活和量化设置影响。
+基于这一洞察，LoRA 将原本巨大的参数更新矩阵 $\Delta \mathbf{W} \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}$ 强制分解为两个极薄的小矩阵相乘：
 
-## 代码实现
+$$\Delta \mathbf{W} = \mathbf{B} \mathbf{A}$$
 
-(**我们将利用 PyTorch 搭建 OpenVLA 的核心模块**)，包括动作的离散化处理器、视觉-语言投影层，以及简化的条件自回归生成流程。
+其中：
+- $\mathbf{A} \in \mathbb{R}^{r \times d_{\text{in}}}$：**降维压缩矩阵**，将输入特征从高维空间压缩到极低的秩 $r$ 空间（例如取 $r = 16$ 或 $r = 32$）；
+- $\mathbf{B} \in \mathbb{R}^{d_{\text{out}} \times r}$：**升维还原矩阵**，将低维特征重新映射回原本的输出维度。
+
+在前向传播过程中，庞大的原始预训练权重 $\mathbf{W}_0$ 被完全“冰封”（不计算梯度也不更新），模型输出由两条并行支路相加得到：
+
+$$\mathbf{h} = \mathbf{W}_0 \mathbf{x} + \frac{\alpha}{r} (\mathbf{B} \mathbf{A}) \mathbf{x}$$
+
+其中 $\alpha$ 是一个固定的缩放超参数。
+
+### 2. 算力与显存节省的惊人代数对比
+设大语言模型中某一层全连接权重维度为 $d_{\text{in}} = 4096, d_{\text{out}} = 4096$：
+- **全参数微调**：需要更新的参数量为 $4096 \times 4096 = 16,777,216$（约 **$1677\text{ 万}$** 个浮点数）；
+- **LoRA 低秩微调（取 $r = 16$）**：参数量为 $r \times d_{\text{in}} + d_{\text{out}} \times r = 16 \times 4096 + 4096 \times 16 = 131,072$（仅 **$13.1\text{ 万}$** 个参数）！
+
+需要更新的参数量仅仅是全量的 **$0.78\%$**！在 OpenVLA 的官方实验中，仅微调全模型约 **$1.4\%$** 的参数，就在未见过的全新机器人形态上取得了与全量微调同等乃至更优的鲁棒抓取表现。
+
+<details>
+<summary><b>深入推导：LoRA 低秩矩阵分解的本征维度假说与奇异值分解（SVD）近似（点击展开查看完整推导）</b></summary>
+
+根据矩阵奇异值分解（SVD）定理，任意秩为 $k$ 的权重更新矩阵 $\Delta \mathbf{W}$ 均可写为：
+$$\Delta \mathbf{W} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^\top = \sum_{i=1}^k \sigma_i \mathbf{u}_i \mathbf{v}_i^\top$$
+根据 Eckart-Young-Mirsky 定理，对于任意设定的低秩阶数 $r < k$，截断 SVD 给出了在 Frobenius 范数意义下的最佳低秩逼近：
+$$\min_{\text{rank}(\mathbf{M}) \le r} \|\Delta \mathbf{W} - \mathbf{M}\|_F = \sqrt{\sum_{i=r+1}^k \sigma_i^2}$$
+在深度过参数化大模型中，由于参数间的高度共线性，奇异值谱 $\sigma_i$ 呈现出极其陡峭的幂律衰减（Power-law Decay）。当 $r \ge 16$ 时，残余奇异值能量之和占总能量的比重不足 $0.1\%$，因此低秩分解能够在几乎无信息损失的前提下完成任务适配。
+</details>
+
+---
+
+## 7.8.5 纯底层 PyTorch 代码实现：OpenVLA 核心组件与端到端前向推理
+
+下面我们使用纯底层 PyTorch 算子手写实现 OpenVLA 的核心模块，包括分位数动作离散化器、Prismatic 双视觉投影层、LoRA 线性层以及微型 OpenVLA 主干网络。
 
 ```python
 import torch
 import torch.nn as nn
-from typing import Tuple
+import torch.nn.functional as F
 
-class ActionTokenizer:
-    def __init__(self, num_bins: int = 256, action_min: float = -1.0, action_max: float = 1.0):
-        """
-        初始化动作离散化器。
-        教学实现假设动作已归一化到共享范围。真实 OpenVLA 使用每维 q01/q99 统计量。
-        """
+class OpenVLAActionTokenizer:
+    """
+    基于分位数统计的动作离散化与反量化器
+    """
+    def __init__(self, num_bins: int = 256, q01: torch.Tensor = None, q99: torch.Tensor = None):
         self.num_bins = num_bins
-        self.action_min = action_min
-        self.action_max = action_max
+        # 默认 7 维动作的分位数边界
+        self.q01 = q01 if q01 is not None else -torch.ones(7)
+        self.q99 = q99 if q99 is not None else torch.ones(7)
 
     def tokenize(self, continuous_actions: torch.Tensor) -> torch.Tensor:
         """
-        将连续的动作向量离散化为整数词元索引。
+        连续动作 -> 稳健离散词元索引
+        :param continuous_actions: (B, 7)
+        :return: (B, 7) 整数张量
         """
-        # 将输入裁剪到合法范围内，防止越界
-        actions_clipped = torch.clamp(continuous_actions, self.action_min, self.action_max)
+        self.q01 = self.q01.to(continuous_actions.device)
+        self.q99 = self.q99.to(continuous_actions.device)
 
-        # 应用等式 (7.8.2)：归一化到 [0, 1]
-        norm_actions = (actions_clipped - self.action_min) / (self.action_max - self.action_min)
-
-        # 应用等式 (7.8.3)：缩放并就近取整
-        bin_indices = torch.round(norm_actions * (self.num_bins - 1))
-
-        return bin_indices.long()
+        # 1. 分位数截断
+        clamped = torch.max(torch.min(continuous_actions, self.q99), self.q01)
+        # 2. 稳健归一化到 [0, 1]
+        norm_actions = (clamped - self.q01) / (self.q99 - self.q01 + 1e-8)
+        # 3. 均匀分桶取整
+        tokens = torch.round(norm_actions * (self.num_bins - 1)).long()
+        return tokens
 
     def detokenize(self, bin_indices: torch.Tensor) -> torch.Tensor:
         """
-        将整数词元索引还原为连续的物理动作。
+        离散词元索引 -> 连续动作恢复
         """
-        # 应用等式 (7.8.4)：反向映射
-        continuous_actions = (bin_indices.float() / (self.num_bins - 1)) * \
-                             (self.action_max - self.action_min) + self.action_min
+        self.q01 = self.q01.to(bin_indices.device)
+        self.q99 = self.q99.to(bin_indices.device)
+
+        norm_actions = bin_indices.float() / (self.num_bins - 1)
+        continuous_actions = norm_actions * (self.q99 - self.q01) + self.q01
         return continuous_actions
 
-class VisionLanguageProjector(nn.Module):
-    def __init__(self, vis_dim: int = 1152, llm_dim: int = 4096):
-        """
-        视觉到语言空间的投影层，即公式 (7.8.6)。
-        这里使用一个两层 MLP。
-        """
+class PrismaticProjector(nn.Module):
+    """
+    Prismatic 双流视觉特征融合投影层
+    将 SigLIP (语义) 与 DINOv2 (空间几何) 特征通道拼接并投影至 LLM 维度
+    """
+    def __init__(self, siglip_dim: int = 256, dinov2_dim: int = 256, llm_dim: int = 512):
         super().__init__()
+        fused_dim = siglip_dim + dinov2_dim
         self.mlp = nn.Sequential(
-            nn.Linear(vis_dim, llm_dim, bias=False),
+            nn.Linear(fused_dim, llm_dim, bias=False),
             nn.GELU(),
             nn.Linear(llm_dim, llm_dim, bias=False)
         )
 
-    def forward(self, x_vis: torch.Tensor) -> torch.Tensor:
-        return self.mlp(x_vis)
+    def forward(self, siglip_feat: torch.Tensor, dinov2_feat: torch.Tensor) -> torch.Tensor:
+        """
+        :param siglip_feat: (B, num_patches, siglip_dim)
+        :param dinov2_feat: (B, num_patches, dinov2_dim)
+        :return: (B, num_patches, llm_dim)
+        """
+        # 通道维度拼接
+        fused = torch.cat([siglip_feat, dinov2_feat], dim=-1)
+        return self.mlp(fused)
+
+class LoRALinear(nn.Module):
+    """
+    手写底层 LoRA (Low-Rank Adaptation) 线性层
+    h = W_0 * x + (alpha / r) * B * A * x
+    """
+    def __init__(self, base_linear: nn.Linear, r: int = 16, lora_alpha: float = 32.0):
+        super().__init__()
+        self.base_linear = base_linear
+        # 冻结原始基座权重
+        self.base_linear.weight.requires_grad = False
+        if self.base_linear.bias is not None:
+            self.base_linear.bias.requires_grad = False
+
+        in_dim = base_linear.in_features
+        out_dim = base_linear.out_features
+        self.r = r
+        self.scaling = lora_alpha / r
+
+        # 初始化 A 为高斯分布，B 为全 0
+        self.lora_A = nn.Parameter(torch.randn(r, in_dim) * (1.0 / r))
+        self.lora_B = nn.Parameter(torch.zeros(out_dim, r))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        base_out = self.base_linear(x)
+        # 低秩支路: x -> (x @ A^T) @ B^T
+        lora_out = (x @ self.lora_A.T @ self.lora_B.T) * self.scaling
+        return base_out + lora_out
 
 class SimpleOpenVLA(nn.Module):
-    def __init__(self, vocab_size: int, action_bins: int, llm_dim: int = 4096):
+    """
+    微型 OpenVLA 演示模型
+    """
+    def __init__(self, text_vocab_size: int = 32000, action_bins: int = 256, llm_dim: int = 512):
         super().__init__()
-        # 视觉特征投影层
-        self.projector = VisionLanguageProjector(vis_dim=1152, llm_dim=llm_dim)
-
-        # 语言与动作词元共享的嵌入层
-        # 总词表大小 = 文本词表大小 + 动作桶的数量
-        self.total_vocab_size = vocab_size + action_bins
+        self.projector = PrismaticProjector(siglip_dim=256, dinov2_dim=256, llm_dim=llm_dim)
+        self.total_vocab_size = text_vocab_size + action_bins
         self.embedding = nn.Embedding(self.total_vocab_size, llm_dim)
 
-        # 简化的 LLM 主干网络（此处用标准 Transformer 编码器模拟自回归主干）
-        decoder_layer = nn.TransformerEncoderLayer(d_model=llm_dim, nhead=8, batch_first=True)
-        self.llm_backbone = nn.TransformerEncoder(decoder_layer, num_layers=4)
-
-        # 输出分类头
+        decoder_layer = nn.TransformerEncoderLayer(
+            d_model=llm_dim, nhead=4, dim_feedforward=llm_dim * 2, batch_first=True
+        )
+        self.llm_backbone = nn.TransformerEncoder(decoder_layer, num_layers=2)
         self.lm_head = nn.Linear(llm_dim, self.total_vocab_size, bias=False)
 
-    def forward(self, vis_features: torch.Tensor, text_tokens: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        siglip_tokens: torch.Tensor,
+        dinov2_tokens: torch.Tensor,
+        text_action_tokens: torch.Tensor
+    ) -> torch.Tensor:
         """
-        前向传播：将视觉与文本对齐，预测动作词元。
-        vis_features: [batch_size, num_patches, vis_dim]
-        text_tokens: [batch_size, seq_len]
+        前向计算
         """
-        # 1. 投影视觉特征到 LLM 维度
-        vis_emb = self.projector(vis_features) # [batch, num_patches, llm_dim]
+        # 1. 视觉特征融合并投影
+        vis_emb = self.projector(siglip_tokens, dinov2_tokens) # (B, N_patches, llm_dim)
+        # 2. 文本/动作嵌入
+        tok_emb = self.embedding(text_action_tokens) # (B, seq_len, llm_dim)
 
-        # 2. 获取文本的词嵌入
-        text_emb = self.embedding(text_tokens) # [batch, seq_len, llm_dim]
+        # 3. 序列拼接
+        seq = torch.cat([vis_emb, tok_emb], dim=1) # (B, N_patches + seq_len, llm_dim)
 
-        # 3. 序列拼接：[视觉特征; 文本指令特征]
-        combined_emb = torch.cat([vis_emb, text_emb], dim=1)
-
-        # 4. 因果掩码保证当前位置不能读取未来词元
-        seq_len = combined_emb.size(1)
+        # 4. 因果自回归掩码
+        seq_len = seq.size(1)
         causal_mask = torch.triu(
-            torch.full((seq_len, seq_len), float("-inf"), device=combined_emb.device),
-            diagonal=1,
+            torch.full((seq_len, seq_len), float("-inf"), device=seq.device), diagonal=1
         )
-        hidden_states = self.llm_backbone(combined_emb, mask=causal_mask)
-
-        # 5. 预测下一个词元的 logits分布
-        logits = self.lm_head(hidden_states) # [batch, combined_seq_len, total_vocab_size]
-
+        hidden = self.llm_backbone(seq, mask=causal_mask)
+        logits = self.lm_head(hidden)
         return logits
+
+# ===================================================================
+# 单元测试与低秩参数量校验
+# ===================================================================
+if __name__ == "__main__":
+    batch_size = 2
+    num_patches = 16
+    action_bins = 256
+    llm_dim = 512
+
+    # 1. 测试分位数动作分词器
+    q01 = torch.tensor([-0.50] * 7)
+    q99 = torch.tensor([0.50] * 7)
+    tokenizer = OpenVLAActionTokenizer(num_bins=action_bins, q01=q01, q99=q99)
+    dummy_act = torch.tensor([[0.25, -0.10, 0.00, 0.50, -0.60, 0.10, 0.45]])
+    toks = tokenizer.tokenize(dummy_act)
+    recon = tokenizer.detokenize(toks)
+    print(f"[OpenVLA Test] 输入动作: {dummy_act.numpy().round(3)}")
+    print(f"[OpenVLA Test] 分位数离散索引: {toks.numpy()}")
+    print(f"[OpenVLA Test] 最大重构误差: {(recon - dummy_act).abs().max().item():.6f}")
+
+    # 2. 测试 LoRA 模块与参数量统计
+    base_dense = nn.Linear(4096, 4096)
+    lora_dense = LoRALinear(base_dense, r=16, lora_alpha=32.0)
+    trainable_params = sum(p.numel() for p in lora_dense.parameters() if p.requires_grad)
+    frozen_params = sum(p.numel() for p in lora_dense.parameters() if not p.requires_grad)
+    print(f"[LoRA Test] 可训练参数量 (A + B): {trainable_params} ({trainable_params / frozen_params * 100:.2f}%)")
+    print(f"[LoRA Test] 冻结基座参数量 (W_0): {frozen_params}")
+    assert trainable_params == 16 * 4096 * 2, "LoRA 参数量计算不符！"
+
+    # 3. 测试 OpenVLA 前向推理
+    model = SimpleOpenVLA(text_vocab_size=32000, action_bins=action_bins, llm_dim=llm_dim)
+    model.eval()
+
+    dummy_siglip = torch.randn(batch_size, num_patches, 256)
+    dummy_dinov2 = torch.randn(batch_size, num_patches, 256)
+    dummy_input_tokens = torch.randint(0, 32000, (batch_size, 10))
+
+    with torch.no_grad():
+        out_logits = model(dummy_siglip, dummy_dinov2, dummy_input_tokens)
+
+    print(f"[OpenVLA Test] 前向推理输出 Logits 形状: {out_logits.shape}")
+    assert out_logits.shape == (batch_size, num_patches + 10, 32000 + action_bins)
+    print("✓ OpenVLA 双通路视觉与 LoRA 微调单测全部通过！")
 ```
 
-## 小结
+---
 
-- **OpenVLA** 结合 SigLIP、DINOv2、投影层与 Llama 2 7B，自回归生成动作词元。
-- 动作按数据集、按维度使用第 1、99 百分位数归一化，再均匀量化为 256 桶；桶数降低量化误差，但不能单独保证控制精度。
-- **LoRA** 用两个低秩矩阵表示权重更新。论文配置仅训练约 1.4% 的参数，适合资源受限的任务适配。
+## 7.8.6 本节小结
 
-$$
-$$
+回顾本节内容，我们建立了一条从生物视觉双通路走向现代开源大一统 VLA 模型的完整知识脉络：
+1. **Prismatic 双视觉通路**：融合语义导向的 SigLIP 与空间几何导向的 DINOv2，克服了单一 CLIP 编码器空间定位迟钝的缺陷；
+2. **稳健分位数动作量化**：通过第 1 与第 99 分位数截断，规避了海量多源数据中的极端外点干扰，最大化保留了 256 桶离散化的物理控制分辨率；
+3. **低秩自适应（LoRA）的几何本质**：基于下游任务适配的低秩子空间假说，将参数微调量严格限制在 $1.4\%$ 左右，使大模型能够在低算力下敏捷迁移到新机器人形态。

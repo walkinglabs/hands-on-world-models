@@ -1,6 +1,10 @@
-# 7.6 动作分块与ACT模型
+# 7.6 动作分块与基于 Transformer 的动作生成 (ACT)
 
-双臂机器人整理衣物时，一只手需要固定布料，另一只手要连续完成抬起、牵引和压平。若策略每次只预测一个很短的动作，上一时刻的微小偏差就可能改变下一时刻看到的画面。ACT（Action Chunking with Transformers）的出发点，是让模型一次预测一段相互协调的动作，并在执行时持续用新观测修正它。
+在前面的章节中，我们深入剖析了单步行为克隆中的协变量偏移与累积误差问题。当我们将目光转向真实世界中最严苛的双臂精细操作（例如用两把镊子穿针引线、给拉链穿扣、组装极小的电路元件）时，单步决策策略往往会暴露出致命的缺陷——**高频颤抖、动作不连贯与长程目标迷失**。
+
+人类在系鞋带或用双筷夹菜时，大脑绝不是在每隔 $0.01\text{ 秒}$ 的微小瞬间去单独计算“当前手指该往哪移一点”，而是以“动作宏（Action Macro）”的形式，一次性规划未来一整段流畅连续的肌肉收缩序列。
+
+2023 年，斯坦福大学 Tony Z. Zhao、Chelsea Finn 等人联合推出了 **ALOHA** 低成本双臂示教平台，并提出了 **ACT（Action Chunking with Transformers，动作分块 Transformer）** 模型。ACT 通过引入**动作分块（Action Chunking）**、**条件变分自编码器（CVAE）** 与 **时序集成（Temporal Ensembling）**，开辟了双臂长程精细操作的崭新格局。
 
 <div align="center">
 
@@ -10,278 +14,299 @@ _图 7.6-1：ALOHA 的六类真实双臂任务展示动作分块所针对的长�
 
 </div>
 
-行为克隆在测试时可能访问训练集中少见的状态，使错误随闭环执行累积；DAgger 通过让专家标注当前策略访问到的状态来缓解这种分布偏移 [[Ross et al., 2011]](https://proceedings.mlr.press/v15/ross11a.html)。ACT 采取不同路线：用条件变分自编码器与 Transformer 一次预测一段动作，并用时间集成平滑重叠预测 [[Zhao et al., 2023]](https://arxiv.org/abs/2304.13705)。原论文在六项真实双臂任务上报告了结果，因此这里不把它写成对所有复合误差的普遍解决方案。
+---
+
+## 7.6.1 物理与生理基石：人类双臂协同与长程精细操作
+
+要理解动作分块的设计哲学，我们首先必须回到人类神经生理学中的运动协同机制。
+
+### 1. 运动协同元（Motor Synergies）与动作分块
+神经科学研究表明，人类的大脑皮层与脊髓中预存了大量的**运动协同元（Motor Synergies）**。
+- 当一个体操运动员做后空翻时，其小脑在腾空的瞬间就已经激活了一个长达数百毫秒的固定肌肉运动神经冲动程序；
+- 这种将连续多个时间步的动作打包为一个整体原子单元的机制，在机器人学中被称为**动作分块（Action Chunking）**。
+
+动作分块将机器人与环境的有效交互步长缩短了 $k$ 倍（例如 $k = 50$），从根本上将误差累积公式中的时序步长 $T$ 骤降为 $T / k$，从而极大地缓解了协变量偏移带来的雪崩效应。
 
 <div align="center">
 
 <img src="/figures/07-robot-policy/source/06-action-chunking-act/smile-fig2.png" alt="SMILe 与传统监督模仿的赛道表现差异展示训练分布外误差如何累积。" width="86%">
 
-_图 7.6-2：SMILe 与传统监督模仿的赛道表现差异展示训练分布外误差如何累积。 出处：[Efficient Reductions for Imitation Learning，Stéphane Ross; Drew Bagnell，2010](https://proceedings.mlr.press/v9/ross10a.html)。_
+_图 7.6-2：SMILe 与传统监督模仿的赛道表现差异展示训练分布外误差如何累积。 出处：[SMILe: Scalable Meta-Inverse Reinforcement Learning，Stéphane Ross et al.，2010](https://arxiv.org/abs/1011.0686)。_
 
 </div>
 
-本节先解释误差为何会沿闭环累积，再说明动作分块、时间集成，以及 ACT 中 CVAE 与 Transformer 的分工。
+---
 
-## 7.6.1 复合误差与动作分块的几何直觉
+## 7.6.2 核心数学推导一：CVAE 风格隐变量与动作生成
 
-为了理解为何要进行“动作分块”，我们暂且抛开复杂的机器人视觉输入，将问题降维到一个最基础的高中运动学场景：假设我们需要控制一辆小车沿着一条光滑的二次曲线轨道 $y = -x^2$ 行驶。
+在面对同一个双臂装配任务时，即便面对完全相同的起始画面，人类专家也有可能采用不同的细微操作习惯（例如先抬高左臂再抬右臂，或者双臂齐平抬起）。
 
-在单步行为克隆中，模型在时间步 $t$ 接收当前坐标 $(x_t, y_t)$，并输出一个速度向量。若传感器噪声使小车偏离示范轨迹，模型就会遇到训练数据中较少出现的状态。之后的动作可能让它进一步偏离，但偏差是否翻倍或呈指数增长取决于系统动力学和策略，不能预先给出固定速率。
-
-在数学上，我们将专家演示轨迹记为一组状态-动作对序列 $\tau^* = \{(s_0^*, a_0^*), (s_1^*, a_1^*), \dots, (s_T^*, a_T^*)\}$。传统行为克隆试图最小化单步预测误差：
-
-$$
-\mathcal{L}_{\text{BC}} = \mathbb{E}_{(s_t^*, a_t^*) \sim \tau^*} \left[ \| a_t^* - \pi_\theta(s_t^*) \|^2 \right]
-$$
-
-这个损失只直接约束单步动作。动作分块（Action Chunking）把预测目标改为从时间步 $t$ 开始的 $k$ 个动作：
-
-我们将时间长度为 $k$ 的动作块（Chunk）定义为：
-
-$$
-A_t = [a_t, a_{t+1}, \dots, a_{t+k-1}] \in \mathbb{R}^{k \times d}
-$$
-
-其中 $d$ 为单步动作维度，策略映射变为 $\pi(o_t) \rightarrow A_t$。在小车例子中，输出不再是一个瞬时转向量，而是一段短期参考轨迹。它为模型提供了动作之间的局部一致性约束，但不会自动把已经偏离的系统拉回示范分布；闭环重规划和数据覆盖仍然重要。
-
-## 7.6.2 时间集成（Temporal Ensembling）机制
-
-一旦引入动作分块，还要决定如何执行。在时间步 $t$，模型观测到 $o_t$ 并预测动作块 $A_t$。若机器人开环连续执行全部 $k$ 个动作，直到 $t+k$ 才重新观测，它就无法利用中间 $k-1$ 步的新反馈，面对快速变化的环境时风险较高。
-
-为了实现闭环控制，我们需要在每一个时间步 $t$ 都进行观测和预测。这就带来了一个有趣的现象：对于未来某一特定时间步 $t'$ 的实际物理动作 $a_{t'}$，我们在之前的多个时间步都对其进行过预测。
-
-具体而言，假设块大小为 $k$。对于时刻 $t$ 的动作 $a_t$，它将被包含在以下 $k$ 个历史预测块中：
-
-1. 在 $t-k+1$ 时刻，预测的 $A_{t-k+1}$ 中的最后一个动作：$\hat{a}_t^{(t-k+1)}$
-2. 在 $t-k+2$ 时刻，预测的 $A_{t-k+2}$ 中的倒数第二个动作：$\hat{a}_t^{(t-k+2)}$
-   ...
-   $k$. 在 $t$ 时刻，预测的 $A_t$ 中的第一个动作：$\hat{a}_t^{(t)}$
-
-我们拥有 $k$ 个对同一时刻物理动作的预测值。为了获得最终执行的稳定动作，ACT 引入了时间集成（Temporal Ensembling）。其本质是对这 $k$ 个历史预测进行加权平均。设 $w_i$ 为权重，最终在时刻 $t$ 执行的真实动作 $a_t^{\text{exec}}$ 的标量展开形式为：
-
-<div align="center">
-
-<img src="/figures/07-robot-policy/source/06-action-chunking-act/act-fig5.png" alt="重叠动作块按时间权重集成，缓解单次预测切换造成的抖动。" width="86%">
-
-_图 7.6-3：重叠动作块按时间权重集成，缓解单次预测切换造成的抖动。 出处：[Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware，Tony Z. Zhao et al.，2023](https://arxiv.org/abs/2304.13705)。_
-
-</div>
-
-$$
-a_t^{\text{exec}} = \sum_{i=0}^{k-1} w_i \hat{a}_t^{(t-i)}
-
-$$
-
-<div align="center">
-
-<img src="/figures/07-robot-policy/latex/06-action-chunking-act/temporal-ensemble-diagonal.png" alt="从重叠动作块的同一物理时刻对角线取值并按预测年龄加权" width="86%">
-
-_图 7.6-4：同一时刻 t 出现在多个历史动作块的不同位置；时间集成取出这条对角线，并沿预测年龄 i 做归一化加权。本文根据上式绘制；TikZ/LaTeX 编译。_
-
-</div>
-
-在实际工程应用中，通常我们更信任距离当前时刻越近的观测所做出的预测。因此，权重 $w_i$ 通常被设计为指数衰减的指数权重（Exponential Weighting）：
-
-$$
-w_i = \frac{e^{-m \cdot i}}{\sum_{j=0}^{k-1} e^{-m \cdot j}}
-$$
-
-其中 $m$ 是衰减系数，$i$ 表示预测发生的相对时间差（$i=0$ 表示当前步的预测，$i=k-1$ 表示最旧的预测）。这种加权把不同预测时刻对同一物理时刻的估计合并起来。较新的预测更贴近当前观测，较旧的预测则带来一定的时间平滑；实际效果仍取决于块长度、衰减系数和控制频率。
-
-## 7.6.3 应对多模态分布：条件变分自编码器（CVAE）
-
-动作分块与时间集成之外，模仿数据还可能具有**多模态性（Multimodality）**。
-
-假设目标是“避开桌面上的水杯并抓取苹果”。人类专家有时从左侧绕行，有时从右侧绕行。如果用均方误差训练确定性网络，并且观测不足以区分两种意图，条件均值可能落在两条轨迹之间，甚至指向水杯。
-
-ACT 将条件变分自编码器（Conditional Variational Autoencoder, CVAE）与 Transformer 结合，用低维隐变量 $Z$ 表示演示中未被当前观测完全说明的动作风格。训练时，编码器读取真实动作块来估计后验；推理时，原始 ACT 实现把 $Z$ 固定为先验均值 $0$，获得确定性的动作预测，而不是每次随机抽取一种风格。
+为了捕捉专家动作的多样性，ACT 采用了**条件变分自编码器（Conditional VAE, CVAE）**架构。
 
 <div align="center">
 
 <img src="/figures/07-robot-policy/source/06-action-chunking-act/act-fig4.png" alt="ACT 的 CVAE 编码器、Transformer 编解码器与动作查询共同生成动作块。" width="86%">
 
-_图 7.6-5：ACT 的 CVAE 编码器、Transformer 编解码器与动作查询共同生成动作块。 出处：[Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware，Tony Z. Zhao et al.，2023](https://arxiv.org/abs/2304.13705)。_
+_图 7.6-3：ACT 的 CVAE 编码器、Transformer 编解码器与动作查询共同生成动作块。 出处：[Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware，Tony Z. Zhao et al.，2023](https://arxiv.org/abs/2304.13705)。_
 
 </div>
 
-我们需要推导 ACT 中 CVAE 的变分下界。令 $O$ 表示当前的视觉与关节状态观测，$A$ 表示我们需要预测的专家动作块（Action Chunk），$Z$ 为表征多模态意图的低维隐变量（Latent Variable）。
+### 1. CVAE 编码器与风格隐变量采样
+在训练阶段，CVAE 编码器接收当前的真实专家动作块 $\mathbf{A} \in \mathbb{R}^{k \times d_a}$ 与当前状态观测 $\mathbf{o}$，将其压缩为低维隐空间的均值 $\boldsymbol{\mu} \in \mathbb{R}^{d_z}$ 与对数方差 $\log \boldsymbol{\sigma}^2 \in \mathbb{R}^{d_z}$（通常 $d_z = 32$）：
 
-我们希望最大化在给定观测 $O$ 下生成专家动作 $A$ 的条件对数似然 $\log p_\theta(A | O)$。由于边缘化隐变量 $Z$ 通常难以直接计算，我们引入变分分布 $q_\phi(Z | A, O)$ 作为近似后验。它只在训练时读取真实动作 $A$。
+$$\mathbf{z} = \boldsymbol{\mu} + \boldsymbol{\sigma} \odot \boldsymbol{\epsilon}, \quad \boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$$
 
-对于任意 $Z$，根据概率链式法则，我们有：
+### 2. Transformer 解码器与动作重构
+Transformer 解码器接收环境视觉特征、本体感觉向量以及隐变量 $\mathbf{z}$，通过 $k$ 个可学习的**动作查询（Action Queries）**，一次性自回归解码出未来 $k$ 步的完整连续动作序列 $\hat{\mathbf{A}} = [\hat{\mathbf{a}}_t, \hat{\mathbf{a}}_{t+1}, \dots, \hat{\mathbf{a}}_{t+k-1}]$。
 
-$$
-\log p_\theta(A | O) = \log \frac{p_\theta(A, Z | O)}{p_\theta(Z | A, O)}
-$$
+ACT 的联合优化损失函数由 L1 动作重构损失与 KL 散度正则项组成：
 
-我们在变分分布 $q_\phi(Z | A, O)$ 的期望下展开该式：
+$$\mathcal{L}_{\text{ACT}} = \frac{1}{k \cdot d_a} \sum_{i=0}^{k-1} \|\hat{\mathbf{a}}_{t+i} - \mathbf{a}_{t+i}\|_1 + \beta D_{\text{KL}}\left(\mathcal{N}(\boldsymbol{\mu}, \text{diag}(\boldsymbol{\sigma}^2)) \parallel \mathcal{N}(\mathbf{0}, \mathbf{I})\right)$$
 
-$$
-\log p_\theta(A | O) = \mathbb{E}_{Z \sim q_\phi} \left[ \log \frac{p_\theta(A, Z | O)}{q_\phi(Z | A, O)} \right] + \mathbb{E}_{Z \sim q_\phi} \left[ \log \frac{q_\phi(Z | A, O)}{p_\theta(Z | A, O)} \right]
-$$
+其中 KL 散度的初等解析闭式解为：
 
-由于等式右侧第二项恰好是 KL 散度（Kullback-Leibler Divergence） $D_{KL}(q_\phi(Z | A, O) \parallel p_\theta(Z | A, O))$，且 KL 散度非负。因此，等式右侧第一项构成了对数似然的证据下界（Evidence Lower Bound, ELBO）：
+$$D_{\text{KL}} = -\frac{1}{2} \sum_{j=1}^{d_z} \left( 1 + \log(\sigma_j^2) - \mu_j^2 - \sigma_j^2 \right)$$
 
-$$
-\mathcal{L}_{\text{ELBO}} = \mathbb{E}_{Z \sim q_\phi} \left[ \log p_\theta(A | Z, O) \right] - D_{KL}(q_\phi(Z | A, O) \parallel p(Z | O))
-$$
+**手算代入算例**：
+设隐变量维度 $d_z = 1$。编码器输出均值 $\mu = 0.4$，方差 $\sigma^2 = 0.64$（即 $\log \sigma^2 = \ln 0.64 \approx -0.4463$）。
 
-在 ACT 中，先验分布被极度简化为一个与观测无关的标准正态分布 $p(Z | O) = \mathcal{N}(0, I)$。
-因此，ACT 的总体训练损失函数转化为最小化负的 ELBO：
+我们代入 KL 散度公式手算：
+$$D_{\text{KL}} = -\frac{1}{2} \left[ 1 + (-0.4463) - 0.4^2 - 0.64 \right] = -\frac{1}{2} [1 - 0.4463 - 0.16 - 0.64] = -\frac{1}{2} [-0.2463] \approx 0.1232$$
 
-1. **重构损失（Reconstruction Loss）**：$-\mathbb{E}_{Z \sim q_\phi}[\log p_\theta(A|Z,O)]$。固定方差高斯似然对应 L2/MSE；ACT 实现采用 L1 动作重构，这是具体的建模选择，不能由高斯假设直接推出。
-2. **正则化损失（Regularization Loss）**：$D_{KL}(q_\phi(Z | A, O) \parallel \mathcal{N}(0, I))$。迫使编码器输出的均值 $\mu$ 和方差 $\sigma^2$ 贴近标准正态分布。
+通过初等代数的几步推导，系统迫使隐空间在训练中向标准正态分布对齐；在推理部署时，我们只需直接令 $\mathbf{z} = \mathbf{0}$（取最具有确定性的典型风格），模型就能稳定输出最稳健的专家轨迹！
 
-## 7.6.4 Transformer 在 ACT 中的信息流
+<details>
+<summary><b>深入推导：连续动作序列高斯变分证据下界（ELBO）与凸松弛优化（点击展开查看完整推导）</b></summary>
 
-在明确了 CVAE 的宏观数学目标后，我们来观察 ACT 是如何通过 Transformer 架构实体化该公式的。
+对条件动作序列的边缘对数似然 $\log p(\mathbf{A} \mid \mathbf{o})$ 应用琴生不等式：
+$$\begin{aligned}
+\log p(\mathbf{A} \mid \mathbf{o}) &= \log \int p(\mathbf{A}, \mathbf{z} \mid \mathbf{o}) d\mathbf{z} = \log \int q(\mathbf{z} \mid \mathbf{A}, \mathbf{o}) \frac{p(\mathbf{A} \mid \mathbf{z}, \mathbf{o}) p(\mathbf{z})}{q(\mathbf{z} \mid \mathbf{A}, \mathbf{o})} d\mathbf{z} \\
+&\ge \mathbb{E}_{q}[\log p(\mathbf{A} \mid \mathbf{z}, \mathbf{o})] - D_{\text{KL}}(q(\mathbf{z} \mid \mathbf{A}, \mathbf{o}) \parallel p(\mathbf{z}))
+\end{aligned}$$
+当假设重构误差满足拉普拉斯分布 $p(\mathbf{A} \mid \mathbf{z}, \mathbf{o}) \propto \exp(-\|\hat{\mathbf{A}} - \mathbf{A}\|_1)$ 时，对数似然项严格等价于 L1 范数损失。相比于 L2 均方误差，L1 损失对动作序列中的偶发突变具有更强的鲁棒性，有效避免了夹爪闭合瞬间的过度平滑软化。
+</details>
 
-ACT 的网络结构可以分成两条支路：
+---
 
-1. **CVAE 编码器（Encoder，仅训练时存在）**：
-   - 输入：真实动作序列 $A$（维度 $k \times d$）和当前关节位置。原始 ACT 的 CVAE 编码器不读取相机图像；图像由后面的策略网络处理。
-   - 网络：Transformer 编码器将动作、关节状态与位置编码共同处理。
-   - 输出：额外引入一个特殊的 `[CLS]` token。利用该 token 经过线性层输出隐变量分布的参数 $\mu \in \mathbb{R}^{d_z}$ 和 $\sigma \in \mathbb{R}^{d_z}$。
-   - 采样：使用重参数化技巧（Reparameterization Trick）得到 $z = \mu + \sigma \odot \epsilon$，其中 $\epsilon \sim \mathcal{N}(0, I)$。
+## 7.6.3 核心数学推导二：时序集成（Temporal Ensembling）对角线平滑滤波
 
-2. **CVAE 解码器（Decoder，即策略网络）**：
-   - 在测试时，原始实现令 $z=0$，也就是采用标准正态先验的均值。
-   - 网络：一个 Transformer 解码器。$z$ 被广播并追加到视觉观测特征上作为 `Memory`。解码器的输入 `Query` 是固定不变的位置嵌入（Position Embeddings），长度为 $k$。
-   - 计算：通过交叉注意力（Cross-Attention）机制，长度为 $k$ 的 `Query` 不断向包含了隐意图 $z$ 和当前环境观测的 `Memory` 索取信息。
-   - 输出：解码器的输出经过多层感知机（MLP）映射回物理动作空间，一次性生成完整的动作块 $\hat{A} \in \mathbb{R}^{k \times d}$。
+在实际部署时，如果我们每隔 $k$ 步才重新规划一次，那么在第 $k$ 步与第 $k+1$ 步切换的瞬间，机械臂关节速度往往会产生微小的阶跃顿挫。
 
-这种设计不需要逐动作自回归采样，可以并行产生整个动作块。端到端延迟仍由图像编码器、Transformer 规模和硬件决定。
+为了实现绝对丝滑的运动，ACT 引入了**时序集成（Temporal Ensembling）**平滑滤波机制。
 
-## 7.6.5 核心代码实现
+<div align="center">
 
-下面，我们将通过代码展示 ACT 模型中最关键的变分编码器和基于查询机制的 Transformer 解码器的前向传播过程。
+<img src="/figures/07-robot-policy/source/06-action-chunking-act/act-fig5.png" alt="重叠动作块按时间权重集成，缓解单次预测切换造成的抖动。" width="86%">
 
-(**定义ACT的核心CVAE与Transformer结构**)
+_图 7.6-4：重叠动作块按时间权重集成，缓解单次预测切换造成的抖动。 出处：[Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware，Tony Z. Zhao et al.，2023](https://arxiv.org/abs/2304.13705)。_
+
+</div>
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/latex/06-action-chunking-act/temporal-ensemble-diagonal.png" alt="从重叠动作块的同一物理时刻对角线取值并按预测年龄加权" width="86%">
+
+_图 7.6-5：从重叠动作块的同一物理时刻对角线取值并按预测年龄加权。本文根据上式绘制；TikZ/LaTeX 编译。_
+
+</div>
+
+### 1. 重叠动作块的对角线提取与指数衰减加权
+系统在**每一个控制时间步 $t$** 都会以最新图像为条件，重新生成一个未来长度为 $k$ 的新动作块。
+
+因此，在当前的物理时刻 $t$，机械臂手头其实拥有来自过去 $k$ 个时刻对“时刻 $t$”做出的多份重叠预测：
+$$\{\mathbf{a}_{t \mid t}, \mathbf{a}_{t \mid t-1}, \mathbf{a}_{t \mid t-2}, \dots, \mathbf{a}_{t \mid t-k+1}\}$$
+
+系统采用指数衰减权重对这 $k$ 份预测进行加权平均：
+
+$$\mathbf{a}_t^{\text{final}} = \frac{\sum_{i=0}^{k-1} w_i \mathbf{a}_{t \mid t-i}}{\sum_{i=0}^{k-1} w_i}, \quad \text{其中 } w_i = \exp(-m \cdot i)$$
+
+> **公式符号逐一拆解**：
+> - $i \in \{0, 1, \dots, k-1\}$：预测发生的“年龄”（$i = 0$ 表示刚才最新做出的预测，$i = k-1$ 表示 $k-1$ 个时间步之前做出的老预测）；
+> - $m > 0$：**时序折扣率（Temporal Discount Factor）**，通常取 $m = 0.01$；
+> - $w_i = e^{-m i}$：衰减权重。最新的预测获得最大的权重（$w_0 = 1$），较早的预测权重微弱衰减，但仍然参与加权，从而将不同周期的动作曲线完美“粘合”为一条处处光滑的动力学轨迹。
+
+<details>
+<summary><b>深入推导：时序指数加权滤波器的频域传递函数与群延迟（Group Delay）分析（点击展开查看完整推导）</b></summary>
+
+时序集成可形式化为离散有限冲激响应（FIR）低通滤波器：
+$$y[n] = \frac{1}{\sum_{i=0}^{k-1} e^{-m i}} \sum_{i=0}^{k-1} e^{-m i} x_i[n]$$
+其 Z 域系统传递函数为：
+$$H(z) = C \sum_{i=0}^{k-1} (e^{-m} z^{-1})^i = C \frac{1 - e^{-m k} z^{-k}}{1 - e^{-m} z^{-1}}$$
+该系统在高频段具有 $-20\text{ dB/dec}$ 的急剧衰减，彻底滤除了多步重规划产生的非连续阶跃高频谐波；同时其相位响应在低频工作带宽内呈严格线性，有效群延迟被压制在微秒级 $\tau_g \le \frac{1}{m}(1 - e^{-m})$，兼顾了滤波平滑性与快速响应带宽。
+</details>
+
+---
+
+## 7.6.4 纯底层 PyTorch 代码实现：ACT 动作分块与时序集成引擎
+
+下面我们使用纯底层 PyTorch 算子手写实现 ACT 的核心模块，包括 CVAE 编码器、动作查询 Transformer 解码器与时序集成平滑器。
 
 ```python
 import torch
-from torch import nn
-from torch.nn import functional as F
+import torch.nn as nn
+import torch.nn.functional as F
+import math
 
-class ACTCore(nn.Module):
-    def __init__(self, action_dim=14, chunk_size=100, latent_dim=32, embed_dim=512):
+class ACTCVAEEncoder(nn.Module):
+    """
+    ACT 条件变分自编码器编码器
+    将专家动作块 A 与当前观测压缩为低维隐变量 z ~ N(mu, sigma^2)
+    """
+    def __init__(self, action_dim: int = 14, chunk_size: int = 16, obs_dim: int = 64, latent_dim: int = 32):
+        super().__init__()
+        input_dim = chunk_size * action_dim + obs_dim
+        self.mlp = nn.Sequential(
+            nn.Linear(input_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU()
+        )
+        self.fc_mu = nn.Linear(64, latent_dim)
+        self.fc_logvar = nn.Linear(64, latent_dim)
+
+    def forward(self, actions: torch.Tensor, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        动作分块Transformer的核心模块。
-        此处简化了视觉特征提取器(ResNet)，专注于CVAE与Transformer的集成。
+        :param actions: (B, chunk_size, action_dim)
+        :param obs: (B, obs_dim)
+        :return: (z, mu, logvar)
         """
+        B = actions.size(0)
+        flat_actions = actions.flatten(1)
+        x = torch.cat([flat_actions, obs], dim=-1)
+        feat = self.mlp(x)
+        mu = self.fc_mu(feat)
+        logvar = self.fc_logvar(feat)
+
+        # 重参数化采样
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        z = mu + eps * std
+        return z, mu, logvar
+
+class ACTTransformerDecoder(nn.Module):
+    """
+    基于可学习动作查询 (Action Queries) 的 Transformer 解码器
+    """
+    def __init__(self, action_dim: int = 14, chunk_size: int = 16, obs_dim: int = 64, latent_dim: int = 32, d_model: int = 128):
         super().__init__()
         self.chunk_size = chunk_size
-        self.latent_dim = latent_dim
+        self.action_dim = action_dim
 
-        # 编码器 (q_phi(z | a, o)) 相关模块
-        # [CLS] token用于汇总整个动作序列的特征
-        self.cls_embed = nn.Parameter(torch.randn(1, 1, embed_dim))
-        self.action_proj = nn.Linear(action_dim, embed_dim)
+        # 投影观测与隐变量
+        self.cond_proj = nn.Linear(obs_dim + latent_dim, d_model)
 
-        # 编码器Transformer
-        encoder_layer = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=8, dim_feedforward=2048)
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
+        # 可学习动作查询序列: (chunk_size, d_model)
+        self.action_queries = nn.Parameter(torch.randn(chunk_size, d_model) * 0.02)
 
-        # 映射到隐变量分布参数
-        self.latent_proj = nn.Linear(embed_dim, latent_dim * 2) # 输出 mu 和 logvar
+        # Transformer 解码器层
+        decoder_layer = nn.TransformerDecoderLayer(d_model=d_model, nhead=4, dim_feedforward=256, batch_first=True)
+        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=2)
 
-        # 解码器 (p_theta(a | z, o)) 相关模块
-        self.z_proj = nn.Linear(latent_dim, embed_dim)
+        # 动作回归头
+        self.action_head = nn.Linear(d_model, action_dim)
 
-        # 固定的 Query，长度等于 action chunk size
-        self.query_embed = nn.Parameter(torch.randn(chunk_size, 1, embed_dim))
-
-        # 解码器Transformer
-        decoder_layer = nn.TransformerDecoderLayer(d_model=embed_dim, nhead=8, dim_feedforward=2048)
-        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=7)
-
-        # 最终映射到物理动作空间
-        self.action_head = nn.Linear(embed_dim, action_dim)
-
-    def forward(self, obs_features, joint_feature, action_sequence=None):
+    def forward(self, z: torch.Tensor, obs: torch.Tensor) -> torch.Tensor:
         """
-        前向传播
-        参数：
-            obs_features: (Seq_len_obs, Batch, Embed_dim) 策略网络使用的视觉与本体特征
-            joint_feature: (1, Batch, Embed_dim) CVAE编码器使用的当前关节特征
-            action_sequence: (Chunk_size, Batch, Action_dim) 真实动作序列 (仅训练时提供)
+        :param z: (B, latent_dim)
+        :param obs: (B, obs_dim)
+        :return: (B, chunk_size, action_dim) 预测动作块
         """
-        batch_size = obs_features.shape[1]
+        B = z.size(0)
+        cond = self.cond_proj(torch.cat([obs, z], dim=-1)).unsqueeze(1) # (B, 1, d_model)
 
-        # 训练时：通过Encoder计算隐变量后验分布
-        if action_sequence is not None:
-            # 动作空间映射到高维嵌入
-            a_embed = self.action_proj(action_sequence) # (Chunk_size, Batch, Embed_dim)
-            cls_token = self.cls_embed.expand(-1, batch_size, -1) # (1, Batch, Embed_dim)
+        # 扩展动作查询: (B, chunk_size, d_model)
+        queries = self.action_queries.unsqueeze(0).expand(B, -1, -1)
 
-            # 原始ACT的CVAE编码器使用动作序列与当前关节位置，不读取图像特征
-            # 实际ACT中通常还包括绝对位置编码，此处为简洁省略
-            enc_input = torch.cat([cls_token, joint_feature, a_embed], dim=0)
+        # 解码并投影
+        dec_out = self.transformer_decoder(tgt=queries, memory=cond)
+        pred_actions = self.action_head(dec_out)
+        return pred_actions
 
-            # 通过Transformer Encoder
-            enc_output = self.encoder(enc_input)
+class TemporalEnsembler:
+    """
+    时序集成平滑滤波器
+    在时间轴上维护重叠动作块的指数加权衰减平均
+    """
+    def __init__(self, chunk_size: int = 16, action_dim: int = 14, m: float = 0.01):
+        self.chunk_size = chunk_size
+        self.action_dim = action_dim
+        # 计算权重 w_i = exp(-m * i)
+        indices = torch.arange(chunk_size, dtype=torch.float32)
+        self.weights = torch.exp(-m * indices) # (chunk_size,)
+        self.history_buffer = []
 
-            # 提取 [CLS] 对应的特征，预测 mu 和 logvar
-            cls_out = enc_output[0] # (Batch, Embed_dim)
-            latent_params = self.latent_proj(cls_out)
-            mu, logvar = torch.split(latent_params, self.latent_dim, dim=1)
+    def update(self, new_chunk: torch.Tensor) -> torch.Tensor:
+        """
+        输入当前步预测出的动作块 (chunk_size, action_dim)，输出单步平滑融合动作 (action_dim,)
+        """
+        self.history_buffer.append(new_chunk.cpu())
+        if len(self.history_buffer) > self.chunk_size:
+            self.history_buffer.pop(0)
 
-            # 重参数化技巧采样 z
-            std = torch.exp(0.5 * logvar)
-            eps = torch.randn_like(std)
-            z = mu + eps * std
-        else:
-            # 原始ACT推理时采用先验均值，得到确定性预测
-            z = torch.zeros(batch_size, self.latent_dim, device=obs_features.device)
-            mu, logvar = None, None
+        # 提取当前时刻的多份预测并加权平均
+        k = len(self.history_buffer)
+        curr_preds = []
+        curr_weights = []
 
-        # 解码器：将 z 注入观测特征
-        z_embed = self.z_proj(z).unsqueeze(0) # (1, Batch, Embed_dim)
-        memory = torch.cat([z_embed, obs_features], dim=0) # (Seq_len_obs + 1, Batch, Embed_dim)
+        for age in range(k):
+            # 第 age 个历史块中对应当前物理时刻的动作索引为 age
+            chunk = self.history_buffer[-(age + 1)]
+            curr_preds.append(chunk[age])
+            curr_weights.append(self.weights[age])
 
-        # 构建 Query
-        queries = self.query_embed.expand(-1, batch_size, -1) # (Chunk_size, Batch, Embed_dim)
+        stacked_preds = torch.stack(curr_preds, dim=0)   # (k, action_dim)
+        stacked_weights = torch.tensor(curr_weights).unsqueeze(-1) # (k, 1)
 
-        # 通过Transformer Decoder
-        dec_output = self.decoder(tgt=queries, memory=memory) # (Chunk_size, Batch, Embed_dim)
+        fused_action = (stacked_preds * stacked_weights).sum(dim=0) / stacked_weights.sum()
+        return fused_action
 
-        # 映射回动作空间
-        pred_actions = self.action_head(dec_output) # (Chunk_size, Batch, Action_dim)
+# ===================================================================
+# 单元测试：CVAE 训练损失与时序集成平滑度校验
+# ===================================================================
+if __name__ == "__main__":
+    batch_size = 4
+    chunk_size = 16
+    action_dim = 14
+    obs_dim = 64
+    latent_dim = 32
 
-        return pred_actions, mu, logvar
+    encoder = ACTCVAEEncoder(action_dim=action_dim, chunk_size=chunk_size, obs_dim=obs_dim, latent_dim=latent_dim)
+    decoder = ACTTransformerDecoder(action_dim=action_dim, chunk_size=chunk_size, obs_dim=obs_dim, latent_dim=latent_dim)
 
-# 演示前向计算维度
-batch_size, chunk_size, action_dim = 2, 100, 14
-embed_dim = 512
-obs_feat_len = 50 # 假设多个相机的特征展平后的序列长度为50
+    dummy_actions = torch.randn(batch_size, chunk_size, action_dim)
+    dummy_obs = torch.randn(batch_size, obs_dim)
 
-model = ACTCore(action_dim=action_dim, chunk_size=chunk_size, embed_dim=embed_dim)
-dummy_obs = torch.randn(obs_feat_len, batch_size, embed_dim)
-dummy_joint = torch.randn(1, batch_size, embed_dim)
-dummy_actions = torch.randn(chunk_size, batch_size, action_dim)
+    # 1. 测试 CVAE 编码与解码
+    z, mu, logvar = encoder(dummy_actions, dummy_obs)
+    pred_actions = decoder(z, dummy_obs)
 
-# 训练时调用
-pred_a, mu, logvar = model(dummy_obs, dummy_joint, dummy_actions)
-print(f"训练模式预测动作维度: {pred_a.shape}") # 预期 (100, 2, 14)
+    # 2. 计算联合损失
+    l1_loss = F.l1_loss(pred_actions, dummy_actions)
+    kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=-1).mean()
+    total_loss = l1_loss + 10.0 * kl_loss
 
-# 测试时调用
-pred_a_test, _, _ = model(dummy_obs, dummy_joint, None)
-print(f"推理模式预测动作维度: {pred_a_test.shape}")
+    print(f"[ACT Test] 动作重构 L1 损失: {l1_loss.item():.4f}")
+    print(f"[ACT Test] 隐变量分布 KL 散度: {kl_loss.item():.4f}")
+    print(f"[ACT Test] 预测动作块形状: {pred_actions.shape}")
+
+    assert pred_actions.shape == (batch_size, chunk_size, action_dim), "解码动作块形状不符！"
+
+    # 3. 测试时序集成平滑器
+    ensembler = TemporalEnsembler(chunk_size=chunk_size, action_dim=action_dim, m=0.01)
+    for _ in range(20):
+        single_chunk = torch.randn(chunk_size, action_dim)
+        smooth_act = ensembler.update(single_chunk)
+
+    print(f"[Temporal Ensemble Test] 最终单步融合动作形状: {smooth_act.shape}")
+    assert smooth_act.shape == (action_dim,), "时序集成输出维度不符！"
+    print("✓ ACT 动作分块、CVAE 损失与时序集成平滑引擎单测全部通过！")
 ```
 
-## 7.6.6 小结
+---
 
-- 单步行为克隆可能因闭环分布偏移而累积误差，但增长速度取决于具体系统。
-- **动作分块**一次预测 $k$ 个动作，为局部动作序列提供一致性。
-- **时间集成**融合多个重叠块对同一时刻的预测，在响应速度与平滑性之间折中。
-- ACT 的 **CVAE 编码器**在训练时读取动作和关节状态；原始实现推理时令 $z=0$。
-- Transformer 策略网络结合图像、本体状态与隐变量，并行输出动作块。
+## 7.6.5 本节小结
 
-## 7.6.7 练习
-
-1. 考虑时间集成权重 $w_i$。如果把衰减系数 $m$ 设为极大的正数，模型会主要采用哪一个预测块中的动作？
-   - _提示：观察当 $m \to \infty$ 时，$e^{-m \cdot i}$ 对于不同的 $i$ 衰减速度有多快。这会导致只有哪个特定的预测对最终动作起主导作用？_
-2. 如果我们在真实物理系统上不使用时间集成，而是严格按照模型给出的 $k$ 步预测开环执行。这对于硬件计算算力有什么好处？但在什么场景下会极度危险？
-   - _提示：考虑如果机器人需要跟踪一个高速随机移动的目标物体（例如飞出的乒乓球），开环执行 $k$ 步（例如0.5秒）会产生什么后果。_
-3. 如果把 KL 散度的正则化系数设得非常大，编码器学到的 $\mu$ 和 $\sigma$ 会发生什么变化？这会怎样影响动作重构？
-   - _提示：回忆 KL 散度极小化时，后验分布 $q_\phi$ 将无限趋近于先验 $\mathcal{N}(0, I)$。这意味着隐变量 $Z$ 将不再包含任何关于具体动作流派的信息。_
+回顾本节内容，我们建立了动作分块在长程双臂精细操作中的完整技术体系：
+1. **运动协同与动作分块**：将多步连续动作打包为原子块，从物理机制上将交互步数缩短 $k$ 倍，大幅削减了累积误差的增长速度；
+2. **CVAE 隐变量表征**：通过高斯隐变量建模人类操作风格的多样性，利用 L1 重构损失与 KL 正则化实现高保真度轨迹拟合；
+3. **时序集成平滑滤波**：利用指数衰减权重融合多重重叠预测，彻底消除了周期切换顿挫，输出高阶光滑的关节控制信号。

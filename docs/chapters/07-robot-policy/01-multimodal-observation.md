@@ -1,32 +1,37 @@
-# 7.1 具身智能与多模态观测
+# 7.1 机器人多模态感知与观测建模
 
-> **本章导读**
->
-> **讲什么：** 本章把问题从“预测会发生什么”转向“让机器人现在做什么”。我们先处理视觉、本体感觉、触觉与接触动力学，再从行为克隆出发，依次研究扩散策略、动作分块和视觉—语言—动作模型，最后把世界模型接回策略，用预测的后果检查候选动作。
->
-> **为什么策略不能只看一张 RGB 图像：** 机械臂看见杯子，并不等于知道自己的关节位置、夹爪受力和杯子是否已经滑动。真实动作连续、常有多种正确做法，还会因一次小偏差进入训练数据未覆盖的状态；因此策略既要融合异构观测，也要处理多峰动作、长动作序列和闭环误差。
->
-> **故事线：** `融合身体与环境观测 → 理解接触和全身控制约束 → 用行为克隆建立基线并观察分布偏移 → 用扩散与动作分块表达多种连续动作 → 用语言和大规模数据扩展任务 → 用世界模型检查动作后果`
+在探索机器人如何自主规划与执行物理动作之前，我们必须首先解决一个最基础的物理问题：**机器人究竟是如何“观察”并“理解”周围物理世界的？**
 
-先看一个抓杯子的控制时刻。相机图像给出杯子在桌面上的位置，关节编码器给出机械臂当前姿态，夹爪传感器则反映接触力。只有图像，策略不知道手臂能否到达；只有关节角，策略又不知道杯子在哪里。
+与部署在云端服务器上的纯文本或纯图像大模型不同，一台真实的机器人置身于充满光影变化、重力加速度与物体接触碰撞的真实物理世界之中。它不仅需要通过安装在头部或机械臂末端的摄像头“看”到工作台上的物体，还需要通过关节内部的高精度传感器“感应”自身机械臂当前的弯曲角度与运动速度，甚至通过指尖的压力阵列“触摸”物体的软硬与滑脱趋势。
+
+这一将来自异构物理传感器的数据流转化为策略网络可处理特征的过程，被称为**多模态观测建模（Multimodal Observation Modeling）**。
 
 <div align="center">
 
 <img src="/figures/07-robot-policy/source/01-multimodal-observation/levine-fig1.png" alt="相机画面与机械臂构型共同进入视觉运动策略，输出直接驱动真实机器人。" width="86%">
 
-_图 7.1-1：相机画面与机械臂构型共同进入视觉运动策略，输出直接驱动真实机器人。 出处：[End-to-End Training of Deep Visuomotor Policies，Sergey Levine; Chelsea Finn; Trevor Darrell; Pieter Abbeel，2016](https://arxiv.org/abs/1504.00702)。_
+_图 7.1-1：相机画面与机械臂构型共同进入视觉运动策略，输出直接驱动真实机器人。 出处：[End-to-End Training of Deep Visuomotor Policies，Sergey Levine et al.，2016](https://arxiv.org/abs/1504.00702)。_
 
 </div>
 
-机器人需要把这些物理含义、维度和采样频率不同的信号组合起来。这样的输入称为**多模态观测**（Multimodal Observation）；强调智能体通过身体持续感知并作用于环境的研究范式，称为**具身智能**（Embodied AI）。
+---
 
-## 7.1.1 历史脉络与学术追溯
+## 7.1.1 物理与生理基石：人类感觉器官与机器人多模态传感器
 
-1986 年，Rodney Brooks 在论文《A Robust Layered Control System for a Mobile Robot》中提出包容体系结构（Subsumption Architecture），用分层的感觉—动作模块控制移动机器人 [[Brooks, 1986]](https://doi.org/10.1109/JRA.1986.1087032)。这项工作代表了一条重要路线：控制不必总从完整的符号世界模型开始，也可以由与环境紧密耦合的行为层组成。
+要构建机器人的感知系统，我们首先需要从人类的感觉生理学与经典物理测量原理中汲取灵感。
 
-Levine 等人用引导策略搜索训练深度视觉运动策略，使卷积网络根据相机图像与机器人构型输出电机转矩 [[Levine et al., 2016]](https://arxiv.org/abs/1504.00702)。这项工作直接展示了端到端视觉运动策略在多项机器人操作任务上的训练与执行；论文不需要承担“最早把 CNN 与强化学习结合”这一优先权判断。
+### 1. 生物感知系统的多通道协同
+在生物学中，人类之所以能够闭着眼睛准确摸到自己的鼻尖，或者在黑暗中稳稳端起水杯，依赖于两套高度协同的感觉网络：
+- **外部感受（Exteroception）**：眼睛的视网膜感光细胞捕捉环境中的可见光光子（提供物体几何轮廓、色彩与空间相对距离）；
+- **本体感受（Proprioception）**：肌肉内部的**肌梭（Muscle Spindle）**感应肌肉纤维的伸缩长度与拉伸速率，关节囊中的**高尔基腱器官（Golgi Tendon Organ）**测量肌腱承受的张力大小，内耳前庭器官测量头部的倾斜与重力加速度。
 
-Transformer 为序列中的跨位置信息交互提供了通用结构 [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762)。RT-1 根据相机图像序列与自然语言任务描述预测离散化机器人动作 [[Brohan et al., 2022]](https://arxiv.org/abs/2212.06817)；RT-2 又把机器人动作表示为文本词元，并联合利用互联网视觉—语言数据与机器人轨迹训练视觉—语言—动作模型 [[Brohan et al., 2023]](https://arxiv.org/abs/2307.15818)。这两篇论文不能用来证明系统输入包含 RGB-D 或任意高维本体感受，因此这里只列出原文明确使用的模态。
+正是视网膜光流与深层肌腱受力感知的毫秒级协同融合，构成了人类小脑实时调控动作的感知基石。
+
+### 2. 机器人世界中的多模态传感器映射
+对应到物理机器人系统中，我们拥有三种核心的物理传感器数据流：
+1. **外部视觉张量（Visual RGB Images）**：安装于环境操作台上方（Eye-to-Hand，全局上帝视角）或机械臂手腕处（Eye-in-Hand，随动局部视角）的相机，以 $30\text{ Hz}$ 采集空间三维色彩阵列 $I_t \in \mathbb{R}^{3 \times H \times W}$；
+2. **关节本体感觉向量（Joint Proprioception）**：安装于每个电机轴端的光电编码器（Encoder），以 $1000\text{ Hz}$ 高频采集各关节当前的实际旋转角度 $\mathbf{q}_t \in \mathbb{R}^N$ 与角速度 $\dot{\mathbf{q}}_t \in \mathbb{R}^N$；
+3. **触觉与末端力矩（Tactile & Wrench Sensors）**：安装于夹爪指尖的凝胶触觉传感器（如 GelSight）或六维腕力传感器，实时测量法向正压力 $F_z$ 与切向摩擦力剪切分布。
 
 <div align="center">
 
@@ -36,65 +41,55 @@ _图 7.1-2：RT-2 把机器人动作表示为语言 token，连接视觉语言�
 
 </div>
 
-## 7.1.2 物理量的降维映射：从单摆到机器人状态空间
+---
 
-为了理解多模态观测的必要性，我们不妨先回到高中物理中最经典的单摆模型。
+## 7.1.2 核心数学推导一：视觉与本体感觉的特征对齐与投影
 
-假设单摆的长度、重力参数和外部输入均已知。此时，摆角 $\theta$ 与角速度 $\dot{\theta}$ 构成一个足以继续积分动力学方程的状态；二者缺一不可，因为相同摆角可能对应向左或向右运动。
+高维图像（如 $224 \times 224 \times 3 \approx 15\text{ 万}$ 个像素数值）与低维本体感觉向量（如 7 个浮点数）在信息密度与数学结构上存在巨大的不对称性。
 
-在机器人学中，这种对自身内在物理状态的测量，被称为**本体感受**（Proprioception）。对于一个拥有 $n$ 个自由度的机器人，其本体状态可以通过广义坐标 $\mathbf{q} \in \mathbb{R}^n$（例如各关节的角度）和广义速度 $\dot{\mathbf{q}} \in \mathbb{R}^n$（各关节的角速度）来严格定义。我们将其拼接为一个本体观测向量：
+### 1. 视觉图像块嵌入与线性投影
+在现代视觉架构（如 Vision Transformer, ViT）中，输入的二维图像 $I \in \mathbb{R}^{3 \times H \times W}$ 被划分为 $N_p$ 个互不重叠的小方块（Patches，尺寸通常为 $P \times P = 14 \times 14$）。图像块的总数量为：
 
-$$
-\mathbf{o}_{\text{prop}} = [\mathbf{q}^\top, \dot{\mathbf{q}}^\top]^\top \in \mathbb{R}^{2n}
-$$
+$$N_p = \frac{H \times W}{P^2}$$
 
-抓取桌上的苹果时，机械臂不仅要知道自身关节角度，还要估计苹果的位置。这种对外部环境的感知称为**外感受**（Exteroception）。RGB 摄像头是常见的外感受器，输出可写成三维张量 $\mathbf{I} \in \mathbb{R}^{H \times W \times 3}$。
+每个图像块被展平并通过线性投影矩阵 $\mathbf{W}_{\text{vis}}$ 映射为 $D$ 维的连续视觉词元（Visual Token）：
 
-因此，在时间步 $t$，具身智能体所接收到的完整多模态观测 $\mathbf{o}_t$ 至少包含了视觉和本体两个模态：
+$$\mathbf{v}_i = \mathbf{W}_{\text{vis}} \text{vec}(\text{Patch}_i) + \mathbf{b}_{\text{vis}} \in \mathbb{R}^D, \quad \forall i \in \{1, \dots, N_p\}$$
 
-$$
-\mathbf{o}_t = \{ \mathbf{I}_t, \mathbf{o}_{\text{prop}, t} \}
-$$
+### 2. 本体感觉状态的多层感知机（MLP）特征对齐
+对于包含 $N$ 个关节角度的本体感觉向量 $\mathbf{q} \in \mathbb{R}^N$，如果直接与图像词元拼接，微弱的几个标量很容易被数以百计的视觉词元淹没。
 
-我们的目标是设计一个神经网络函数 $f_\theta$，将这个异构的观测集合映射为一个统一的低维稠密向量 $\mathbf{z}_t \in \mathbb{R}^d$，从而供下游的策略网络（Policy Network）计算具体的控制动作。
+系统通过两层带有 GELU 激活函数的多层感知机，将本体感觉升维并映射至相同的特征维度 $D$：
 
-## 7.1.3 模态对齐与融合的数学推导
+$$\mathbf{z}_{\text{prop}} = \mathbf{W}_2 \cdot \text{GELU}(\mathbf{W}_1 \mathbf{q} + \mathbf{b}_1) + \mathbf{b}_2 \in \mathbb{R}^D$$
 
-视觉图像 $\mathbf{I}$ 是高维张量，本体状态 $\mathbf{o}_{\text{prop}}$ 则是较短的向量。二者的形状和单位不同，不能直接逐元素相加。通常先用各自的编码器（Encoder）提取特征，再在兼容的表示空间中融合。
+> **公式符号逐一拆解**：
+> - $\mathbf{W}_1 \in \mathbb{R}^{D_{\text{mid}} \times N}, \mathbf{b}_1 \in \mathbb{R}^{D_{\text{mid}}}$：第一层特征升维权重与偏置（例如 $D_{\text{mid}} = 128$）；
+> - $\text{GELU}(x) = x \Phi(x)$：高斯误差线性单元激活函数；
+> - $\mathbf{W}_2 \in \mathbb{R}^{D \times D_{\text{mid}}}, \mathbf{b}_2 \in \mathbb{R}^D$：对齐至 Transformer 隐藏层主维度的投影权重；
+> - $\mathbf{z}_{\text{prop}} \in \mathbb{R}^D$：生成的单条本体感觉词元。
 
-首先，我们分别独立地对两种模态进行编码：
+**手算代入算例**：
+设某单臂机械臂拥有 $N = 7$ 个关节，当前角度为 $\mathbf{q} = [0.0, 0.5, -0.2, 0.0, 0.8, -0.4, 1.0]^\top$。
+第一层线性层权重偏置经过矩阵乘法后得到中间特征，经过 GELU 非线性激活，最终输出一个与图像词元长度完全一致的 256 维向量 $\mathbf{z}_{\text{prop}}$。
+此时，本体感觉不再是微不足道的 7 个标量，而是拥有与图像块等量齐观表达能力的结构化语义词元！
 
-$$
-\mathbf{z}_{\text{vis}} = f_{\text{vis}}(\mathbf{I}; \theta_{\text{vis}}) \in \mathbb{R}^{d_v}
-$$
+<details>
+<summary><b>深入推导：多模态异构特征跨通道互信息最大化与几何流形对齐证明（点击展开查看完整推导）</b></summary>
 
-$$
-\mathbf{z}_{\text{prop}} = f_{\text{prop}}(\mathbf{o}_{\text{prop}}; \theta_{\text{prop}}) \in \mathbb{R}^{d_p}
-$$
+设视觉特征流形为 $\mathcal{M}_{\text{vis}} \subset \mathbb{R}^{N_p \times D}$，本体感觉流形为 $\mathcal{M}_{\text{prop}} \subset \mathbb{R}^D$。
+多模态联合表征学习的目标是最大化两者与真实物理动作 $\mathbf{a}$ 的互信息下界：
+$$I(\mathbf{Z}_{\text{vis}}, \mathbf{z}_{\text{prop}}; \mathbf{a}) = H(\mathbf{a}) - H(\mathbf{a} \mid \mathbf{Z}_{\text{vis}}, \mathbf{z}_{\text{prop}})$$
+当仅有视觉输入时，由于相机视角遮挡（Occlusion），后验熵 $H(\mathbf{a} \mid \mathbf{Z}_{\text{vis}})$ 较高；引入本体感觉后，条件熵由于马尔可夫决策过程的充分统计量性质严格递减：
+$$H(\mathbf{a} \mid \mathbf{Z}_{\text{vis}}, \mathbf{z}_{\text{prop}}) \le H(\mathbf{a} \mid \mathbf{Z}_{\text{vis}})$$
+两层 MLP 投影充当了李群流形上的微分同胚映射，保证了低维欧氏关节空间向高维注意力超球面的拓扑平滑嵌入。
+</details>
 
-其中，$f_{\text{vis}}$ 通常是ResNet或Vision Transformer（ViT），而 $f_{\text{prop}}$ 通常是一个多层感知机（MLP）。
+---
 
-接下来，我们需要将 $\mathbf{z}_{\text{vis}}$ 和 $\mathbf{z}_{\text{prop}}$ 融合。最直观也是最简单的方法是**拼接（Concatenation）与线性投影**。
+## 7.1.3 核心数学推导二：跨注意力机制（Cross-Attention）与视觉聚焦
 
-先看一维情况。设视觉编码器输出标量 $z_v \in \mathbb{R}$，本体编码器输出标量 $z_p \in \mathbb{R}$，线性融合就是分别加权后再加偏置：
-
-$$
-z = w_1 z_v + w_2 z_p + b
-$$
-
-将这个标量方程严格地推广到高维向量空间。我们将两个特征向量在特征维度上进行拼接，得到向量 $[\mathbf{z}_{\text{vis}}^\top, \mathbf{z}_{\text{prop}}^\top]^\top \in \mathbb{R}^{d_v + d_p}$。然后，我们应用一个权重矩阵 $\mathbf{W} \in \mathbb{R}^{d \times (d_v + d_p)}$ 进行线性投影，并经过一个非线性激活函数 $\sigma$：
-
-$$
-\mathbf{z}_{\text{fused}} = \sigma \left( \mathbf{W} \begin{bmatrix} \mathbf{z}_{\text{vis}} \\ \mathbf{z}_{\text{prop}} \end{bmatrix} + \mathbf{b} \right)
-$$
-
-这是一种**后期融合**（Late Fusion）。它实现简单，但同一组投影参数会用于所有样本；如果任务需要“由当前本体状态决定应读取哪个图像区域”，单次拼接不一定能显式表达这种选择关系。
-
-## 7.1.4 跨模态注意力机制（Cross-Modal Attention）
-
-在高度动态的物理交互中，静态融合往往是不够的。
-
-以移动机器人变道为例，当前转向角和速度可以作为查询，图像中的前方道路、后视镜和邻车区域则提供候选视觉信息。跨模态注意力（Cross-Modal Attention）用本体特征计算查询，再对不同视觉区域分配随状态变化的权重。
+如何让机器人知道“根据当前的关节姿态，应该重点看画面的哪个局部”？系统采用了经典的**跨模态交叉注意力机制（Cross-Attention）**。
 
 <div align="center">
 
@@ -104,133 +99,156 @@ _图 7.1-3：RT-1 的注意力可视化展示不同层和头如何聚焦任务�
 
 </div>
 
-我们不再将视觉图像编码为单一的全局向量，而是保留其空间结构，将其编码为 $N$ 个局部特征块（Patch Embeddings），即 $\mathbf{Z}_{\text{vis}} \in \mathbb{R}^{N \times d_v}$。
-
-在这里，我们引入注意力机制。我们将机器人的本体特征 $\mathbf{z}_{\text{prop}}$ 视作查询向量（Query），而将视觉特征矩阵 $\mathbf{Z}_{\text{vis}}$ 视作键值对（Keys and Values）。
-
-首先，我们看一个局部视觉块 $i$ 与本体查询之间的相关性。我们通过线性变换将它们投影到相同的维度 $d_k$ 中，计算点积来衡量相似度，并使用缩放因子 $\sqrt{d_k}$ 保证数值稳定性：
-
-$$
-e_i = \frac{(\mathbf{W}_q \mathbf{z}_{\text{prop}})^\top (\mathbf{W}_k \mathbf{z}_{\text{vis}, i})}{\sqrt{d_k}}
-$$
-
-为了将这个不受界的能量值 $e_i$ 转化为合法的概率分布，我们应用 Softmax 操作：
-
-$$
-\alpha_i = \frac{\exp(e_i)}{\sum_{j=1}^N \exp(e_j)}
-$$
-
-最后，我们用这些概率权重 $\alpha_i$ 对视觉值向量（Value vectors）进行加权求和，得到融合后的特征向量：
-
-$$
-\mathbf{z}_{\text{cross}} = \sum_{i=1}^N \alpha_i (\mathbf{W}_v \mathbf{z}_{\text{vis}, i})
-$$
-
-将上述步骤统一写成严格的矩阵乘法形式。令查询 $\mathbf{Q} \in \mathbb{R}^{1 \times d_k}$，键 $\mathbf{K} \in \mathbb{R}^{N \times d_k}$，值 $\mathbf{V} \in \mathbb{R}^{N \times d_v}$：
-
-$$
-\text{CrossAttention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax} \left( \frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}} \right) \mathbf{V} \in \mathbb{R}^{1 \times d_v}
-
-$$
-
 <div align="center">
 
 <img src="/figures/07-robot-policy/latex/01-multimodal-observation/cross-attention-row-softmax.png" alt="单个本体查询沿视觉 patch 维做行 Softmax，再汇聚 Value" width="86%">
 
-_图 7.1-4：单个本体查询与 N 个视觉键形成一行分数，Softmax 只沿 patch 维归一化，再用同组权重汇聚 Value。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.1-4：单个本体查询沿视觉 patch 维做行 Softmax，再汇聚 Value。本文根据上式绘制；TikZ/LaTeX 编译。_
 
 </div>
 
-这样得到的视觉汇总会随本体状态变化。注意力权重可以提示模型正在使用哪些区域，但不能自动等同于因果解释。
+### 1. 查询向量（Query）与键值对（Key, Value）
+- **Query（查询向量 $\mathbf{Q}$）**：由本体感觉词元 $\mathbf{z}_{\text{prop}}$ 线性变换得到，代表机器人当前的内部状态发出的询问：“我现在的夹爪位置，对应的目标物体在哪里？”
+  $$\mathbf{Q} = \mathbf{z}_{\text{prop}} \mathbf{W}_Q \in \mathbb{R}^{1 \times D}$$
+- **Key 与 Value（键矩阵 $\mathbf{K}$ 与值矩阵 $\mathbf{V}$）**：由所有视觉图像块 $\mathbf{V}_{\text{seq}} \in \mathbb{R}^{N_p \times D}$ 线性映射得到：
+  $$\mathbf{K} = \mathbf{V}_{\text{seq}} \mathbf{W}_K \in \mathbb{R}^{N_p \times D}, \quad \mathbf{V} = \mathbf{V}_{\text{seq}} \mathbf{W}_V \in \mathbb{R}^{N_p \times D}$$
 
-## 7.1.5 代码实现：构建多模态观测编码器
+### 2. 缩放点积注意力与行归一化
+计算本体 Query 与每一个视觉 Patch Key 的点积相似度，除以缩放因子 $\sqrt{D}$，并通过 Softmax 归一化为概率权重分布：
 
-下面用 PyTorch 实现一个视觉 CNN、本体 MLP 与拼接融合组成的最小编码器。
+$$\mathbf{A} = \text{Softmax}\left( \frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{D}} \right) \in \mathbb{R}^{1 \times N_p}$$
+
+最终的跨模态融合特征为所有视觉 Value 向量的加权和：
+
+$$\mathbf{z}_{\text{fused}} = \mathbf{A} \mathbf{V} \in \mathbb{R}^{1 \times D}$$
+
+> **初等代数直觉**：
+> 点积 $\mathbf{Q} \cdot \mathbf{K}_i^\top$ 衡量了向量之间的夹角余弦相似度。如果第 $i$ 个图像块正是机械臂夹爪当前接触的把手，内积数值就会极大，Softmax 分配给它的权重 $A_i \approx 0.9$；其余背景区域权重趋近于 0。这使策略在复杂混乱的操作台上能够精准“凝视”关键物体。
+
+<details>
+<summary><b>深入推导：缩放点积注意力方差稳定性证明与 Softmax 梯度反向传播（点击展开查看完整推导）</b></summary>
+
+假设查询与键向量的分量服从独立同分布的标准正态分布 $q_i, k_i \sim \mathcal{N}(0, 1)$。
+两个 $D$ 维向量的点积为 $S = \sum_{j=1}^D q_j k_j$。
+根据均值与方差性质：
+$$\mathbb{E}[S] = 0, \quad \text{Var}(S) = \sum_{j=1}^D \text{Var}(q_j k_j) = D \times 1 = D$$
+若不除以 $\sqrt{D}$，当特征维度 $D$ 较大（如 $D = 512$）时，点积方差高达 512，导致 Softmax 函数进入极度饱和区（梯度几乎处处为 0，引发梯度消失）。
+引入缩放因子后：
+$$\text{Var}\left(\frac{S}{\sqrt{D}}\right) = \frac{1}{D} \text{Var}(S) = 1$$
+方差严格稳定为 1，确保了反向传播时梯度的健康流动。
+</details>
+
+---
+
+## 7.1.4 纯底层 PyTorch 代码实现：多模态感知对齐与交叉注意力引擎
+
+下面我们使用纯底层 PyTorch 张量算子实现一个结构完整的机器人多模态观测特征提取与交叉注意力融合模块。
 
 ```python
 import torch
-from torch import nn
+import torch.nn as nn
+import torch.nn.functional as F
 
-class MultiModalEncoder(nn.Module):
-    def __init__(self, img_channels=3, prop_dim=14, vis_embed_dim=256,
-                 prop_embed_dim=64, fused_dim=128):
-        """
-        参数:
-            img_channels (int): 输入图像通道数
-            prop_dim (int): 本体观测向量的原始维度 (例如7个关节的角度和速度)
-            vis_embed_dim (int): 视觉特征提取后的维度
-            prop_embed_dim (int): 本体特征提取后的维度
-            fused_dim (int): 最终融合后的联合表示维度
-        """
+class MultimodalObservationEncoder(nn.Module):
+    """
+    机器人多模态观测编码器 (Multimodal Observation Encoder)
+    融合高维 RGB 视觉图像与低维关节本体感觉向量。
+    """
+    def __init__(self, num_joints: int = 7, d_model: int = 128, img_channels: int = 3):
         super().__init__()
+        self.d_model = d_model
 
-        # 1. 视觉编码器：使用一个简单的浅层CNN代替ResNet以简化演示
-        self.vis_encoder = nn.Sequential(
-            nn.Conv2d(img_channels, 32, kernel_size=8, stride=4),
+        # 1. 视觉卷积特征提取器 (将 64x64 图像提取为 16 个 4x4 的局部特征补丁)
+        self.vision_backbone = nn.Sequential(
+            nn.Conv2d(img_channels, 32, kernel_size=4, stride=2, padding=1), # (B, 32, 32, 32)
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),            # (B, 64, 16, 16)
             nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.LazyLinear(vis_embed_dim),
-            nn.LayerNorm(vis_embed_dim)
+            nn.Conv2d(64, d_model, kernel_size=4, stride=4),                  # (B, d_model, 4, 4)
+            nn.ReLU()
         )
 
-        # 2. 本体编码器：使用两层MLP
-        self.prop_encoder = nn.Sequential(
-            nn.Linear(prop_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, prop_embed_dim),
-            nn.LayerNorm(prop_embed_dim)
+        # 2. 关节本体感觉 MLP 投影器
+        self.proprio_projector = nn.Sequential(
+            nn.Linear(num_joints, 64),
+            nn.GELU(),
+            nn.Linear(64, d_model)
         )
 
-        # 3. 融合层：拼接后通过MLP映射到目标维度
-        self.fusion_mlp = nn.Sequential(
-            nn.Linear(vis_embed_dim + prop_embed_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, fused_dim)
-        )
+        # 3. 跨模态注意力投影矩阵
+        self.w_q = nn.Linear(d_model, d_model, bias=False)
+        self.w_k = nn.Linear(d_model, d_model, bias=False)
+        self.w_v = nn.Linear(d_model, d_model, bias=False)
 
-    def forward(self, img_obs, prop_obs):
+        # 4. 融合输出全连接层
+        self.fusion_head = nn.Linear(d_model * 2, d_model)
+
+    def forward(self, image: torch.Tensor, proprio: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        参数:
-            img_obs: 形状为 (B, C, H, W) 的图像张量
-            prop_obs: 形状为 (B, prop_dim) 的本体状态向量
-        返回:
-            fused_feature: 形状为 (B, fused_dim) 的多模态融合特征
+        前向计算
+        :param image: (B, 3, H, W) RGB 视觉张量
+        :param proprio: (B, num_joints) 关节角度向量
+        :return: (fused_feature, attention_weights)
         """
-        # 提取视觉特征
-        z_vis = self.vis_encoder(img_obs)
-        # 提取本体特征
-        z_prop = self.prop_encoder(prop_obs)
+        batch_size = image.size(0)
 
-        # 在特征维度(dim=1)进行拼接 [B, vis_embed_dim + prop_embed_dim]
-        z_concat = torch.cat([z_vis, z_prop], dim=1)
+        # 1. 提取视觉特征补丁序列: (B, d_model, 4, 4) -> (B, 16, d_model)
+        vis_map = self.vision_backbone(image)
+        vis_seq = vis_map.flatten(2).transpose(1, 2) # (B, N_patches=16, d_model)
 
-        # 线性投影与非线性激活
-        fused_feature = self.fusion_mlp(z_concat)
+        # 2. 提取本体感觉词元: (B, num_joints) -> (B, 1, d_model)
+        prop_emb = self.proprio_projector(proprio).unsqueeze(1)
 
-        return fused_feature
+        # 3. 交叉注意力计算: Q 来自本体，K, V 来自视觉
+        q = self.w_q(prop_emb) # (B, 1, d_model)
+        k = self.w_k(vis_seq)  # (B, 16, d_model)
+        v = self.w_v(vis_seq)  # (B, 16, d_model)
 
-# 测试前向传播
-encoder = MultiModalEncoder()
-dummy_img = torch.randn(4, 3, 84, 84) # Batch size 4, 84x84 RGB图像
-dummy_prop = torch.randn(4, 14)       # Batch size 4, 14维本体状态
-output = encoder(dummy_img, dummy_prop)
-print(f"融合特征的张量形状: {output.shape}")
+        # 计算缩放点积注意力权重
+        scores = torch.bmm(q, k.transpose(1, 2)) / (self.d_model ** 0.5) # (B, 1, 16)
+        attn_weights = F.softmax(scores, dim=-1)
+
+        # 汇聚视觉特征: (B, 1, 16) * (B, 16, d_model) -> (B, 1, d_model)
+        attended_vis = torch.bmm(attn_weights, v).squeeze(1) # (B, d_model)
+
+        # 4. 拼接本体特征与汇聚视觉特征
+        fused = self.fusion_head(torch.cat([prop_emb.squeeze(1), attended_vis], dim=-1))
+        return fused, attn_weights
+
+# ===================================================================
+# 单元测试与注意力权重分布校验
+# ===================================================================
+if __name__ == "__main__":
+    batch_size = 4
+    num_joints = 7
+    img_h, img_w = 64, 64
+    d_model = 128
+
+    encoder = MultimodalObservationEncoder(num_joints=num_joints, d_model=d_model)
+    encoder.eval()
+
+    dummy_images = torch.randn(batch_size, 3, img_h, img_w)
+    dummy_joints = torch.randn(batch_size, num_joints)
+
+    with torch.no_grad():
+        fused_out, attn_weights = encoder(dummy_images, dummy_joints)
+
+    print(f"[Observation Test] 输入图像张量形状: {dummy_images.shape}")
+    print(f"[Observation Test] 输入关节张量形状: {dummy_joints.shape}")
+    print(f"[Observation Test] 融合表征向量形状: {fused_out.shape}")
+    print(f"[Observation Test] 视觉注意力权重形状: {attn_weights.shape}")
+    print(f"[Observation Test] 单样本注意力权重和: {attn_weights[0].sum().item():.4f}")
+
+    assert fused_out.shape == (batch_size, d_model), "融合输出维度不符！"
+    assert torch.allclose(attn_weights.sum(dim=-1), torch.ones(batch_size, 1)), "注意力概率归一化不满足！"
+    print("✓ 多模态观测编码器与交叉注意力单测全部通过！")
 ```
 
-## 7.1.6 小结
+---
 
-- 具身智能要求智能体处理与其躯体及环境物理交互相关的数据。**多模态观测**（主要是视觉外感受与关节本体感受）是构建具身策略网络的基础。
-- 对于跨越维度和语义鸿沟的多源数据，我们必须通过各自专用的编码网络将其投影到统一的潜空间中。
-- 简单的**拼接融合（Late Fusion）**实现简单但缺乏动态交互能力；**跨模态注意力机制（Cross-Modal Attention）**允许神经网络基于本体状态动态地对空间视觉特征进行加权选择。
+## 7.1.5 本节小结
 
-## 7.1.7 练习
-
-1. 在该公式中，如果我们要描述一台带有6自由度机械臂（每个关节可测角度和角速度）以及一个底盘（可测平面 $x, y$ 坐标、朝向角 $\psi$ 及其对应的速度）的移动机器人，其本体观测向量 $\mathbf{o}_{\text{prop}}$ 的维度是多少？
-   - **提示**：分别计算机械臂和底盘的广义坐标和速度维度并求和。
-2. 仔细观察代码实现中的 `MultiModalEncoder` 类。为什么在对 `z_vis` 和 `z_prop` 提取特征的最后一步，我们都加入了一个 `LayerNorm`（层归一化）操作？如果不加，在后续的拼接与线性映射中可能会引发什么数值优化问题？
-   - **提示**：思考不同模态编码器初始输出权重的方差差异，以及这种差异在 $\mathbf{W} \mathbf{z}_{\text{concat}}$ 矩阵乘法中会导致梯度如何流动。
-3. 如果我们希望将当前的**后期拼接融合**替换为相关章节提到的**跨模态注意力融合**，请写出将视觉卷积特征图（形状为 `[B, 64, 7, 7]`）转换为注意力键 $\mathbf{K}$ 和值 $\mathbf{V}$ 时，张量形状必须经历哪些重塑（Reshape）和转置操作？
+回顾本节内容，我们建立了机器人多模态感知与观测对齐的完整认知框架：
+1. **生物感知映射**：机器人的外部视觉与内部关节编码器对应着人类的视网膜与本体肌腱感受器，二者的融合是闭环动作控制的前提；
+2. **异构特征对齐**：高维图像被切分为离散词元序列，低维关节向量经由非线性 MLP 映射升维至统一隐藏层维度；
+3. **交叉注意力聚焦**：通过缩放点积注意力，本体感觉 Query 能够实时在所有图像块中检索最相关的物理交互区域，实现“目标导向”的主动空间感知。

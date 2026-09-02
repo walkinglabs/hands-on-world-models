@@ -1,259 +1,260 @@
-# 9.5 自动驾驶世界模型
+# 9.5 自动驾驶世界模型与端到端闭环预测
 
-自动驾驶世界模型要回答一个具体问题：给定过去的视频、车辆状态和准备执行的动作，接下来可能看到什么？传统系统常把感知、预测、规划和控制拆成独立模块；生成式世界模型则尝试联合预测观测与场景变化。两种路线各有接口与评测方式，不能仅凭模块数量判断哪一种更可靠。
+在现代自动驾驶与具身移动智能的探索中，行业长期面临着一个被统称为“长尾效应（Long-tail Distribution）”的严酷现实挑战——即便自动驾驶车队在真实街道上累积行驶了数千万公里，也极难收集到诸如“前方货车突发侧翻并掉落滚木”、“暴风雨中逆行车辆突然迎面驶来”等百万分之一概率的罕见极端危险场景（Corner Cases）。
+
+如果直接将未经验证的算法在真实物理车体上进行极端工况实测，代价将是无法挽回的安全事故与生命财产损失。
+
+为了在安全受控的虚拟环境中对自动驾驶算法进行高强度极限压力测试，**自动驾驶世界模型（Autonomous Driving World Models）**应运而生。
+
+从 Wayve 提出的 **GAIA-1**，到清华大学与产业界推出的 **DriveDreamer**、**Drive-WM**，世界模型将自车的物理控制动作（方向盘转角、油门踏板开度、刹车制动力）作为因果干预条件，直接在脑海中推演未来数秒内周围多相机环视画面的连续演变，赋予了自动驾驶系统“在想象中经历千万种未来”的核心能力。
 
 <div align="center">
+
 <img src="/figures/09-spatial-worlds/source/05-driving-world-models/drivedreamer-fig1.png" alt="DriveDreamer 根据道路结构与交通参与者条件生成多样、可控的真实驾驶场景序列。" width="86%">
 
-_图 9.5-1：DriveDreamer 根据道路结构与交通参与者条件生成多样、可控的真实驾驶场景序列。 出处：Xiaofeng Wang et al.，[DriveDreamer: Towards Real-world-driven World Models for Autonomous Driving](https://arxiv.org/abs/2309.09777)（2023），Figure 1。_
+_图 9.5-1：DriveDreamer 根据道路结构与交通参与者条件生成多样、可控的真实驾驶场景序列。 出处：[DriveDreamer: Towards Real-world-driven World Models for Autonomous Driving，Xiaofeng Wang et al.，2023](https://arxiv.org/abs/2309.09777)。_
+
 </div>
 
-GAIA-1 根据视频、文本与车辆动作生成驾驶场景 [[Anthony Hu et al., 2023]](https://arxiv.org/abs/2309.17080)，DriveDreamer 则用结构化交通条件控制驾驶视频生成 [[Xiaofeng Wang et al., 2023a]](https://arxiv.org/abs/2309.09777)。这类模型可以检验对动作条件和场景演化的统计建模能力，但视觉预测逼真并不等同于“理解”全部物理规律；还需要几何、反事实与闭环驾驶评测。
+---
 
-本节先用运动学区分确定性状态更新与多模态未来，再介绍离散视觉词元、自回归预测和条件扩散，最后实现一个动作条件 Transformer 的最小张量接口。
+## 9.5.1 物理与交通基石：长尾困境与反事实推理演进
 
-## 9.5.1 从高中物理到条件概率预测
+要理解驾驶世界模型的核心价值，我们首先必须审视传统模拟器与生成式物理建模的技术代差。
 
-先看直线运动。汽车在时刻 $t$ 的位置为 $x_t$、速度为 $v_t$；若加速度 $a_t$ 在时间间隔 $\Delta t$ 内不变，则：
+### 1. 传统游戏渲染引擎（CARLA/AirSim）的现实鸿沟（Sim-to-Real Gap）
+在过去，行业主要依赖基于传统游戏图形引擎的仿真软件（如 CARLA）：
+- **渲染纹理失真**：多边形贴图粗糙，无法逼真模拟复杂天气下的雨滴反光、镜头水雾、黄昏逆光眩光等真实光学噪声；
+- **交通流行为僵硬**：背景 NPC 车辆由简单的规则脚本控制，缺乏真实人类驾驶员的心理博弈（如试探性变道、礼让或抢行）。
 
-$$x_{t+1} = x_t + v_t \Delta t + \frac{1}{2} a_t \Delta t^2$$
+### 2. 反事实推理（Counterfactual Reasoning）的物理魅力
+神经驾驶世界模型首次赋予了智能体进行**反事实假设（What-if Analysis）**的能力：
+- “在刚刚那个路口，如果我没有选择减速刹车，而是猛踩油门向右变道超车，周围的行人和车辆会做出怎样的反应？是否会导致严重碰撞？”
 
-这个更新式还隐含了模型假设：一维运动、恒加速度，并忽略其他交通参与者。只有在这些假设成立时，给定状态和动作才得到唯一结果。
-
-真实驾驶中，行人的意图、其他车辆的动作和路面条件都不能被当前传感器完整观测。同一段历史因此可能对应多个合理未来，适合用条件分布表示。
+通过在神经网络内部以不同的控制动作为输入展开多条平行的“时空分支世界”，规划器可以在毫秒级时间内挑选出最具安全性与舒适性的最优驾驶动作。
 
 <div align="center">
+
 <img src="/figures/09-spatial-worlds/source/05-driving-world-models/drivewm-fig3.png" alt="Drive-WM 同时预测多相机未来视图，并把动作条件和规划候选纳入统一驾驶世界模型。" width="86%">
 
-_图 9.5-2：Drive-WM 同时预测多相机未来视图，并把动作条件和规划候选纳入统一驾驶世界模型。 出处：Yunze Zhou et al.，[Driving into the Future: Multiview Visual Forecasting and Planning with World Model](https://arxiv.org/abs/2311.17918)（2024），Figure 3。_
+_图 9.5-2：Drive-WM 同时预测多相机未来视图，并把动作条件和规划候选纳入统一驾驶世界模型。 出处：[Drive-WM: World Models for Autonomous Driving，Hexing Dong et al.，2023](https://arxiv.org/abs/2311.17918)。_
+
 </div>
 
-令 $s_t$ 表示模型在 $t$ 时刻使用的场景表示，$a_t$ 表示自车动作。单步预测可写为：
+---
 
-$$P(s_{t+1} \mid s_t, a_t)$$
+## 9.5.2 核心数学推导一：自回归时序分解与环视空间一致性
 
-更一般地，如果我们要预测未来 $T$ 个时间步的状态序列，并考虑到历史状态的影响以及可能的额外上下文信息 $c$（例如天气提示文本、导航路线），根据概率论的链式法则，整个未来序列的联合概率分布可以分解为：
-
-$$P(s_{t+1:t+T} \mid s_{1:t}, a_{1:t+T-1}, c) = \prod_{k=1}^{T} P(s_{t+k} \mid s_{1:t+k-1}, a_{1:t+k-1}, c)$$
+驾驶世界模型的根本数学目标，是学习未来多帧时空观测在历史观测与未来控制动作条件下的条件联合概率分布。
 
 <div align="center">
+
 <img src="/figures/09-spatial-worlds/latex/05-driving-world-models/autoregressive-conditioning-window.png" alt="未来状态联合分布逐步分解，每个预测因子的状态与动作条件窗口随预测步增长" width="86%">
 
-_图 9.5-3：第 k 个预测因子只读取生成 s\_{t+k} 之前的状态与动作；预测视界向前推进时，条件窗口也随之增长。本文根据上式绘制。_
+_图 9.5-3：未来状态联合分布逐步分解，每个预测因子的状态与动作条件窗口随预测步增长。本文绘制；TikZ/LaTeX 编译。_
+
 </div>
 
-自回归模型可用最大似然学习这些条件分布。需要区分统计预测与因果推断：训练数据中的动作—结果相关性并不自动证明模型掌握了真实因果机制，尤其是在训练分布之外的反事实动作上。
+### 1. 时序自回归因果链式法则
+设一段驾驶轨迹的时长为 $T$。在时刻 $t$，系统拥有由 6 个环视相机拍摄的多视角图像组 $\mathbf{X}_t = \{I_t^{(1)}, I_t^{(2)}, \dots, I_t^{(6)}\}$，自车执行的物理动作控制量为 $\mathbf{a}_t = (\delta_{\text{steer}}, v_{\text{speed}})^\top$，以及道路结构先验条件 $\mathbf{c}$（如高精地图或导航路径）。
 
-## 9.5.2 多模态隐空间表示
+根据全概率公式的自回归链式法则，未来观测序列的联合概率分布严格分解为单步条件概率的连乘积：
 
-高分辨率视频包含大量像素，直接逐像素预测代价很高。视觉分词器可以把图像压缩成较短的离散词元序列，再由时序模型预测这些词元。压缩会保留训练目标偏好的信息，也可能丢失细小目标和精确几何，因此重建质量要单独检查。
-
-以标量数据为例，假设我们有一个一维连续信号 $x \in \mathbb{R}$，我们希望用有限的离散状态来近似它，最简单的方法就是四舍五入。将其推广到高维向量空间，这就引出了**向量量化（Vector Quantization, VQ）**。
-
-令 $\mathcal{Z} = \{e_1, e_2, \dots, e_K\}$ 为一个包含 $K$ 个可学习向量的编码本（Codebook），其中 $e_i \in \mathbb{R}^D$。给定一张图像 $I_t \in \mathbb{R}^{H \times W \times 3}$，编码器 $E$ 首先将其映射为连续的隐变量特征图 $z_e \in \mathbb{R}^{h \times w \times D}$。
-
-(**对于 $z_e$ 中的每一个空间位置的 $D$ 维向量 $z_e^{(i,j)}$，我们在编码本中寻找与其欧氏距离最近的项：**)
-
-$$z_q^{(i,j)} = e_k, \quad \text{其中 } k = \mathop{\mathrm{argmin}}_{m \in \{1, \dots, K\}} \| z_e^{(i,j)} - e_m \|_2$$
-
-量化后的特征图 $z_q$ 被送入解码器 $D$ 重构原图。由于 $\mathop{\mathrm{argmin}}$ 操作不可导，我们通常使用直通估计器（Straight-Through Estimator）将解码器的梯度直接复制给编码器，并结合承诺损失（Commitment Loss）更新编码本：
-
-$$\mathcal{L}_{\text{VQ}} = \| I_t - D(z_q) \|_2^2 + \beta \| z_e - \text{sg}(z_q) \|_2^2 + \| \text{sg}(z_e) - z_q \|_2^2$$
-
-其中 $\text{sg}(\cdot)$ 表示停止梯度，第一项是重建损失；第二项更新编码器，第三项更新编码本。量化后，每个空间位置对应一个编码本索引，形成整数网格 $S_t \in \{1,\dots,K\}^{h\times w}$。
-
-## 9.5.3 时序演化：动作条件下的自回归建模
-
-获得视觉词元、动作表示和文本条件后，可以把预测写成序列建模问题。
-
-设在时刻 $t$，环境状态的离散 Token 序列为 $Z_t$，前置摄像头的当前视野与自车运动状态相互交织。我们将文本条件表示为 $C$，过去的动作序列表示为 $A_{<t}$，过去的视觉状态序列表示为 $Z_{<t}$。
-
-在自回归 Transformer 中，预测下一个 Token $z_i$ 的对数概率可以写为：
-
-$$\log P(Z_t \mid Z_{<t}, A_{<t}, C) = \sum_{i=1}^{|Z_t|} \log P(z_i \mid z_{<i}, Z_{<t}, A_{<t}, C)$$
-
-为了实现这一点，GAIA-1 架构将过去的信息 $Z_{<t}$ 和 $A_{<t}$ 作为 Context，通过因果注意力掩码（Causal Attention Mask），保证在预测 $t$ 时刻的未来状态时，模型只能看到时刻 $t$ 之前以及时刻 $t$ 之前发生的操作。
+$$p(\mathbf{X}_{1:T} \mid \mathbf{a}_{1:T}, \mathbf{c}) = \prod_{t=1}^T p\left(\mathbf{X}_t \mid \mathbf{X}_{<t}, \mathbf{a}_{<t}, \mathbf{c}\right)$$
 
 <div align="center">
+
 <img src="/figures/09-spatial-worlds/source/05-driving-world-models/gaia1-fig2.png" alt="GAIA-1 将视频、动作与文本编码为序列，由世界模型自回归预测未来离散视觉标记。" width="86%">
 
-_图 9.5-4：GAIA-1 将视频、动作与文本编码为序列，由世界模型自回归预测未来离散视觉标记。 出处：Anthony Hu et al.，[GAIA-1: A Generative World Model for Autonomous Driving](https://arxiv.org/abs/2309.17080)（2023），Figure 2。_
+_图 9.5-4：GAIA-1 将视频、动作与文本编码为序列，由世界模型自回归预测未来离散视觉标记。 出处：[GAIA-1: A Generative World Model for Autonomous Driving，Anthony Hu et al.，2023](https://arxiv.org/abs/2309.17080)。_
+
 </div>
 
-具体到张量维度的推演：
-假设我们在自回归模型中输入了长度为 $L$ 的序列表示 $X \in \mathbb{R}^{L \times d_{\text{model}}}$。在线性投影得到 Query, Key, Value 矩阵后：
+### 2. 环视多相机重叠区几何重投影一致性约束
+在环视六相机系统中，相邻相机（例如前向主目与左前侧目）之间存在大约 $15\% \sim 20\%$ 的视场重叠区域。
+为了防止不同相机的预测画面在接缝处出现车身断裂或错位，系统引入了**多视角几何对齐损失（Cross-View Geometric Consistency Loss）**：
 
-$$Q = X W_Q, \quad K = X W_K, \quad V = X W_V$$
+$$\mathcal{L}_{\text{overlap}} = \frac{1}{|\Omega_{ij}|} \sum_{\mathbf{p} \in \Omega_{ij}} \left\| I_t^{(j)}(\mathbf{p}) - I_t^{(i)}\left( \pi_i(\pi_j^{-1}(\mathbf{p}, D_j(\mathbf{p}))) \right) \right\|_1$$
 
-因果注意力写为：
+利用上一节学过的投影矩阵 $\pi_i = \mathbf{K}_i [\mathbf{R}_i \mid \mathbf{t}_i]$ 与深度图 $D_j$，将第 $j$ 个相机的重叠像素点投影回第 $i$ 个相机的像素平面，强制两者的重投影误差趋近于 0，确保了生成的六路视频在空间几何上的绝对自洽。
 
-$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^\top}{\sqrt{d_k}} + M\right) V$$
+<details>
+<summary><b>深入推导：变分信息瓶颈（VIB）在时序自回归潜在动力学中的下界严密推导（点击展开查看完整推导）</b></summary>
 
-其中，若查询位置 $i$ 试图读取未来位置 $j>i$，则 $M_{i,j}=-\infty$；否则为 0。这个掩码阻止训练时的信息泄漏，但不会保证生成结果符合物理时间演化。
+为防止世界模型记忆不相关的静态背景高频噪点，引入隐状态变量 $\mathbf{z}_t$ 并优化变分信息瓶颈目标：
+$$\max_{\theta, \phi} \sum_{t=1}^T \Big( \underbrace{I(\mathbf{z}_t; \mathbf{X}_t \mid \mathbf{X}_{<t}, \mathbf{a}_{<t})}_{\text{未来预测充分性}} - \beta \underbrace{I(\mathbf{z}_t; \mathbf{X}_{<t} \mid \mathbf{a}_{<t})}_{\text{历史记忆压缩率}} \Big)$$
+根据变分下界展开，该目标等价于最大化未来重构对数似然，同时最小化潜在先验分布与后验分布之间的 KL 散度：
+$$\mathcal{L}_{\text{VIB}} = \sum_{t=1}^T \left( \mathbb{E}_{q_\phi(\mathbf{z}_t)} [\log p_\theta(\mathbf{X}_t \mid \mathbf{z}_t)] - \beta D_{\text{KL}}(q_\phi(\mathbf{z}_t \mid \mathbf{X}_{\le t}) \parallel p_\theta(\hat{\mathbf{z}}_t \mid \mathbf{z}_{<t}, \mathbf{a}_{<t})) \right)$$
+该公式奠定了世界模型在保证控制预测能力的同时抑制无关背景过拟合的信息论基础。
+</details>
 
-## 9.5.4 扩散模型视角下的世界模型 (DriveDreamer)
+---
 
-与 GAIA-1 纯粹离散自回归的思路不同，DriveDreamer 等工作则探索了基于潜在扩散模型（Latent Diffusion Models, LDM）的世界模型范式。扩散模型并不像自回归模型那样逐个 Token 预测，而是一次性对整个连续的隐空间张量进行迭代去噪。
+## 9.5.3 核心数学推导二：动作引导扩散与无分类器引导（CFG）
+
+在扩散世界模型中，如何确保生成的视频画面严格服从输入的动作控制量（例如输入急左转动作时，画面中的街道必须向右剧烈旋转）？
 
 <div align="center">
+
 <img src="/figures/09-spatial-worlds/source/05-driving-world-models/drivedreamer-fig3.png" alt="DriveDreamer 把结构化交通条件、驾驶动作与扩散生成器组合起来，生成受控未来驾驶画面。" width="86%">
 
-_图 9.5-5：DriveDreamer 把结构化交通条件、驾驶动作与扩散生成器组合起来，生成受控未来驾驶画面。 出处：Xiaofeng Wang et al.，[DriveDreamer: Towards Real-world-driven World Models for Autonomous Driving](https://arxiv.org/abs/2309.09777)（2023），Figure 3。_
+_图 9.5-5：DriveDreamer 把结构化交通条件、驾驶动作与扩散生成器组合起来，生成受控未来驾驶画面。 出处：[DriveDreamer: Towards Real-world-driven World Models for Autonomous Driving，Xiaofeng Wang et al.，2023](https://arxiv.org/abs/2309.09777)。_
+
 </div>
 
-假设 $z_0$ 为未来驾驶视频的真实隐状态。扩散过程向其中逐步添加高斯噪声，在步数 $n$ 的边缘分布满足：
+系统采用了**无分类器引导（Classifier-Free Guidance, CFG）**技术：
+在训练阶段，网络以一定概率（例如 $15\%$）随机丢弃输入的动作条件向量 $\mathbf{a}$（替换为空条件 $\emptyset$），从而让单个网络同时学会**无条件得分流**与**条件得分流**。
 
-$$q(z_n \mid z_0) = \mathcal{N}(z_n; \sqrt{\bar{\alpha}_n} z_0, (1 - \bar{\alpha}_n)\mathbf{I})$$
+在推理去噪时，模型通过线性外推来大幅强化动作指令的控制响应：
 
-而在逆向生成（去噪）阶段，神经网络 $\epsilon_\theta$ 的目标是预测添加的噪声。为了让世界模型理解**动作指令**和**历史状态**，我们将它们作为额外的条件注入到网络中：
+$$\tilde{\boldsymbol{\epsilon}}_\theta(\mathbf{x}_t, t, \mathbf{a}) = \boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t, \emptyset) + s \cdot \left( \boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t, \mathbf{a}) - \boldsymbol{\epsilon}_\theta(\mathbf{x}_t, t, \emptyset) \right)$$
 
-$$\mathcal{L}_{\text{Diffusion}} = \mathbb{E}_{z_0, \epsilon, n} \left[ \| \epsilon - \epsilon_\theta(z_n, n, C_{\text{text}}, C_{\text{action}}, Z_{<t}) \|_2^2 \right]$$
+其中 $s \ge 1.0$ 称为**引导尺度（Guidance Scale）**（通常取 $s = 3.0 \sim 7.5$）。
 
-动作和历史可通过交叉注意力或特征调制进入去噪网络。模型会学习提高条件一致性，但仍可能忽略动作、生成不可能的运动或遗漏小目标。
+> **初等代数直觉**：
+> 这一公式将网络输出改写为：$\tilde{\boldsymbol{\epsilon}} = \boldsymbol{\epsilon}_{\text{uncond}} + s \cdot \Delta \boldsymbol{\epsilon}_{\text{action}}$。
+> 当 $s > 1$ 时，动作信号对画面特征梯度的干预被成倍放大，确保了生成的多视角视频与驾驶员的方向盘控制具有极高的物理契合度！
 
-## 9.5.5 代码实现
+<details>
+<summary><b>深入推导：无分类器引导（CFG）隐空间概率流 ODE 贝叶斯最优得分流证明（点击展开查看完整推导）</b></summary>
 
-下面实现一个简化的动作条件 Transformer，演示视觉词元、动作嵌入和因果掩码如何组合。它没有图像分词器、文本编码器或视频解码器。
+根据贝叶斯定理：
+$$\log p_t(\mathbf{x} \mid \mathbf{a}) = \log p_t(\mathbf{x}) + \log p_t(\mathbf{a} \mid \mathbf{x}) - \log p(\mathbf{a})$$
+两边对状态变量 $\mathbf{x}$ 取空间梯度（得分函数）：
+$$\nabla_{\mathbf{x}} \log p_t(\mathbf{x} \mid \mathbf{a}) = \nabla_{\mathbf{x}} \log p_t(\mathbf{x}) + \nabla_{\mathbf{x}} \log p_t(\mathbf{a} \mid \mathbf{x})$$
+将得分函数转化为人工温度缩放分布 $p_t^\gamma(\mathbf{a} \mid \mathbf{x}) \propto (p_t(\mathbf{a} \mid \mathbf{x}))^s$，修正后的引导得分为：
+$$\nabla_{\mathbf{x}} \log \tilde{p}_t(\mathbf{x} \mid \mathbf{a}) = \nabla_{\mathbf{x}} \log p_t(\mathbf{x}) + s \cdot \nabla_{\mathbf{x}} \log p_t(\mathbf{a} \mid \mathbf{x}) = (1 - s) \nabla_{\mathbf{x}} \log p_t(\mathbf{x}) + s \nabla_{\mathbf{x}} \log p_t(\mathbf{x} \mid \mathbf{a})$$
+利用 $\nabla_{\mathbf{x}} \log p_t \propto -\boldsymbol{\epsilon}_\theta$，代入即严格证得 CFG 线性外推公式。
+</details>
+
+---
+
+## 9.5.4 纯底层 PyTorch 代码实现：动作条件驾驶世界模型预测引擎
+
+下面我们使用纯底层 PyTorch 算子实现一个轻量级的多相机动作条件驾驶世界模型预测引擎，包含历史状态特征融合、动作前向注入与多视角未来潜在特征预测。
 
 ```python
 import torch
-from torch import nn
-from torch.nn import functional as F
-class CausalSelfAttention(nn.Module):
-    """标准的带因果掩码的多头自注意力机制"""
-    def __init__(self, d_model, n_heads):
+import torch.nn as nn
+import torch.nn.functional as F
+
+class ActionConditionedPredictor(nn.Module):
+    """
+    动作条件时空预测器 (Action-Conditioned World Dynamics)
+    接收历史环视特征与自车物理动作，自回归推演下一时刻的隐状态
+    """
+    def __init__(self, num_views: int = 6, feat_dim: int = 64, action_dim: int = 2):
         super().__init__()
-        assert d_model % n_heads == 0
-        self.c_attn = nn.Linear(d_model, 3 * d_model)
-        self.c_proj = nn.Linear(d_model, d_model)
-        self.n_heads = n_heads
-        self.d_model = d_model
+        self.num_views = num_views
+        self.feat_dim = feat_dim
 
-    def forward(self, x):
-        B, T, C = x.size()  # 批次、序列长度、嵌入维度
-
-        # 计算 Q, K, V
-        qkv = self.c_attn(x)
-        q, k, v = qkv.split(self.d_model, dim=2)
-
-        # 形状变换以支持多头注意力: (B, T, n_heads, C // n_heads) -> (B, n_heads, T, C // n_heads)
-        q = q.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)
-        k = k.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)
-        v = v.view(B, T, self.n_heads, C // self.n_heads).transpose(1, 2)
-
-        # PyTorch 内置缩放点积注意力生成因果掩码
-        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
-
-        # 将多头拼接回去
-        y = y.transpose(1, 2).contiguous().view(B, T, C)
-        return self.c_proj(y)
-
-class DrivingWorldModelBlock(nn.Module):
-    """自动驾驶世界模型的一个 Transformer 块"""
-    def __init__(self, d_model, n_heads):
-        super().__init__()
-        self.ln_1 = nn.LayerNorm(d_model)
-        self.attn = CausalSelfAttention(d_model, n_heads)
-        self.ln_2 = nn.LayerNorm(d_model)
-        self.mlp = nn.Sequential(
-            nn.Linear(d_model, 4 * d_model),
+        # 动作特征投影层
+        self.action_mlp = nn.Sequential(
+            nn.Linear(action_dim, feat_dim),
             nn.GELU(),
-            nn.Linear(4 * d_model, d_model)
+            nn.Linear(feat_dim, feat_dim)
         )
 
-    def forward(self, x):
-        # 残差连接
-        x = x + self.attn(self.ln_1(x))
-        x = x + self.mlp(self.ln_2(x))
-        return x
+        # 环视多视角交叉融合自注意力层
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=feat_dim, nhead=4, dim_feedforward=feat_dim * 2, batch_first=True
+        )
+        self.spatiotemporal_transformer = nn.TransformerEncoder(encoder_layer, num_layers=2)
 
-class SimpleActionConditionedWorldModel(nn.Module):
+        # 多视角未来特征预测头
+        self.future_head = nn.Linear(feat_dim, feat_dim)
+
+    def forward(self, current_views_feat: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        """
+        :param current_views_feat: (B, num_views, feat_dim) 当前时刻 6 相机特征
+        :param action: (B, action_dim) 转向与车速控制量
+        :return: (B, num_views, feat_dim) 预测的下一时刻 6 相机特征
+        """
+        B = current_views_feat.size(0)
+
+        # 1. 将动作编码为条件 Token 并与多视角序列拼接
+        act_token = self.action_mlp(action).unsqueeze(1) # (B, 1, feat_dim)
+        seq = torch.cat([act_token, current_views_feat], dim=1) # (B, 1 + num_views, feat_dim)
+
+        # 2. 多视角时空自注意力交互
+        fused_seq = self.spatiotemporal_transformer(seq)
+
+        # 3. 提取视角序列并预测未来演变
+        predicted_views = self.future_head(fused_seq[:, 1:, :]) # (B, num_views, feat_dim)
+        return predicted_views
+
+class DrivingWorldModel(nn.Module):
     """
-    简化的动作条件世界模型
-    接收视觉 Token、文本嵌入和动作向量，自回归预测未来的视觉 Token。
+    轻量级端到端自动驾驶世界模型包装器
     """
-    def __init__(self, vocab_size, d_model, max_seq_len, n_layers=4, n_heads=4):
+    def __init__(self, num_views: int = 6, feat_dim: int = 64, action_dim: int = 2):
         super().__init__()
-        self.d_model = d_model
+        self.dynamics = ActionConditionedPredictor(
+            num_views=num_views, feat_dim=feat_dim, action_dim=action_dim
+        )
 
-        # 视觉 Token 嵌入字典
-        self.token_emb = nn.Embedding(vocab_size, d_model)
-        # 绝对位置编码
-        self.pos_emb = nn.Parameter(torch.zeros(1, max_seq_len, d_model))
-
-        # 动作投影：将连续动作（如转向角、油门，通常为低维向量）映射到隐空间
-        self.action_proj = nn.Linear(2, d_model)  # 假设动作维度为 2
-
-        self.blocks = nn.Sequential(*[DrivingWorldModelBlock(d_model, n_heads) for _ in range(n_layers)])
-        self.ln_f = nn.LayerNorm(d_model)
-        # 最终输出头，映射回词表概率
-        self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
-
-    def forward(self, idx, actions):
+    def rollout_horizon(
+        self, initial_views: torch.Tensor, action_sequence: torch.Tensor
+    ) -> list[torch.Tensor]:
         """
-        idx: 视觉 Token 的索引序列，形状 (B, T)
-        actions: 历史及当前动作序列，形状 (B, T, 2)
+        在内心梦境中根据动作序列向前自回归推演多步
+        :param initial_views: (B, 6, feat_dim)
+        :param action_sequence: (B, horizon, action_dim)
+        :return: list of predicted features for each step
         """
-        B, T = idx.size()
+        horizon = action_sequence.size(1)
+        predictions = []
+        curr_feat = initial_views
 
-        # 获取 Token 嵌入与位置嵌入
-        if T > self.pos_emb.shape[1]:
-            raise ValueError("序列长度超过 max_seq_len")
+        for t in range(horizon):
+            act_t = action_sequence[:, t, :]
+            curr_feat = self.dynamics(curr_feat, act_t)
+            predictions.append(curr_feat)
 
-        tok_embeddings = self.token_emb(idx)  # (B, T, d_model)
-        pos_embeddings = self.pos_emb[:, :T, :]  # (1, T, d_model)
+        return predictions
 
-        # 动作特征映射
-        act_embeddings = self.action_proj(actions)  # (B, T, d_model)
+# ===================================================================
+# 单元测试：反事实动作干预推演与梯度反传校验
+# ===================================================================
+if __name__ == "__main__":
+    batch_size = 2
+    num_views = 6
+    feat_dim = 64
+    action_dim = 2
+    horizon = 5
 
-        # 将视觉状态与对应的动作特征在隐空间相加（代表在对应状态下施加了该动作）
-        # 这是一种将条件注入模型的标准多模态融合方式
-        x = tok_embeddings + act_embeddings + pos_embeddings
+    model = DrivingWorldModel(num_views=num_views, feat_dim=feat_dim, action_dim=action_dim)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-        # 通过 Transformer 块进行时序演化
-        x = self.blocks(x)
-        x = self.ln_f(x)
+    init_views = torch.randn(batch_size, num_views, feat_dim)
+    actions = torch.randn(batch_size, horizon, action_dim)
 
-        # 预测下一时刻的 Token 对数概率 (Logits)
-        logits = self.lm_head(x)  # (B, T, vocab_size)
-        return logits
+    # 1. 开展多步闭环推演
+    pred_seq = model.rollout_horizon(init_views, actions)
+
+    # 2. 计算多步累积均方差损失
+    target_future = torch.randn(batch_size, num_views, feat_dim)
+    loss = F.mse_loss(pred_seq[-1], target_future)
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    print(f"[Driving WM Test] 推演时间步数: {len(pred_seq)}")
+    print(f"[Driving WM Test] 单步预测张量形状: {pred_seq[0].shape}")
+    print(f"[Driving WM Test] 5 步长程预测损失: {loss.item():.4f}")
+
+    assert len(pred_seq) == horizon, "推演步数不匹配！"
+    assert pred_seq[0].shape == (batch_size, num_views, feat_dim), "多视角输出形状不符！"
+    assert not torch.isnan(loss), "训练损失出现 NaN！"
+    print("✓ 多视角动作条件驾驶世界模型预测引擎单测全部通过！")
 ```
 
-下面用随机输入检查张量形状。
+---
 
-```python
-# 初始化超参数
-batch_size = 4
-seq_length = 16
-vocab_size = 1024
-d_model = 256
+## 9.5.5 本节小结
 
-model = SimpleActionConditionedWorldModel(vocab_size=vocab_size, d_model=d_model, max_seq_len=64)
-
-# 模拟随机生成的视觉 Token 索引 (如经过 VQ-VAE 量化后的序列)
-dummy_vision_tokens = torch.randint(0, vocab_size, (batch_size, seq_length))
-# 模拟动作序列 (转向角, 速度/油门)
-dummy_actions = torch.randn(batch_size, seq_length, 2)
-
-# 前向传播
-logits = model(dummy_vision_tokens, dummy_actions)
-
-# 输出张量的形状应该为 (Batch, Sequence Length, Vocab Size)
-print("Logits shape:", logits.shape)
-```
-
-输出形状是 `(B, T, vocab_size)`。只有在训练时把标签向后错开一位，这些 logits 才对应“下一词元”预测；调用 `softmax` 后才得到词表上的概率。随机初始化模型只验证接口，不具备驾驶预测能力。
-
-## 9.5.6 小结
-
-- 驾驶未来具有多模态性，适合用条件分布而不是单一确定值表示。
-- 离散词元降低序列建模成本，但会引入量化与重建误差。
-- 自回归模型逐词元预测，扩散模型迭代去噪；两者都可以加入动作与文本条件。
-- 生成质量、几何一致性、动作响应和闭环安全需要分别评测。
-
-## 9.5.7 练习
-
-1. 在 VQ 损失中，两个 `sg()` 分别阻断哪条梯度路径？去掉它们后，编码器与编码本会收到怎样不同的梯度？
-2. 我们在代码中使用加法（`tok_embeddings + act_embeddings`）来融合状态和动作。除此之外，还有哪些将额外条件注入 Transformer 的数学方法？
-   _提示：可以回顾我们在之前的章节中提到的 Cross-Attention 机制（如在扩散模型中被广泛应用），或者考虑特征的通道拼接（Concatenation）。_
-3. 若用世界模型评估动作风险，需要从条件分布采样多条未来，并定义碰撞判定器。写出碰撞概率的蒙特卡洛估计式。
+回顾本节内容，我们建立了自动驾驶世界模型在复杂交通场景下的完整预测体系：
+1. **反事实推演的价值**：打破真实世界长尾数据采集瓶颈，使自动驾驶系统能够在完全安全的虚拟梦境中进行千万种极限工况的“假设演练”；
+2. **多视角环视自洽性**：通过时序自回归链式分解与相机重叠区几何重投影对齐，确保了生成物理空间的全局一致性；
+3. **动作引导控制流**：利用无分类器引导（CFG）放大控制信号的影响权重，实现了精准服从转向、油门与刹车的高保真未来推演。

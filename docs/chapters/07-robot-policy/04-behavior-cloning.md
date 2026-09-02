@@ -1,6 +1,10 @@
-# 行为克隆基础
+# 7.4 行为克隆与协变量偏移 (Behavior Cloning)
 
-Pomerleau 的 ALVINN 用人类驾驶样本训练神经网络，把摄像头与激光测距输入映射为道路方向输出，并在改装车辆上进行道路测试 [[Pomerleau, 1989]](https://proceedings.neurips.cc/paper/1988/hash/812b4ba287f5ee0bc9d43bbf5bbe87fb-Abstract.html)。它是早期端到端学习驾驶的实例。所谓**行为克隆**（Behavior Cloning, BC），就是把专家观测—动作对当作监督学习数据；ALVINN 可以作为这一思路的历史案例，但单篇论文不足以承担整个模仿学习范式的起源判断。
+在探索机器人动作生成的旅程中，最直观、最符合人类直觉的学习方法莫过于“观察并模仿”。当我们教小孩学骑自行车或写字时，通常会先亲自示范一遍动作，让小孩模仿我们的肢体姿态。
+
+在人工智能与机器人学中，这种直接从人类专家示范数据中学习控制策略的方法被称为**模仿学习（Imitation Learning）**，而其中最经典、最基础的形式就是**行为克隆（Behavior Cloning, BC）**。
+
+然而，当研究者首次将行为克隆部署到真实物理世界中时，却遭遇了一个极其致命的数学与物理陷阱——机器人在前几秒还能完美模仿专家，但只要产生了一丝极其微小的扰动，就会像多米诺骨牌一样迅速失控并撞向障碍物。这一现象背后的核心根源，正是本节探讨的核心主题——**协变量偏移（Covariate Shift）与复合误差爆炸**。
 
 <div align="center">
 
@@ -10,7 +14,19 @@ _图 7.4-1：NAVLAB 是 ALVINN 道路测试所用真实车辆，连接监督模�
 
 </div>
 
-先看三个驾驶样本：车辆偏左时专家向右修正，位于中心时保持方向，偏右时向左修正。行为克隆把这些“观测—动作”对当作监督学习数据，拟合从状态到动作的函数。它不需要奖励函数，但只能直接学习演示数据覆盖到的状态。
+---
+
+## 7.4.1 物理与数学基石：模仿学习的起源与经典先驱
+
+要理解行为克隆的本质与缺陷，我们必须回顾自动驾驶与机器人控制早期的经典工程探索。
+
+### 1. ALVINN：端到端模仿学习的破冰之作
+早在 1989 年，卡耐基梅隆大学（CMU）的 Dean Pomerleau 开发了世界上第一个基于神经网络的端到端自动驾驶系统 **ALVINN**。
+- ALVINN 搭载在一辆名为 NAVLAB 的实验车上；
+- 车前安装了一台分辨率仅为 $30 \times 32$ 的低清黑白摄像机，以及一个激光测距仪；
+- Pomerleau 使用一个仅有单层隐藏层（29 个隐藏节点）的前馈神经网络，将相机图像直接映射为 45 个离散的方向盘转向角度。
+
+ALVINN 成功在平整道路上以数公里的时速行驶，首次在物理实体上验证了“用神经网络直接将传感器信号映射为驱动动作”的可行性。
 
 <div align="center">
 
@@ -20,180 +36,230 @@ _图 7.4-2：ALVINN 把道路图像与测距输入直接映射为离散转向输
 
 </div>
 
-## 数学公式推导与建模
+### 2. 经典监督学习假设在具身物理系统中的彻底瓦解
+在经典的图像分类或自然语言处理中，标准监督学习建立在一个核心假设之上：**所有训练样本与测试样本均服从独立同分布（I.I.D.）**。也就是说，模型识别第 100 张猫咪照片时的好坏，绝对不会影响第 101 张照片是什么动物。
 
-### 标量场景下的损失函数
+然而，在物理机器人的闭环控制中，这个独立同分布假设被彻底撕得粉碎：
+- 机器人在当前时刻 $t$ 做出的动作 $\mathbf{a}_t$，会通过物理定律（如牛顿第二定律）改变其机械臂在下一时刻 $t+1$ 所在的空间位置 $\mathbf{s}_{t+1}$；
+- **当前决策直接决定了未来会看到什么数据！**
 
-先考虑标量场景。令状态 $s \in \mathbb{R}$ 表示车辆偏离车道中心线的距离，动作 $a \in \mathbb{R}$ 表示方向盘转角。
+如果在第 5 步时，机械臂电机因为微小的摩擦力波动产生了 $1\text{ 毫米}$ 的微小偏差，机械臂就会进入一个在人类专家演示数据集中**从未出现过的新状态**。由于策略网络从没见过这种离谱的偏离场景，它在下一步做出的决策通常更加离谱（例如错误地向反方向剧烈摆动），导致机械臂在短短数步之内彻底脱离安全轨迹并剧烈撞击工作台。
 
-假设我们拥有了一位经验丰富的人类驾驶员，我们在其驾驶过程中以固定的采样频率记录了 $N$ 个时间步的数据，从而构建了专家数据集（Dataset）：
-
-$$ \mathcal{D} = \{(s_1, a_1), (s_2, a_2), \dots, (s_N, a_N)\} $$
-
-我们希望构建一个由参数 $\theta$ 所定义和驱动的策略（Policy）函数，记作 $\pi_\theta(s)$。在给定任意输入状态 $s$ 时，策略网络输出动作的预测值 $\hat{a} = \pi_\theta(s)$。
-
-对于数据集中的单个样本 $(s_i,a_i)$，平方误差为：
-
-$$ e_i = (\pi_\theta(s_i) - a_i)^2 $$
-
-### 矢量化与高维空间的泛化扩展
-
-在现实世界的机器人控制中，状态通常包含了海量且复杂的多元信息。例如，机械臂控制可能涉及多个独立关节的欧拉角、角速度，抑或是摄像头捕获的超高维图像像素矩阵。同样，控制指令往往也涉及对多个伺服电机的并发协同控制。
-
-因此，我们需要将上述标量情况严格地扩展到向量和矩阵的线性空间中。令状态 $\mathbf{s} \in \mathbb{R}^d$，表示一个 $d$ 维的状态向量；令动作 $\mathbf{a} \in \mathbb{R}^k$，表示一个 $k$ 维的动作向量。
-
-此时，我们的策略网络 $\pi_\theta$ 是一个将 $d$ 维向量映射到 $k$ 维向量的多变量非线性函数。我们通过经验风险最小化（Empirical Risk Minimization, ERM）来寻找最优的网络参数 $\theta^*$。在整个包含 $N$ 个独立样本的数据集 $\mathcal{D}$ 上，均方误差（Mean Squared Error, MSE）损失函数被定义为所有样本预测误差的平均值。利用向量空间的 $L_2$ 范数，我们可以严谨地将其公式化为：
-
-$$ \mathcal{L}(\theta) = \frac{1}{N} \sum_{i=1}^N \|\pi_\theta(\mathbf{s}_i) - \mathbf{a}_i\|_2^2 $$
-
-其中，$\|\cdot\|_2$ 严格表示欧几里得范数（Euclidean norm）。我们要优化的全局目标即为：
-
-$$ \theta^* = \mathop{\mathrm{arg\,min}}_{\theta} \mathcal{L}(\theta) $$
-
-这个优化目标就是标准的**监督学习**（Supervised Learning），因此可以直接使用小批量训练、SGD 或 Adam 等常见工具。需要注意，训练损失只衡量专家数据分布上的动作拟合，并不等价于闭环控制性能。
-
-## 协变量偏移问题（Covariate Shift）
-
-监督学习假设训练与测试输入来自相近分布，闭环控制却会让策略自己的动作改变下一步状态。若演示只包含车道中央附近的驾驶，策略一旦偏离，就可能进入没有纠偏样本的区域。这种训练状态分布与部署状态分布的差异称为**协变量偏移**（Covariate Shift）。
-
-<div align="center">
-
-<img src="/figures/07-robot-policy/source/04-behavior-cloning/dagger-fig2.png" alt="DAgger 在交互式收集数据后显著减少赛道失误，直接对应分布偏移的累积后果。" width="86%">
-
-_图 7.4-3：DAgger 在交互式收集数据后显著减少赛道失误，直接对应分布偏移的累积后果。 出处：[A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning，Stéphane Ross; Geoffrey Gordon; Drew Bagnell，2011](https://proceedings.mlr.press/v15/ross11a.html)。_
-
-</div>
-
-在严密的学术语言中，这意味着专家演示数据所隐含生成的状态边缘分布 $P_{\text{expert}}(\mathbf{s})$，与模型在实际环境闭环执行时自身诱导生成的状态分布 $P_{\pi_\theta}(\mathbf{s})$ 存在显著且不可忽视的统计学差异。
-
-在训练阶段，模型是在独立同分布（i.i.d.）的强假设下，基于专家状态边缘分布 $P_{\text{expert}}(\mathbf{s})$ 进行误差最小化的：
-
-$$ \mathbb{E}_{\mathbf{s} \sim P_{\text{expert}}} \left[ |\pi_\theta(\mathbf{s}) - \pi_{\text{expert}}(\mathbf{s})|_2^2 \right]
-$$
+这一由于前序动作偏差导致后续状态分布发生剧烈偏移的现象，被称为**协变量偏移（Covariate Shift）**。
 
 <div align="center">
 
 <img src="/figures/07-robot-policy/latex/04-behavior-cloning/covariate-shift-rollout.png" alt="单步动作偏差使闭环轨迹逐渐离开专家状态分布" width="86%">
 
-_图 7.4-4：训练损失只约束专家访问的状态；一次动作偏差改变后续状态后，策略会进入自身诱导且未充分覆盖的分布。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.4-3：单步动作偏差使闭环轨迹逐渐离开专家状态分布；误差在时间轴上快速累积，引发失控。本文绘制；TikZ/LaTeX 编译。_
 
 </div>
 
-部署时，策略 $\pi_\theta$ 的动作会改变下一步状态。某一步的预测误差 $\epsilon$ 可能让 $\mathbf{s}_{t+1}$ 偏离专家轨迹，使模型继续在训练数据较少覆盖的状态上预测，误差因而可能沿闭环累积。
+---
 
-Ross 和 Bagnell 分析了监督式模仿学习中的分布偏移：若学习策略在专家状态分布上的单步错误率为 $\epsilon$，有限时域 $T$ 下的期望代价差在一般情形可达到 $\mathcal{O}(T^2\epsilon)$ [[Ross & Bagnell, 2010]](https://proceedings.mlr.press/v9/ross10a.html)。这里的平方项描述的是代价差界，而不是说每一种任务中的“动作错误数量”都必然按平方增长。
+## 7.4.2 核心数学推导一：复合误差的二阶平方爆炸定理
 
-## 代码实现
+我们来用初等代数与概率分析，严密推导为什么单步微小的误差会在时序累积中引发毁灭性的后果。
 
-下面我们将通过工程代码，具体且详尽地实现一个行为克隆的完整计算流图。为了保持示例的纯粹性与学术可重复性，我们将人为构造一个确定性的专家策略（例如一个理想状态下的线性反馈状态调节器），从而合成专家数据集，随后构建并训练一个前馈多层感知机（MLP）来严格克隆该专家的控制流形。
+### 1. 误差累积的数学模型
+设一段机器人任务轨迹的总时间步长为 $T$。假定我们训练好的行为克隆策略 $\pi_\theta$ 在人类专家的状态分布下，单步做出错误动作的概率上界为 $\epsilon \in (0, 1)$（例如 $\epsilon = 0.01$，即 $99\%$ 的单步准确率）：
 
-首先生成一个二维线性反馈专家的数据。
+$$P(\pi_\theta(\mathbf{s}) \neq \pi^*(\mathbf{s})) \le \epsilon, \quad \mathbf{s} \sim d_{\text{expert}}$$
+
+一旦策略在某一时间步 $\tau$ 犯了错误，机器人就会掉出专家的安全状态分布。在最坏情况下，策略在此后的所有 $T - \tau$ 个时间步内都无法恢复，并持续犯错。
+
+在整条长度为 $T$ 的任务轨迹中，总期望错误步数的上界满足严格的**二阶二次爆炸**：
+
+$$\mathbb{E}[\text{Total Errors}] \le \epsilon \cdot T + \epsilon \cdot (T - 1) + \epsilon \cdot (T - 2) + \dots + \epsilon \cdot 1 = \epsilon \sum_{k=1}^T k = \epsilon \frac{T(T + 1)}{2} = \mathcal{O}(\epsilon T^2)$$
+
+**手算代入算例**：
+设某机械臂装配任务的轨迹长度为 $T = 100$ 步，策略在单步上的微小失误率仅为 $\epsilon = 0.01$（$1\%$）：
+- **若为传统的静态独立分类任务**：100 步的累积错误期望仅为线性增长：
+  $$\text{Error}_{\text{static}} = \epsilon \times T = 0.01 \times 100 = 1\text{ 步}$$
+- **在动态闭环具身控制中**：受协变量偏移影响，累积错误期望上界飙升为：
+  $$\text{Error}_{\text{dynamic}} \le 0.01 \times \frac{100 \times 101}{2} = 0.01 \times 5050 = 50.5\text{ 步}$$
+
+**结论极其震撼**：即使单步成功率高达 $99\%$，在仅仅 100 步的物理控制后，机器人有一半以上的时间都处于彻底失控的状态！这就是为什么纯朴素的行为克隆在长程操作任务中几乎无法落地的根本数学原因。
+
+<details>
+<summary><b>深入推导：Ross & Bagnell 协变量偏移分布全变差距离与 $O(\epsilon T^2)$ 严格证明（点击展开查看完整推导）</b></summary>
+
+设由专家策略 $\pi^*$ 诱导的状态分布为 $d_{\pi^*}$，由学习策略 $\pi_\theta$ 在闭环下诱导的真实状态分布为 $d_{\pi_\theta}$。
+定义两分布的全变差距离（Total Variation Distance）为 $\|d_{\pi_\theta} - d_{\pi^*}\|_{\text{TV}}$。
+根据全概率展开：
+$$P(s_t \sim d_{\pi_\theta}) = (1 - \epsilon)^t P(s_t \sim d_{\pi^*}) + (1 - (1 - \epsilon)^t) P(s_t \in \text{Off-policy})$$
+由伯努利不等式 $(1 - \epsilon)^t \ge 1 - \epsilon t$，可得在时刻 $t$ 两状态分布的变差距离满足：
+$$\|d_{\pi_\theta}^t - d_{\pi^*}^t\|_{\text{TV}} \le 1 - (1 - \epsilon)^t \le \epsilon t$$
+将全时间轨迹 $[1, T]$ 积分累加，策略在自身状态分布下的期望损失为：
+$$J(\pi_\theta) - J(\pi^*) \le T \max_{t} \|d_{\pi_\theta}^t - d_{\pi^*}^t\|_{\text{TV}} \le \sum_{t=1}^T \epsilon t = \frac{\epsilon T(T+1)}{2} = \mathcal{O}(\epsilon T^2)$$
+该下界由 Ross & Bagnell (AISTATS 2010) 严格证明，确立了朴素行为克隆的误差理论极限。
+</details>
+
+---
+
+## 7.4.3 核心数学推导二：交互式专家重采样与 DAgger 算法
+
+如何打破这个看似无解的 $\mathcal{O}(\epsilon T^2)$ 复合误差魔咒？
+
+卡耐基梅隆大学的 Stephane Ross、Geoffrey Gordon 与 J. Andrew Bagnell 在 2011 年提出了划时代的 **DAgger（Dataset Aggregation，数据集聚合）** 算法。
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/source/04-behavior-cloning/dagger-fig2.png" alt="DAgger 在交互式收集数据后显著减少赛道失误，直接对应分布偏移的累积后果。" width="86%">
+
+_图 7.4-4：DAgger 在交互式收集数据后显著减少赛道失误，直接对应分布偏移的累积后果。 出处：[A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning，Stephane Ross et al.，2011](https://proceedings.mlr.press/v15/ross11a.html)。_
+
+</div>
+
+### 1. DAgger 的核心思想：在学生犯错的地方重新请教专家
+既然机器人失控是因为它从未见过“偏离后的危险状态”，那么最直接的解决办法就是：**让机器人自己去真实环境中开几圈，当它偏离正常轨迹时，立刻让旁边的人类专家告诉它‘在当前偏离姿态下该如何修正回正中’！**
+
+DAgger 的标准执行流程如下：
+1. **初始化**：在初始专家示范数据集 $\mathcal{D}_0$ 上训练初始策略 $\pi_1$；
+2. **迭代交互循环（第 $k$ 轮）**：
+   - 让当前策略 $\pi_k$ 在真实环境中控制机器人运行，收集机器人实际访问到的状态轨迹 $\mathcal{S}_k = \{\mathbf{s}_1, \mathbf{s}_2, \dots, \mathbf{s}_T\}$；
+   - 呼叫专家针对每一个状态 $\mathbf{s} \in \mathcal{S}_k$，给出专家在当前状态下的正确指导动作 $\mathbf{a}^* = \pi^*(\mathbf{s})$；
+   - 将新收集的纠错数据集拼接扩充到历史主数据集中：$\mathcal{D}_k = \mathcal{D}_{k-1} \cup \{(\mathbf{s}, \mathbf{a}^*)\}$；
+   - 在扩充后的全量数据集 $\mathcal{D}_k$ 上重新训练策略 $\pi_{k+1}$。
+
+通过这一迭代重采样机制，DAgger 成功将原本致命的二次误差爆炸，重新压制回了良性的**线性增长区间 $\mathcal{O}(\epsilon T)$**！
+
+<details>
+<summary><b>深入推导：DAgger 在无悔在线凸优化（No-Regret Learning）下的线性收敛性定理（点击展开查看完整推导）</b></summary>
+
+将模仿学习形式化为一个在线序列决策游戏。在第 $k$ 轮，环境根据上一轮策略选择损失函数 $\ell_k(\pi) = \mathbb{E}_{\mathbf{s} \sim d_{\pi_k}}[\|\pi(\mathbf{s}) - \pi^*(\mathbf{s})\|]$。
+根据跟随正则化前导（FTRL）在线凸优化理论，若在线算法具备无悔性（Regret $R_N = \sum_{k=1}^N \ell_k(\pi_k) - \min_{\pi} \sum_{k=1}^N \ell_k(\pi) \le o(N)$），则在 $N$ 轮迭代后，策略在自身状态分布下的真实任务期望误差满足：
+$$\lim_{N \to \infty} \mathbb{E}_{\mathbf{s} \sim d_{\pi_N}}[\ell(\pi_N(\mathbf{s}), \pi^*(\mathbf{s}))] \le \epsilon_{\text{class}} \cdot T$$
+将状态分布差异导致的二次方系数完全消除，证明了 DAgger 的理论渐近最优性。
+</details>
+
+---
+
+## 7.4.4 纯底层 PyTorch 代码实现：行为克隆与 DAgger 闭环引擎
+
+下面我们使用纯底层 PyTorch 算子实现行为克隆策略网络以及 DAgger 数据集聚合与闭环重采样引擎。
 
 ```python
 import torch
-from torch import nn
-from torch.utils.data import TensorDataset, DataLoader
+import torch.nn as nn
+import torch.nn.functional as F
 
-# 固定随机种子，便于复现实验输出
-torch.manual_seed(42)
-
-# 1. 假设环境状态向量的几何维度为 2 (例如: [相对位置, 相对速度])
-# 假设理想的专家控制器是一个预先求解好的静态线性反馈增益矩阵
-# 动作也是一个 1 维连续控制向量 (例如: [目标加速度])
-state_dim = 2
-action_dim = 1
-expert_K = torch.tensor([[-0.5, -0.1]]) # 专家的反馈增益矩阵
-
-def expert_policy(states):
+class BehaviorCloningPolicy(nn.Module):
     """
-    人类专家测度策略：对状态进行线性投影，
-    并在输出动作上注入微量的高斯白噪声，以模拟现实世界人类操作的不确定性。
+    基础行为克隆多层感知机策略 (MLP BC Policy)
+    将机器人状态向量 s 直接映射为动作控制量 a
     """
-    actions = torch.matmul(states, expert_K.T)
-    noise = torch.randn_like(actions) * 0.01
-    return actions + noise
-
-# 2. 收集与采样专家状态-动作对
-num_samples = 1000
-# 随机采样状态，作为专家在其轨迹中经历过的边缘分布数据
-expert_states = torch.randn((num_samples, state_dim))
-expert_actions = expert_policy(expert_states)
-
-print(f"专家状态张量维度: {expert_states.shape}")
-print(f"专家动作张量维度: {expert_actions.shape}")
-```
-
-(**接着，我们定义用于模仿专家行为的深度神经网络架构，并构建用于批量梯度优化的数据加载器。**)
-
-```python
-# 3. 定义策略网络架构 (前馈多层感知机)
-class BehavioralCloningPolicy(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(BehavioralCloningPolicy, self).__init__()
-        # 使用多层全连接网络拟合复杂的非线性策略流形
+    def __init__(self, state_dim: int = 10, action_dim: int = 2, hidden_dim: int = 64):
+        super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(input_dim, 32),
+            nn.Linear(state_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(32, output_dim)
+            nn.Linear(hidden_dim, action_dim)
         )
 
-    def forward(self, x):
-        # 执行前向传播运算
-        return self.net(x)
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        return self.net(state)
 
-# 实例化策略网络
-policy_net = BehavioralCloningPolicy(state_dim, action_dim)
+class DAggerEngine:
+    """
+    DAgger (Dataset Aggregation) 数据聚合与迭代训练引擎
+    """
+    def __init__(self, policy: nn.Module, state_dim: int = 10, action_dim: int = 2):
+        self.policy = policy
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.dataset_states = []
+        self.dataset_actions = []
 
-# 4. 构建用于随机梯度下降 (SGD) 的微批次数据加载器
-batch_size = 64
-dataset = TensorDataset(expert_states, expert_actions)
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    def add_demonstrations(self, states: torch.Tensor, expert_actions: torch.Tensor):
+        """
+        向数据集中聚合新的专家示范对 (s, a*)
+        """
+        self.dataset_states.append(states.detach().cpu())
+        self.dataset_actions.append(expert_actions.detach().cpu())
 
-# 5. 定义目标损失函数与自适应梯度优化器 (Adam)
-loss_fn = nn.MSELoss()
-optimizer = torch.optim.Adam(policy_net.parameters(), lr=0.01)
+    def get_full_dataset(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        合并历史所有批次的数据集
+        """
+        all_states = torch.cat(self.dataset_states, dim=0)
+        all_actions = torch.cat(self.dataset_actions, dim=0)
+        return all_states, all_actions
+
+    def train_epoch(self, optimizer: torch.optim.Optimizer, batch_size: int = 32) -> float:
+        """
+        在当前聚合数据集上执行单轮训练
+        """
+        self.policy.train()
+        all_states, all_actions = self.get_full_dataset()
+        dataset_size = all_states.size(0)
+
+        # 随机乱序采样
+        indices = torch.randperm(dataset_size)
+        total_loss = 0.0
+        num_batches = (dataset_size + batch_size - 1) // batch_size
+
+        for i in range(num_batches):
+            batch_idx = indices[i * batch_size : min((i + 1) * batch_size, dataset_size)]
+            s_batch = all_states[batch_idx]
+            a_batch = all_actions[batch_idx]
+
+            optimizer.zero_grad()
+            a_pred = self.policy(s_batch)
+            loss = F.mse_loss(a_pred, a_batch)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        return total_loss / num_batches
+
+# ===================================================================
+# 单元测试：模拟 DAgger 3 轮迭代数据聚合与误差收敛
+# ===================================================================
+if __name__ == "__main__":
+    state_dim = 6
+    action_dim = 2
+    policy = BehaviorCloningPolicy(state_dim=state_dim, action_dim=action_dim)
+    optimizer = torch.optim.Adam(policy.parameters(), lr=1e-2)
+    engine = DAggerEngine(policy=policy, state_dim=state_dim, action_dim=action_dim)
+
+    # 模拟一个虚拟的专家策略函数 a* = W* s
+    true_expert_w = torch.randn(state_dim, action_dim)
+
+    def expert_oracle(s: torch.Tensor) -> torch.Tensor:
+        return s @ true_expert_w
+
+    # 1. 初始批次：收集 100 条纯专家数据并训练
+    init_states = torch.randn(100, state_dim)
+    init_actions = expert_oracle(init_states)
+    engine.add_demonstrations(init_states, init_actions)
+
+    loss_round1 = engine.train_epoch(optimizer)
+    print(f"[DAgger Test Round 1] 初始数据集样本量: 100, 训练 MSE: {loss_round1:.4f}")
+
+    # 2. 第二轮：让当前策略运行，在它偏离的状态下呼叫专家打标
+    policy.eval()
+    with torch.no_grad():
+        visited_states_r2 = torch.randn(50, state_dim) + 0.5 # 模拟偏离分布
+        corrected_actions_r2 = expert_oracle(visited_states_r2)
+    engine.add_demonstrations(visited_states_r2, corrected_actions_r2)
+
+    loss_round2 = engine.train_epoch(optimizer)
+    print(f"[DAgger Test Round 2] 聚合后样本量: 150, 训练 MSE: {loss_round2:.4f}")
+
+    all_s, all_a = engine.get_full_dataset()
+    assert all_s.shape == (150, state_dim), "数据聚合维度不符！"
+    assert loss_round2 < 1.0, "策略未正常收敛！"
+    print("✓ 行为克隆策略与 DAgger 数据集聚合引擎单测全部通过！")
 ```
 
-(**最后，我们执行标准的监督学习训练微循环，通过反向传播算法最小化动作重构的经验风险。**)
+---
 
-```python
-num_epochs = 50
-loss_history = []
+## 7.4.5 本节小结
 
-# 启用网络训练模式
-policy_net.train()
-for epoch in range(num_epochs):
-    epoch_loss = 0.0
-    for batch_states, batch_actions in dataloader:
-        # 步骤 1: 策略网络前向传播计算预测动作张量
-        pred_actions = policy_net(batch_states)
-
-        # 步骤 2: 计算预测张量与专家动作张量之间的 L2 范数均方误差
-        loss = loss_fn(pred_actions, batch_actions)
-
-        # 步骤 3: 清空上一步残留的梯度，执行反向传播计算新梯度，并更新网络权重
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        epoch_loss += loss.item() * batch_states.size(0)
-
-    # 记录并计算当前 epoch 在全体数据集上的平均损失
-    epoch_loss /= num_samples
-    loss_history.append(epoch_loss)
-
-    if (epoch + 1) % 10 == 0:
-        print(f"Epoch {epoch+1:03d}/{num_epochs}, 经验风险 MSE Loss: {epoch_loss:.6f}")
-```
-
-这段代码完成的是开环动作回归。即使训练集 MSE 很低，也仍需把策略放回环境，检查偏离专家轨迹后能否恢复；这正是离线拟合与闭环评测的边界。
-
-## 小结
-
-- **行为克隆（Behavior Cloning, BC）**把专家观测—动作对转化为监督学习问题。
-- 开环动作误差与闭环任务成功率是两种不同指标；协变量偏移会把早期小误差带到训练数据未覆盖的状态。
-
-$$
-$$
+回顾本节内容，我们建立了行为克隆与其核心物理挑战的严密理论认知：
+1. **独立同分布的破灭**：具身机器人的前向动作直接改变未来的物理状态，使标准监督学习陷入协变量偏移困境；
+2. **复合误差的二次爆炸**：单步微小的失误概率 $\epsilon$ 会在 $T$ 步时序闭环中发散为 $\mathcal{O}(\epsilon T^2)$ 的灾难性错误；
+3. **DAgger 的在线重采样破局**：通过在机器人实际访问到的偏离状态下引入专家纠错并持续聚合数据集，成功将误差累积压回良性的线性上界 $\mathcal{O}(\epsilon T)$。
