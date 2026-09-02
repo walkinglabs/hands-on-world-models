@@ -162,7 +162,7 @@ $$\mathbf{x}_t = \sqrt{\bar{\alpha}_t} \mathbf{x}_0 + \sqrt{1 - \bar{\alpha}_t} 
 
 <div align="center"><img src="/figures/02-foundations/latex/04-autoregressive-and-diffusion/diffusion-direct-sampling.png" alt="原始样本和标准高斯噪声分别按互补系数缩放，再相加得到任意时刻的扩散样本" width="86%">
 
-_图 2.4-4：累积系数同时决定保留多少原始信号、注入多少标准高斯噪声，因此训练时可跳过中间链直接得到 x_t。本文根据上式绘制。_
+_图 2.4-4：累积系数同时决定保留多少原始信号、注入多少标准高斯噪声，因此训练时可跳过中间链直接得到 x_t。_
 
 </div>
 

@@ -61,7 +61,7 @@ $$ J^{(i)} = \sum_{k=0}^{H-1} C(\mathbf{s}_{t+k}^{(i)}, \mathbf{a}_{t+k}^{(i)}) 
 <div align="center">
 <img src="/figures/08-robot-sim/latex/08-embodied-planning-scratch/cem-rollout-tensor-axes.png" alt="CEM 候选动作张量逐时间切片并沿预测视界累加代价，同时始终保留候选样本轴" width="86%">
 
-_图 8.8-4：每次 rollout 只切出一个时间片，但 N 条候选始终并行保留；沿 H 累加后得到的仍是长度 N 的轨迹代价向量。本文根据上式绘制。_
+_图 8.8-4：每次 rollout 只切出一个时间片，但 N 条候选始终并行保留；沿 H 累加后得到的仍是长度 N 的轨迹代价向量。_
 </div>
 
 随后，将这 $N$ 条轨迹按照累积代价 $J^{(i)}$ 从小到大排序，只保留代价最小的前 $K$ 条轨迹（$K < N$）。它们称为精英样本（Elite Samples）。

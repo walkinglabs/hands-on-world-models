@@ -69,7 +69,7 @@ $$
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/05-rl-foundation-scratch/bellman-double-reduction.png" alt="贝尔曼价值先按转移概率汇聚下一状态，再按策略概率汇聚动作" width="86%">
 
-_图 3.5-2：内层 Σ_s' 在固定动作下对环境后继状态取期望，外层 Σ_a 再按策略概率汇聚动作，两次归约的随机来源不同。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 3.5-2：内层 Σ_s' 在固定动作下对环境后继状态取期望，外层 Σ_a 再按策略概率汇聚动作，两次归约的随机来源不同。_
 
 </div>
 
@@ -160,7 +160,7 @@ $$
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/05-rl-foundation-scratch/terminal-mask-td-target.png" alt="终止标志经过一减 d 门控下一状态价值，使终止转移只保留即时奖励" width="86%">
 
-_图 3.5-4：d=0 时 bootstrap 项原样进入目标；d=1 时门值变成 0，目标严格退化为即时奖励 r。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 3.5-4：d=0 时 bootstrap 项原样进入目标；d=1 时门值变成 0，目标严格退化为即时奖励 r。_
 
 </div>
 

@@ -130,7 +130,7 @@ $$Z_c \begin{bmatrix} u \\ v \\ 1 \end{bmatrix} = \mathbf{K} [\mathbf{R} \mid \m
 
 <img src="/figures/09-spatial-worlds/latex/01-camera-geometry/perspective-division-scale.png" alt="世界齐次点经外参与内参得到带深度尺度的三向量，再由第三分量完成透视除法" width="86%">
 
-_图 9.1-5：投影矩阵输出带深度尺度的三维齐次向量；除以第三分量 Z_c 完成透视除法，恢复二维像素坐标。本文绘制；TikZ/LaTeX 编译。_
+_图 9.1-5：投影矩阵输出带深度尺度的三维齐次向量；除以第三分量 Z_c 完成透视除法，恢复二维像素坐标。_
 
 </div>
 

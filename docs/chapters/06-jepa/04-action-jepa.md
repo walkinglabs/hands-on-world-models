@@ -62,7 +62,7 @@ $$\mathcal{L}_{JEPA}(\theta, \phi) = \frac{1}{B \cdot d} \sum_{i=1}^B \sum_{j=1}
 <div align="center">
   <img src="/figures/06-jepa/latex/04-action-jepa/jepa-batch-feature-reduction.png" alt="批量特征误差矩阵沿特征维和样本维求和后除以 B 乘 d" width="86%">
 
-_图 6.4-3：每个 e_ij 对应第 i 个样本、第 j 个特征；双重求和消去两维，再除以 Bd 得到逐元素均方误差。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 6.4-3：每个 e_ij 对应第 i 个样本、第 j 个特征；双重求和消去两维，再除以 Bd 得到逐元素均方误差。_
 
 </div>
 
@@ -111,7 +111,7 @@ $$\mathcal{L}_{multi} = \sum_{k=1}^K \lambda_k \left\| \hat{\mathbf{s}}_{t+k} - 
 <div align="center">
   <img src="/figures/06-jepa/latex/04-action-jepa/action-conditioned-autoregressive-chain.png" alt="每个动作把上一预测表征推进一步，并在对应未来时刻接受加权目标损失" width="86%">
 
-_图 6.4-5：第 k 步以先前预测和 a_{t+k−1} 为输入；每个预测节点都与同一时刻的目标编码相配，并以 λ_k 加权进入总损失。本文根据上式及递推定义绘制；TikZ/LaTeX 编译。_
+_图 6.4-5：第 k 步以先前预测和 a_{t+k−1} 为输入；每个预测节点都与同一时刻的目标编码相配，并以 λ_k 加权进入总损失。本文根据上式及递推定义绘制_
 
 </div>
 

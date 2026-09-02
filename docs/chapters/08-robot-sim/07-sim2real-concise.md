@@ -57,7 +57,7 @@ $$J(\pi_\phi) = \mathbb{E}_{\mathbf{\Theta} \sim P_{\mathbf{\Theta}}} \left[ \ma
 <div align="center">
 <img src="/figures/08-robot-sim/latex/07-sim2real-concise/domain-randomization-nested-expectation.png" alt="每个回合固定一组物理参数并先累计时间回报，再依次对轨迹和参数样本求期望" width="86%">
 
-_图 8.7-5：每个回合只采样一次物理参数并在整条轨迹中保持固定；先累计该轨迹的折扣回报，再依次平均轨迹随机性与参数随机性。本文根据上式绘制。_
+_图 8.7-5：每个回合只采样一次物理参数并在整条轨迹中保持固定；先累计该轨迹的折扣回报，再依次平均轨迹随机性与参数随机性。_
 </div>
 
 其中，轨迹 $\tau = (\mathbf{x}_0, \mathbf{u}_0, \mathbf{x}_1, \dots)$ 的生成分布依赖于采样的物理参数 $\mathbf{\Theta}$，$\phi$ 为策略网络的权重。每轮回合开始时重新采样参数，可以降低策略对某一组名义参数的依赖。需要注意，上式优化的是参数分布上的平均回报；它并不自动保证最坏参数下也能成功。若任务关心最坏情况，还需要风险敏感目标、对抗式采样或专门的鲁棒控制设计。

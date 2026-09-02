@@ -103,7 +103,7 @@ _图 7.1-3：RT-1 的注意力可视化展示不同层和头如何聚焦任务�
 
 <img src="/figures/07-robot-policy/latex/01-multimodal-observation/cross-attention-row-softmax.png" alt="单个本体查询沿视觉 patch 维做行 Softmax，再汇聚 Value" width="86%">
 
-_图 7.1-4：单个本体查询沿视觉 patch 维做行 Softmax，再汇聚 Value。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.1-4：单个本体查询沿视觉 patch 维做行 Softmax，再汇聚 Value。_
 
 </div>
 

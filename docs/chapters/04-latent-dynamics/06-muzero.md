@@ -88,7 +88,7 @@ $$ U(s, a) = P(s, a) \cdot \frac{\sqrt{\sum_b N(s, b)}}{1 + N(s, a)} \left( c_1 
 
 <div align="center"><img src="/figures/04-latent-dynamics/latex/06-muzero/puct-visit-pressure.png" alt="PUCT 探索项由策略先验、父节点访问量、当前边访问量和对数调度共同构成" width="86%">
 
-_图 4.6-5：策略先验给出初始偏好；在其他量固定时，父节点搜索越充分，探索压力越大，而某条边自身访问越多，其探索奖励越快衰减。本文根据上式绘制。_
+_图 4.6-5：策略先验给出初始偏好；在其他量固定时，父节点搜索越充分，探索压力越大，而某条边自身访问越多，其探索奖励越快衰减。_
 
 </div>
 

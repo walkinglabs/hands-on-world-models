@@ -81,7 +81,7 @@ $$
 
 <div align="center"><img src="/figures/04-latent-dynamics/latex/02-rssm/rssm-causal-state-order.png" alt="上一时刻的确定性状态、随机状态和动作先更新 h_t，再由 h_t 产生当前随机状态先验" width="86%">
 
-_图 4.2-4：时刻 t 的先验更新只读取 t−1 信息：先形成确定性记忆 h_t，再由它给出当前随机状态分布并采样。本文根据上式绘制。_
+_图 4.2-4：时刻 t 的先验更新只读取 t−1 信息：先形成确定性记忆 h_t，再由它给出当前随机状态分布并采样。_
 
 </div>
 

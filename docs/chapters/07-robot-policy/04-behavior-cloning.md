@@ -51,7 +51,7 @@ _图 7.4-2：ALVINN 把道路图像与测距输入直接映射为离散转向输
 
 <img src="/figures/07-robot-policy/latex/04-behavior-cloning/covariate-shift-rollout.png" alt="单步动作偏差使闭环轨迹逐渐离开专家状态分布" width="86%">
 
-_图 7.4-3：单步动作偏差使闭环轨迹逐渐离开专家状态分布；误差在时间轴上快速累积，引发失控。本文绘制；TikZ/LaTeX 编译。_
+_图 7.4-3：单步动作偏差使闭环轨迹逐渐离开专家状态分布；误差在时间轴上快速累积，引发失控。_
 
 </div>
 

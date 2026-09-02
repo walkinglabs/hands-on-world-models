@@ -87,7 +87,7 @@ $$
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/02-replay-buffer-and-splits/ring-buffer-modulo.png" alt="固定容量槽位上的写指针经模 N 运算从末端回绕到零号槽" width="86%">
 
-_图 3.2-4：写入 p=N−1 后，(p+1) mod N 令下一指针回到 0，因此无需移动数组就能覆盖最旧槽位。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 3.2-4：写入 p=N−1 后，(p+1) mod N 令下一指针回到 0，因此无需移动数组就能覆盖最旧槽位。_
 
 </div>
 
@@ -113,7 +113,7 @@ $$
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/02-replay-buffer-and-splits/sequence-boundary-mask.png" alt="连续序列在终止标志处重置隐藏状态并阻断跨回合梯度" width="86%">
 
-_图 3.2-6：当序列内部出现 d_k=1，下一回合的隐藏状态必须重置，反向梯度也不能跨越这条边界。本文根据上式及边界说明绘制；TikZ/LaTeX 编译。_
+_图 3.2-6：当序列内部出现 d_k=1，下一回合的隐藏状态必须重置，反向梯度也不能跨越这条边界。本文根据上式及边界说明绘制_
 
 </div>
 

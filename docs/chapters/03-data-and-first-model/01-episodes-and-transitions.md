@@ -61,7 +61,7 @@ $$
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/01-episodes-and-transitions/transition-shared-boundary.png" alt="相邻转移共享同一个下一状态，而终止标志把下一条转移划入新回合" width="86%">
 
-_图 3.1-3：同一个 s_{t+1} 既是 e_t 的结果，也是下一转移的起点；d_t=1 时，这种状态索引关系不再表示同一回合的连续动力学。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 3.1-3：同一个 s_{t+1} 既是 e_t 的结果，也是下一转移的起点；d_t=1 时，这种状态索引关系不再表示同一回合的连续动力学。_
 
 </div>
 
@@ -82,7 +82,7 @@ _图 3.1-3：同一个 s_{t+1} 既是 e_t 的结果，也是下一转移的起�
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/01-episodes-and-transitions/batch-stack-shapes.png" alt="B 条转移按字段列拆分并沿批量维堆叠成五类张量" width="86%">
 
-_图 3.1-4：每条转移占一行，同名字段沿样本索引 i 堆叠；状态和动作保留特征维，奖励与终止标志保留单列。本文根据上式及其张量形状说明绘制；TikZ/LaTeX 编译。_
+_图 3.1-4：每条转移占一行，同名字段沿样本索引 i 堆叠；状态和动作保留特征维，奖励与终止标志保留单列。_
 
 </div>
 

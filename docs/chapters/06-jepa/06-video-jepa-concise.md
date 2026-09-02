@@ -289,7 +289,7 @@ class VJEPAModel(nn.Module):
 <div align="center">
   <img src="/figures/06-jepa/latex/06-video-jepa-concise/equal-mask-cardinality-view.png" alt="三个 batch 行各选相同数量的目标 token，扁平 gather 后才能重排为 B 乘 M 乘 D" width="86%">
 
-_图 6.6-5：布尔索引先把所有选中 token 压成二维；只有每个 batch 的目标数 M_b 相同，才能无歧义地 view 为 B×M×D。本文根据上述代码的形状约束绘制；TikZ/LaTeX 编译。_
+_图 6.6-5：布尔索引先把所有选中 token 压成二维；只有每个 batch 的目标数 M_b 相同，才能无歧义地 view 为 B×M×D。本文根据上述代码的形状约束绘制_
 
 </div>
 

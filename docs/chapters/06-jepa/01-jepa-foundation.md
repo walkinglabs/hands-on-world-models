@@ -90,7 +90,7 @@ $$
 <div align="center">
   <img src="/figures/06-jepa/latex/01-jepa-foundation/vector-distance-reduction.png" alt="预测向量与目标向量逐维相减平方，再沿特征维求和" width="86%">
 
-_图 6.1-4：每个特征坐标先形成差值并平方，随后沿 i=1,…,d 归约，得到单个表征距离。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 6.1-4：每个特征坐标先形成差值并平方，随后沿 i=1,…,d 归约，得到单个表征距离。_
 
 </div>
 
@@ -125,7 +125,7 @@ $$
 <div align="center">
   <img src="/figures/06-jepa/latex/01-jepa-foundation/latent-condition-argmin.png" alt="同一上下文经多个候选条件产生预测，并以到目标表征的距离选择 z 星" width="86%">
 
-_图 6.1-5：x 与 y 固定时，每个候选 z 产生一个预测表征；内层 argmin 选择距离目标编码最小的 z\*。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 6.1-5：x 与 y 固定时，每个候选 z 产生一个预测表征；内层 argmin 选择距离目标编码最小的 z\*。_
 
 </div>
 

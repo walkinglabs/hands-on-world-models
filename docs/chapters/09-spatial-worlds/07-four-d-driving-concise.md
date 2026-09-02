@@ -61,7 +61,7 @@ _图 9.7-3：FIERY 从环视视频构建时序 BEV 潜变量，并预测未来�
 
 <img src="/figures/09-spatial-worlds/latex/07-four-d-driving-concise/occupancy-bce-four-axis-mean.png" alt="每个批次和三维体素先计算 BCE，再沿批次、高度和两个平面轴求和并归一化为标量" width="86%">
 
-_图 9.7-4：每个批次和三维体素先计算 BCE，再沿批次、高度和两个平面轴求和并归一化为标量。本文绘制；TikZ/LaTeX 编译。_
+_图 9.7-4：每个批次和三维体素先计算 BCE，再沿批次、高度和两个平面轴求和并归一化为标量。_
 
 </div>
 

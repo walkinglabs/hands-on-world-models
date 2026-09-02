@@ -61,7 +61,7 @@ $$\dot{\mathbf{v}} = \mathbf{M}(\mathbf{q})^{-1} \left( \boldsymbol{\tau} - \mat
 <div align="center">
 <img src="/figures/08-robot-sim/latex/01-physics-mujoco/mass-matrix-coupled-solve.png" alt="质量矩阵的非对角项把两个净力矩分量耦合到两个关节加速度分量" width="86%">
 
-_图 8.1-2：质量矩阵存在非对角项时，前向动力学必须整体求解耦合方程；单个净力矩分量不再只对应一个关节加速度。本文根据上式绘制。_
+_图 8.1-2：质量矩阵存在非对角项时，前向动力学必须整体求解耦合方程；单个净力矩分量不再只对应一个关节加速度。_
 </div>
 
 这个式子用于说明变量关系，不表示实现时真的显式计算 $\mathbf{M}^{-1}$。MuJoCo 使用复合刚体算法构造稀疏质量矩阵，并对其做保持稀疏性的 $L^\top D L$ 分解；求解 $\mathbf{M}^{-1}\mathbf{x}$ 时使用回代 [[MuJoCo Computation]](https://mujoco.readthedocs.io/en/latest/computation.html)。

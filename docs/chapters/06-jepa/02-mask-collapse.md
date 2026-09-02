@@ -68,7 +68,7 @@ $$L(\mathbf{W}) = \mathrm{Tr}\left( \mathbf{W}^\top \mathbf{W} \mathbf{\Sigma} \
 <div align="center">
   <img src="/figures/06-jepa/latex/02-mask-collapse/collapse-trace-eigenspace.png" alt="输入差异协方差覆盖多个方向，而零权重把所有方向映射到同一原点" width="86%">
 
-_图 6.2-3：Σ 描述数据差异方向；当 W=0 时，所有 Δx 都映射为零，因此非负迹损失恰好达到下界 0。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 6.2-3：Σ 描述数据差异方向；当 W=0 时，所有 Δx 都映射为零，因此非负迹损失恰好达到下界 0。_
 
 </div>
 
@@ -94,7 +94,7 @@ $$L_{InfoNCE} = - \log \frac{\exp(\mathbf{h}_1^\top \mathbf{h}_2 / \tau)}{\exp(\
 <div align="center">
   <img src="/figures/06-jepa/latex/02-mask-collapse/infonce-softmax-competition.png" alt="一个正样本相似度与 N 个负样本相似度共同进入指数归一化分母" width="86%">
 
-_图 6.2-5：正样本指数项既在分子中，也与全部负样本指数项共享分母；降低损失要求提高相对而非绝对正样本得分。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 6.2-5：正样本指数项既在分子中，也与全部负样本指数项共享分母；降低损失要求提高相对而非绝对正样本得分。_
 
 </div>
 

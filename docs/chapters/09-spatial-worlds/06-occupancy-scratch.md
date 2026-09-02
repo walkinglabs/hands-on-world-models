@@ -57,7 +57,7 @@ _图 9.6-2：MonoScene 的 FLoSP 把二维多尺度特征沿相机视线投影�
 
 <img src="/figures/09-spatial-worlds/latex/06-occupancy-scratch/depth-feature-outer-product.png" alt="深度概率向量与像素特征向量做外积，每个深度概率缩放整条通道特征" width="86%">
 
-_图 9.6-3：深度概率向量与像素特征向量做外积，每个深度概率缩放整条通道特征。本文绘制；TikZ/LaTeX 编译。_
+_图 9.6-3：深度概率向量与像素特征向量做外积，每个深度概率缩放整条通道特征。_
 
 </div>
 

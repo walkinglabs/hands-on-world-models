@@ -84,7 +84,7 @@ $$e_{t+1} \le \epsilon + L e_t$$
 <div align="center">
 <img src="/figures/10-evaluate-and-invent/latex/03-failure-analysis/lipschitz-error-contribution.png" alt="每一步注入的单步模型误差在后续推演中被不同次数的 Lipschitz 常数放大，最终形成几何级数" width="86%">
 
-_图 10.3-2：越早注入的单步误差经历越多次 L 放大；把各步贡献相加，便得到推演误差的几何级数上界。本文根据上式绘制。_
+_图 10.3-2：越早注入的单步误差经历越多次 L 放大；把各步贡献相加，便得到推演误差的几何级数上界。_
 </div>
 
 由于 $e_0 = 0$，我们可以再次使用高中数列求和的技巧，将其展开至第 $T$ 步：

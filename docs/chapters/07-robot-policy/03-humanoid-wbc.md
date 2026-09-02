@@ -175,7 +175,7 @@ $$\boldsymbol{\tau} = \mathbf{J}^\top \mathbf{F}$$
 
 <img src="/figures/07-robot-policy/latex/03-humanoid-wbc/nullspace-secondary-torque.png" alt="主任务力矩与经零空间投影的次任务力矩合流" width="86%">
 
-_图 7.3-4：次任务先经动态一致零空间投影再与主任务合流，因此它在主任务加速度映射中的贡献为零。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.3-4：次任务先经动态一致零空间投影再与主任务合流，因此它在主任务加速度映射中的贡献为零。_
 
 </div>
 

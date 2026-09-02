@@ -105,7 +105,7 @@ $$ b_t(S) \propto \mathbb{P}(O_t \mid S) \sum_{S_{t-1}} \mathbb{P}(S \mid S_{t-1
 
 <div align="center"><img src="/figures/01-why-world-models/latex/01-observation-and-state/bayes-predict-update.png" alt="先按状态转移汇聚上一信念，再乘观测似然并归一化" width="86%">
 
-_图 1.1-4：预测步先对旧状态求和得到先验信念；更新步再乘最新观测似然并归一化。本文根据上式绘制。_
+_图 1.1-4：预测步先对旧状态求和得到先验信念；更新步再乘最新观测似然并归一化。_
 
 </div>
 

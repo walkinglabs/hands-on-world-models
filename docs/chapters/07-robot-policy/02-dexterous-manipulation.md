@@ -54,9 +54,9 @@ $$2 \mu N \ge G \implies N \ge \frac{G}{2\mu} = \frac{4.9\text{ N}}{2 \times 0.5
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/latex/02-dexterous-manipulation/friction-cone-3d.png" alt="三维库仑摩擦锥几何模型" width="86%">
+<img src="/figures/07-robot-policy/latex/02-dexterous-manipulation/friction-cone-decomposition.png" alt="三维库仑摩擦锥几何模型" width="86%">
 
-_图 7.2-2：三维库仑摩擦锥模型：接触力矢量必须严格位于半顶角为 $\alpha = \arctan(\mu)$ 的圆锥体内部。本文绘制；TikZ/LaTeX 编译。_
+_图 7.2-2：三维库仑摩擦锥模型：接触力矢量必须严格位于半顶角为 $\alpha = \arctan(\mu)$ 的圆锥体内部。_
 
 </div>
 

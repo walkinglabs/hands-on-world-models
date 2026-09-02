@@ -162,7 +162,7 @@ $$ p_k = \frac{v_{k+1} - y}{\Delta} $$
 
 <div align="center"><img src="/figures/04-latent-dynamics/latex/05-dreamer-v2-v3/twohot-value-preservation.png" alt="目标值位于两个相邻桶之间，按到对侧桶的距离分配概率后加权桶值仍等于原目标" width="86%">
 
-_图 4.5-5：目标越靠近某个桶，该桶获得的概率越大；两个权重之和为 1，并且桶中心的加权和严格等于原目标 y。本文根据上式绘制。_
+_图 4.5-5：目标越靠近某个桶，该桶获得的概率越大；两个权重之和为 1，并且桶中心的加权和严格等于原目标 y。_
 
 </div>
 

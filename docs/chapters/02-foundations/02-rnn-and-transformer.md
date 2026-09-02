@@ -84,7 +84,7 @@ $$
 
 <div align="center"><img src="/figures/02-foundations/latex/02-rnn-and-transformer/rnn-jacobian-product.png" alt="RNN 时间展开后，初始状态到末状态的梯度等于每一步局部雅可比的连乘" width="86%">
 
-_图 2.2-2：跨时间传播的梯度由每一步局部 Jacobian 依次相乘；其典型尺度持续小于 1 时衰减，持续大于 1 时增长。本文根据上式绘制。_
+_图 2.2-2：跨时间传播的梯度由每一步局部 Jacobian 依次相乘；其典型尺度持续小于 1 时衰减，持续大于 1 时增长。_
 
 </div>
 

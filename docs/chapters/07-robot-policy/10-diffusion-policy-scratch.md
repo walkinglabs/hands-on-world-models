@@ -8,7 +8,7 @@
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/source/10-diffusion-policy-scratch/chi-fig2.png" alt="Diffusion Policy 用去噪网络把高斯噪声逐步迭代为动作轨迹。" width="86%">
+<img src="/figures/07-robot-policy/source/10-diffusion-policy-scratch/dp-fig3.png" alt="Diffusion Policy 用去噪网络把高斯噪声逐步迭代为动作轨迹。" width="86%">
 
 _图 7.10-1：Diffusion Policy 用去噪网络把高斯噪声逐步迭代为动作轨迹。 出处：[Diffusion Policy: Visuomotor Policy Learning via Action Diffusion，Cheng Chi et al.，2023](https://arxiv.org/abs/2303.04137)。_
 
@@ -31,9 +31,9 @@ _图 7.10-1：Diffusion Policy 用去噪网络把高斯噪声逐步迭代为动�
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/latex/10-diffusion-policy-scratch/ddpm-forward-reverse-chain.png" alt="前向加噪过程与逆向去噪生成链" width="86%">
+<img src="/figures/07-robot-policy/source/10-diffusion-policy-scratch/ddpm-fig6.png" alt="前向加噪过程与逆向去噪生成链" width="86%">
 
-_图 7.10-2：前向加噪过程逐步注入微小高斯扰动；逆向去噪生成链由神经网络预测噪声，逐步恢复清晰动作序列。本文绘制；TikZ/LaTeX 编译。_
+_图 7.10-2：前向加噪过程逐步注入微小高斯扰动；逆向去噪生成链由神经网络预测噪声，逐步恢复清晰动作序列。_
 
 </div>
 
@@ -55,7 +55,7 @@ _图 7.10-2：前向加噪过程逐步注入微小高斯扰动；逆向去噪生
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/source/10-diffusion-policy-scratch/ho-fig2.png" alt="DDPM 的前向加噪与逆向去噪马尔可夫链示意图。" width="86%">
+<img src="/figures/07-robot-policy/source/10-diffusion-policy-scratch/dp-fig9.png" alt="DDPM 的前向加噪与逆向去噪马尔可夫链示意图。" width="86%">
 
 _图 7.10-3：DDPM 的前向加噪与逆向去噪马尔可夫链示意图。 出处：[Denoising Diffusion Probabilistic Models，Jonathan Ho et al.，2020](https://arxiv.org/abs/2006.11239)。_
 
@@ -90,9 +90,9 @@ $$\mathbf{a}_t = \sqrt{\bar{\alpha}_t} \mathbf{a}_0 + \sqrt{1 - \bar{\alpha}_t} 
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/latex/10-diffusion-policy-scratch/noise-residual-triangle.png" alt="含噪动作是原始动作与标准高斯噪声的正交矢量合成" width="86%">
+<img src="/figures/07-robot-policy/source/10-diffusion-policy-scratch/dp-fig10.png" alt="含噪动作是原始动作与标准高斯噪声的正交矢量合成" width="86%">
 
-_图 7.10-4：含噪动作是原始动作与标准高斯噪声的正交矢量合成；系数平方和恒等于 1。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.10-4：含噪动作是原始动作与标准高斯噪声的正交矢量合成；系数平方和恒等于 1。_
 
 </div>
 
@@ -166,7 +166,7 @@ $$\tilde{\boldsymbol{\mu}}_t(\mathbf{a}_t) = \frac{1}{\sqrt{\alpha_t}}\left(\mat
 
 <img src="/figures/07-robot-policy/latex/10-diffusion-policy-scratch/two-time-axes.png" alt="扩散步与动作块内物理未来步是两条不同时间轴" width="86%">
 
-_图 7.10-5：扩散步 t 表示噪声层级；每个 t 上都有完整 H×D_a 动作块，其中 h 才是机器人未来的物理时间索引。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.10-5：扩散步 t 表示噪声层级；每个 t 上都有完整 H×D_a 动作块，其中 h 才是机器人未来的物理时间索引。_
 
 </div>
 

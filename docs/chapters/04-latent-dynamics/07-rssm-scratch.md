@@ -272,7 +272,7 @@ $$ D_{KL}(q \parallel p) = \frac{1}{2} \sum_{i=1}^{D_z} \left( \log \frac{\sigma
 
 <div align="center"><img src="/figures/04-latent-dynamics/latex/07-rssm-scratch/diagonal-gaussian-kl-terms.png" alt="对角高斯 KL 逐维包含方差尺度比、后验扩散和均值错配三类贡献" width="86%">
 
-_图 4.7-5：每个潜变量维度同时比较 q 与 p 的尺度、后验扩散和均值位置；这些贡献相加后才得到整条潜状态的 KL。本文根据上式绘制。_
+_图 4.7-5：每个潜变量维度同时比较 q 与 p 的尺度、后验扩散和均值位置；这些贡献相加后才得到整条潜状态的 KL。_
 
 </div>
 

@@ -188,7 +188,7 @@ $$ L = \underbrace{\| x - D(z_q) \|_2^2}_{\text{Reconstruction}} + \underbrace{\
 
 <div align="center"><img src="/figures/02-foundations/latex/03-vae-and-vq/vq-stop-gradient-routing.png" alt="码本损失只更新码本向量，承诺损失只更新编码器输出，停止梯度阻断另一侧" width="86%">
 
-_图 2.3-3：码本项把编码器输出当作固定目标，只更新码本；承诺项把码本当作固定目标，只更新编码器。本文根据上式绘制。_
+_图 2.3-3：码本项把编码器输出当作固定目标，只更新码本；承诺项把码本当作固定目标，只更新编码器。_
 
 </div>
 

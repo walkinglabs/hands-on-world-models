@@ -56,7 +56,7 @@ $$\mathbf{s}_t = \mathbf{q}_t \mathbf{K}_t^\top = \mathbf{q}_t \begin{bmatrix} \
 <div align="center">
 <img src="/figures/05-interactive-video/latex/04-kv-cache-realtime/kv-cache-append-current-row.png" alt="当前查询复用历史键值缓存，只追加当前键值行并对全部历史位置计算注意力" width="86%">
 
-_图 5.4-3：第 t 步只追加新的 k_t 与 v_t；当前 q_t 仍与缓存后的全部键形成长度 t 的得分，并对全部值精确加权。本文根据上式绘制。_
+_图 5.4-3：第 t 步只追加新的 k_t 与 v_t；当前 q_t 仍与缓存后的全部键形成长度 t 的得分，并对全部值精确加权。_
 </div>
 
 应用 softmax 函数后得到注意力权重 $\mathbf{\alpha}_t = \text{softmax}\left(\frac{\mathbf{s}_t}{\sqrt{d_k}}\right)$。最终的注意力输出向量 $\mathbf{o}_t \in \mathbb{R}^{1 \times d_k}$ 为：

@@ -138,7 +138,7 @@ $$\mathcal{L}_{\text{critic}}(\psi) = \mathbb{E} \left[ \sum_{\tau=t}^{t+H-1} \f
 
 <div align="center"><img src="/figures/04-latent-dynamics/latex/04-dreamer-v1/critic-stop-gradient-target.png" alt="评论家预测与停止梯度的 lambda 回报计算平方误差，梯度只返回评论家参数" width="86%">
 
-_图 4.4-5：λ-return 在 critic 更新中充当固定回归目标；平方误差的梯度只返回 v_ψ，不能穿过停止梯度端改变目标。本文根据上式绘制。_
+_图 4.4-5：λ-return 在 critic 更新中充当固定回归目标；平方误差的梯度只返回 v_ψ，不能穿过停止梯度端改变目标。_
 
 </div>
 

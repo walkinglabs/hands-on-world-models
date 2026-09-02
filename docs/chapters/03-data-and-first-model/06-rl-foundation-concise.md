@@ -34,7 +34,7 @@ $$
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/06-rl-foundation-concise/return-recursive-tail.png" alt="折扣回报把即时奖励与从下一时刻开始的完整尾回报递归相加" width="86%">
 
-_图 3.6-2：把首项 r_t 单独取出后，剩余级数正是 G_{t+1}，只是整体多乘一个 γ，因此得到递推式 G_t=r_t+γG_{t+1}。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 3.6-2：把首项 r_t 单独取出后，剩余级数正是 G_{t+1}，只是整体多乘一个 γ，因此得到递推式 G_t=r_t+γG_{t+1}。_
 
 </div>
 

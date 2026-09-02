@@ -128,7 +128,7 @@ $$
 
 <div align="center"><img src="/figures/01-why-world-models/latex/04-imagine-driving/bptt-jacobian-chain.png" alt="奖励梯度沿隐状态、动作和策略参数三段雅可比反向相乘" width="86%">
 
-_图 1.4-5：前向依次产生动作、下一潜状态和奖励；反向传播按相反方向连乘三段局部雅可比，把奖励信号送回策略参数。本文根据上式绘制。_
+_图 1.4-5：前向依次产生动作、下一潜状态和奖励；反向传播按相反方向连乘三段局部雅可比，把奖励信号送回策略参数。_
 
 </div>
 

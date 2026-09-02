@@ -51,7 +51,7 @@ _图 9.5-2：Drive-WM 同时预测多相机未来视图，并把动作条件和�
 
 <img src="/figures/09-spatial-worlds/latex/05-driving-world-models/autoregressive-conditioning-window.png" alt="未来状态联合分布逐步分解，每个预测因子的状态与动作条件窗口随预测步增长" width="86%">
 
-_图 9.5-3：未来状态联合分布逐步分解，每个预测因子的状态与动作条件窗口随预测步增长。本文绘制；TikZ/LaTeX 编译。_
+_图 9.5-3：未来状态联合分布逐步分解，每个预测因子的状态与动作条件窗口随预测步增长。_
 
 </div>
 

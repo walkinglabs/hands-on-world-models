@@ -63,7 +63,7 @@ $$p(o_{1:T}, r_{1:T}, z_{1:T} \mid a_{1:T}) = \prod_{t=1}^T p(o_t \mid h_t, z_t)
 <div align="center">
 <img src="/figures/08-robot-sim/latex/05-imagination-rl-rise/rssm-observation-reward-factor.png" alt="每个时间步的潜变量先验、观测似然与奖励似然构成一个因子三元组并跨时间相乘" width="86%">
 
-_图 8.5-4：每个时间步都乘入潜变量先验、观测似然与奖励似然；观测和奖励两项共享同一潜在状态条件。本文根据上式绘制。_
+_图 8.5-4：每个时间步都乘入潜变量先验、观测似然与奖励似然；观测和奖励两项共享同一潜在状态条件。_
 </div>
 
 其中，确定性隐藏状态轨迹 $h_t$ 根据如下非线性递归方程更新：

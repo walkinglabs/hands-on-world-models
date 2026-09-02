@@ -51,7 +51,7 @@ $$\mathbf{V}_t = \sqrt{\bar{\alpha}_t} \mathbf{V}_0 + \sqrt{1 - \bar{\alpha}_t} 
 <div align="center">
 <img src="/figures/05-interactive-video/latex/03-diffusion-sora/video-diffusion-two-time-axes.png" alt="一个扩散步的两项标量系数作用于完整视频张量，而帧时间是张量内部的独立索引轴" width="86%">
 
-_图 5.3-3：扩散步 t 只选择一对全张量共享的混合系数；视频的帧索引则位于张量内部，不能与扩散时间混为一谈。本文根据上式绘制。_
+_图 5.3-3：扩散步 t 只选择一对全张量共享的混合系数；视频的帧索引则位于张量内部，不能与扩散时间混为一谈。_
 </div>
 
 这里，噪声张量 $\mathbf{E}$ 具有与 $\mathbf{V}_0$ 完全相同的多维形状，且其内部的每一个元素均独立服从标准正态分布。去噪模型（即我们要训练的神经网络）的任务就是接收带噪张量 $\mathbf{V}_t$ 和时间步 $t$，预测出被加入的噪声 $\mathbf{E}$。

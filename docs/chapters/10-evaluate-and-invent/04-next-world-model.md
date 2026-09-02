@@ -155,7 +155,7 @@ $$
 <div align="center">
 <img src="/figures/10-evaluate-and-invent/latex/04-next-world-model/zoh-two-contributions.png" alt="零阶保持区间内，旧状态经矩阵指数传播，恒定输入经区间积分响应后共同形成下一离散状态" width="86%">
 
-_图 10.4-5：旧状态通过矩阵指数传播，区间内保持不变的输入通过积分响应累积；两项相加得到精确离散状态。本文根据上式绘制。_
+_图 10.4-5：旧状态通过矩阵指数传播，区间内保持不变的输入通过积分响应累积；两项相加得到精确离散状态。_
 </div>
 
 令 $\bar{\mathbf{A}} = e^{\mathbf{A}\Delta}$，以及一般形式 $\bar{\mathbf{B}} = \left(\int_0^\Delta e^{\mathbf{A}\tau}\,d\tau\right)\mathbf{B}$。当 $\mathbf A$ 可逆时，后者可写成 $\mathbf{A}^{-1}(e^{\mathbf{A}\Delta} - \mathbf{I})\mathbf B$。于是得到离散递推：

@@ -65,7 +65,7 @@ $$\mathbf{x}_t \sim p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t)$$
 <div align="center">
 <img src="/figures/05-interactive-video/latex/01-video-prediction-svg/stochastic-future-branching.png" alt="固定同一段历史并改变时刻 t 的随机潜变量样本，会从同一条件分布得到多个不同未来帧" width="86%">
 
-_图 5.1-4：历史帧保持不变时，不同的 z_t 样本沿同一条件生成分布产生不同未来，从而避免把多种可能性压成一张平均帧。本文根据上式绘制。_
+_图 5.1-4：历史帧保持不变时，不同的 z_t 样本沿同一条件生成分布产生不同未来，从而避免把多种可能性压成一张平均帧。_
 </div>
 
 其中，$\mathbf{x}_{<t}$ 表示第 $1$ 帧到第 $t-1$ 帧的历史观测。给定同一段历史，改变 $z_t$ 就能得到不同的条件样本。

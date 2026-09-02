@@ -10,7 +10,7 @@
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/source/11-world-model-body-loop/ha-fig1.png" alt="Ha 与 Schmidhuber 提出的世界模型经典三件套：视觉 V、记忆 M 与控制器 C。" width="86%">
+<img src="/figures/07-robot-policy/source/11-world-model-body-loop/wm-fig8.png" alt="Ha 与 Schmidhuber 提出的世界模型经典三件套：视觉 V、记忆 M 与控制器 C。" width="86%">
 
 _图 7.11-1：Ha 与 Schmidhuber 提出的世界模型经典三件套：视觉 V、记忆 M 与控制器 C。 出处：[World Models，David Ha; Jürgen Schmidhuber，2018](https://arxiv.org/abs/1803.10122)。_
 
@@ -36,9 +36,9 @@ _图 7.11-1：Ha 与 Schmidhuber 提出的世界模型经典三件套：视觉 V
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/latex/11-world-model-body-loop/recurrent-state-flow.png" alt="确定性历史状态与随机潜状态在时间步间循环流动" width="86%">
+<img src="/figures/07-robot-policy/source/11-world-model-body-loop/wm-fig9.png" alt="确定性历史状态与随机潜状态在时间步间循环流动" width="86%">
 
-_图 7.11-2：确定性历史状态与随机潜状态在时间步间循环流动，预测观察、奖励和折扣因子。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.11-2：确定性历史状态与随机潜状态在时间步间循环流动，预测观察、奖励和折扣因子。_
 
 </div>
 
@@ -54,7 +54,7 @@ _图 7.11-2：确定性历史状态与随机潜状态在时间步间循环流动
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/source/11-world-model-body-loop/hafner-fig2.png" alt="RSSM 结合确定性循环路径与随机状态路径，分别在过滤与想象中展开。" width="86%">
+<img src="/figures/07-robot-policy/source/11-world-model-body-loop/wm-fig14.png" alt="RSSM 结合确定性循环路径与随机状态路径，分别在过滤与想象中展开。" width="86%">
 
 _图 7.11-3：RSSM 结合确定性循环路径与随机状态路径，分别在过滤与想象中展开。 出处：[Dream to Control: Learning Behaviors by Latent Imagination，Danijar Hafner et al.，2020](https://arxiv.org/abs/1912.01603)。_
 
@@ -144,9 +144,9 @@ $$\frac{\partial \mathbf{s}_k}{\partial \mathbf{a}_\tau} = \frac{\partial \mathb
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/latex/11-world-model-body-loop/world-model-body-loop-block.png" alt="世界模型感知-想象-执行-校正完整闭环架构" width="86%">
+<img src="/figures/07-robot-policy/latex/11-world-model-body-loop/rssm-prior-posterior-split.png" alt="世界模型感知-想象-执行-校正完整闭环架构" width="86%">
 
-_图 7.11-5：世界模型闭环：真实观测校正潜在状态；策略在梦境动力学中展开可微想象；最优动作下发至物理本体执行。本文绘制；TikZ/LaTeX 编译。_
+_图 7.11-5：世界模型闭环：真实观测校正潜在状态；策略在梦境动力学中展开可微想象；最优动作下发至物理本体执行。_
 
 </div>
 

@@ -117,7 +117,7 @@ $$
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/03-value-policy-gradient/trajectory-score-cancellation.png" alt="轨迹概率中的策略因子依赖参数 theta，而初始分布和环境转移项梯度为零" width="86%">
 
-_图 3.3-3：轨迹连乘取对数后变成逐时刻求和；只有策略因子含 θ，因此初始分布和环境转移项在求导时消失。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 3.3-3：轨迹连乘取对数后变成逐时刻求和；只有策略因子含 θ，因此初始分布和环境转移项在求导时消失。_
 
 </div>
 
@@ -146,7 +146,7 @@ $$
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/03-value-policy-gradient/reward-to-go-causal-triangle.png" alt="每个动作只连接其后续奖励，过去奖励对应的梯度期望为零" width="86%">
 
-_图 3.3-4：因果连线形成下三角支持区域；a_t 只能影响未来奖励，所以策略梯度用 G_t 而不是整条轨迹的总回报。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 3.3-4：因果连线形成下三角支持区域；a_t 只能影响未来奖励，所以策略梯度用 G_t 而不是整条轨迹的总回报。_
 
 </div>
 
@@ -200,7 +200,7 @@ $$
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/03-value-policy-gradient/baseline-zero-expectation.png" alt="同一状态基线乘各动作 score 后按动作概率求和为零" width="86%">
 
-_图 3.3-6：同一个 b(s) 被所有动作分支共享，可移出动作求和；剩余 score 的期望等于归一化概率总和 1 的梯度，因此为零。本文根据上述基线性质绘制；TikZ/LaTeX 编译。_
+_图 3.3-6：同一个 b(s) 被所有动作分支共享，可移出动作求和；剩余 score 的期望等于归一化概率总和 1 的梯度，因此为零。本文根据上述基线性质绘制_
 
 </div>
 

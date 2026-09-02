@@ -120,7 +120,7 @@ $$\mathcal{X} \in \mathbb{R}^{B \times T \times X \times Y \times Z \times C}$$
 
 <img src="/figures/09-spatial-worlds/latex/04-four-dimensional-worlds/spacetime-axis-refactor.png" alt="六维时空状态在空间卷积时折叠批次与时间，在时间注意力时折叠批次与空间位置" width="86%">
 
-_图 9.4-5：六维时空状态在空间卷积时折叠批次与时间，在时间注意力时折叠批次与空间位置。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 9.4-5：六维时空状态在空间卷积时折叠批次与时间，在时间注意力时折叠批次与空间位置。_
 
 </div>
 

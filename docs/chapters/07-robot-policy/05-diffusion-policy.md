@@ -52,7 +52,7 @@ _图 7.5-2：DDPM 图模型并列前向加噪与逆向生成链，给出动作�
 
 <img src="/figures/07-robot-policy/latex/05-diffusion-policy/reverse-denoise-one-step.png" alt="一次条件逆扩散更新的去噪、缩放与随机采样顺序" width="86%">
 
-_图 7.5-3：一次条件逆扩散更新的去噪、缩放与随机采样顺序。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.5-3：一次条件逆扩散更新的去噪、缩放与随机采样顺序。_
 
 </div>
 

@@ -225,7 +225,7 @@ class JEPAModel(nn.Module):
 <div align="center">
   <img src="/figures/06-jepa/latex/05-jepa-scratch/context-pool-expand-position.png" alt="上下文序列沿 N_c 平均成单向量，再复制到 N_y 行并分别加入目标位置编码" width="86%">
 
-_图 6.5-3：mean 消去上下文 token 维得到 B×d；随后只复制该向量的视图到 N_y 个位置，每一行再与自己的 z_y,i 配对。本文根据上述张量操作绘制；TikZ/LaTeX 编译。_
+_图 6.5-3：mean 消去上下文 token 维得到 B×d；随后只复制该向量的视图到 N_y 个位置，每一行再与自己的 z_y,i 配对。本文根据上述张量操作绘制_
 
 </div>
 

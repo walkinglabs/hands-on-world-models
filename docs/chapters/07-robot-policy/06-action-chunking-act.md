@@ -106,7 +106,7 @@ _图 7.6-4：重叠动作块按时间权重集成，缓解单次预测切换造�
 
 <img src="/figures/07-robot-policy/latex/06-action-chunking-act/temporal-ensemble-diagonal.png" alt="从重叠动作块的同一物理时刻对角线取值并按预测年龄加权" width="86%">
 
-_图 7.6-5：从重叠动作块的同一物理时刻对角线取值并按预测年龄加权。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.6-5：从重叠动作块的同一物理时刻对角线取值并按预测年龄加权。_
 
 </div>
 

@@ -147,7 +147,7 @@ $$
 
 <div align="center"><img src="/figures/02-foundations/latex/06-basic-components-concise/logsumexp-stabilization.png" alt="所有逻辑值减去最大值后，指数不超过一且指数和至少为一" width="86%">
 
-_图 2.6-4：统一减去最大 logit 不改变 Softmax 比例，却把最大指数固定为 1，并保证求和项不会变成 0。本文根据上式绘制。_
+_图 2.6-4：统一减去最大 logit 不改变 Softmax 比例，却把最大指数固定为 1，并保证求和项不会变成 0。_
 
 </div>
 

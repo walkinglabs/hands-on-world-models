@@ -63,7 +63,7 @@ $$\theta' \leftarrow \theta, \qquad \text{每隔 } K \text{ 步}$$
 <div align="center">
   <img src="/figures/06-jepa/latex/03-target-network-ema/hard-vs-ema-response.png" alt="硬更新目标呈阶梯变化，而 EMA 目标逐步平滑跟随在线参数" width="86%">
 
-_图 6.3-3：每 K 步复制会让目标参数保持后突然跳变；每步 EMA 则只吸收 1−τ 比例的在线参数变化，形成平滑响应。本文根据硬更新与 EMA 两式绘制；TikZ/LaTeX 编译。_
+_图 6.3-3：每 K 步复制会让目标参数保持后突然跳变；每步 EMA 则只吸收 1−τ 比例的在线参数变化，形成平滑响应。本文根据硬更新与 EMA 两式绘制_
 
 </div>
 

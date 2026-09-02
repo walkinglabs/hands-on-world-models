@@ -65,7 +65,7 @@ $$
 
 <div align="center"><img src="/figures/02-foundations/latex/05-basic-components-scratch/bias-broadcast-shapes.png" alt="矩阵乘积得到 n 乘 q 输出，单行偏置沿批次维复制 n 次后逐元素相加" width="86%">
 
-_图 2.5-2：XW 产生 n×q 的小批量输出；偏置的单行沿样本维复用 n 次，使每个样本加上同一组 q 维偏置。本文根据上式绘制。_
+_图 2.5-2：XW 产生 n×q 的小批量输出；偏置的单行沿样本维复用 n 次，使每个样本加上同一组 q 维偏置。_
 
 </div>
 

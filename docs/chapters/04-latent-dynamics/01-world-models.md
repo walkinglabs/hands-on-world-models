@@ -154,7 +154,7 @@ $$
 
 <div align="center"><img src="/figures/04-latent-dynamics/latex/01-world-models/mdn-log-reduction-order.png" alt="MDN 先沿潜变量维累加对数高斯密度，再加入混合权重并沿混合分量执行 log-sum-exp" width="86%">
 
-_图 4.1-5：分量内的维度乘积在对数域先化为求和；加入各分量的 log 权重后，才在混合分量轴上执行 log-sum-exp。本文根据上式绘制。_
+_图 4.1-5：分量内的维度乘积在对数域先化为求和；加入各分量的 log 权重后，才在混合分量轴上执行 log-sum-exp。_
 
 </div>
 

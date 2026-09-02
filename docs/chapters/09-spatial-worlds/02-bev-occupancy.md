@@ -35,7 +35,7 @@ _图 9.2-1：Lift-Splat-Shoot 把环视相机图像变成统一鸟瞰表示，�
 
 <img src="/figures/09-spatial-worlds/latex/02-bev-occupancy/pixel-ray-depth-family.png" alt="同一像素经内参逆变换只确定射线方向，不同正深度对应射线上不同三维点" width="86%">
 
-_图 9.2-2：同一像素经内参逆变换只确定射线方向，不同正深度对应射线上不同三维点。本文绘制；TikZ/LaTeX 编译。_
+_图 9.2-2：同一像素经内参逆变换只确定射线方向，不同正深度对应射线上不同三维点。_
 
 </div>
 

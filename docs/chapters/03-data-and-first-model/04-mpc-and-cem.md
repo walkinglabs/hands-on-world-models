@@ -56,7 +56,7 @@ $$
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/04-mpc-and-cem/mpc-receding-horizon.png" alt="MPC 先优化完整预测时域，只执行首动作，观测新状态后平移窗口重规划" width="86%">
 
-_图 3.4-3：每轮都求解 H 步动作序列，但只执行 a_t*；真实新状态到达后，预测窗前移并重新优化，从而形成反馈闭环。本文根据上式与滚动时域步骤绘制；TikZ/LaTeX 编译。_
+_图 3.4-3：每轮都求解 H 步动作序列，但只执行 a_t*；真实新状态到达后，预测窗前移并重新优化，从而形成反馈闭环。本文根据上式与滚动时域步骤绘制_
 
 </div>
 
@@ -121,7 +121,7 @@ $$
 <div align="center">
   <img src="/figures/03-data-and-first-model/latex/04-mpc-and-cem/cem-elite-refit.png" alt="宽搜索分布采样后只保留精英点，并以其均值方差拟合更窄的新分布" width="86%">
 
-_图 3.4-6：精英集合 E_k 是下一轮极大似然拟合的唯一数据；其样本均值与方差直接成为新高斯参数，使采样质量逐轮集中。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 3.4-6：精英集合 E_k 是下一轮极大似然拟合的唯一数据；其样本均值与方差直接成为新高斯参数，使采样质量逐轮集中。_
 
 </div>
 

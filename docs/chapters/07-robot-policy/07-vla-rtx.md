@@ -36,7 +36,7 @@ _图 7.7-1：RT-2 将机器人动作表示为文本词元，直接在大模型�
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/source/07-vla-rtx/rt1-fig3.png" alt="RT-1 采用 EfficientNet、FiLM 与 TokenLearner 压缩视觉标记，送入因果 Transformer 生成离散动作。" width="86%">
+<img src="/figures/07-robot-policy/source/07-vla-rtx/rt2-fig2.png" alt="RT-1 采用 EfficientNet、FiLM 与 TokenLearner 压缩视觉标记，送入因果 Transformer 生成离散动作。" width="86%">
 
 _图 7.7-2：RT-1 采用 EfficientNet、FiLM 与 TokenLearner 压缩视觉标记，送入因果 Transformer 生成离散动作。 出处：[RT-1: Robotics Transformer for Real-World Control at Scale，Anthony Brohan et al.，2022](https://arxiv.org/abs/2212.06817)。_
 
@@ -69,9 +69,9 @@ $$\mathbf{a}_t = [\Delta x, \Delta y, \Delta z, \Delta \text{roll}, \Delta \text
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/latex/07-vla-rtx/action-discretization-bins.png" alt="连续动作区间被均匀分割为 256 个桶" width="86%">
+<img src="/figures/07-robot-policy/source/07-vla-rtx/rt1-fig5.png" alt="连续动作区间被均匀分割为 256 个桶" width="86%">
 
-_图 7.7-3：连续动作区间被均匀分割为 256 个桶；连续值映射到对应桶中心，还原时通过反归一化取回连续估计。本文绘制；TikZ/LaTeX 编译。_
+_图 7.7-3：连续动作区间被均匀分割为 256 个桶；连续值映射到对应桶中心，还原时通过反归一化取回连续估计。_
 
 </div>
 
@@ -135,7 +135,7 @@ FiLM 机制把这一思想直接搬到了多维图像特征图上：自然语言
 
 <img src="/figures/07-robot-policy/latex/07-vla-rtx/film-channel-broadcast.png" alt="语言生成的通道缩放和平移参数广播到全部空间位置" width="86%">
 
-_图 7.7-4：语言嵌入生成每个通道的 γ 与 β；固定通道 c 后，同一对标量会广播到全部 H×W 位置。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.7-4：语言嵌入生成每个通道的 γ 与 β；固定通道 c 后，同一对标量会广播到全部 H×W 位置。_
 
 </div>
 

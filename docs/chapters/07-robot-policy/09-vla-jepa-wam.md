@@ -10,7 +10,7 @@
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/source/09-vla-jepa-wam/lecun-fig1.png" alt="LeCun 提出的三类自监督学习范式：自回归、自编码与联合嵌入预测架构。" width="86%">
+<img src="/figures/07-robot-policy/source/09-vla-jepa-wam/vjepa-fig1.png" alt="LeCun 提出的三类自监督学习范式：自回归、自编码与联合嵌入预测架构。" width="86%">
 
 _图 7.9-1：三类自监督学习范式：自回归（生成标记）、掩码自编码（像素重构）与联合嵌入预测架构（表征空间预测）。 出处：[A Path Towards Autonomous Machine Intelligence，Yann LeCun，2022](https://openreview.net/forum?id=BZ5a1r-kVsf)。_
 
@@ -59,9 +59,9 @@ _图 7.9-2：I-JEPA 在抽象表征空间中用上下文特征预测被掩码的
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/latex/09-vla-jepa-wam/jepa-stopgrad-branch.png" alt="上下文编码器和预测器接受梯度更新，目标编码器使用停止梯度与 EMA" width="86%">
+<img src="/figures/07-robot-policy/source/09-vla-jepa-wam/wam-fig1.png" alt="上下文编码器和预测器接受梯度更新，目标编码器使用停止梯度与 EMA" width="86%">
 
-_图 7.9-3：上下文编码器和预测器接受梯度更新，目标编码器使用停止梯度与 EMA。本文绘制；TikZ/LaTeX 编译。_
+_图 7.9-3：上下文编码器和预测器接受梯度更新，目标编码器使用停止梯度与 EMA。_
 
 </div>
 
@@ -114,7 +114,7 @@ $$\bar{\theta} \leftarrow \tau \bar{\theta} + (1 - \tau) \theta$$
 
 <img src="/figures/07-robot-policy/latex/09-vla-jepa-wam/ema-target-update.png" alt="旧目标参数和在线参数按 EMA 权重合成新目标参数" width="86%">
 
-_图 7.9-5：目标参数不由当前损失反向更新，而是把旧目标与当前在线参数按 τ 和 1−τ 做跨步平滑。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.9-5：目标参数不由当前损失反向更新，而是把旧目标与当前在线参数按 τ 和 1−τ 做跨步平滑。_
 
 </div>
 

@@ -66,7 +66,7 @@ $$p(s_{t+1} \mid s_t, a_t) = \mathcal{N}(s_{t+1}; \boldsymbol{\mu}_\theta(s_t, a
 
 <div align="center"><img src="/figures/01-why-world-models/latex/02-what-is-a-world-model/gaussian-conditional-uncertainty.png" alt="状态动作条件共同产生高斯均值和协方差，定义下一状态分布" width="86%">
 
-_图 1.2-3：模型从同一组状态—动作条件输出均值与协方差；前者给出预测中心，后者给出扩散尺度与相关方向。本文根据上式绘制。_
+_图 1.2-3：模型从同一组状态—动作条件输出均值与协方差；前者给出预测中心，后者给出扩散尺度与相关方向。_
 
 </div>
 

@@ -113,7 +113,7 @@ $$\tilde{\epsilon}_\theta(\mathbf{x}_t, t, c) = (1 + w) \epsilon_\theta(\mathbf{
 <div align="center">
 <img src="/figures/05-interactive-video/latex/06-controllable-video-concise/cfg-affine-extrapolation.png" alt="CFG 从无条件预测指向条件预测并继续外推，正文额外引导量 w 与代码尺度 s 满足 s 等于 1 加 w" width="86%">
 
-_图 5.6-5：正文用 w 表示越过条件预测后的额外外推量，代码常用 s 从无条件预测开始计量；两者满足 s=1+w，所以 w=0 与 s=1 都等于条件预测。本文根据上式绘制。_
+_图 5.6-5：正文用 w 表示越过条件预测后的额外外推量，代码常用 s 从无条件预测开始计量；两者满足 s=1+w，所以 w=0 与 s=1 都等于条件预测。_
 </div>
 
 因此，同一个网络只要同时学过条件输入 $c$ 和空条件 $\emptyset$，推理时就能在两次预测之间做线性外推。增大 $w$ 往往提高条件一致性，但过大也可能降低多样性、放大伪影或使颜色过饱和。

@@ -36,9 +36,9 @@ _图 7.8-1：OpenVLA 结合双视觉编码器与 Llama 2 骨干，支持多机�
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/latex/08-openvla/prism-dual-encoder.png" alt="SigLIP 与 DINOv2 提取的特征在通道维度拼接后投影至 LLM 维度" width="86%">
+<img src="/figures/07-robot-policy/source/08-openvla/openvla-fig2.png" alt="SigLIP 与 DINOv2 提取的特征在通道维度拼接后投影至 LLM 维度" width="86%">
 
-_图 7.8-2：SigLIP 与 DINOv2 提取的特征在通道维度拼接后投影至 LLM 维度。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.8-2：SigLIP 与 DINOv2 提取的特征在通道维度拼接后投影至 LLM 维度。_
 
 </div>
 
@@ -173,7 +173,7 @@ LoRA 提出一个深刻的洞察：**预训练大模型已经具备了极为强�
 
 <img src="/figures/07-robot-policy/latex/08-openvla/lora-low-rank-branch.png" alt="冻结基座支路与可训练低秩支路同形相加" width="86%">
 
-_图 7.8-5：低秩支路先把 d_in 压到 r，再升回 d_out，与冻结基座输出相加；反向梯度只进入 A、B。本文根据上式绘制；TikZ/LaTeX 编译。_
+_图 7.8-5：低秩支路先把 d_in 压到 r，再升回 d_out，与冻结基座输出相加；反向梯度只进入 A、B。_
 
 </div>
 

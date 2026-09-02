@@ -93,7 +93,7 @@ $$
 
 <div align="center"><img src="/figures/01-why-world-models/latex/03-classic-world-models/mdn-component-then-sample.png" alt="先按混合权重选择高斯成分，再从被选成分采样下一潜状态" width="86%">
 
-_图 1.3-4：π 决定宏观分支的选择概率；选定 k 后，μ_k 与 σ_k 再描述该分支内部的不确定性。本文根据上式绘制。_
+_图 1.3-4：π 决定宏观分支的选择概率；选定 k 后，μ_k 与 σ_k 再描述该分支内部的不确定性。_
 
 </div>
 
