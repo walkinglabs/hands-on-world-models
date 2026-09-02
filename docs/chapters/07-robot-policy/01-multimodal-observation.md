@@ -1,95 +1,82 @@
 # 7.1 机器人多模态感知与观测建模
 
-在探索机器人如何自主规划与执行物理动作之前，我们必须首先解决一个最基础的物理问题：**机器人究竟是如何“观察”并“理解”周围物理世界的？**
+在具身智能（Embodied AI）与机器人学的研究中，智能体并不是生存在纯粹抽象的文字或数学符号中，而是作为一个物理实体，沉浸在由光线、重力、接触力与空间几何交织而成的真实世界里。
 
-与部署在云端服务器上的纯文本或纯图像大模型不同，一台真实的机器人置身于充满光影变化、重力加速度与物体接触碰撞的真实物理世界之中。它不仅需要通过安装在头部或机械臂末端的摄像头“看”到工作台上的物体，还需要通过关节内部的高精度传感器“感应”自身机械臂当前的弯曲角度与运动速度，甚至通过指尖的压力阵列“触摸”物体的软硬与滑脱趋势。
+正如人类在拿取桌上的一杯热咖啡时，不仅需要双眼观察咖啡杯的位置与边缘，还需要手臂肌肉与关节处的本体感觉感知手臂的伸展角度，并通过指尖的触觉感受杯壁的温度与滑移阻力。
 
-这一将来自异构物理传感器的数据流转化为策略网络可处理特征的过程，被称为**多模态观测建模（Multimodal Observation Modeling）**。
+对于机器人而言，单一模态的数据往往存在严重的物理局限性：
+- 视觉传感器容易受到强光反射、阴影遮挡或动态模糊的干扰；
+- 内部关节编码器虽然精准，却完全无法获知外部物理世界的空间结构。
+
+如何将高维度的**视觉观测（Exteroception）**、低维度的**本体状态（Proprioception）**以及时序动作历史在统一的潜在数学空间中进行对齐与融合，构成了构建具身世界模型与策略控制的第一道基石。
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/source/01-multimodal-observation/levine-fig1.png" alt="相机画面与机械臂构型共同进入视觉运动策略，输出直接驱动真实机器人。" width="86%">
+<img src="/figures/07-robot-policy/source/01-multimodal-observation/levine-fig1.png" alt="基于视觉的端到端机器人操作：从多视角摄像头和关节传感器到低级电机力矩。" width="86%">
 
-_图 7.1-1：相机画面与机械臂构型共同进入视觉运动策略，输出直接驱动真实机器人。 出处：[End-to-End Training of Deep Visuomotor Policies，Sergey Levine et al.，2016](https://arxiv.org/abs/1504.00702)。_
+_图 7.1-1：基于视觉的端到端机器人操作：从多视角摄像头和关节传感器到低级电机力矩。 出处：[End-to-End Training of Deep Visuomotor Policies，Sergey Levine et al.，2016](https://arxiv.org/abs/1504.00702)。_
 
 </div>
 
 ---
 
-## 7.1.1 物理与生理基石：人类感觉器官与机器人多模态传感器
+## 7.1.1 物理与生理基石：外感知与本体感受的生物映射
 
-要构建机器人的感知系统，我们首先需要从人类的感觉生理学与经典物理测量原理中汲取灵感。
+要深刻理解多模态融合的数学建模，我们首先需要从经典物理力学与生物感知系统的对应关系讲起。
 
-### 1. 生物感知系统的多通道协同
-在生物学中，人类之所以能够闭着眼睛准确摸到自己的鼻尖，或者在黑暗中稳稳端起水杯，依赖于两套高度协同的感觉网络：
-- **外部感受（Exteroception）**：眼睛的视网膜感光细胞捕捉环境中的可见光光子（提供物体几何轮廓、色彩与空间相对距离）；
-- **本体感受（Proprioception）**：肌肉内部的**肌梭（Muscle Spindle）**感应肌肉纤维的伸缩长度与拉伸速率，关节囊中的**高尔基腱器官（Golgi Tendon Organ）**测量肌腱承受的张力大小，内耳前庭器官测量头部的倾斜与重力加速度。
+在经典力学与生理学中，机器人的感知通道清晰地划分为两大阵营：
 
-正是视网膜光流与深层肌腱受力感知的毫秒级协同融合，构成了人类小脑实时调控动作的感知基石。
+### 1. 外感受器（Exteroception）：构建外部几何世界
+人类的视网膜包含上亿个感光细胞，能以高达 $60\text{ Hz}$ 以上的频率捕捉外界环境的光子流分布。在机器人硬件上，这对应着：
+- **RGB 相机**：提供稠密的二维色彩与纹理信息（表征“物体是什么”）；
+- **深度相机（RGB-D）与激光雷达（LiDAR）**：利用飞行时间法（Time-of-Flight, ToF）或双目立体视觉，直接测量物体表面距离相机的物理深度 $Z$（表征“物体在哪里”）。
 
-### 2. 机器人世界中的多模态传感器映射
-对应到物理机器人系统中，我们拥有三种核心的物理传感器数据流：
-1. **外部视觉张量（Visual RGB Images）**：安装于环境操作台上方（Eye-to-Hand，全局上帝视角）或机械臂手腕处（Eye-in-Hand，随动局部视角）的相机，以 $30\text{ Hz}$ 采集空间三维色彩阵列 $I_t \in \mathbb{R}^{3 \times H \times W}$；
-2. **关节本体感觉向量（Joint Proprioception）**：安装于每个电机轴端的光电编码器（Encoder），以 $1000\text{ Hz}$ 高频采集各关节当前的实际旋转角度 $\mathbf{q}_t \in \mathbb{R}^N$ 与角速度 $\dot{\mathbf{q}}_t \in \mathbb{R}^N$；
-3. **触觉与末端力矩（Tactile & Wrench Sensors）**：安装于夹爪指尖的凝胶触觉传感器（如 GelSight）或六维腕力传感器，实时测量法向正压力 $F_z$ 与切向摩擦力剪切分布。
+### 2. 本体感受器（Proprioception）：感知自躯体运动状态
+人类的肌腱与肌肉中分布着大量的肌梭（Muscle Spindles）与高尔基腱器官（Golgi Tendon Organs），用于感知肌肉的拉伸长度与收缩张力。在机械臂与人形机器人上，这对应着：
+- **关节光学编码器（Encoders）**：以 $0.001^\circ$ 的超高精度实时读取机械臂各关节的旋转角度 $\mathbf{q} \in \mathbb{R}^n$ 与旋转角速度 $\dot{\mathbf{q}}$；
+- **末端六维力/力矩传感器（F/T Sensor）**：实时监测夹爪在接触物体时受到的沿三轴的作用力 $(F_x, F_y, F_z)$ 及绕三轴的力矩 $(\tau_x, \tau_y, \tau_z)$。
+
+如果机器人仅仅依靠视觉，当夹爪伸入狭窄的抽屉时，视觉视线会被机械臂自身严重遮挡；若没有本体感觉的即时反馈，机器人将无法判断夹爪是否已经触底，极易发生机械过载导致电机烧毁。
 
 <div align="center">
 
-<img src="/figures/07-robot-policy/source/01-multimodal-observation/rt2-fig1.png" alt="RT-2 把机器人动作表示为语言 token，连接视觉语言推理与低层控制。" width="86%">
+<img src="/figures/07-robot-policy/source/01-multimodal-observation/rt2-fig1.png" alt="RT-2 将高分辨率图像打散为图像补丁词元，与文本指令和本体状态在多模态骨干网中统一融合。" width="86%">
 
-_图 7.1-2：RT-2 把机器人动作表示为语言 token，连接视觉语言推理与低层控制。 出处：[RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control，Anthony Brohan et al.，2023](https://arxiv.org/abs/2307.15818)。_
+_图 7.1-2：RT-2 将高分辨率图像打散为图像补丁词元，与文本指令和本体状态在多模态骨干网中统一融合。 出处：[RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control，Anthony Brohan et al.，2023](https://arxiv.org/abs/2307.15818)。_
 
 </div>
 
 ---
 
-## 7.1.2 核心数学推导一：视觉与本体感觉的特征对齐与投影
+## 7.1.2 核心数学推导一：异构模态的高维嵌入与时空对齐
 
-高维图像（如 $224 \times 224 \times 3 \approx 15\text{ 万}$ 个像素数值）与低维本体感觉向量（如 7 个浮点数）在信息密度与数学结构上存在巨大的不对称性。
+视觉图像属于高维连续网格数据（例如一张 $224 \times 224 \times 3$ 的 RGB 图像包含 $150,528$ 个浮点数），而关节角度仅是一个极其紧凑的 7 维向量（$\mathbf{q} \in \mathbb{R}^7$）。如果直接将这两个维度相差悬殊的张量强行拼接，低维的关节物理量在反向传播时会被高维图像的巨大梯度彻底淹没。
 
-### 1. 视觉图像块嵌入与线性投影
-在现代视觉架构（如 Vision Transformer, ViT）中，输入的二维图像 $I \in \mathbb{R}^{3 \times H \times W}$ 被划分为 $N_p$ 个互不重叠的小方块（Patches，尺寸通常为 $P \times P = 14 \times 14$）。图像块的总数量为：
+因此，系统必须先将不同维度的异构物理量投影到**相同维度的隐藏语义流形 $\mathbb{R}^D$**（通常取隐藏层维度 $D = 512$ 或 $D = 768$）。
 
-$$N_p = \frac{H \times W}{P^2}$$
+### 1. 视觉特征线性分块投影（ViT Patch Projection）
+设输入图像为 $\mathbf{I} \in \mathbb{R}^{H \times W \times C}$。我们将其均匀划分为 $N_p = \frac{H \cdot W}{P^2}$ 个大小为 $P \times P$ 的局部小图像块（Patches，例如 $P = 16$）。每一个图像块被展平为向量 $\mathbf{x}_p^{(i)} \in \mathbb{R}^{P^2 C}$。
 
-每个图像块被展平并通过线性投影矩阵 $\mathbf{W}_{\text{vis}}$ 映射为 $D$ 维的连续视觉词元（Visual Token）：
+通过可学习的线性投影矩阵 $\mathbf{E}_{\text{vis}} \in \mathbb{R}^{(P^2 C) \times D}$ 并叠加空间位置编码 $\mathbf{E}_{\text{pos}} \in \mathbb{R}^{N_p \times D}$，图像被转化为一系列规范的视觉词元序列：
 
-$$\mathbf{v}_i = \mathbf{W}_{\text{vis}} \text{vec}(\text{Patch}_i) + \mathbf{b}_{\text{vis}} \in \mathbb{R}^D, \quad \forall i \in \{1, \dots, N_p\}$$
+$$\mathbf{v}_i = \mathbf{x}_p^{(i)} \mathbf{E}_{\text{vis}} + \mathbf{e}_{\text{pos}}^{(i)}, \quad i \in \{1, 2, \dots, N_p\}$$
 
-### 2. 本体感觉状态的多层感知机（MLP）特征对齐
-对于包含 $N$ 个关节角度的本体感觉向量 $\mathbf{q} \in \mathbb{R}^N$，如果直接与图像词元拼接，微弱的几个标量很容易被数以百计的视觉词元淹没。
+### 2. 本体感觉的非线性升维映射（Proprioceptive MLP）
+对于 7 自由度机械臂的关节角度向量 $\mathbf{q}_t \in \mathbb{R}^7$ 与夹爪开合度 $g_t \in [0, 1]$，我们组合为本体状态向量 $\mathbf{s}_t = [\mathbf{q}_t^\top, g_t]^\top \in \mathbb{R}^8$。
 
-系统通过两层带有 GELU 激活函数的多层感知机，将本体感觉升维并映射至相同的特征维度 $D$：
+利用带有激活函数的两层多层感知机（MLP）将其升维投影为单个本体词元 $\mathbf{z}_{\text{prop}} \in \mathbb{R}^D$：
 
-$$\mathbf{z}_{\text{prop}} = \mathbf{W}_2 \cdot \text{GELU}(\mathbf{W}_1 \mathbf{q} + \mathbf{b}_1) + \mathbf{b}_2 \in \mathbb{R}^D$$
+$$\mathbf{z}_{\text{prop}} = \mathbf{W}_2 \cdot \text{GELU}(\mathbf{W}_1 \mathbf{s}_t + \mathbf{b}_1) + \mathbf{b}_2$$
 
-> **公式符号逐一拆解**：
-> - $\mathbf{W}_1 \in \mathbb{R}^{D_{\text{mid}} \times N}, \mathbf{b}_1 \in \mathbb{R}^{D_{\text{mid}}}$：第一层特征升维权重与偏置（例如 $D_{\text{mid}} = 128$）；
-> - $\text{GELU}(x) = x \Phi(x)$：高斯误差线性单元激活函数；
-> - $\mathbf{W}_2 \in \mathbb{R}^{D \times D_{\text{mid}}}, \mathbf{b}_2 \in \mathbb{R}^D$：对齐至 Transformer 隐藏层主维度的投影权重；
-> - $\mathbf{z}_{\text{prop}} \in \mathbb{R}^D$：生成的单条本体感觉词元。
-
-**手算代入算例**：
-设某单臂机械臂拥有 $N = 7$ 个关节，当前角度为 $\mathbf{q} = [0.0, 0.5, -0.2, 0.0, 0.8, -0.4, 1.0]^\top$。
-第一层线性层权重偏置经过矩阵乘法后得到中间特征，经过 GELU 非线性激活，最终输出一个与图像词元长度完全一致的 256 维向量 $\mathbf{z}_{\text{prop}}$。
-此时，本体感觉不再是微不足道的 7 个标量，而是拥有与图像块等量齐观表达能力的结构化语义词元！
-
-<details>
-<summary><b>深入推导：多模态异构特征跨通道互信息最大化与几何流形对齐证明（点击展开查看完整推导）</b></summary>
-
-设视觉特征流形为 $\mathcal{M}_{\text{vis}} \subset \mathbb{R}^{N_p \times D}$，本体感觉流形为 $\mathcal{M}_{\text{prop}} \subset \mathbb{R}^D$。
-多模态联合表征学习的目标是最大化两者与真实物理动作 $\mathbf{a}$ 的互信息下界：
-$$I(\mathbf{Z}_{\text{vis}}, \mathbf{z}_{\text{prop}}; \mathbf{a}) = H(\mathbf{a}) - H(\mathbf{a} \mid \mathbf{Z}_{\text{vis}}, \mathbf{z}_{\text{prop}})$$
-当仅有视觉输入时，由于相机视角遮挡（Occlusion），后验熵 $H(\mathbf{a} \mid \mathbf{Z}_{\text{vis}})$ 较高；引入本体感觉后，条件熵由于马尔可夫决策过程的充分统计量性质严格递减：
-$$H(\mathbf{a} \mid \mathbf{Z}_{\text{vis}}, \mathbf{z}_{\text{prop}}) \le H(\mathbf{a} \mid \mathbf{Z}_{\text{vis}})$$
-两层 MLP 投影充当了李群流形上的微分同胚映射，保证了低维欧氏关节空间向高维注意力超球面的拓扑平滑嵌入。
-</details>
+通过这一步骤，原本信息密度悬殊的视觉与关节状态被严格归一化为同等长度的 $D$ 维特征向量，为后续注意力机制中的对称点积交互铺平了道路。
 
 ---
 
-## 7.1.3 核心数学推导二：跨注意力机制（Cross-Attention）与视觉聚焦
+## 7.1.3 核心数学推导二：跨模态交叉注意力（Cross-Attention）融合机制
 
-如何让机器人知道“根据当前的关节姿态，应该重点看画面的哪个局部”？系统采用了经典的**跨模态交叉注意力机制（Cross-Attention）**。
+在得到视觉词元序列 $\mathbf{V}_{\text{seq}} = [\mathbf{v}_1, \dots, \mathbf{v}_{N_p}]^\top \in \mathbb{R}^{N_p \times D}$ 与本体状态词元 $\mathbf{z}_{\text{prop}} \in \mathbb{R}^{1 \times D}$ 后，如何让机械臂的当前姿态去“寻找”图像中最相关的物理交互区域？
+
+系统采用了**跨模态交叉注意力机制（Cross-Attention Mechanism）**。
 
 <div align="center">
 
@@ -107,23 +94,41 @@ _图 7.1-4：单个本体查询沿视觉 patch 维做行 Softmax，再汇聚 Val
 
 </div>
 
-### 1. 查询向量（Query）与键值对（Key, Value）
-- **Query（查询向量 $\mathbf{Q}$）**：由本体感觉词元 $\mathbf{z}_{\text{prop}}$ 线性变换得到，代表机器人当前的内部状态发出的询问：“我现在的夹爪位置，对应的目标物体在哪里？”
+### 1. 四步严密交叉注意力推导流程
+#### 步骤一：生成查询向量（Query）与键值对（Key, Value）
+- **Query（查询向量 $\mathbf{Q}$）**：由本体感觉词元 $\mathbf{z}_{\text{prop}}$ 线性变换得到，代表机器人根据自身当前关节姿态发出的询问：
   $$\mathbf{Q} = \mathbf{z}_{\text{prop}} \mathbf{W}_Q \in \mathbb{R}^{1 \times D}$$
 - **Key 与 Value（键矩阵 $\mathbf{K}$ 与值矩阵 $\mathbf{V}$）**：由所有视觉图像块 $\mathbf{V}_{\text{seq}} \in \mathbb{R}^{N_p \times D}$ 线性映射得到：
   $$\mathbf{K} = \mathbf{V}_{\text{seq}} \mathbf{W}_K \in \mathbb{R}^{N_p \times D}, \quad \mathbf{V} = \mathbf{V}_{\text{seq}} \mathbf{W}_V \in \mathbb{R}^{N_p \times D}$$
 
-### 2. 缩放点积注意力与行归一化
-计算本体 Query 与每一个视觉 Patch Key 的点积相似度，除以缩放因子 $\sqrt{D}$，并通过 Softmax 归一化为概率权重分布：
+#### 步骤二：缩放点积相似度计算
+计算本体 Query 与每一个视觉 Patch Key 的点积内积，并除以维度缩放因子 $\sqrt{D}$ 以稳定方差：
+$$S_j = \frac{\mathbf{Q} \mathbf{K}_j^\top}{\sqrt{D}} = \frac{1}{\sqrt{D}} \sum_{d=1}^D Q_d K_{j, d}, \quad j \in \{1, 2, \dots, N_p\}$$
 
-$$\mathbf{A} = \text{Softmax}\left( \frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{D}} \right) \in \mathbb{R}^{1 \times N_p}$$
+#### 步骤三：Softmax 行概率归一化
+$$\mathbf{A}_j = \frac{\exp(S_j)}{\sum_{k=1}^{N_p} \exp(S_k)} \in (0, 1), \quad \text{满足 } \sum_{j=1}^{N_p} \mathbf{A}_j = 1$$
 
-最终的跨模态融合特征为所有视觉 Value 向量的加权和：
+#### 步骤四：多模态加权值特征汇聚
+最终的跨模态融合特征为所有视觉 Value 向量按注意力权重的凸组合求和：
+$$\mathbf{z}_{\text{fused}} = \mathbf{A} \mathbf{V} = \sum_{j=1}^{N_p} \mathbf{A}_j \mathbf{V}_j \in \mathbb{R}^{1 \times D}$$
 
-$$\mathbf{z}_{\text{fused}} = \mathbf{A} \mathbf{V} \in \mathbb{R}^{1 \times D}$$
+### 2. 交叉注意力详细手算代入算例
+设特征隐藏维度 $D = 2$。
+- 本体感觉 Query 向量为 $\mathbf{Q} = [1.0, 2.0]$；
+- 视觉端仅有两个图像块：$\mathbf{K}_1 = [1.0, 2.0], \mathbf{V}_1 = [10.0, 0.0]$（图像块 1 为把手位置）；$\mathbf{K}_2 = [0.0, 1.0], \mathbf{V}_2 = [0.0, 10.0]$（图像块 2 为桌角背景）。
 
-> **初等代数直觉**：
-> 点积 $\mathbf{Q} \cdot \mathbf{K}_i^\top$ 衡量了向量之间的夹角余弦相似度。如果第 $i$ 个图像块正是机械臂夹爪当前接触的把手，内积数值就会极大，Softmax 分配给它的权重 $A_i \approx 0.9$；其余背景区域权重趋近于 0。这使策略在复杂混乱的操作台上能够精准“凝视”关键物体。
+我们来执行完整的数值代入计算：
+1. **计算点积内积**：
+   $$S_1 = \frac{\mathbf{Q} \cdot \mathbf{K}_1}{\sqrt{2}} = \frac{1.0 \times 1.0 + 2.0 \times 2.0}{\sqrt{2}} = \frac{1.0 + 4.0}{1.414} = \frac{5.0}{1.414} \approx 3.536$$
+   $$S_2 = \frac{\mathbf{Q} \cdot \mathbf{K}_2}{\sqrt{2}} = \frac{1.0 \times 0.0 + 2.0 \times 1.0}{\sqrt{2}} = \frac{0.0 + 2.0}{1.414} = \frac{2.0}{1.414} \approx 1.414$$
+2. **计算 Softmax 权重**：
+   $$\exp(S_1) = \exp(3.536) \approx 34.33, \quad \exp(S_2) = \exp(1.414) \approx 4.11$$
+   $$A_1 = \frac{34.33}{34.33 + 4.11} = \frac{34.33}{38.44} \approx 0.893 \quad (89.3\%)$$
+   $$A_2 = \frac{4.11}{38.44} \approx 0.107 \quad (10.7\%)$$
+3. **加权汇聚 Value 特征**：
+   $$\mathbf{z}_{\text{fused}} = 0.893 \times [10.0, 0.0] + 0.107 \times [0.0, 10.0] = [8.93, 1.07]$$
+
+初等代数的直观计算生动证实：本体状态主动将高达 **$89.3\%$** 的注意力权重精准聚焦在把手图像块上，使策略在复杂混乱的操作台上能够精准“凝视”关键物理交互部件！
 
 <details>
 <summary><b>深入推导：缩放点积注意力方差稳定性证明与 Softmax 梯度反向传播（点击展开查看完整推导）</b></summary>
