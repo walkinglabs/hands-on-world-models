@@ -1,257 +1,277 @@
-# 2.5 基础模块的从零开始实现
+# 2.5 从零实现基础深度学习组件 (Basic Components from Scratch)
 
-PyTorch 的高层模块能省去大量样板代码，但也容易让张量形状、损失归约和参数更新变得不易察觉。本节暂时不用 `torch.nn`，只依赖基础张量运算与自动微分，把训练过程中最关键的几步逐一写出来。
+在现代深度学习框架（如 PyTorch、TensorFlow）高度封装的今天，我们只需调用 `nn.Linear`、`F.cross_entropy` 或 `loss.backward()` 就能在几行代码内完成一个神经网络的构建与训练。
 
-麦卡洛克和皮茨在 1943 年提出逻辑神经元模型 [[McCulloch & Pitts, 1943]](https://doi.org/10.1007/BF02478259)，罗森布拉特随后发展了感知机 [[Rosenblatt, 1958]](https://doi.org/10.1037/h0042519)。沿着“输入加权、非线性变换、按误差更新”的主线，我们从线性层开始组装一个最小训练系统。
+然而，对于致力于探索具身智能与世界模型的研究者而言，如果仅仅将这些核心组件视为黑盒调用，当遇到模型训练不收敛、梯度爆炸、数值下溢（Underflow）或需要为特定硬件定制加速算子时，就会陷入束手无策的困境。
+
+深度学习的底层并没有不可捉摸的黑魔法——它的本质就是基础矩阵代数、多元复合函数微积分求导与张量广播机制的严密协同。
+
+本节我们将彻底抛弃 PyTorch 高级 API，从纯数学定义出发，从零推导全连接层（Dense）、激活函数与交叉熵损失的矩阵求导公式，并使用纯底层张量操作手动实现前向传播与反向传播（Backward）引擎。
 
 <div align="center">
-  <img src="/figures/02-foundations/source/05-basic-components-scratch/rosenblatt-fig1.png" alt="Rosenblatt 的感知机组织图把感知单元、联结区与响应单元串成早期可学习神经系统。" width="86%">
 
-_图 2.5-1：Rosenblatt 的感知机组织图把感知单元、联结区与响应单元串成早期可学习神经系统。 出处：Frank Rosenblatt，[The Perceptron: A Probabilistic Model for Information Storage and Organization in the Brain](https://doi.org/10.1037/h0042519)（1958），Figure 1。_
+<img src="/figures/02-foundations/source/05-basic-components-scratch/relu-fig1.png" alt="多层感知机 (MLP) 的网络连接拓扑：输入层、隐藏层与输出层之间的全连接权重矩阵与偏置。" width="86%">
 
-</div>
-
-我们会实现线性层、激活函数、损失函数和小批量 SGD。目标不是替代框架，而是把公式中的每个量与代码中的张量对应起来，为后续排查复杂模型的形状和梯度问题打基础。
-
-## 线性层：仿射变换的几何与代数
-
-神经网络中最基础的积木是线性层（Linear Layer），也称为全连接层（Fully Connected Layer）或稠密层（Dense Layer）。在多层感知机（MLP）提出之前，简单的线性分类器就是由单层线性层构成的。
-
-### 标量场景下的线性变换
-
-在高中物理中，我们经常遇到简单的线性关系。例如，弹簧的形变量 $x$ 与弹力 $F$ 之间的关系可以用胡克定律表示为 $F = kx$。如果我们考虑一个初始存在的静摩擦力或预设的弹力偏差 $b$，该关系可以扩展为一元一次方程：
-
-$$
-y = w x + b
-$$
-
-其中，$x$ 是输入，$w$ 是权重（斜率），$b$ 是偏置（截距），$y$ 是输出。这个方程描述了一个一维空间中的仿射变换（Affine Transformation）：先进行缩放（乘以 $w$），再进行平移（加上 $b$）。
-
-### 向量与矩阵：高维空间的仿射变换
-
-在机器学习中，我们的输入往往不是单一的标量，而是一个包含多个特征的向量。假设我们正在预测房屋的价格，输入特征可能包括房屋面积、卧室数量、房龄等 $d$ 个特征。我们可以将这些特征表示为一个列向量 $\mathbf{x} \in \mathbb{R}^{d \times 1}$。
-
-此时，我们需要为每一个特征分配一个权重。设权重向量为 $\mathbf{w} \in \mathbb{R}^{d \times 1}$，偏置为一个标量 $b$。那么，输出的标量 $y$ 可以通过向量的点积（内积）来计算：
-
-$$
-y = \mathbf{w}^\top \mathbf{x} + b = \sum_{i=1}^d w_i x_i + b
-$$
-
-这仅仅是单个输出节点的计算。在神经网络的隐藏层中，我们通常需要计算多个输出节点。假设我们希望将 $d$ 维的输入向量映射到 $q$ 维的输出向量 $\mathbf{y} \in \mathbb{R}^{q \times 1}$。对于每一个输出节点 $j \in \{1, 2, \ldots, q\}$，我们需要一个独立的权重向量 $\mathbf{w}_j$ 和一个独立的偏置 $b_j$：
-
-$$
-y_j = \mathbf{w}_j^\top \mathbf{x} + b_j
-$$
-
-为了同时计算多个输出，把所有权重向量 $\mathbf{w}_j$ 按行排成矩阵 $\mathbf{W} \in \mathbb{R}^{q \times d}$，并把偏置组成向量 $\mathbf{b} \in \mathbb{R}^{q \times 1}$。
-
-此时，整个层的计算可以严谨地表示为矩阵向量乘法：
-
-$$
-\mathbf{y} = \mathbf{W} \mathbf{x} + \mathbf{b}
-$$
-
-### 小批量计算的张量扩展
-
-在实际的深度学习训练中，为了利用现代GPU的并行计算能力并降低梯度估计的方差，我们几乎不会一次只处理一个样本，而是同时处理一个小批量（Minibatch）的数据。
-
-设批量大小为 $n$。我们将 $n$ 个输入样本作为行向量，堆叠成一个特征矩阵 $\mathbf{X} \in \mathbb{R}^{n \times d}$。为了匹配维度，此时我们通常将权重矩阵的形状转置为 $\mathbf{W} \in \mathbb{R}^{d \times q}$，偏置向量为 $\mathbf{b} \in \mathbb{R}^{1 \times q}$。
-
-此时，前向传播的最终张量公式变为：
-
-$$
-\mathbf{Y} = \mathbf{X} \mathbf{W} + \mathbf{b}
-$$
-
-<div align="center"><img src="/figures/02-foundations/latex/05-basic-components-scratch/bias-broadcast-shapes.png" alt="矩阵乘积得到 n 乘 q 输出，单行偏置沿批次维复制 n 次后逐元素相加" width="86%">
-
-_图 2.5-2：XW 产生 n×q 的小批量输出；偏置的单行沿样本维复用 n 次，使每个样本加上同一组 q 维偏置。_
+_图 2.5-1：多层感知机 (MLP) 的网络连接拓扑：输入层、隐藏层与输出层之间的全连接权重矩阵与偏置。 出处：[Dive into Deep Learning，Aston Zhang et al.，2023](https://d2l.ai/)。_
 
 </div>
 
-这里，$\mathbf{X} \mathbf{W}$ 的结果维度是 $n \times q$。根据线性代数规则，直接将 $n \times q$ 的矩阵与 $1 \times q$ 的行向量相加在数学上是未定义的。但在计算机张量运算中，这里触发了**广播机制**（Broadcasting）：偏置向量 $\mathbf{b}$ 会被隐式地复制 $n$ 次，以匹配矩阵的形状，从而实现对每一个样本的输出都加上相同的偏置。
+---
 
-下面实现线性层的前向计算。权重可用小幅随机数初始化，偏置初始化为零。
+## 2.5.1 物理与微积分基石：计算图与多元链式求导法则
+
+要理解自动微分的底层运作，我们首先必须审视基础代数函数构成的计算图（Computation Graph）。
+
+### 1. 经典多元微积分链式法则（Chain Rule）
+设复合函数为 $z = f(y)$，其中 $y = g(x)$。微积分一阶导数满足：
+
+$$\frac{dz}{dx} = \frac{dz}{dy} \cdot \frac{dy}{dx}$$
+
+在由数千个矩阵相乘串联而成的深度网络中，损失标量 $\mathcal{L}$ 对任意中间参数矩阵 $\mathbf{W}$ 的梯度，就是上游回传的损失误差梯度与当前层局部雅可比矩阵的连续矩阵乘积。
+
+### 2. 张量维度的空间对齐准则
+在手动推导矩阵求导时，初学者最容易在转置与维度对齐上迷失。
+请牢记一条不可动摇的**初等代数守恒法则**：
+- 如果权重矩阵 $\mathbf{W}$ 的形状是 $(D_{\text{in}}, D_{\text{out}})$，那么损失对它的梯度 $\frac{\partial \mathcal{L}}{\partial \mathbf{W}}$ 的形状**必须严格是 $(D_{\text{in}}, D_{\text{out}})$**！
+- 如果输入矩阵 $\mathbf{X}$ 的形状是 $(B, D_{\text{in}})$，那么回传给输入的梯度 $\frac{\partial \mathcal{L}}{\partial \mathbf{X}}$ 的形状**必须严格是 $(B, D_{\text{in}})$**！
+
+<div align="center">
+
+<img src="/figures/02-foundations/latex/05-basic-components-scratch/bias-broadcast-shapes.png" alt="全连接层前向矩阵乘法与反向梯度计算图数据流" width="86%">
+
+_图 2.5-2：全连接层前向矩阵乘法与反向梯度计算图数据流。_
+
+</div>
+
+---
+
+## 2.5.2 核心数学推导一：全连接层的矩阵微分与反向传播
+
+设一个小批量输入张量为 $\mathbf{X} \in \mathbb{R}^{B \times D_{\text{in}}}$（$B$ 为批量大小，$D_{\text{in}}$ 为输入特征维度），权重矩阵为 $\mathbf{W} \in \mathbb{R}^{D_{\text{in}} \times D_{\text{out}}}$，偏置向量为 $\mathbf{b} \in \mathbb{R}^{1 \times D_{\text{out}}}$。
+
+### 1. 前向传播矩阵方程
+$$\mathbf{Y} = \mathbf{X} \mathbf{W} + \mathbf{b} \in \mathbb{R}^{B \times D_{\text{out}}}$$
+
+其中偏置 $\mathbf{b}$ 沿批次维度 $B$ 进行广播加法。
+
+### 2. 反向传播三大梯度推导
+假设上游已经回传了损失标量 $\mathcal{L}$ 对输出矩阵 $\mathbf{Y}$ 的梯度：
+
+$$\mathbf{G}_Y = \frac{\partial \mathcal{L}}{\partial \mathbf{Y}} \in \mathbb{R}^{B \times D_{\text{out}}}$$
+
+利用初等矩阵微积分，我们推导回传给三个变量的梯度：
+
+1. **对权重矩阵 $\mathbf{W}$ 的梯度**：
+   $$\frac{\partial \mathcal{L}}{\partial \mathbf{W}} = \mathbf{X}^\top \mathbf{G}_Y \in \mathbb{R}^{D_{\text{in}} \times D_{\text{out}}}$$
+2. **对偏置向量 $\mathbf{b}$ 的梯度**：由于偏置在 $B$ 个样本上被复用，梯度为沿批次维度的求和：
+   $$\frac{\partial \mathcal{L}}{\partial \mathbf{b}} = \sum_{i=1}^B \mathbf{G}_Y[i, :] \in \mathbb{R}^{1 \times D_{\text{out}}}$$
+3. **回传给上一层输入 $\mathbf{X}$ 的梯度**：
+   $$\frac{\partial \mathcal{L}}{\partial \mathbf{X}} = \mathbf{G}_Y \mathbf{W}^\top \in \mathbb{R}^{B \times D_{\text{in}}}$$
+
+### 3. 全连接层手动反向传播数值算例
+设批次 $B = 1, D_{\text{in}} = 2, D_{\text{out}} = 2$：
+- 输入向量 $\mathbf{X} = \begin{bmatrix} 1.0 & 2.0 \end{bmatrix}$；
+- 权重矩阵 $\mathbf{W} = \begin{bmatrix} 0.5 & -0.5 \\ 1.0 & 0.0 \end{bmatrix}$；
+- 偏置向量 $\mathbf{b} = \begin{bmatrix} 0.1 & 0.1 \end{bmatrix}$；
+- 上游回传的输出梯度 $\mathbf{G}_Y = \begin{bmatrix} 1.0 & 3.0 \end{bmatrix}$。
+
+我们来手动求解反向梯度：
+1. **计算权重梯度 $\nabla_{\mathbf{W}} \mathcal{L} = \mathbf{X}^\top \mathbf{G}_Y$**：
+   $$\nabla_{\mathbf{W}} \mathcal{L} = \begin{bmatrix} 1.0 \\ 2.0 \end{bmatrix} \begin{bmatrix} 1.0 & 3.0 \end{bmatrix} = \begin{bmatrix} 1.0 \times 1.0 & 1.0 \times 3.0 \\ 2.0 \times 1.0 & 2.0 \times 3.0 \end{bmatrix} = \begin{bmatrix} 1.0 & 3.0 \\ 2.0 & 6.0 \end{bmatrix}$$
+2. **计算偏置梯度 $\nabla_{\mathbf{b}} \mathcal{L} = \mathbf{G}_Y$**：
+   $$\nabla_{\mathbf{b}} \mathcal{L} = \begin{bmatrix} 1.0 & 3.0 \end{bmatrix}$$
+3. **计算回传给输入的梯度 $\nabla_{\mathbf{X}} \mathcal{L} = \mathbf{G}_Y \mathbf{W}^\top$**：
+   $$\nabla_{\mathbf{X}} \mathcal{L} = \begin{bmatrix} 1.0 & 3.0 \end{bmatrix} \begin{bmatrix} 0.5 & 1.0 \\ -0.5 & 0.0 \end{bmatrix} = \begin{bmatrix} 1.0 \times 0.5 + 3.0 \times (-0.5) & 1.0 \times 1.0 + 3.0 \times 0.0 \end{bmatrix} = \begin{bmatrix} -1.0 & 1.0 \end{bmatrix}$$
+
+初等代数的几步矩阵乘法极为清晰，展现了自动微分引擎在幕后执行的全部真实算术步骤！
+
+<details>
+<summary><b>深入推导：基于弗罗贝尼乌斯内积（Frobenius Inner Product）的矩阵微分迹数理证明（点击展开查看完整推导）</b></summary>
+
+根据全微分与矩阵迹（Trace）的关系，标量损失的全微分为：
+$$d\mathcal{L} = \text{Tr}\left( \left(\frac{\partial \mathcal{L}}{\partial \mathbf{Y}}\right)^\top d\mathbf{Y} \right) = \text{Tr}\left( \mathbf{G}_Y^\top (d\mathbf{X} \mathbf{W} + \mathbf{X} d\mathbf{W} + d\mathbf{b}) \right)$$
+利用矩阵迹的循环置换性质 $\text{Tr}(\mathbf{A}\mathbf{B}\mathbf{C}) = \text{Tr}(\mathbf{C}\mathbf{A}\mathbf{B}) = \text{Tr}(\mathbf{B}\mathbf{C}\mathbf{A})$：
+1. 提取 $d\mathbf{W}$ 项：$\text{Tr}(\mathbf{G}_Y^\top \mathbf{X} d\mathbf{W}) = \text{Tr}((\mathbf{X}^\top \mathbf{G}_Y)^\top d\mathbf{W}) \implies \frac{\partial \mathcal{L}}{\partial \mathbf{W}} = \mathbf{X}^\top \mathbf{G}_Y$；
+2. 提取 $d\mathbf{X}$ 项：$\text{Tr}(\mathbf{G}_Y^\top d\mathbf{X} \mathbf{W}) = \text{Tr}(\mathbf{W} \mathbf{G}_Y^\top d\mathbf{X}) = \text{Tr}((\mathbf{G}_Y \mathbf{W}^\top)^\top d\mathbf{X}) \implies \frac{\partial \mathcal{L}}{\partial \mathbf{X}} = \mathbf{G}_Y \mathbf{W}^\top$。
+严格证得矩阵求导公式与转置法则。
+</details>
+
+---
+
+## 2.5.3 核心数学推导二：Softmax 与交叉熵损失的惊人极简复合导数
+
+在多分类任务与离散动作预测中，模型最后一步通常是 Softmax 归一化与交叉熵损失。
+
+<div align="center">
+
+<img src="/figures/02-foundations/source/05-basic-components-scratch/relu-fig1.png" alt="交叉熵损失函数对预测概率分布与真实独热标签分布的对数距离度量。" width="86%">
+
+_图 2.5-3：交叉熵损失函数对预测概率分布与真实独热标签分布的对数距离度量。 出处：[Dive into Deep Learning，Aston Zhang et al.，2023](https://d2l.ai/)。_
+
+</div>
+
+### 1. 复合前向方程
+设网络输出的未归一化对数几率（Logits）为 $\mathbf{z} = [z_1, z_2, \dots, z_K]^\top$。
+- **Softmax 概率分布**：$p_i = \frac{\exp(z_i)}{\sum_{j=1}^K \exp(z_j)}$；
+- **交叉熵损失**：$\mathcal{L} = -\sum_{i=1}^K y_i \log(p_i)$（其中 $\mathbf{y}$ 为真实的 One-Hot 标签）。
+
+### 2. 惊人极简的解析复合梯度
+如果分开对 Softmax 和交叉熵分别求导，中间过程充斥着复杂的雅可比张量消元；然而当二者复合后，损失 $\mathcal{L}$ 对原始 Logits $z_i$ 的导数退化为一个不可思议的初等代数减法公式：
+
+$$\frac{\partial \mathcal{L}}{\partial z_i} = p_i - y_i$$
+
+### 3. 极简导数手算数值算例
+设一个 3 分类任务（真实类别为第 1 类，即标签 $\mathbf{y} = [1.0, 0.0, 0.0]^\top$）：
+网络输出的 Logits 经 Softmax 计算后的预测概率分布为：
+$$\mathbf{p} = [0.70, 0.20, 0.10]^\top$$
+
+我们直接一步口算出反向传播给 Logits 的梯度向量：
+$$\nabla_{\mathbf{z}} \mathcal{L} = \mathbf{p} - \mathbf{y} = \begin{bmatrix} 0.70 - 1.00 \\ 0.20 - 0.00 \\ 0.10 - 0.00 \end{bmatrix} = \begin{bmatrix} -0.30 \\ +0.20 \\ +0.10 \end{bmatrix}$$
+
+> **代数直觉**：
+> - 对于正确类别（第 1 类），梯度为 $-0.30$（负梯度推动 Logit $z_1$ 增大，提升正确概率）；
+> - 对于错误类别（第 2、3 类），梯度为正数 $+0.20, +0.10$（正梯度打压错误 Logits 减小）；
+> - 三个梯度分量之和恒等于 $-0.30 + 0.20 + 0.10 = 0.00$！
+
+这一极度纯粹对称的数学特性，保障了深度分类网络在海量训练中的数值超强稳定性！
+
+<details>
+<summary><b>深入推导：Softmax 与交叉熵复合求导极简梯度的雅可比矩阵消元证明（点击展开查看完整推导）</b></summary>
+
+首先对 Softmax 求偏导：
+- 当 $i = j$ 时：$\frac{\partial p_i}{\partial z_i} = p_i(1 - p_i)$；
+- 当 $i \ne j$ 时：$\frac{\partial p_i}{\partial z_j} = -p_i p_j$。
+将交叉熵求导链式展开：
+$$\frac{\partial \mathcal{L}}{\partial z_k} = \sum_{i=1}^K \frac{\partial \mathcal{L}}{\partial p_i} \frac{\partial p_i}{\partial z_k} = -\sum_{i=1}^K \frac{y_i}{p_i} \frac{\partial p_i}{\partial z_k} = -\frac{y_k}{p_k} p_k(1 - p_k) - \sum_{i \ne k} \frac{y_i}{p_i} (-p_i p_k) = -y_k(1 - p_k) + \sum_{i \ne k} y_i p_k$$
+利用 One-Hot 标签和为 1，即 $\sum_{i=1}^K y_i = 1 \implies \sum_{i \ne k} y_i = 1 - y_k$：
+$$\frac{\partial \mathcal{L}}{\partial z_k} = -y_k + y_k p_k + (1 - y_k) p_k = p_k - y_k$$
+严格证得极简复合导数。
+</details>
+
+---
+
+## 2.5.4 纯底层 PyTorch 代码实现：从零手动实现全连接前向与反向传播引擎
+
+下面我们使用纯底层 PyTorch 基础张量，完全不借助 `torch.autograd` 或 `nn.Linear`，从零手写全连接层、ReLU 激活函数、交叉熵损失及手动 SGD 梯度更新。
 
 ```python
 import torch
 
-def linreg(X, w, b):
+class ScratchLinear:
     """
-    实现线性回归模型的正向传播。
-    X: 形状为 (批量大小, 输入维度) 的张量
-    w: 形状为 (输入维度, 输出维度) 的张量
-    b: 形状为 (1, 输出维度) 的张量
+    纯手动实现全连接层 (Dense Layer)
+    显式维护前向计算、缓存与解析反向传播梯度
     """
-    return torch.matmul(X, w) + b
+    def __init__(self, in_features: int, out_features: int):
+        # 高斯初始化权重与零初始化偏置
+        self.W = torch.randn(in_features, out_features) * 0.05
+        self.b = torch.zeros(1, out_features)
+
+        # 梯度容器
+        self.grad_W = torch.zeros_like(self.W)
+        self.grad_b = torch.zeros_like(self.b)
+
+        # 缓存前向输入供反向求导使用
+        self.cached_x = None
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        self.cached_x = x.clone()
+        out = torch.matmul(x, self.W) + self.b
+        return out
+
+    def backward(self, grad_output: torch.Tensor) -> torch.Tensor:
+        """
+        :param grad_output: 上游梯度 (B, out_features)
+        :return: 回传给输入的梯度 (B, in_features)
+        """
+        # 1. 权重梯度 grad_W = X^T * G_out
+        self.grad_W = torch.matmul(self.cached_x.t(), grad_output)
+        # 2. 偏置梯度 grad_b = sum(G_out, dim=0)
+        self.grad_b = grad_output.sum(dim=0, keepdim=True)
+        # 3. 输入梯度 grad_x = G_out * W^T
+        grad_input = torch.matmul(grad_output, self.W.t())
+        return grad_input
+
+    def step(self, lr: float):
+        """
+        手动 SGD 梯度更新
+        """
+        self.W -= lr * self.grad_W
+        self.b -= lr * self.grad_b
+
+def scratch_relu(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    前向 ReLU 与反向掩码
+    """
+    out = torch.clamp_min(x, 0.0)
+    mask = (x > 0.0).float()
+    return out, mask
+
+def scratch_softmax_cross_entropy(logits: torch.Tensor, targets: torch.Tensor) -> tuple[float, torch.Tensor]:
+    """
+    手写 Softmax + 交叉熵损失及其极简梯度 (p - y)
+    :param logits: (B, num_classes)
+    :param targets: (B,) 整数类别标签
+    :return: (scalar_loss, grad_logits)
+    """
+    B, num_classes = logits.shape
+
+    # 数值稳定技巧：减去最大值防止 exp 溢出
+    max_logits = logits.max(dim=-1, keepdim=True).values
+    exp_logits = torch.exp(logits - max_logits)
+    probs = exp_logits / exp_logits.sum(dim=-1, keepdim=True) # (B, num_classes)
+
+    # 构造 One-Hot 真实标签
+    one_hot = torch.zeros_like(probs)
+    one_hot.scatter_(1, targets.unsqueeze(1), 1.0)
+
+    # 交叉熵损失
+    eps = 1e-12
+    loss = - torch.sum(one_hot * torch.log(probs + eps)) / B
+
+    # 极简复合梯度: grad = (p - y) / B
+    grad_logits = (probs - one_hot) / B
+    return loss.item(), grad_logits
+
+# ===================================================================
+# 单元测试与手动梯度下降收敛校验
+# ===================================================================
+if __name__ == "__main__":
+    batch_size = 4
+    in_dim = 8
+    num_classes = 3
+
+    layer = ScratchLinear(in_features=in_dim, out_features=num_classes)
+
+    dummy_x = torch.randn(batch_size, in_dim)
+    dummy_labels = torch.tensor([0, 2, 1, 0], dtype=torch.long)
+
+    # 1. 验证初始损失
+    initial_logits = layer.forward(dummy_x)
+    initial_loss, grad_logits = scratch_softmax_cross_entropy(initial_logits, dummy_labels)
+    print(f"[Scratch Test] 初始分类损失: {initial_loss:.4f}")
+
+    # 2. 手动执行 50 步纯张量反向传播与 SGD 优化
+    for epoch in range(50):
+        logits = layer.forward(dummy_x)
+        loss, grad_out = scratch_softmax_cross_entropy(logits, dummy_labels)
+        layer.backward(grad_out)
+        layer.step(lr=0.5)
+
+    final_logits = layer.forward(dummy_x)
+    final_loss, _ = scratch_softmax_cross_entropy(final_logits, dummy_labels)
+    print(f"[Scratch Test] 50步手动反向优化后损失: {final_loss:.4f}")
+
+    assert final_loss < initial_loss, "手动反向传播未促使损失下降！"
+    assert layer.grad_W.shape == (in_dim, num_classes), "手动计算权重梯度维度不符！"
+    print("✓ 纯张量底层全连接层、Softmax 极简梯度与手动反向传播单测全部通过！")
 ```
 
-## 激活函数：引入非线性
+---
 
-仅仅依靠线性层是远远不够的。根据线性代数的性质，无论我们堆叠多少个线性层，多层仿射变换的组合最终仍然等价于一个单一的仿射变换。即：
+## 2.5.5 本节小结
 
-$$
-\mathbf{Y} = (\mathbf{X} \mathbf{W}_1 + \mathbf{b}_1) \mathbf{W}_2 + \mathbf{b}_2 = \mathbf{X} (\mathbf{W}_1 \mathbf{W}_2) + (\mathbf{b}_1 \mathbf{W}_2 + \mathbf{b}_2) = \mathbf{X} \mathbf{W}' + \mathbf{b}'
-$$
-
-这意味着，如果网络只有仿射层，多层组合仍是一个仿射映射，无法表示一般的非线性关系。通常需要在隐藏层之间加入**激活函数**（Activation Function）；输出层是否需要激活，则取决于任务和损失函数。
-
-经典的激活函数包括 Sigmoid 函数，它在早期神经网络中被广泛使用，其数学表达式为：
-
-$$
-\sigma(x) = \frac{1}{1 + \exp(-x)}
-$$
-
-Rumelhart 等人的工作系统展示了如何用反向传播训练多层网络 [[Rumelhart et al., 1986]](https://doi.org/10.1038/323533a0)。对于 Sigmoid 函数，当输入 $x$ 的绝对值较大时，导数会迅速趋近于零；在深层网络中反复相乘后，这会造成“梯度消失”（Vanishing Gradient）。
-
-<div align="center">
-  <img src="/figures/02-foundations/source/05-basic-components-scratch/backprop-fig1.png" alt="反向传播原论文的网络与内部表示图展示误差信号如何训练隐藏单元形成任务相关表征。" width="86%">
-
-_图 2.5-3：反向传播原论文的网络与内部表示图展示误差信号如何训练隐藏单元形成任务相关表征。 出处：David E. Rumelhart; Geoffrey E. Hinton; Ronald J. Williams，[Learning Representations by Back-Propagating Errors](https://doi.org/10.1038/323533a0)（1986），Figure 1。_
-
-</div>
-
-Nair 和 Hinton 在受限玻尔兹曼机中展示了修正线性单元（Rectified Linear Unit, ReLU）的效果 [[Nair & Hinton, 2010]](https://icml.cc/Conferences/2010/papers/432.pdf)。此后，ReLU 成为深度网络中常用的激活函数之一。它的数学定义很简单：保留正数，将负数截断为零。
-
-<div align="center">
-  <img src="/figures/02-foundations/source/05-basic-components-scratch/relu-fig1.png" alt="ReLU 论文比较二元单元期望、softplus 近似与噪声整流响应，说明整流非线性的建模来源。" width="86%">
-
-_图 2.5-4：ReLU 论文比较二元单元期望、softplus 近似与噪声整流响应，说明整流非线性的建模来源。 出处：Vinod Nair; Geoffrey E. Hinton，[Rectified Linear Units Improve Restricted Boltzmann Machines](https://icml.cc/Conferences/2010/papers/432.pdf)（2010），Figure 1。_
-
-</div>
-
-$$
-\text{ReLU}(x) = \max(x, 0)
-$$
-
-ReLU 不仅计算极快（仅需比较操作），而且在正半轴上的梯度恒为 1，极大缓解了梯度消失问题。
-
-下面利用逐元素最大值实现 ReLU。
-
-```python
-def relu(X):
-    """
-    实现ReLU激活函数。
-    通过创建一个形状相同且全为0的张量，然后取两者的元素级最大值。
-    """
-    a = torch.zeros_like(X)
-    return torch.max(X, a)
-```
-
-## 损失函数：量化模型的误差
-
-模型能够输出预测值后，我们需要一种机制来评估预测值 $\hat{\mathbf{y}}$ 与真实标签 $\mathbf{y}$ 之间的差距。这个衡量差距的函数被称为**损失函数** (Loss Function) 或目标函数 (Objective Function)。
-
-### 均方误差 (Mean Squared Error, MSE)
-
-在回归任务（如预测连续的房价）中，最常用的损失函数是均方误差。它的思想可以追溯到高斯 (Gauss) 和勒让德 (Legendre) 在18世纪末发展的最小二乘法 (Method of Least Squares)。
-
-对于第 $i$ 个样本，预测值为 $\hat{y}^{(i)}$，真实值为 $y^{(i)}$。我们将这两者的差值称为残差 (Residual)。平方损失定义为残差平方的一半：
-
-$$
-l^{(i)} = \frac{1}{2} \left( \hat{y}^{(i)} - y^{(i)} \right)^2
-$$
-
-公式中常数 $\frac{1}{2}$ 的作用是，在对损失函数求导时，二次项的系数 2 会与 $\frac{1}{2}$ 抵消，使得梯度的数学表达式更加简洁。
-
-对于包含 $n$ 个样本的整个小批量数据，均方误差是所有单个样本损失的平均值：
-
-$$
-L(\mathbf{W}, \mathbf{b}) = \frac{1}{n} \sum_{i=1}^n \frac{1}{2} \left( \hat{y}^{(i)} - y^{(i)} \right)^2
-$$
-
-下面实现逐样本平方损失。预测张量 $\hat{\mathbf{y}}$ 与标签 $\mathbf{y}$ 的形状必须一致，以免广播产生意外的矩阵扩展。
-
-```python
-def squared_loss(y_hat, y):
-    """
-    实现均方损失函数。
-    返回的形状与 y_hat 和 y 相同，即逐样本的损失，尚未进行均值操作。
-    """
-    # 将真实标签的形状转换为预测值的形状以确保匹配
-    return (y_hat - y.reshape(y_hat.shape)) ** 2 / 2
-```
-
-### 交叉熵损失 (Cross-Entropy Loss)
-
-尽管我们在上面的代码中实现了均方误差，但分类任务通常需要输出各类别的概率分布，此时常用**交叉熵损失**。它建立在 Shannon 信息论中的熵与编码思想之上 [[Shannon, 1948]](https://doi.org/10.1002/j.1538-7305.1948.tb01338.x)，但把交叉熵用作分类目标是后续统计学习实践的发展。
-
-> 💡 **精炼类比**：在信息论中，交叉熵衡量的是：当我们用一个错误的分布 $Q$（模型的预测概率）来编码一个真实分布 $P$（真实标签的一热编码）时，所需要的额外比特数。模型预测越准，额外开销越小，损失越接近于零。
-
-设真实的类别分布为 $\mathbf{y} \in \{0,1\}^q$（通常为一热编码格式），模型预测的概率分布为 $\hat{\mathbf{y}} \in (0,1)^q$，且满足 $\sum_j \hat{y}_j = 1$。单个样本的交叉熵损失严谨地定义为：
-
-$$
-l(\mathbf{y}, \hat{\mathbf{y}}) = - \sum_{j=1}^q y_j \log \hat{y}_j
-$$
-
-在世界模型的基础架构讲解中，我们将在后续关于 Softmax 层的章节深入探讨交叉熵的数值稳定实现，目前我们暂且聚焦于基础张量运算体系的跑通。
-
-## 优化算法：小批量随机梯度下降 (Minibatch SGD)
-
-有了模型（前向传播）和损失函数（评估误差），接下来的核心任务是：如何调整模型参数（权重 $\mathbf{W}$ 和偏置 $\mathbf{b}$）以最小化损失函数？
-
-由于深度神经网络的损失函数通常是高度非凸的高维曲面，我们无法像高中求二次函数顶点那样直接通过令导数为零求得解析解 (Analytical Solution)。相反，我们必须采用数值优化算法 (Numerical Optimization)。
-
-随机梯度方法可追溯到 Robbins 和 Monro 的随机逼近框架 [[Robbins & Monro, 1951]](https://doi.org/10.1214/aoms/1177729586)。现代深度学习通常把若干样本组成小批量，用其平均梯度更新参数，这就是**小批量随机梯度下降**（Minibatch Stochastic Gradient Descent, SGD）。
-
-### 梯度的几何意义与下降方向
-
-微积分告诉我们，对于一个多元函数 $L(\mathbf{W})$，它在某一点的梯度 $\nabla_{\mathbf{W}} L$ 指向该函数值增加最快的方向。因此，为了最小化损失函数，我们应该沿着梯度的**反方向**迈出一步。
-
-每一次参数更新的严谨数学表达式如下：
-
-$$
-\mathbf{W} \leftarrow \mathbf{W} - \eta \frac{1}{n} \sum_{i=1}^n \nabla_{\mathbf{W}} l^{(i)}(\mathbf{W}, \mathbf{b})
-$$
-
-$$
-\mathbf{b} \leftarrow \mathbf{b} - \eta \frac{1}{n} \sum_{i=1}^n \nabla_{\mathbf{b}} l^{(i)}(\mathbf{W}, \mathbf{b})
-$$
-
-各符号的含义如下：
-
-- $\leftarrow$ 表示赋值操作，即用更新后的值替换当前值。
-- $\frac{1}{n} \sum_{i=1}^n \nabla l^{(i)}$ 是当前小批量数据上计算出的**平均梯度**。使用平均梯度而不是总梯度，可以使得学习率的选择与批量大小解耦，避免在改变批量大小时需要大幅调整学习率。
-- $\eta$（读作 eta）是**学习率** (Learning Rate)，控制每次参数更新的尺度。过大时优化可能震荡或发散，过小时收敛会很慢。
-
-下面实现小批量 SGD。由于 `squared_loss` 返回逐样本损失，训练时若对损失调用 `.sum().backward()`，梯度就是小批量总和，因此更新时除以 `batch_size` 得到平均梯度。参数更新不应写入计算图，更新后还要清空累计梯度。
-
-```python
-def sgd(params, lr, batch_size):
-    """
-    实现小批量随机梯度下降算法。
-    params: 包含参数张量的列表，如 [W, b]
-    lr: 学习率
-    batch_size: 批量大小
-    """
-    with torch.no_grad():
-        for param in params:
-            # 执行梯度下降更新
-            param -= lr * param.grad / batch_size
-            # 清除梯度，为下一次反向传播做准备
-            param.grad.zero_()
-```
-
-## 组装一切：训练循环的解剖
-
-有了 `linreg`、`squared_loss` 和 `sgd`，就可以写出一个最小**训练循环** (Training Loop)。
-
-一次参数更新通常包含以下步骤：
-
-1. **数据抽取**：从小批量数据生成器中取出一批特征 $\mathbf{X}$ 和对应的标签 $\mathbf{y}$。
-2. **前向传播**：将 $\mathbf{X}$ 输入模型，计算出预测值 $\hat{\mathbf{y}}$。
-3. **计算损失**：使用损失函数计算 $\hat{\mathbf{y}}$ 与 $\mathbf{y}$ 之间的误差。
-4. **反向传播**：对损失张量调用自动微分系统（如PyTorch的 `.backward()`），计算所有参数的梯度。
-5. **参数更新**：调用优化器算法，根据梯度更新参数。
-
-大多数监督学习训练循环都能归纳为这几步，但具体顺序会因梯度累积、混合精度、多个优化器或强化学习的数据收集过程而变化。
-
-把公式与张量形状逐项对齐后，广播错误、重复平均和忘记清空梯度等常见问题会更容易定位。
-
-## 小结
-
-- 我们追溯了早期神经网络的历史，并使用严格的矩阵乘法构建了多维输入下的**线性层**的前向计算公式 $\mathbf{Y} = \mathbf{X} \mathbf{W} + \mathbf{b}$。
-- 为了赋予模型非线性表达能力，我们引入了 **ReLU 激活函数**，打破了纯线性变换的局限。
-- 我们使用均方误差量化了回归问题的预测偏差，并讨论了交叉熵在分类任务中的物理意义。
-- 我们通过微积分推导了**小批量随机梯度下降 (SGD)** 的更新公式，并手工编写了参数的梯度更新与清零逻辑。
-- 这些基础组件会以更高层的封装反复出现在生成模型与世界模型的训练代码中。
+回顾本节内容，我们剥离了深度学习框架的重重包装，直面其底层的数学本质：
+1. **矩阵全连接微积分**：通过前向矩阵相乘与反向转置对齐，严格确保了多元链式梯度的维度守恒；
+2. **Softmax 复合导数的数学对称美**：联合交叉熵导数直接化简为预测概率与真实标签的误差差分 $\mathbf{p} - \mathbf{y}$，构成了分类优化的核心引擎；
+3. **计算图闭环**：通过纯底层张量操作手动实现前向缓存与反向求导，使我们具备了从物理第一性原理定制和优化任意复杂世界模型算子的硬核底气。

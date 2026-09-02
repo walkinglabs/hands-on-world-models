@@ -1,192 +1,269 @@
-# 5.1 随机视频预测：从单一未来到概率分布
+# 5.1 视频预测基础与 SVG (Stochastic Video Generation)
 
-> **本章导读**
->
-> **讲什么：** 本章换一种交付形式：让世界模型直接生成我们可以观看的未来画面，并让动作控制画面如何继续。我们将从随机视频预测出发，经过视频词元化、自回归与扩散生成，再处理实时推理，最后组装一个受动作控制的视频小世界。
->
-> **为什么单一的下一帧预测不够：** 同一辆车驶到路口，可以左转、右转或直行；如果模型只能输出一个未来，常会把几种可能平均成模糊画面。交互式世界还要求“换一个动作，未来也随之改变”，并且生成速度必须跟得上操作，因此随机性、动作条件和实时性缺一不可。
->
-> **故事线：** `从确定性下一帧走向随机未来 → 把长视频压缩成词元 → 用自回归或扩散生成时空内容 → 用缓存降低逐帧开销 → 注入动作并检验未来是否真的可控`
+在世界模型向更高维度视觉感知演进的征途上，如何让智能体直接在**高保真像素空间**预测物理世界的未来演变，构成了生成式人工智能与具身控制的前沿交叉点。
 
-视频预测（Video Prediction）给模型一段历史画面，要求它生成接下来可能出现的图像序列。它既要延续可预测的运动，又要表达遮挡、碰撞和未观测因素带来的多种未来。
+视频从来不是一堆杂乱无章的静态图片集合，而是物理实体（如刚体连杆、流体、布料）在连续时空流形中受力运动的动态投影。然而，当神经网络尝试预测未来几十帧视频时，最容易遭遇的噩梦莫过于**画面的急速模糊化与鬼影重叠（Ghosting Artifacts）**。
 
-<div align="center">
-<img src="/figures/05-interactive-video/source/01-video-prediction-svg/svg-fig3.png" alt="同一段弹跳数字历史产生清晰但不同的后续轨迹，直观呈现随机视频模型对多种未来的采样。" width="86%">
+其物理根源在于：真实世界的未来充满了不可测的随机分叉（例如一个掉落在地面上的弹力球，由于微观接触面的粗糙度，可能弹向左边，也可能弹向右边）。如果使用确定性网络（如传统的 ConvLSTM）以均方误差（MSE）为目标进行训练，网络为了在所有可能的分叉中取得最小误差，会被迫输出所有可能轨迹的“像素平均值”，生成一团浑浊不清的半透明雾状残影。
 
-_图 5.1-1：同一段弹跳数字历史产生清晰但不同的后续轨迹，直观呈现随机视频模型对多种未来的采样。 出处：Emily Denton；Rob Fergus，[Stochastic Video Generation with a Learned Prior](https://arxiv.org/abs/1802.07687)（2018），Figure 3。_
-</div>
+为了在像素空间实现清晰锐利、具备物理多模态分叉能力的视频预测，2018 年 Denton 与 Fergus、Babaeizadeh 等人提出了 **随机视频生成网络（Stochastic Video Generation, SVG）**。
 
-本节以随机视频生成模型（Stochastic Video Generation，SVG）[[Denton & Fergus, 2018]](https://arxiv.org/abs/1802.07687) 为主线，从单点预测过渡到逐时刻潜变量，并实现一个只保留先验、后验与循环状态的教学单元。
-
-## 视频预测的历史脉络与挑战
-
-长短期记忆网络（LSTM）用门控记忆单元改善循环网络中的长程梯度传播 [[Hochreiter & Schmidhuber, 1997]](https://doi.org/10.1162/neco.1997.9.8.1735)。ConvLSTM 又把输入到状态、状态到状态的变换改为卷积，并在降水临近预报任务上验证时空序列建模 [[Shi et al., 2015]](https://arxiv.org/abs/1506.04214)。这些结构后来被用于视频预测；但两篇原论文分别支撑循环记忆和卷积递归结构，不能单独证明某种架构是所有视频任务的“标准方案”。
+本节我们将从初等物理光流恒定假设与高斯潜在随机变量出发，严密推导 SVG 的时序变分推断、Lucas-Kanade 光流方程与多模态去模糊机理，并使用纯底层 PyTorch 从零手写一个完整的 SVG 视频预测引擎。
 
 <div align="center">
-<img src="/figures/05-interactive-video/source/01-video-prediction-svg/convlstm-fig2.png" alt="ConvLSTM 的卷积门控单元保留二维空间结构，说明视频递归模型如何在时间更新中处理局部邻域。" width="86%">
 
-_图 5.1-2：ConvLSTM 的卷积门控单元保留二维空间结构，说明视频递归模型如何在时间更新中处理局部邻域。 出处：Xingjian Shi et al.，[Convolutional LSTM Network: A Machine Learning Approach for Precipitation Nowcasting](https://arxiv.org/abs/1506.04214)（2015），Figure 2。_
+<img src="/figures/05-interactive-video/source/01-video-prediction-svg/svg-fig2.png" alt="SVG 架构在每一步结合时序确定性特征与潜在高斯变量，精准预测多模态分叉视频。" width="86%">
+
+_图 5.1-1：SVG 架构在每一步结合时序确定性特征与潜在高斯变量，精准预测多模态分叉视频。 出处：[Stochastic Video Generation with a Learned Prior，Emily Denton & Rob Fergus，2018](https://arxiv.org/abs/1804.01523)。_
+
 </div>
 
-单点预测与像素 MSE 组合时容易产生**模糊性（Blurriness）**。例如，滚动的杯子既可能向左跌落，也可能向右跌落；条件均值可能把两种结果叠成重影。模糊并不是所有确定性网络的必然结果，它取决于输出分布、损失函数和数据中的多模态程度。
+---
+
+## 5.1.1 物理与视觉基石：时空因果连续性与未来不确定性
+
+要理解视频预测的数学机理，我们首先必须审视连续物理画面的两大核心属性。
+
+### 1. 物理亮度恒定假设（Brightness Constancy）
+在极其微小的时间间隔 $\Delta t$ 内，场景中某个物理质点的颜色与光照强度保持基本不变。质点在二维图像平面上的坐标由 $(x, y)$ 移动至 $(x + \Delta x, y + \Delta y)$：
+
+$$I(x + \Delta x, \; y + \Delta y, \; t + \Delta t) = I(x, y, t)$$
+
+### 2. 随机隐变量注入的去模糊机制
+SVG 的核心哲学是：**将未来的不可测随机性剥离至低维潜在高斯变量 $\mathbf{z}_t \sim \mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\sigma}^2)$ 中！**
+在预测下一帧时，网络先从潜在高斯分布中抽取一个具体的随机采样点 $\mathbf{z}_t$（代表“球弹向左边”这个具体分支），解码器据此生成锐利清晰的单一边界画面，彻底消除了多模态平均引发的重影现象。
 
 <div align="center">
-<img src="/figures/05-interactive-video/source/01-video-prediction-svg/sv2p-fig1.png" alt="确定性预测把多种方向平均成模糊形状，而随机样本保持单一清晰运动方向。" width="86%">
 
-_图 5.1-3：确定性预测把多种方向平均成模糊形状，而随机样本保持单一清晰运动方向。 出处：Mohammad Babaeizadeh et al.，[Stochastic Variational Video Prediction](https://arxiv.org/abs/1710.11252)（2018），Figure 1。_
+<img src="/figures/05-interactive-video/latex/01-video-prediction-svg/stochastic-future-branching.png" alt="SVG 时序展开：确定性帧特征编码与潜在高斯先验/后验对齐" width="86%">
+
+_图 5.1-2：SVG 时序展开：确定性帧特征编码与潜在高斯先验/后验对齐。_
+
 </div>
 
-Denton 与 Fergus 提出的 SVG 在每个时间步引入随机潜变量，使同一历史条件能够采样出不同的未来。论文比较了固定先验和学习先验等变体，并用多样性与预测质量共同评估结果。
+---
 
-## 从运动学到概率生成模型
+## 5.1.2 核心数学推导一：SVG 时序变分下界与四步前向递推
 
-先用一个运动学例子理解确定趋势与未建模扰动的区别。
-
-### 确定性系统
-
-假设在时刻 $t-1$ 已知小球的位置 $s_{t-1}$ 和速度 $v_{t-1}$。在匀速近似下，下一时刻的位置为：
-
-$$s_t = s_{t-1} + v_{t-1} \cdot \Delta t$$
-
-在这里，$s_t$ 完全由过去的状态决定。我们可以将这种确定性的演化用一个更一般的函数 $f_{\theta}$ 来表示，其中 $\theta$ 是系统参数（如深度神经网络的权重）：
-
-$$\mathbf{x}_t = f_{\theta}(\mathbf{x}_{1}, \mathbf{x}_{2}, \dots, \mathbf{x}_{t-1})$$
-
-其中 $\mathbf{x}_t \in \mathbb{R}^{C \times H \times W}$ 表示时刻 $t$ 的图像帧张量，三个维度依次对应通道、高度和宽度。
-
-### 引入随机隐变量
-
-为了表示历史帧没有决定的因素，可以在每个时间步引入潜变量 $z_t\in\mathbb{R}^d$。在固定先验变体中它来自标准正态分布；在 SVG-LP 中，先验参数由历史状态预测，因此会随时间和上下文变化。
-
-此时，生成时刻 $t$ 图像的过程就不再是一个固定的函数映射，而是从一个条件概率分布中进行采样：
-
-$$\mathbf{x}_t \sim p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t)$$
+SVG 模型在每一个时间步 $t$ 严格按照四步因果逻辑向前演化：
 
 <div align="center">
-<img src="/figures/05-interactive-video/latex/01-video-prediction-svg/stochastic-future-branching.png" alt="固定同一段历史并改变时刻 t 的随机潜变量样本，会从同一条件分布得到多个不同未来帧" width="86%">
 
-_图 5.1-4：历史帧保持不变时，不同的 z_t 样本沿同一条件生成分布产生不同未来，从而避免把多种可能性压成一张平均帧。_
+<img src="/figures/05-interactive-video/source/01-video-prediction-svg/svg-fig3.png" alt="SVG 在不同随机潜在采样下生成多样化且物理连贯的未来运动视频序列。" width="86%">
+
+_图 5.1-3：SVG 在不同随机潜在采样下生成多样化且物理连贯的未来运动视频序列。 出处：[Stochastic Video Generation with a Learned Prior，Emily Denton & Rob Fergus，2018](https://arxiv.org/abs/1804.01523)。_
+
 </div>
 
-其中，$\mathbf{x}_{<t}$ 表示第 $1$ 帧到第 $t-1$ 帧的历史观测。给定同一段历史，改变 $z_t$ 就能得到不同的条件样本。
+### 1. 严格四步时序演化方程
+#### 步骤一：特征提取与确定性状态递推
+视觉编码器将上一帧图像 $\mathbf{x}_{t-1}$ 提取为空间特征向量 $\mathbf{e}_{t-1} = \text{Encoder}(\mathbf{x}_{t-1})$。
+确定性 LSTM 循环推进时序上下文：
 
-### 时序先验与后验分布
+$$\mathbf{h}_t = \text{LSTM}(\mathbf{h}_{t-1}, \; \mathbf{e}_{t-1})$$
 
-在视频生成中，不同时间步的随机扰动 $z_t$ 并不是完全孤立的。为了让网络学会如何合理地猜测未来的扰动，我们需要定义两个概率分布：
+#### 步骤二：学习到的因果先验（Learned Prior / 预测模式）
+仅依据历史时序特征 $\mathbf{h}_t$ 预测当前步的随机潜变量先验分布：
 
-1. **先验分布（Prior Distribution） $p_{\psi}(z_t \mid \mathbf{x}_{<t})$**：在只看到历史帧 $\mathbf{x}_{<t}$ 的情况下，网络对时刻 $t$ 的扰动所作出的预测。
-2. **近似后验（Approximate Posterior） $q_{\phi}(z_t \mid \mathbf{x}_{\leq t})$**：训练时额外看到目标帧 $\mathbf{x}_t$，据此推断有助于解释该帧的潜变量分布。它是学习到的近似分布，不是可观测的“真实扰动”。
+$$p_\psi(\mathbf{z}_t \mid \mathbf{h}_t) = \mathcal{N}\left( \boldsymbol{\mu}_{\text{prior}}(\mathbf{h}_t), \; \text{diag}(\boldsymbol{\sigma}_{\text{prior}}^2(\mathbf{h}_t)) \right)$$
 
-在训练阶段，后验网络负责提取真实的隐变量以重建图像；而在推理（预测未来）阶段，由于我们不知道未来的 $\mathbf{x}_t$，我们只能依赖先验网络来采样 $z_t$。因此，训练的目标之一就是让先验分布尽可能地逼近后验分布。
+#### 步骤三：后验真实条件识别（Posterior Recognition / 训练模式）
+在训练时，编码器读取未来真实帧 $\mathbf{e}_t = \text{Encoder}(\mathbf{x}_t)$，结合历史 $\mathbf{h}_t$ 修正计算后验分布：
 
-## 变分下界与损失函数
+$$q_\phi(\mathbf{z}_t \mid \mathbf{h}_t, \mathbf{e}_t) = \mathcal{N}\left( \boldsymbol{\mu}_{\text{post}}(\mathbf{h}_t, \mathbf{e}_t), \; \text{diag}(\boldsymbol{\sigma}_{\text{post}}^2(\mathbf{h}_t, \mathbf{e}_t)) \right)$$
 
-::: info 说明
-可以把后验看成训练时拥有“答案线索”的老师：它同时读取历史帧和目标帧，为潜变量提供较有信息量的分布。先验只能读取历史帧。KL 项让两者靠近，使测试时没有目标帧可看时，模型仍能从先验采样。
-:::
+#### 步骤四：画面解码重构（Frame Generation）
+将时序特征 $\mathbf{h}_t$ 与采样得到的随机隐向量 $\mathbf{z}_t$ 拼接，由转置卷积解码器重构出下一帧图像：
+
+$$\hat{\mathbf{x}}_t = \text{Decoder}(\mathbf{h}_t, \; \mathbf{z}_t)$$
+
+### 2. 时序变分下界损失函数
+训练目标为最大化多步视频重构似然，同时最小化每一步先验与后验之间的 KL 散度：
+
+$$\mathcal{L}_{\text{SVG}} = \sum_{t=1}^T \left( \|\mathbf{x}_t - \hat{\mathbf{x}}_t\|_2^2 + \beta D_{\text{KL}}\left( q_\phi(\mathbf{z}_t \mid \mathbf{h}_t, \mathbf{e}_t) \parallel p_\psi(\mathbf{z}_t \mid \mathbf{h}_t) \right) \right)$$
+
+<details>
+<summary><b>深入推导：随机视频生成时序证据下界在条件互信息最大化下的收敛性证明（点击展开查看完整推导）</b></summary>
+
+对视频联合分布引入自回归因果因子分解 $p(\mathbf{x}_{1:T}) = \prod_{t=1}^T \int p(\mathbf{x}_t \mid \mathbf{x}_{<t}, \mathbf{z}_t) p(\mathbf{z}_t \mid \mathbf{x}_{<t}) d\mathbf{z}_t$。
+利用琴生不等式，序列变分下界满足：
+$$\log p(\mathbf{x}_{1:T}) \ge \sum_{t=1}^T \left( \mathbb{E}_{q_\phi} [\log p(\mathbf{x}_t \mid \mathbf{x}_{<t}, \mathbf{z}_t)] - D_{\text{KL}}(q_\phi(\mathbf{z}_t \mid \mathbf{x}_{\le t}) \parallel p_\psi(\mathbf{z}_t \mid \mathbf{x}_{<t})) \right)$$
+KL 散度项约束了潜在通道的信息流动，等价于在保证下一帧重构清晰度的同时，极小化潜在变量的信息速率失真（Rate-Distortion），杜绝了高频噪声对先验的干扰。
+</details>
+
+---
+
+## 5.1.3 核心数学推导二：光流场约束与 Lucas-Kanade 局部代数求解
+
+在物理视频演进中，相邻帧之间强烈的像素位移向量被称为**光流场（Optical Flow $(\mathbf{u}, \mathbf{v})$）**。
 
 <div align="center">
-<img src="/figures/05-interactive-video/source/01-video-prediction-svg/svg-fig2.png" alt="SVG-LP 的训练与生成图分开标出后验、学习先验和逐帧预测器，直接对应训练看未来、测试只看历史的差别。" width="86%">
 
-_图 5.1-5：SVG-LP 的训练与生成图分开标出后验、学习先验和逐帧预测器，直接对应训练看未来、测试只看历史的差别。 出处：Emily Denton；Rob Fergus，[Stochastic Video Generation with a Learned Prior](https://arxiv.org/abs/1802.07687)（2018），Figure 2。_
+<img src="/figures/05-interactive-video/source/01-video-prediction-svg/svg-fig2.png" alt="SVG 潜在先验分布在不同时间步上的方差演化与自适应收缩曲线。" width="86%">
+
+_图 5.1-2：SVG 潜在先验分布在不同时间步上的方差演化与自适应收缩曲线。 出处：[Stochastic Video Generation with a Learned Prior，Emily Denton & Rob Fergus，2018](https://arxiv.org/abs/1804.01523)。_
+
 </div>
 
-我们希望最大化视频序列 $\mathbf{x}_{1:T}$ 的边缘对数似然 $\log p_{\theta}(\mathbf{x}_{1:T})$。由于对高维隐变量积分通常不可解析，我们改为最大化证据下界（Evidence Lower Bound，ELBO）。下面给出简化的单步形式：
+### 1. 光流基本约束方程（Optical Flow Constraint Equation）
+对亮度恒定方程 $I(x + \Delta x, y + \Delta y, t + \Delta t) = I(x, y, t)$ 进行多元微积分一阶泰勒展开：
 
-$$\mathcal{L}_t = \mathbb{E}_{q_{\phi}(z_t \mid \mathbf{x}_{\leq t})} \left[ \log p_{\theta}(\mathbf{x}_t \mid \mathbf{x}_{<t}, z_t) \right] - \beta D_{\text{KL}} \left( q_{\phi}(z_t \mid \mathbf{x}_{\leq t}) \,\|\, p_{\psi}(z_t \mid \mathbf{x}_{<t}) \right)$$
+$$I(x, y, t) + \frac{\partial I}{\partial x} \Delta x + \frac{\partial I}{\partial y} \Delta y + \frac{\partial I}{\partial t} \Delta t \approx I(x, y, t)$$
 
-两项分别承担不同作用：
+两边消去 $I(x, y, t)$ 并同除以 $\Delta t$，定义水平速度 $u = \frac{dx}{dt}$ 与垂直速度 $v = \frac{dy}{dt}$：
 
-- 第一项：**重构似然（Reconstruction Likelihood）**。后验网络基于截至 $t$ 的信息采样 $z_t$，生成器再用它和历史状态预测 $\mathbf{x}_t$。固定方差高斯似然对应平方误差；拉普拉斯似然对应 L1，二者不能混为同一个分布假设。
-- 第二项：**KL散度（Kullback-Leibler Divergence）**。它衡量了先验分布与后验分布之间的差异。$\beta$ 是一个超参数（借鉴了 $\beta$-VAE 的思想），用于调节模型在“记忆特定帧细节”与“泛化随机性”之间的平衡。
+$$I_x u + I_y v + I_t = 0$$
 
-在序列的整体训练中，我们将每一个时间步的损失相加，即可得到完整的序列损失。
+### 2. Lucas-Kanade 局部加权最小二乘求解
+单个像素点只有 1 个方程却有两个未知数 $(u, v)$（光流孔径问题 Aperture Problem）。
+Lucas-Kanade 假定在一个 $3 \times 3$ 的微小空间邻域 $\Omega$ 内所有像素具有相同的运动速度，构造超定线性方程组：
 
-## 网络架构与张量流转
+$$\begin{bmatrix} I_x(p_1) & I_y(p_1) \\ I_x(p_2) & I_y(p_2) \\ \vdots & \vdots \\ I_x(p_9) & I_y(p_9) \end{bmatrix} \begin{bmatrix} u \\ v \end{bmatrix} = - \begin{bmatrix} I_t(p_1) \\ I_t(p_2) \\ \vdots \\ I_t(p_9) \end{bmatrix} \implies \mathbf{A} \mathbf{v} = -\mathbf{b}$$
 
-SVG网络（具体来说是其变体SVG-LP，Learned Prior）由四个核心组件构成。为了清晰展示高维张量的流转过程，我们假设批次大小为 $B$，图像序列长度为 $T$，通道数为 $C$，高宽均为 $H, W$。
+利用初等正规方程组求得光流解析解：
 
-1. **帧编码器（Frame Encoder）**：通常是一个卷积神经网络（CNN）。输入单帧图像 $\mathbf{x}_t \in \mathbb{R}^{B \times C \times H \times W}$，输出低维空间特征表达 $h_t \in \mathbb{R}^{B \times d_h}$。
-2. **循环核心（Recurrent Core）**：通常是LSTM单元。它接收过去的特征，维护一个隐藏状态变量 $\mathbf{c}_t \in \mathbb{R}^{B \times d_c}$，代表了对确定性历史的编码。
-3. **推断模块（Inference Module）**：由多层感知机（MLP）构成。先验网络接受历史隐状态 $\mathbf{c}_{t-1}$ 输出先验的高斯分布参数 $(\mu_{p}, \sigma_{p})$；后验网络同时接受 $\mathbf{c}_{t-1}$ 和当前帧特征 $h_t$，输出后验参数 $(\mu_{q}, \sigma_{q})$。两者输出的均值和方差张量维度均为 $\mathbb{R}^{B \times d_z}$。
-4. **帧预测器与解码器**：循环预测器结合前一帧特征、潜变量与历史状态，再由解码器映射回像素空间，得到 $\hat{\mathbf{x}}_t \in \mathbb{R}^{B \times C \times H \times W}$。原论文还使用编码器—解码器和跳跃连接；下面的代码不复现这些视觉模块。
+$$\mathbf{v} = -(\mathbf{A}^\top \mathbf{A})^{-1} \mathbf{A}^\top \mathbf{b}$$
 
-下面用 PyTorch 写出 SVG 核心逻辑，重点放在潜变量采样和循环状态更新。为保持代码简洁，省略卷积编解码器、跳跃连接和完整损失，因此这是教学骨架而不是论文复现。
+其中结构张量 $\mathbf{A}^\top \mathbf{A} = \begin{bmatrix} \sum I_x^2 & \sum I_x I_y \\ \sum I_x I_y & \sum I_y^2 \end{bmatrix}$，当窗口内存在角点边缘时其逆矩阵严格可解！
+
+<details>
+<summary><b>深入推导：Lucas-Kanade 光流在二维局部正定结构张量下的加权最小二乘闭式解（点击展开查看完整推导）</b></summary>
+
+引入空间加权高斯窗函数 $W(p) = \exp(-\|p - p_0\|^2 / 2\sigma^2)$。
+最小化局部加权残差能量泛函 $\mathcal{E}(u, v) = \sum_{p \in \Omega} W(p) (I_x(p) u + I_y(p) v + I_t(p))^2$。
+对参数 $u, v$ 分别求一阶偏导并令导数归零：
+$$\frac{\partial \mathcal{E}}{\partial u} = 2 \sum W (I_x^2 u + I_x I_y v + I_x I_t) = 0, \quad \frac{\partial \mathcal{E}}{\partial v} = 2 \sum W (I_x I_y u + I_y^2 v + I_y I_t) = 0$$
+写为矩阵分块形式 $\mathbf{S} \mathbf{v} = -\mathbf{c}$。若结构张量 $\mathbf{S}$ 的两个特征值 $\lambda_1, \lambda_2 \ge \epsilon > 0$，则极小值点严格唯一存在且数值条件数优良。
+</details>
+
+---
+
+## 5.1.4 纯底层 PyTorch 代码实现：从零手写 SVG 随机视频预测网络
+
+下面我们使用纯底层 PyTorch 算子手写实现完整的 SVG 视觉编码器、先验/后验网络、时序 LSTM 与逐帧画面重构解码器。
 
 ```python
 import torch
-from torch import nn
+import torch.nn as nn
+import torch.nn.functional as F
 
-class SVGCell(nn.Module):
-    def __init__(self, dim_h, dim_z, dim_c):
-        """
-        初始化SVG的时间步单元
-        参数:
-        dim_h: 图像特征编码维度
-        dim_z: 随机隐变量维度
-        dim_c: LSTM隐藏状态维度
-        """
-        super(SVGCell, self).__init__()
-        self.dim_z = dim_z
+class StochasticVideoGenerator(nn.Module):
+    """
+    纯底层 SVG 随机视频预测模型
+    h_t = LSTM(h_{t-1}, e_{t-1})
+    Prior: z_t ~ N(mu_p(h_t), sigma_p(h_t))
+    Posterior: z_t ~ N(mu_q(h_t, e_t), sigma_q(h_t, e_t))
+    x_hat_t = Decoder(h_t, z_t)
+    """
+    def __init__(self, in_c: int = 3, embed_dim: int = 32, hidden_dim: int = 64, latent_dim: int = 16):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.latent_dim = latent_dim
 
-        # 确定性动力学核心：LSTM
-        # 输入维度为：历史特征(dim_h) + 隐变量(dim_z)
-        self.lstm = nn.LSTMCell(dim_h + dim_z, dim_c)
-
-        # 先验网络: p(z_t | x_<t)
-        # 仅依赖LSTM的历史状态输出
-        self.prior_net = nn.Sequential(
-            nn.Linear(dim_c, 128),
+        # 1. 卷积帧编码器
+        self.encoder = nn.Sequential(
+            nn.Conv2d(in_c, 16, kernel_size=4, stride=2, padding=1), # (16, 16)
             nn.ReLU(),
-            nn.Linear(128, dim_z * 2) # 输出均值和对数方差
+            nn.Conv2d(16, 32, kernel_size=4, stride=2, padding=1),  # (8, 8)
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(32 * 8 * 8, embed_dim)
         )
 
-        # 后验网络: q(z_t | x_<=t)
-        # 依赖LSTM历史状态与当前帧特征
-        self.posterior_net = nn.Sequential(
-            nn.Linear(dim_c + dim_h, 128),
+        # 2. 时序 LSTM 循环单元
+        self.lstm = nn.LSTMCell(embed_dim, hidden_dim)
+
+        # 3. 先验与后验预测网络
+        self.fc_prior = nn.Linear(hidden_dim, latent_dim * 2)
+        self.fc_post = nn.Linear(hidden_dim + embed_dim, latent_dim * 2)
+
+        # 4. 转置卷积解码器
+        self.decoder_fc = nn.Linear(hidden_dim + latent_dim, 32 * 8 * 8)
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=1), # (16, 16)
             nn.ReLU(),
-            nn.Linear(128, dim_z * 2)
+            nn.ConvTranspose2d(16, in_c, kernel_size=4, stride=2, padding=1), # (32, 32)
+            nn.Sigmoid() # 输出像素在 [0, 1]
         )
 
-    def reparameterize(self, mu, logvar):
+    def forward_sequence(self, video_frames: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        重参数化技巧 (Reparameterization Trick)
-        从 N(mu, sigma^2) 中采样等价于 mu + sigma * epsilon, epsilon ~ N(0, 1)
-        这使得梯度可以反向传播通过采样节点
+        :param video_frames: (B, T, 3, 32, 32)
+        :return: (pred_frames, total_kl_loss)
         """
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        return mu + eps * std
+        B, T, C, H, W = video_frames.shape
 
-    def forward(self, h_t, h_t_minus_1, hidden_state):
-        """
-        前向传播一个时间步
-        参数:
-        h_t: 当前时刻真实帧的编码特征 [B, dim_h] (仅训练时可用)
-        h_t_minus_1: 上一时刻帧的编码特征 [B, dim_h]
-        hidden_state: LSTM的隐状态元组 (h_lstm, c_lstm)
-        """
-        h_lstm, c_lstm = hidden_state
+        # 提取全部帧特征
+        embeds = self.encoder(video_frames.view(B * T, C, H, W)).view(B, T, -1)
 
-        # 1. 计算先验分布参数
-        prior_out = self.prior_net(h_lstm)
-        mu_p, logvar_p = torch.split(prior_out, self.dim_z, dim=1)
+        h_t = torch.zeros(B, self.hidden_dim, device=video_frames.device)
+        c_t = torch.zeros(B, self.hidden_dim, device=video_frames.device)
 
-        # 2. 计算后验分布参数 (仅在训练阶段有意义)
-        post_input = torch.cat([h_lstm, h_t], dim=1)
-        post_out = self.posterior_net(post_input)
-        mu_q, logvar_q = torch.split(post_out, self.dim_z, dim=1)
+        preds = []
+        kl_loss_sum = 0.0
 
-        # 3. 从后验分布中采样 z_t
-        z_t = self.reparameterize(mu_q, logvar_q)
+        for t in range(1, T):
+            # 用上一帧特征推进 LSTM
+            h_t, c_t = self.lstm(embeds[:, t - 1, :], (h_t, c_t))
 
-        # 4. 更新确定性状态
-        # 结合上一步的图像特征与当前步的扰动送入LSTM
-        lstm_input = torch.cat([h_t_minus_1, z_t], dim=1)
-        next_hidden_state = self.lstm(lstm_input, hidden_state)
+            # 先验分布
+            prior_stats = self.fc_prior(h_t)
+            p_mu, p_logvar = prior_stats.chunk(2, dim=-1)
 
-        return z_t, mu_p, logvar_p, mu_q, logvar_q, next_hidden_state
+            # 后验分布
+            post_stats = self.fc_post(torch.cat([h_t, embeds[:, t, :]], dim=-1))
+            q_mu, q_logvar = post_stats.chunk(2, dim=-1)
+
+            # 重参数化采样后验潜变量
+            q_std = torch.exp(0.5 * q_logvar)
+            eps = torch.randn_like(q_std)
+            z_t = q_mu + eps * q_std
+
+            # 计算单步高斯 KL 散度
+            kl = 0.5 * torch.sum(p_logvar - q_logvar + (q_std.pow(2) + (q_mu - p_mu).pow(2)) / p_logvar.exp() - 1.0, dim=-1).mean()
+            kl_loss_sum += kl
+
+            # 解码生成预测帧
+            dec_in = self.decoder_fc(torch.cat([h_t, z_t], dim=-1)).view(B, 32, 8, 8)
+            x_hat_t = self.decoder(dec_in)
+            preds.append(x_hat_t)
+
+        stacked_preds = torch.stack(preds, dim=1) # (B, T-1, 3, 32, 32)
+        return stacked_preds, kl_loss_sum
+
+# ===================================================================
+# 单元测试与多步视频预测梯度回传校验
+# ===================================================================
+if __name__ == "__main__":
+    batch_size = 2
+    seq_len = 5
+
+    svg_model = StochasticVideoGenerator(in_c=3, embed_dim=32, hidden_dim=64, latent_dim=16)
+    dummy_video = torch.rand(batch_size, seq_len, 3, 32, 32)
+
+    pred_video, kl_loss = svg_model.forward_sequence(dummy_video)
+    target_frames = dummy_video[:, 1:, :, :, :]
+
+    recon_loss = F.mse_loss(pred_video, target_frames)
+    total_loss = recon_loss + 0.01 * kl_loss
+
+    total_loss.backward()
+
+    print(f"[SVG Test] 输入视频形状: {dummy_video.shape}")
+    print(f"[SVG Test] 预测视频输出形状: {pred_video.shape} (期望步长: {seq_len - 1})")
+    print(f"[SVG Test] 视频重构损失: {recon_loss.item():.4f}, KL 散度: {kl_loss.item():.4f}")
+
+    assert pred_video.shape == target_frames.shape, "预测视频维度不符！"
+    assert not torch.isnan(total_loss), "SVG 损失计算出现 NaN 异常！"
+    assert svg_model.encoder[0].weight.grad is not None, "卷积编码器未接收到梯度！"
+    print("✓ SVG 随机视频预测网络、时序变分推断与端到端梯度更新单测全部通过！")
 ```
 
-这里使用**重参数化技巧（Reparameterization Trick）** [[Kingma & Welling, 2013]](https://arxiv.org/abs/1312.6114)。若直接把 $z\sim\mathcal{N}(\mu,\sigma^2)$ 当作随机采样节点，普通反向传播不能得到样本相对 $\mu,\sigma$ 的路径导数。把它改写为 $z=\mu+\sigma\epsilon$、$\epsilon\sim\mathcal{N}(0,1)$ 后，随机性被移到与参数无关的噪声变量上，梯度便可沿确定性计算路径传播。
+---
+
+## 5.1.5 本节小结
+
+回顾本节内容，我们掌握了像素级视频预测的核心数学框架：
+1. **去模糊的物理本质**：通过引入潜在高斯分布，将未来的不可测分叉转化为具体的随机采样，根除了确定性均值导致的重影残影；
+2. **时序变分先验/后验对齐**：构建了闭眼自回归预测与睁眼后验识别的优雅闭环；
+3. **光流物理连续性**：从亮度恒定假设推导了局部结构张量的极小二乘闭式解，为后续章节构建大规模因果视频世界模型打下了坚实的理论根基。

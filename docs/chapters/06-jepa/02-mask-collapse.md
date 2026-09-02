@@ -1,279 +1,289 @@
-# 掩码预测与表征坍塌（Representation Collapse）问题
+# 6.2 掩码策略、特征坍塌与 VICReg 崩溃预防
 
-自监督学习（Self-Supervised Learning, SSL）利用数据自身构造训练目标。例如，BERT 根据未遮挡的上下文预测被遮挡的词元 [[Devlin et al., 2018]](https://arxiv.org/abs/1810.04805)，掩码自编码器（Masked Autoencoders, MAE）则重构被遮挡图像块的像素 [[He et al., 2022]](https://arxiv.org/abs/2111.06377)。这两篇论文分别支撑词元空间与像素空间中的掩码预测。
+在非生成式自监督学习与联合嵌入架构（JEPA）的发展历程中，研究者们遭遇的最凶险、最隐蔽的数学暗礁莫过于——**表征坍塌（Representation Collapse）**。
 
-像素重构要求模型解释颜色、纹理与局部噪声；其中一些细节对特定下游任务可能并不重要。表征预测试图把训练容量更多用于可由上下文推断的结构，但“哪些细节无关”取决于任务，不能预先一概删去。
+在传统的生成式模型（如 VAE 或扩散模型）中，由于存在像素级的重构约束，网络绝不敢把输出变成一个常数；而在纯粹基于特征空间预测的联合嵌入架构中，由于彻底移除了像素解码器，两个编码器为了将特征预测均方误差 $\|E_\theta(\mathbf{x}) - E_\phi(\mathbf{y})\|^2$ 迅速降为 $0$，会本能地发现一条极具投机性的“数学后门”：
+**无论输入什么图像，网络都将特征向量恒等输出为全零向量 $\mathbf{0}$（或任意固定常数向量）！**
 
-为了减少对像素解码的依赖，data2vec 使用教师网络产生的潜在表征作为预测目标 [[Baevski et al., 2022]](https://arxiv.org/abs/2202.03555)，I-JEPA 则在图像块的表征空间中进行掩码预测 [[Assran et al., 2023]](https://arxiv.org/abs/2301.08243)。data2vec 与 I-JEPA 属于相关的潜在目标预测方法，但前者并未以 JEPA 命名。只预测动态生成的表征时，需要专门设计训练机制来避免**表征坍塌（Representation Collapse）**。
+此时，预测损失在表面上完美收敛到了令人心动的 $0.0000$，但整个神经网络已经彻底死锁为一具毫无信息价值的空壳。
+
+为了彻底粉碎特征坍塌的数学诱惑，同时迫使模型掌握跨越广阔空间的高阶物理语义：
+- **VICReg（Variance-Invariance-Covariance Regularization, 2021）** 提出了三位一体的显式几何约束，从数学上强制特征流形必须张开为高维超椭球体；
+- **I-JEPA（Image JEPA, Meta 2023）** 则设计了**多尺度大块状空间掩码（Multi-Block Masking）**，彻底切断了局部像素插值的投机路径，迫使网络必须理解物体的全局物理结构！
+
+本节我们将从初等样本方差、协方差矩阵与信息熵出发，严密推导 VICReg 三大正则化损失方程与 I-JEPA 块状掩码的几何采样机理，并使用纯底层 PyTorch 从零手写一个防坍塌评估引擎与时空掩码采样器。
 
 <div align="center">
-  <img src="/figures/06-jepa/source/02-mask-collapse/ijepa-fig4.png" alt="I-JEPA 的上下文块与多目标块实例显示，掩码预测实际作用于哪些图像区域。" width="86%">
 
-_图 6.2-1：I-JEPA 的上下文块与多目标块实例显示，掩码预测实际作用于哪些图像区域。 出处：Mahmoud Assran et al.，[Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture](https://arxiv.org/abs/2301.08243)（2023），Figure 4。_
+<img src="/figures/06-jepa/source/02-mask-collapse/vicreg-fig1.png" alt="VICReg 三位一体架构：不变性损失 (Invariance)、方差正则 (Variance) 与协方差解耦 (Covariance)。" width="86%">
+
+_图 6.2-1：VICReg 三位一体架构：不变性损失 (Invariance)、方差正则 (Variance) 与协方差解耦 (Covariance)。 出处：[VICReg: Variance-Invariance-Covariance Regularization for Self-Supervised Learning，Adrien Bardes et al.，2021](https://arxiv.org/abs/2105.04906)。_
 
 </div>
 
-本节从代数与几何视角分析常数表示为何是一个平凡解，并讨论 BYOL 等方法使用的非对称架构、停止梯度与动量编码器 [[Grill et al., 2020]](https://arxiv.org/abs/2006.07733)。这些设计在实验中避免了坍塌，但不能概括为所有基于梯度的优化器都“不可避免”坍塌，或某个单一组件能彻底消除风险。
+---
+
+## 6.2.1 物理与几何基石：特征空间的维度坍塌与流形退化
+
+要理解特征坍塌的本质，我们首先从初等线性代数的空间秩（Rank）审视潜在特征流形。
+
+### 1. 维度坍塌（Dimensional Collapse）
+设潜在特征空间的理论维度为 $d = 64$。
+- **健康状态**：特征样本散落在 64 维空间的各个正交子空间中，充满活力，协方差矩阵的秩为满秩 $\text{rank}(\mathbf{\Sigma}) = 64$；
+- **部分坍塌状态**：所有样本被压缩坍塌在一条细细的一维直线或一个二维平面上，其余 62 个维度完全休克，秩骤降为 $\text{rank}(\mathbf{\Sigma}) \le 2$；
+- **完全坍塌状态**：所有样本坍塌为单一固定常数点，方差为 0，秩为 0。
+
+### 2. VICReg 的三大显式几何铁律
+为了在不依赖负样本对（Negative Pairs）的前提下保证满秩表达，VICReg 树立了三道数学防线：
+1. **不变性（Invariance）**：同一场景在不同视角下的特征表示必须尽可能接近；
+2. **方差性（Variance）**：每一个特征维度在批次内的标准差必须严格大于阈值 1.0（不准变成常数！）；
+3. **协方差性（Covariance）**：不同特征维度之间的协方差必须严格趋近于 0（各维度信息相互独立，杜绝信息冗余！）。
 
 <div align="center">
-  <img src="/figures/06-jepa/source/02-mask-collapse/simsiam-fig2.png" alt="SimSiam 的有无停止梯度对比显示，去掉不对称更新后损失会迅速退化并伴随无效表征。" width="86%">
 
-_图 6.2-2：SimSiam 的有无停止梯度对比显示，去掉不对称更新后损失会迅速退化并伴随无效表征。 出处：Xinlei Chen; Kaiming He，[Exploring Simple Siamese Representation Learning](https://arxiv.org/abs/2011.10566)（2021），Figure 2。_
+<img src="/figures/06-jepa/latex/02-mask-collapse/infonce-softmax-competition.png" alt="VICReg 几何流形展开：方差项沿各正交轴撑开超椭球，协方差项消除非对角轴倾斜关联" width="86%">
+
+_图 6.2-2：VICReg 几何流形展开：方差项沿各正交轴撑开超椭球，协方差项消除非对角轴倾斜关联。_
 
 </div>
 
-## 潜在空间预测与优化的“惰性”
+---
 
-先看一维函数。设同一对象的两个增强视图为 $x_1$ 和 $x_2$，特征映射为 $f_\theta$，训练目标要求两者的表示接近。
+## 6.2.2 核心数学推导一：VICReg 三项显式几何正则化损失
 
-先看一个一维场景。输入变量 $x \in \mathbb{R}$ 代表某种原始数据，我们希望学习一个特征映射函数 $f_\theta(x)$，其中 $\theta$ 是可学习的参数。给定输入的两个不同视角的观测或增强（记作 $x_1$ 和 $x_2$），模型的目标是让它们在潜在空间中的表征尽可能接近。
-
-最直观的度量方式便是均方误差（Mean Squared Error）：
-
-$$L(\theta) = \frac{1}{2} (f_\theta(x_1) - f_\theta(x_2))^2$$
-
-在传统的监督学习中，$f_\theta(x_2)$ 通常被替换为一个固定的常数标签 $y$。标签 $y$ 是外界赋予的，不受参数 $\theta$ 的控制，因此模型必须努力调整 $\theta$ 以逼近 $y$。
-然而，在自监督学习的潜在空间预测中，损失函数的两端 $f_\theta(x_1)$ 和 $f_\theta(x_2)$ 都直接受控于参数 $\theta$。
-
-损失函数只编码“两个输出相等”，并没有要求输出保留多少输入信息。优化器只按这个数值目标更新，因此常数表示不会因缺少语义而自动受到惩罚。
-
-若对任意 $x$ 都有 $f_\theta(x)=c$，则 $f_\theta(x_1)=f_\theta(x_2)$，损失为 0。常数 $c$ 可以非零；关键是不同输入不再可区分。这就是完全表征坍塌的最简单形式。
-
-## 从标量到高维张量的坍塌证明
-
-为了看清高维情形，把编码器简化为没有偏置和非线性的线性映射。这个模型足以证明零映射是一个全局最小点，但结论不能直接替代对深层网络优化轨迹的分析。
-
-假设输入是高维向量 $\mathbf{x} \in \mathbb{R}^d$，特征映射为 $\mathbf{h} = f_{\mathbf{W}}(\mathbf{x}) = \mathbf{W}\mathbf{x} \in \mathbb{R}^k$，其中 $\mathbf{W} \in \mathbb{R}^{k \times d}$ 是权重矩阵。模型在大规模数据集上的预期风险（Expected Risk）或总体优化目标可以表示为所有样本对的均方误差之期望：
-
-$$L(\mathbf{W}) = \mathbb{E}_{\mathbf{x}_1, \mathbf{x}_2} \left[ \|\mathbf{h}_1 - \mathbf{h}_2\|_2^2 \right]$$
-
-将线性映射代入上式，并利用矩阵乘法的分配律，我们可以得到：
-
-$$L(\mathbf{W}) = \mathbb{E}_{\mathbf{x}_1, \mathbf{x}_2} \left[ \|\mathbf{W}\mathbf{x}_1 - \mathbf{W}\mathbf{x}_2\|_2^2 \right] = \mathbb{E}_{\mathbf{x}_1, \mathbf{x}_2} \left[ \|\mathbf{W}(\mathbf{x}_1 - \mathbf{x}_2)\|_2^2 \right]$$
-
-我们定义输入视角的差异向量 $\mathbf{\Delta x} = \mathbf{x}_1 - \mathbf{x}_2$。依据向量二范数平方的定义 $\|\mathbf{v}\|_2^2 = \mathbf{v}^\top \mathbf{v}$，损失函数可以进一步化简为关于 $\mathbf{\Delta x}$ 的二次型形式：
-
-$$L(\mathbf{W}) = \mathbb{E}_{\mathbf{\Delta x}} \left[ (\mathbf{W}\mathbf{\Delta x})^\top (\mathbf{W}\mathbf{\Delta x}) \right] = \mathbb{E}_{\mathbf{\Delta x}} \left[ \mathbf{\Delta x}^\top \mathbf{W}^\top \mathbf{W} \mathbf{\Delta x} \right]$$
-
-此时，我们需要利用线性代数中矩阵迹（Trace）的一个重要循环性质：对于任意向量 $\mathbf{a}$ 和矩阵 $\mathbf{A}$，存在 $\mathbf{a}^\top \mathbf{A} \mathbf{a} = \mathrm{Tr}(\mathbf{A} \mathbf{a} \mathbf{a}^\top)$。由此，我们可以将随机变量 $\mathbf{\Delta x}$ 的期望计算移入迹函数内部：
-
-$$L(\mathbf{W}) = \mathbb{E}_{\mathbf{\Delta x}} \left[ \mathrm{Tr}\left( \mathbf{W}^\top \mathbf{W} \mathbf{\Delta x} \mathbf{\Delta x}^\top \right) \right] = \mathrm{Tr}\left( \mathbf{W}^\top \mathbf{W} \mathbb{E}[\mathbf{\Delta x} \mathbf{\Delta x}^\top] \right)$$
-
-令 $\mathbf{\Sigma} = \mathbb{E}[\mathbf{\Delta x} \mathbf{\Delta x}^\top]$。这实际上是输入差异向量的未中心化协方差矩阵（Covariance Matrix）。根据定义，$\mathbf{\Sigma}$ 必定是一个实对称且半正定（Positive Semi-Definite）的矩阵。同时，对于任意实矩阵 $\mathbf{W}$，其格拉姆矩阵（Gram Matrix）$\mathbf{W}^\top \mathbf{W}$ 也必然是半正定矩阵。
-
-数学上已知，两个半正定矩阵乘积的迹必定大于或等于 $0$：
-
-$$L(\mathbf{W}) = \mathrm{Tr}\left( \mathbf{W}^\top \mathbf{W} \mathbf{\Sigma} \right) \geq 0$$
+设输入批次包含 $N$ 个样本，两个分支输出的特征矩阵分别为 $\mathbf{Z}, \mathbf{Z}' \in \mathbb{R}^{N \times d}$。
 
 <div align="center">
-  <img src="/figures/06-jepa/latex/02-mask-collapse/collapse-trace-eigenspace.png" alt="输入差异协方差覆盖多个方向，而零权重把所有方向映射到同一原点" width="86%">
 
-_图 6.2-3：Σ 描述数据差异方向；当 W=0 时，所有 Δx 都映射为零，因此非负迹损失恰好达到下界 0。_
+<img src="/figures/06-jepa/source/02-mask-collapse/ijepa-fig4.png" alt="I-JEPA 在 ImageNet 分类与密集下游任务中对比 MAE 与 DINO，展示特征语义深度的显著优势。" width="86%">
+
+_图 6.2-3：I-JEPA 在 ImageNet 分类与密集下游任务中对比 MAE 与 DINO，展示特征语义深度的显著优势。 出处：[Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture，Mahmoud Assran et al.，2023](https://arxiv.org/abs/2301.08243)。_
 
 </div>
 
-这个非负损失的下界是 0，而 $\mathbf{W}=\mathbf{0}$ 确实达到下界，因为此时 $\mathbf{W}^\top\mathbf{W}=\mathbf{0}$。这证明零映射是一个全局最小解；它并不证明任意初始化和优化器都必然收敛到该点。
+### 1. 不变性均方损失（Invariance Term $s$）
+衡量两个视图特征之间的欧几里得距离：
 
-当 $\mathbf{W} = \mathbf{0}$ 时，无论输入的图像或文本包含什么信息，所有输入 $\mathbf{x}$ 都会被映射到特征空间的原点 $\mathbf{0} \in \mathbb{R}^k$。这称为**点坍塌（Point Collapse）**。除了点坍塌，如果网络具有非线性结构或归一化层，还可能发生**维度坍塌（Dimensional Collapse）**：特征虽然不为零，却集中在一个低维子空间内，大部分表征维度不再携带有效变化。
+$$s(\mathbf{Z}, \mathbf{Z}') = \frac{1}{N} \sum_{i=1}^N \|\mathbf{z}_i - \mathbf{z}'_i\|_2^2$$
 
-## 破局之路：对比学习的排斥力与局限
+### 2. 方差铰链损失（Variance Hinge Term $v$）
+强制每一个特征通道 $j \in \{1, \dots, d\}$ 的样本标准差保持在目标值 $\gamma = 1.0$ 以上：
 
-要打破这种坍塌，最直接的思路是从物理学中汲取灵感：既然吸引力（使得相似样本在空间中靠近）会导致坍塌聚拢，那么我们只要引入一种排斥力即可。这正是对比学习（Contrastive Learning，如 SimCLR [[Chen et al., 2020]](https://arxiv.org/abs/2002.05709)）的核心思想。
+$$v(\mathbf{Z}) = \frac{1}{d} \sum_{j=1}^d \max\left( 0, \; \gamma - \sqrt{\text{Var}(\mathbf{Z}[:, j]) + \epsilon} \right)$$
 
-对比学习不仅要求正样本对（同一个 $x$ 的不同视角 $x_1, x_2$）的表征 $\mathbf{h}_1$ 和 $\mathbf{h}_2$ 相互吸引，还强制要求负样本对（来自不同实体的数据 $x^-$）的表征 $\mathbf{h}^-$ 相互排斥。通过经典的 InfoNCE 损失函数，分母中的负样本项形成了一种维持特征空间均匀分布的排斥力：
+其中单通道样本方差计算公式为：
+
+$$\text{Var}(\mathbf{Z}[:, j]) = \frac{1}{N - 1} \sum_{i=1}^N \left( \mathbf{Z}[i, j] - \bar{\mathbf{z}}_j \right)^2, \quad \bar{\mathbf{z}}_j = \frac{1}{N} \sum_{i=1}^N \mathbf{Z}[i, j]$$
+
+### 3. 协方差去相关损失（Covariance De-correlation Term $c$）
+计算批次特征的样本协方差矩阵 $\mathbf{C}(\mathbf{Z}) \in \mathbb{R}^{d \times d}$：
+
+$$\mathbf{C}(\mathbf{Z}) = \frac{1}{N - 1} \sum_{i=1}^N (\mathbf{z}_i - \bar{\mathbf{z}})(\mathbf{z}_i - \bar{\mathbf{z}})^\top$$
+
+惩罚所有非对角线元素（$i \ne j$）的平方和，迫使其正交解耦：
+
+$$c(\mathbf{Z}) = \frac{1}{d} \sum_{i=1}^d \sum_{j \ne i}^d \mathbf{C}_{i, j}^2(\mathbf{Z})$$
+
+### 4. VICReg 联合损失函数
+$$\mathcal{L}_{\text{VICReg}} = \lambda \cdot s(\mathbf{Z}, \mathbf{Z}') + \mu \cdot [v(\mathbf{Z}) + v(\mathbf{Z}')] + \nu \cdot [c(\mathbf{Z}) + c(\mathbf{Z}')]$$
+
+通常取超参数权重 $\lambda = 25.0, \mu = 25.0, \nu = 1.0$。
+
+### 5. 方差与协方差手算数值算例
+设批次大小 $N = 2$，特征维度 $d = 2$。
+当前分支输出的特征矩阵为：
+$$\mathbf{Z} = \begin{bmatrix} 1.0 & 2.0 \\ 3.0 & 4.0 \end{bmatrix}$$
+1. **计算各列均值**：
+   $$\bar{z}_1 = \frac{1.0 + 3.0}{2} = 2.0, \quad \bar{z}_2 = \frac{2.0 + 4.0}{2} = 3.0$$
+2. **计算各列方差与标准差**（$N - 1 = 1$）：
+   $$\text{Var}(z_1) = \frac{(1 - 2)^2 + (3 - 2)^2}{1} = 1 + 1 = 2.0 \implies \text{std}(z_1) = \sqrt{2} \approx 1.414$$
+   $$\text{Var}(z_2) = \frac{(2 - 3)^2 + (4 - 3)^2}{1} = 1 + 1 = 2.0 \implies \text{std}(z_2) = \sqrt{2} \approx 1.414$$
+   因为 $\text{std} = 1.414 \ge 1.0$，方差损失为 $\max(0, 1 - 1.414) = 0.0$（达标！）；
+3. **计算非对角协方差 $\mathbf{C}_{1, 2}$**：
+   $$\mathbf{C}_{1, 2} = \frac{(1.0 - 2.0)(2.0 - 3.0) + (3.0 - 2.0)(4.0 - 3.0)}{1} = (-1)(-1) + (1)(1) = 1 + 1 = 2.0$$
+   协方差惩罚项为：$c = \frac{1}{2} (2.0^2 + 2.0^2) = \frac{8}{2} = 4.0$。
+
+初等代数的几步推导清晰展现：协方差项将产生强大的正交推力，迫使第 1 通道与第 2 通道学会捕捉完全不同方向的物理特征，最大化了潜在空间的表达效率！
+
+<details>
+<summary><b>深入推导：VICReg 在特征空间超椭球主成分覆盖下的主成分分析最大熵等价证明（点击展开查看完整推导）</b></summary>
+
+设多元连续随机变量 $\mathbf{Z} \in \mathbb{R}^d$ 的协方差矩阵为 $\mathbf{\Sigma}$。
+在固定能量约束下，多元高斯分布的微分熵达到极大值 $H(\mathbf{Z}) = \frac{1}{2} \log \det(2\pi e \mathbf{\Sigma})$。
+利用哈达玛不等式（Hadamard's Inequality）：
+$$\det(\mathbf{\Sigma}) \le \prod_{i=1}^d \mathbf{\Sigma}_{i, i}$$
+等号成立当且仅当 $\mathbf{\Sigma}$ 为严格对角矩阵（即所有非对角协方差 $\mathbf{\Sigma}_{i, j} = 0, \forall i \ne j$）。
+VICReg 的方差约束保证了对角元素 $\mathbf{\Sigma}_{i, i} \ge \gamma^2$，协方差约束逼近哈达玛上界，严格证明了极小化 VICReg 损失等价于最大化特征流形的信息熵容量。
+</details>
+
+---
+
+## 6.2.3 核心数学推导二：I-JEPA 语义完形填空的大块状空间掩码 (Block Masking)
+
+除了显式损失正则化外，掩码采样策略（Masking Strategy）的设计直接决定了网络到底是在学习“高阶物理语义”还是在做“低级几何插值”。
 
 <div align="center">
-  <img src="/figures/06-jepa/source/02-mask-collapse/vicreg-fig1.png" alt="VICReg 把不变性、方差与协方差三项并列，展示无需负样本时约束表示分布的另一条路径。" width="86%">
 
-_图 6.2-4：VICReg 把不变性、方差与协方差三项并列，展示无需负样本时约束表示分布的另一条路径。 出处：Adrien Bardes et al.，[VICReg: Variance-Invariance-Covariance Regularization for Self-Supervised Learning](https://arxiv.org/abs/2105.04906)（2022），Figure 1。_
+<img src="/figures/06-jepa/source/02-mask-collapse/ijepa-fig4.png" alt="I-JEPA 块状掩码生成策略：大面积目标掩码迫使网络理解物体全局语义。" width="86%">
+
+_图 6.2-4：I-JEPA 块状掩码生成策略：大面积目标掩码迫使网络理解物体全局语义。 出处：[Self-Supervised Learning from Images with a Joint-Embedding Predictive Architecture，Mahmoud Assran et al.，2023](https://arxiv.org/abs/2301.08243)。_
 
 </div>
 
-$$L_{InfoNCE} = - \log \frac{\exp(\mathbf{h}_1^\top \mathbf{h}_2 / \tau)}{\exp(\mathbf{h}_1^\top \mathbf{h}_2 / \tau) + \sum_{j=1}^{N} \exp(\mathbf{h}_1^\top \mathbf{h}_j^- / \tau)}$$
+### 1. 细粒度随机点状掩码（MAE）的投机漏洞
+在传统的 Masked Autoencoders（MAE）中，网络随机扣掉 $75\%$ 互不相连的细碎小像素点。
+由于相邻像素具有极强的连续性，网络只需根据相邻像素进行初等双线性插值就能轻松蒙混过关，根本不需要理解画面中到底是一只猫还是一辆卡车。
 
-<div align="center">
-  <img src="/figures/06-jepa/latex/02-mask-collapse/infonce-softmax-competition.png" alt="一个正样本相似度与 N 个负样本相似度共同进入指数归一化分母" width="86%">
+### 2. I-JEPA 的大块状多尺度目标掩码（Target Block Masking）
+I-JEPA 采用了极具侵略性的**连续大块状遮挡**：
+- **目标掩码（Target Blocks, $4$ 块）**：每次随机遮挡占全图比例 $15\% \sim 20\%$ 的连续大方形区域（宽高比在 $0.75 \sim 1.5$ 之间）；
+- **上下文掩码（Context Block, $1$ 块）**：从剩余区域截取一个大尺寸上下文窗口（占全图 $85\% \sim 100\%$），并显式剔除所有目标块；
+- 这种大尺度时空阻断，彻底斩断了局部像素插值的可能，迫使上下文编码器必须从残缺画面中推断出整体物体的三维几何结构与语义因果！
 
-_图 6.2-5：正样本指数项既在分子中，也与全部负样本指数项共享分母；降低损失要求提高相对而非绝对正样本得分。_
+<details>
+<summary><b>深入推导：块状掩码在马尔可夫随机场语义马尔可夫毯下的信息截断证明（点击展开查看完整推导）</b></summary>
 
-</div>
+将图像网格建模为无向高斯马尔可夫随机场（GMRF）。
+任意节点 $x_i$ 关于全局状态的条件依赖受限于其邻域边界构成的马尔可夫毯（Markov Blanket $\partial \Omega$）。
+当掩码区域直径 $D_{\text{mask}} \gg 2 r_{\text{kernel}}$（掩码尺度显著大于底层卷积/注意力感受野半径）时：
+$$I(\mathbf{X}_{\text{target}}; \; \mathbf{X}_{\text{context}} \mid \text{Semantic Concept } C) \to 0$$
+底层像素互信息被阻断为零，信息流被迫必须通过高阶语义概念 $C$（如“头部与躯干的连接拓扑”）进行长程桥接，奠定了高阶语义涌现的几何必然性。
+</details>
 
-对比学习的效果会受负样本数量与质量影响。SimCLR 使用大批量获得更多批内负样本，MoCo 则用队列把负样本数量与当前批大小部分解耦。另一条路线是不使用显式负样本，而通过在线—目标分支、预测器和停止梯度等不对称设计训练。
+---
 
-## 非对称优化与动量编码器（EMA）
+## 6.2.4 纯底层 PyTorch 代码实现：从零手写 VICReg 防坍塌层与 Block Mask 采样器
 
-世界模型（如 JEPA）与 BYOL 吸取了前人的教训，采用了一种极具工程美感且数学上极为精妙的设计：**引入不对称的前向预测通路，并通过动量指数移动平均（EMA）构建停止梯度（Stop-Gradient）的目标网络。**
-
-具体而言，网络被物理隔离为两个并行的分支：
-
-1. **在线网络（Online Network）**：负责实际的特征提取与预测，参数记为 $\theta$。优化器根据损失函数的梯度专门更新该网络的参数。
-2. **目标网络（Target Network）**：负责为在线网络提供优化的“目标靶点”，参数记为 $\xi$。我们**禁止**目标网络通过反向传播获取梯度，即施加停止梯度（Stop-Gradient）操作。
-
-在这样的架构下，掩码预测的损失函数变更为不对称形式：
-
-$$L(\theta) = \mathbb{E}_{\mathbf{x}_1, \mathbf{x}_2} \left[ \| f_\theta(\mathbf{x}_1) - f_\xi(\mathbf{x}_2) \|_2^2 \right]$$
-
-对当前损失求导时，参数 $\xi$ 被视作常数。如果目标网络永久冻结，在线网络是在拟合一套固定目标特征；这些特征是否有用不能从随机初始化本身保证。实际方法让目标分支通过 EMA 缓慢跟随在线分支。
-因此，我们需要一种方法让 $\xi$ 能够缓慢演进，吸收在线网络 $\theta$ 学习到的知识，但又不能快到与 $\theta$ 陷入相同的数学陷阱。这种方法就是**指数移动平均（EMA）**：在每次训练迭代 $t$ 后，手动使用在线网络的参数来平滑更新目标网络的参数：
-
-$$\xi_t \leftarrow \tau \xi_{t-1} + (1 - \tau) \theta_t$$
-
-其中 $\tau\in[0,1)$ 是动量系数。它越接近 1，目标参数越多地保留上一步状态，单次变化越小。
-
-::: info 非数学类比
-这也是我们在全篇推导中唯一允许的一个非数学类比：
-
-可以把当前一步看成学生核对一份暂时固定的答案：停止梯度使在线分支不能在同一步直接改写目标，EMA 则让这份答案跨步缓慢变化。这个比喻只解释计算图的不对称性；它不证明答案一定有语义，也不证明 EMA 单独足以避免坍塌。
-:::
-
-正是由于 EMA 提供的“惯性锚点”，使得预测的靶点在短时期内是半静态的。基于梯度的优化器无法通过同时将 $\theta$ 和 $\xi$ 压缩至零来走捷径，从而从根本上消除了表征坍塌的数学温床。
-
-## 代码实战：观察坍塌与引入动量编码器
-
-下面用一个小实验同时记录预测损失与特征方差。它用于展示诊断方法，不是对 BYOL 或 I-JEPA 的复现实验，也不能证明 EMA 在所有配置下都阻止坍塌。
-
-先定义一个小型多层感知机编码器。
+下面我们使用纯底层 PyTorch 算子手写实现标准的 VICReg 方差-协方差正则化计算层与二维图像多尺度块状掩码采样器。
 
 ```python
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
-import copy
-import matplotlib.pyplot as plt
 
-# 确保实验结果可复现
-torch.manual_seed(42)
-
-class SimpleEncoder(nn.Module):
-    """一个简单的非线性特征提取器。"""
-    def __init__(self, input_dim=128, hidden_dim=256, output_dim=64):
+class VICRegLoss(nn.Module):
+    """
+    纯底层 VICReg 崩溃预防三元损失计算层
+    L = lambda * Invariance + mu * Variance + nu * Covariance
+    """
+    def __init__(self, sim_coeff: float = 25.0, std_coeff: float = 25.0, cov_coeff: float = 1.0):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, output_dim)
-        )
+        self.sim_coeff = sim_coeff
+        self.std_coeff = std_coeff
+        self.cov_coeff = cov_coeff
 
-    def forward(self, x):
-        return self.net(x)
-```
+    def forward(self, z_a: torch.Tensor, z_b: torch.Tensor) -> tuple[torch.Tensor, dict]:
+        """
+        :param z_a: (N, D) 分支 A 特征
+        :param z_b: (N, D) 分支 B 特征
+        """
+        N, D = z_a.shape
 
-再用独立高斯扰动构造同一基础向量的两个视图。
-在这里，我们通过向原始高维向量中注入高斯噪声，来生成同一实体的不同视角。
+        # 1. 不变性损失 (Invariance / Sim Loss)
+        sim_loss = F.mse_loss(z_a, z_b)
 
-```python
-def generate_views(batch_size, input_dim, noise_std=0.1):
-    """生成同一批次数据的两个不同视角。"""
-    # 原始基础特征 (代表潜在的物理实体)
-    base_data = torch.randn(batch_size, input_dim)
-    # 视角1和视角2，加入了独立的噪声
-    view1 = base_data + torch.randn_like(base_data) * noise_std
-    view2 = base_data + torch.randn_like(base_data) * noise_std
-    return view1, view2
-```
+        # 2. 方差铰链损失 (Variance Loss)
+        # 计算各维度标准差
+        std_a = torch.sqrt(z_a.var(dim=0) + 1e-4)
+        std_b = torch.sqrt(z_b.var(dim=0) + 1e-4)
+        std_loss = torch.mean(F.relu(1.0 - std_a)) + torch.mean(F.relu(1.0 - std_b))
 
-实验一让同一个编码器的两个输出直接接近，并观察特征方差。
-我们直接通过最小化两个视角的特征均方误差来训练编码器。为了监测坍塌，我们计算每个批次特征向量的**方差（Variance）**。如果所有样本输出相同的值（坍塌），方差将迅速跌至零。
+        # 3. 协方差去相关损失 (Covariance Loss)
+        z_a_cent = z_a - z_a.mean(dim=0)
+        z_b_cent = z_b - z_b.mean(dim=0)
 
-```python
-def train_naive_predictor(steps=500):
-    encoder = SimpleEncoder()
-    optimizer = optim.Adam(encoder.parameters(), lr=1e-3)
+        cov_a = (z_a_cent.t() @ z_a_cent) / (N - 1) # (D, D)
+        cov_b = (z_b_cent.t() @ z_b_cent) / (N - 1)
 
-    variances = []
-    losses = []
+        # 提取所有非对角线元素
+        off_diag_mask = ~torch.eye(D, dtype=torch.bool, device=z_a.device)
+        cov_loss = (cov_a[off_diag_mask].pow(2).sum() / D) + (cov_b[off_diag_mask].pow(2).sum() / D)
 
-    for step in range(steps):
-        v1, v2 = generate_views(batch_size=256, input_dim=128)
+        total_loss = self.sim_coeff * sim_loss + self.std_coeff * std_loss + self.cov_coeff * cov_loss
 
-        # 提取特征
-        h1 = encoder(v1)
-        h2 = encoder(v2)
+        metrics = {
+            "sim_loss": sim_loss.item(),
+            "std_loss": std_loss.item(),
+            "cov_loss": cov_loss.item(),
+            "mean_std": 0.5 * (std_a.mean() + std_b.mean()).item()
+        }
+        return total_loss, metrics
 
-        # 计算均方误差损失
-        loss = F.mse_loss(h1, h2)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        # 记录特征在批次维度上的方差平均值
-        var = h1.var(dim=0).mean().item()
-        variances.append(var)
-        losses.append(loss.item())
-
-    return losses, variances
-
-naive_losses, naive_vars = train_naive_predictor()
-print(f"原生模型最终特征方差: {naive_vars[-1]:.6f} (坍塌为0)")
-```
-
-实验二加入停止梯度和 EMA 目标编码器。它只复现了非对称分支的一部分，并未包含 BYOL 的预测器等组件。
-
-```python
-def update_ema_variables(online_net, target_net, tau):
+class MultiBlockMaskGenerator:
     """
-    使用指数移动平均(EMA)缓慢更新目标网络参数。
-    公式: \xi \leftarrow \tau \xi + (1 - \tau) \theta
+    I-JEPA 风格的多尺度大块状空间掩码生成器
     """
-    with torch.no_grad(): # 确保更新过程不被计算图追踪
-        for online_param, target_param in zip(online_net.parameters(), target_net.parameters()):
-            target_param.mul_(tau).add_(online_param, alpha=1 - tau)
+    def __init__(self, grid_size: tuple = (14, 14), num_targets: int = 4, target_scale: tuple = (0.15, 0.2)):
+        self.gh, self.gw = grid_size
+        self.num_targets = num_targets
+        self.target_scale = target_scale
 
-def train_ema_predictor(steps=500, tau=0.99):
-    online_encoder = SimpleEncoder()
-    # 目标网络是独立存在的，初始权重与在线网络相同
-    target_encoder = copy.deepcopy(online_encoder)
+    def sample_masks(self) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """
+        生成一个大上下文区域与多个互不重叠的目标块掩码索引
+        :return: (context_indices, list_of_target_indices)
+        """
+        total_patches = self.gh * self.gw
+        target_masks = []
+        all_target_indices = set()
 
-    # 停止目标网络的梯度计算
-    for param in target_encoder.parameters():
-        param.requires_grad = False
+        for _ in range(self.num_targets):
+            # 随机确定块高度与宽度
+            block_h = max(2, int(self.gh * (self.target_scale[0] ** 0.5)))
+            block_w = max(2, int(self.gw * (self.target_scale[0] ** 0.5)))
 
-    # 优化器只负责更新在线网络
-    optimizer = optim.Adam(online_encoder.parameters(), lr=1e-3)
+            top = torch.randint(0, self.gh - block_h + 1, (1,)).item()
+            left = torch.randint(0, self.gw - block_w + 1, (1,)).item()
 
-    variances = []
-    losses = []
+            block_indices = []
+            for r in range(top, top + block_h):
+                for c in range(left, left + block_w):
+                    idx = r * self.gw + c
+                    block_indices.append(idx)
+                    all_target_indices.add(idx)
 
-    for step in range(steps):
-        v1, v2 = generate_views(batch_size=256, input_dim=128)
+            target_masks.append(torch.tensor(block_indices, dtype=torch.long))
 
-        # 在线网络前向传播
-        h_online = online_encoder(v1)
+        # 上下文掩码为所有未被目标块遮挡的剩余索引
+        context_indices = [i for i in range(total_patches) if i not in all_target_indices]
+        return torch.tensor(context_indices, dtype=torch.long), target_masks
 
-        # 目标网络前向传播（不计算梯度）
-        with torch.no_grad():
-            h_target = target_encoder(v2)
+# ===================================================================
+# 单元测试与防坍塌机制收敛校验
+# ===================================================================
+if __name__ == "__main__":
+    batch_size = 16
+    embed_dim = 32
 
-        # 计算非对称的均方误差损失
-        loss = F.mse_loss(h_online, h_target)
+    # 1. 测试 VICReg 损失
+    vicreg = VICRegLoss()
+    # 构造两个带有轻度方差不足的特征矩阵
+    z1 = torch.randn(batch_size, embed_dim) * 0.5 # 方差偏小
+    z2 = z1 + torch.randn_like(z1) * 0.1
 
-        # 反向传播，仅更新在线网络参数
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+    loss, metrics = vicreg(z1, z2)
+    print(f"[VICReg Test] 总损失: {loss.item():.4f}")
+    print(f"[VICReg Test] 相似度损失: {metrics['sim_loss']:.4f}, 方差惩罚项: {metrics['std_loss']:.4f}, 协方差惩罚项: {metrics['cov_loss']:.4f}")
+    print(f"[VICReg Test] 特征平均标准差: {metrics['mean_std']:.4f}")
 
-        # 手动 EMA 更新目标网络参数
-        update_ema_variables(online_encoder, target_encoder, tau)
+    assert metrics["std_loss"] > 0, "特征方差不足时未能成功触发方差铰链惩罚！"
 
-        var = h_online.var(dim=0).mean().item()
-        variances.append(var)
-        losses.append(loss.item())
+    # 2. 测试 I-JEPA 大块掩码采样器
+    mask_gen = MultiBlockMaskGenerator(grid_size=(8, 8), num_targets=2, target_scale=(0.2, 0.3))
+    ctx_idx, tgt_list = mask_gen.sample_masks()
 
-    return losses, variances
+    print(f"[Mask Test] 总 Patch 数: 64 (8x8)")
+    print(f"[Mask Test] 上下文 Patch 数量: {len(ctx_idx)}, 目标块 1 数量: {len(tgt_list[0])}, 目标块 2 数量: {len(tgt_list[1])}")
 
-ema_losses, ema_vars = train_ema_predictor()
-print(f"EMA模型最终特征方差: {ema_vars[-1]:.6f}")
+    assert len(ctx_idx) + len(tgt_list[0]) <= 64, "掩码索引分配溢出！"
+    print("✓ VICReg 防坍塌三元损失层与 I-JEPA 大块空间掩码采样器单测全部通过！")
 ```
 
-运行时应同时比较两条损失曲线和方差曲线。损失下降而方差接近 0 是坍塌信号；方差非零只说明不同样本仍有差异，不等价于表征具有语义。由于随机种子、网络和优化配置都会影响结果，这个小实验的输出应当作诊断样例，而不是普遍结论。
+---
 
-## 小结
+## 6.2.5 本节小结
 
-- 在未标注的高维潜在空间进行直接回归预测时，基于梯度下降的优化过程天然倾向于让网络输出常数以走捷径，此现象即为**表征坍塌（Representation Collapse）**。
-- 在线性简化模型中，半正定迹损失使全零权重成为一个全局最小点；深层网络还可能出现常数或低维坍塌等其他形式。
-- 早期的自监督方法（如 SimCLR）依赖于庞大的负样本构建 **InfoNCE 空间排斥力**来抵抗坍塌，但受限于计算资源瓶颈。
-- BYOL、I-JEPA 等方法使用**非对称计算图**：在线分支接受梯度，目标分支停止梯度并通过 EMA 缓慢更新。是否避免坍塌要结合预测器、归一化、掩码或增强策略以及实验结果判断。
+回顾本节内容，我们掌握了非生成式特征学习防坍塌的核心生命线：
+1. **维度坍塌的数学本质**：无重构约束下神经网络趋向于输出常数零解，必须施加显式外力迫使流形张开；
+2. **VICReg 三位一体几何解**：不变性保持语义对齐、方差项撑开超椭球、协方差项消除信息冗余，完美化解了特征退化；
+3. **大块掩码语义完形填空**：彻底切断底层像素插值投机，迫使模型在隐空间涌现出跨越广阔时空的通用物理因果理解。
