@@ -6,6 +6,16 @@
 
 这一将来自异构物理传感器的数据流转化为策略网络可处理特征的过程，被称为**多模态观测建模（Multimodal Observation Modeling）**。
 
+## 本章总览
+
+<div align="center">
+
+<img src="/figures/07-robot-policy/latex/01-multimodal-observation/chapter-overview.png" alt="第 7 章学习路线：从多模态具身状态到真机物理控制闭环" width="100%">
+
+_第 7 章学习路线：从多模态感知与身体动力学出发，通向生成式策略、VLA-JEPA 与真机控制。_
+
+</div>
+
 <div align="center">
 
 <img src="/figures/07-robot-policy/source/01-multimodal-observation/levine-fig1.png" alt="相机画面与机械臂构型共同进入视觉运动策略，输出直接驱动真实机器人。" width="86%">

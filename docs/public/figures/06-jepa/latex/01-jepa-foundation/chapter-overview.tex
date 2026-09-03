@@ -1,0 +1,75 @@
+\documentclass[tikz,border=0pt]{standalone}
+\usepackage[UTF8,fontset=none]{ctex}
+\setCJKmainfont[BoldFont={Hiragino Sans GB W6}]{Hiragino Sans GB W3}
+\setCJKsansfont[BoldFont={Hiragino Sans GB W6}]{Hiragino Sans GB W3}
+\usetikzlibrary{arrows.meta,calc}
+\definecolor{Canvas}{HTML}{FBFCFD}
+\definecolor{Ink}{HTML}{172B2F}
+\definecolor{Slate}{HTML}{52666A}
+\definecolor{Brand}{HTML}{25636A}
+\definecolor{col0fill}{HTML}{EAF6F7}
+\definecolor{col0stroke}{HTML}{25636A}
+\definecolor{col0text}{HTML}{194E54}
+\definecolor{col1fill}{HTML}{FFF3E8}
+\definecolor{col1stroke}{HTML}{D97745}
+\definecolor{col1text}{HTML}{9A4B26}
+\definecolor{col2fill}{HTML}{EDF7EF}
+\definecolor{col2stroke}{HTML}{4F8A5B}
+\definecolor{col2text}{HTML}{315D39}
+\definecolor{col3fill}{HTML}{F5EEFA}
+\definecolor{col3stroke}{HTML}{8E5AA7}
+\definecolor{col3text}{HTML}{613774}
+\definecolor{col4fill}{HTML}{FCEEF2}
+\definecolor{col4stroke}{HTML}{C45D78}
+\definecolor{col4text}{HTML}{87384E}
+\definecolor{col5fill}{HTML}{EAF4FA}
+\definecolor{col5stroke}{HTML}{4A7FA0}
+\definecolor{col5text}{HTML}{2D5872}
+\begin{document}
+\begin{tikzpicture}[
+  x=1cm,
+  y=1cm,
+  every node/.style={font=\sffamily},
+  card/.style={rounded corners=7pt, minimum height=2.15cm, inner sep=6pt, align=center, line width=0.8pt},
+  flow/.style={-{Stealth[length=5pt,width=4pt]}, line width=1.2pt, draw=Brand!75, rounded corners=5pt}
+]
+\path[use as bounding box] (0,0) rectangle (25,10);
+\fill[Canvas] (0,0) rectangle (25,10);
+\fill[Brand] (0,9.78) rectangle (25,10);
+\node[anchor=west, text=Ink] at (1,9.20) {\fontsize{18}{21}\selectfont\bfseries 第 6 章 · 联合嵌入预测架构};
+\node[anchor=west, text=Slate] at (1,8.55) {\fontsize{9.2}{11}\selectfont 从非生成式特征预测，到防坍塌、动量自举与特征空间规划};
+\draw[Brand!18, line width=0.7pt] (1,8.13) -- (24,8.13);
+\node[card, fill=col0fill, draw=col0stroke, text width=7.06cm] (s1) at (4.720,6.35) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col0text} 6.1\quad 联合嵌入与特征预测}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} I-JEPA 抛弃像素重构}
+};
+\node[card, fill=col1fill, draw=col1stroke, text width=7.06cm] (s2) at (12.500,6.35) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col1text} 6.2\quad 掩码机制与表示坍塌}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} 方差—协方差撑开表示空间}
+};
+\node[card, fill=col2fill, draw=col2stroke, text width=7.06cm] (s3) at (20.280,6.35) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col2text} 6.3\quad 目标网络}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} EMA 动量自举与跨 Patch 预测}
+};
+\node[card, fill=col3fill, draw=col3stroke, text width=7.06cm] (s4) at (20.280,2.55) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col3text} 6.4\quad 动作条件特征预测}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} Action-JEPA 时空动力学}
+};
+\node[card, fill=col4fill, draw=col4stroke, text width=7.06cm] (s5) at (12.500,2.55) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col4text} 6.5\quad JEPA 从零实现}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} Gather 索引与动量自举闭环}
+};
+\node[card, fill=col5fill, draw=col5stroke, text width=7.06cm] (s6) at (4.720,2.55) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col5text} 6.6\quad 视频 JEPA 简洁实现}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} 特征空间可微 MPC 轨迹优化}
+};
+\draw[flow] (s1.east) -- (s2.west);
+\draw[flow] (s2.east) -- (s3.west);
+\draw[flow] (s3.south) -- ++(0,-0.48) -| (s4.north);
+\draw[flow] (s4.west) -- (s5.east);
+\draw[flow] (s5.west) -- (s6.east);
+\node[anchor=west, rounded corners=4pt, fill=Brand!8, text=Brand, inner xsep=7pt, inner ysep=4pt] at (1,0.62) {\fontsize{7.2}{9}\selectfont\bfseries 学习路径};
+\node[anchor=west, text=Slate] at (3.25,0.62) {\fontsize{7.2}{9}\selectfont 概念建模 → 核心方法 → 工程实现 → 系统验证};
+\node[anchor=east, text=Slate!72] at (24,0.62) {\fontsize{6.6}{8}\selectfont HANDS-ON WORLD MODELS};
+\end{tikzpicture}
+\end{document}

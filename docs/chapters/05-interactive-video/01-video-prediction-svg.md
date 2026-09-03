@@ -8,6 +8,16 @@
 >
 > **故事线：** `从确定性下一帧走向随机未来 → 把长视频压缩成词元 → 用自回归或扩散生成时空内容 → 用缓存降低逐帧开销 → 注入动作并检验未来是否真的可控`
 
+## 本章总览
+
+<div align="center">
+
+<img src="/figures/05-interactive-video/latex/01-video-prediction-svg/chapter-overview.png" alt="第 5 章学习路线：从 SVG 视频预测到可控交互视频生成" width="100%">
+
+_第 5 章学习路线：串联随机视频预测、时空词元、扩散模型、流式加速与动作控制。_
+
+</div>
+
 视频预测（Video Prediction）给模型一段历史画面，要求它生成接下来可能出现的图像序列。它既要延续可预测的运动，又要表达遮挡、碰撞和未观测因素带来的多种未来。
 
 <div align="center">

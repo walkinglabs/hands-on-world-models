@@ -8,6 +8,16 @@
 >
 > **故事线：** `把经历写成转移与回合 → 正确存储、采样和切分 → 用价值与策略衡量长期结果 → 用 MPC 与 CEM 搜索动作 → 组装第一个数据—学习—决策闭环`
 
+## 本章总览
+
+<div align="center">
+
+<img src="/figures/03-data-and-first-model/latex/01-episodes-and-transitions/chapter-overview.png" alt="第 3 章学习路线：从经历与状态转移到强化学习实现" width="100%">
+
+_第 3 章学习路线：把交互数据、价值学习、模型预测控制和策略实现连成闭环。_
+
+</div>
+
 图像分类的数据在训练开始前通常已经固定；强化学习（Reinforcement Learning, RL）的数据却由智能体（Agent）与环境（Environment）边行动边产生。当前动作不仅贡献一条训练样本，还会改变下一时刻的状态以及以后能够收集到的数据。因此，交互记录必须保留时间顺序和回合边界。
 
 <div align="center">

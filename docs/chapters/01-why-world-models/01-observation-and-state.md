@@ -8,6 +8,16 @@
 >
 > **故事线：** `单帧观测不够 → 从历史中形成状态 → 用状态和动作预测未来 → 把高维画面压缩后再预测 → 在驾驶任务中检验预测能否帮助选择动作`
 
+## 本章总览
+
+<div align="center">
+
+<img src="/figures/01-why-world-models/latex/01-observation-and-state/chapter-overview.png" alt="第 1 章学习路线：从观测与状态到交互式驾驶" width="100%">
+
+_第 1 章学习路线：从不完备观测出发，建立可预测、可行动、可验证的世界模型闭环。_
+
+</div>
+
 在构建智能体（Agent）或世界模型（World Model）之前，需要先区分两个容易混用的概念：**观测（Observation）** 与 **状态（State）**。
 
 <div align="center">

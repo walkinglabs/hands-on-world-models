@@ -11,6 +11,7 @@
     "semantic:refresh": "node scripts/export-python-semantic-tokens.mjs",
     "semantic:check": "node scripts/check-python-semantic-tokens.mjs",
     "citations:check": "node scripts/check-citations.mjs",
+    "figures:overviews": "node scripts/render-chapter-overviews.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "verify": "npm run citations:check && npm run semantic:check && npm run format:check && npm run build"
@@ -35,7 +36,6 @@
   "dependencies": {
     "lucide-vue-next": "^1.0.0",
     "markdown-it-mathjax3": "^4.3.2",
-    "mermaid": "^11.17.2",
     "reka-ui": "^2.10.3"
   }
 }

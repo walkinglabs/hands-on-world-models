@@ -1,0 +1,115 @@
+\documentclass[tikz,border=0pt]{standalone}
+\usepackage[UTF8,fontset=none]{ctex}
+\setCJKmainfont[BoldFont={Hiragino Sans GB W6}]{Hiragino Sans GB W3}
+\setCJKsansfont[BoldFont={Hiragino Sans GB W6}]{Hiragino Sans GB W3}
+\usetikzlibrary{arrows.meta,calc}
+\definecolor{Canvas}{HTML}{FBFCFD}
+\definecolor{Ink}{HTML}{172B2F}
+\definecolor{Slate}{HTML}{52666A}
+\definecolor{Brand}{HTML}{25636A}
+\definecolor{col0fill}{HTML}{EAF6F7}
+\definecolor{col0stroke}{HTML}{25636A}
+\definecolor{col0text}{HTML}{194E54}
+\definecolor{col1fill}{HTML}{FFF3E8}
+\definecolor{col1stroke}{HTML}{D97745}
+\definecolor{col1text}{HTML}{9A4B26}
+\definecolor{col2fill}{HTML}{EDF7EF}
+\definecolor{col2stroke}{HTML}{4F8A5B}
+\definecolor{col2text}{HTML}{315D39}
+\definecolor{col3fill}{HTML}{F5EEFA}
+\definecolor{col3stroke}{HTML}{8E5AA7}
+\definecolor{col3text}{HTML}{613774}
+\definecolor{col4fill}{HTML}{FCEEF2}
+\definecolor{col4stroke}{HTML}{C45D78}
+\definecolor{col4text}{HTML}{87384E}
+\definecolor{col5fill}{HTML}{EAF4FA}
+\definecolor{col5stroke}{HTML}{4A7FA0}
+\definecolor{col5text}{HTML}{2D5872}
+\definecolor{col6fill}{HTML}{EAF6F7}
+\definecolor{col6stroke}{HTML}{25636A}
+\definecolor{col6text}{HTML}{194E54}
+\definecolor{col7fill}{HTML}{FFF3E8}
+\definecolor{col7stroke}{HTML}{D97745}
+\definecolor{col7text}{HTML}{9A4B26}
+\definecolor{col8fill}{HTML}{EDF7EF}
+\definecolor{col8stroke}{HTML}{4F8A5B}
+\definecolor{col8text}{HTML}{315D39}
+\definecolor{col9fill}{HTML}{F5EEFA}
+\definecolor{col9stroke}{HTML}{8E5AA7}
+\definecolor{col9text}{HTML}{613774}
+\definecolor{col10fill}{HTML}{FCEEF2}
+\definecolor{col10stroke}{HTML}{C45D78}
+\definecolor{col10text}{HTML}{87384E}
+\begin{document}
+\begin{tikzpicture}[
+  x=1cm,
+  y=1cm,
+  every node/.style={font=\sffamily},
+  card/.style={rounded corners=7pt, minimum height=2.15cm, inner sep=6pt, align=center, line width=0.8pt},
+  flow/.style={-{Stealth[length=5pt,width=4pt]}, line width=1.2pt, draw=Brand!75, rounded corners=5pt}
+]
+\path[use as bounding box] (0,0) rectangle (25,10);
+\fill[Canvas] (0,0) rectangle (25,10);
+\fill[Brand] (0,9.78) rectangle (25,10);
+\node[anchor=west, text=Ink] at (1,9.20) {\fontsize{18}{21}\selectfont\bfseries 第 7 章 · 具身策略大模型};
+\node[anchor=west, text=Slate] at (1,8.55) {\fontsize{9.2}{11}\selectfont 从多模态状态与身体动力学，到生成式策略、VLA-JEPA 与真机闭环};
+\draw[Brand!18, line width=0.7pt] (1,8.13) -- (24,8.13);
+\node[card, fill=col0fill, draw=col0stroke, text width=3.27cm] (s1) at (2.825,6.35) {%
+  {\fontsize{7.2}{8.9}\selectfont\bfseries\color{col0text} 7.1\quad 多模态异构观测}\par\vspace{2pt}
+  {\fontsize{5.8}{7.5}\selectfont\color{Slate} 视觉、触觉与本体感觉融合}
+};
+\node[card, fill=col1fill, draw=col1stroke, text width=3.27cm] (s2) at (6.695,6.35) {%
+  {\fontsize{7.2}{8.9}\selectfont\bfseries\color{col1text} 7.2\quad 灵巧手与灵巧操作}\par\vspace{2pt}
+  {\fontsize{5.8}{7.5}\selectfont\color{Slate} 接触、摩擦锥与微观滑移}
+};
+\node[card, fill=col2fill, draw=col2stroke, text width=3.27cm] (s3) at (10.565,6.35) {%
+  {\fontsize{7.2}{8.9}\selectfont\bfseries\color{col2text} 7.3\quad 双足人形与全身控制}\par\vspace{2pt}
+  {\fontsize{5.8}{7.5}\selectfont\color{Slate} 质心动量与 WBC 零空间}
+};
+\node[card, fill=col3fill, draw=col3stroke, text width=3.27cm] (s4) at (14.435,6.35) {%
+  {\fontsize{7.2}{8.9}\selectfont\bfseries\color{col3text} 7.4\quad 模仿学习基线}\par\vspace{2pt}
+  {\fontsize{5.8}{7.5}\selectfont\color{Slate} 行为克隆的协变量偏移与纠偏}
+};
+\node[card, fill=col4fill, draw=col4stroke, text width=3.27cm] (s5) at (18.305,6.35) {%
+  {\fontsize{7.2}{8.9}\selectfont\bfseries\color{col4text} 7.5\quad 扩散策略}\par\vspace{2pt}
+  {\fontsize{5.8}{7.5}\selectfont\color{Slate} 多模态轨迹分布与去噪动作}
+};
+\node[card, fill=col5fill, draw=col5stroke, text width=3.27cm] (s6) at (22.175,6.35) {%
+  {\fontsize{7.2}{8.9}\selectfont\bfseries\color{col5text} 7.6\quad ACT 动作分块}\par\vspace{2pt}
+  {\fontsize{5.8}{7.5}\selectfont\color{Slate} 高频时序对齐与动作平滑}
+};
+\node[card, fill=col6fill, draw=col6stroke, text width=3.27cm] (s7) at (22.175,2.55) {%
+  {\fontsize{7.2}{8.9}\selectfont\bfseries\color{col6text} 7.7\quad 视觉语言动作模型}\par\vspace{2pt}
+  {\fontsize{5.8}{7.5}\selectfont\color{Slate} RT-X 从静态策略到状态预测}
+};
+\node[card, fill=col7fill, draw=col7stroke, text width=3.27cm] (s8) at (18.305,2.55) {%
+  {\fontsize{7.2}{8.9}\selectfont\bfseries\color{col7text} 7.8\quad 原生具身大模型}\par\vspace{2pt}
+  {\fontsize{5.8}{7.5}\selectfont\color{Slate} OpenVLA 开源基座与空间对齐}
+};
+\node[card, fill=col8fill, draw=col8stroke, text width=3.27cm] (s9) at (14.435,2.55) {%
+  {\fontsize{7.2}{8.9}\selectfont\bfseries\color{col8text} 7.9\quad 世界动作模型}\par\vspace{2pt}
+  {\fontsize{5.8}{7.5}\selectfont\color{Slate} VLA-JEPA / WAM 隐空间具身推演}
+};
+\node[card, fill=col9fill, draw=col9stroke, text width=3.27cm] (s10) at (10.565,2.55) {%
+  {\fontsize{7.2}{8.9}\selectfont\bfseries\color{col9text} 7.10\quad 扩散策略从零实现}\par\vspace{2pt}
+  {\fontsize{5.8}{7.5}\selectfont\color{Slate} 可微去噪动作生成与策略优化}
+};
+\node[card, fill=col10fill, draw=col10stroke, text width=3.27cm] (s11) at (6.695,2.55) {%
+  {\fontsize{7.2}{8.9}\selectfont\bfseries\color{col10text} 7.11\quad 把世界模型接上身体}\par\vspace{2pt}
+  {\fontsize{5.8}{7.5}\selectfont\color{Slate} 端到端真机物理控制闭环}
+};
+\draw[flow] (s1.east) -- (s2.west);
+\draw[flow] (s2.east) -- (s3.west);
+\draw[flow] (s3.east) -- (s4.west);
+\draw[flow] (s4.east) -- (s5.west);
+\draw[flow] (s5.east) -- (s6.west);
+\draw[flow] (s6.south) -- ++(0,-0.48) -| (s7.north);
+\draw[flow] (s7.west) -- (s8.east);
+\draw[flow] (s8.west) -- (s9.east);
+\draw[flow] (s9.west) -- (s10.east);
+\draw[flow] (s10.west) -- (s11.east);
+\node[anchor=west, rounded corners=4pt, fill=Brand!8, text=Brand, inner xsep=7pt, inner ysep=4pt] at (1,0.62) {\fontsize{7.2}{9}\selectfont\bfseries 学习路径};
+\node[anchor=west, text=Slate] at (3.25,0.62) {\fontsize{7.2}{9}\selectfont 概念建模 → 核心方法 → 工程实现 → 系统验证};
+\node[anchor=east, text=Slate!72] at (24,0.62) {\fontsize{6.6}{8}\selectfont HANDS-ON WORLD MODELS};
+\end{tikzpicture}
+\end{document}

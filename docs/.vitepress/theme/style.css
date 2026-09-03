@@ -2019,10 +2019,7 @@ aside.VPSidebar {
 
 .vp-doc p > img[src*=".svg"],
 .vp-doc figure > img[src*=".svg"],
-.vp-doc > img[src*=".svg"],
-.vp-doc p > img[src*="mermaid"],
-.vp-doc figure > img[src*="mermaid"],
-.vp-doc > img[src*="mermaid"] {
+.vp-doc > img[src*=".svg"] {
   max-width: min(100%, 760px);
   max-height: none;
 }
@@ -2032,35 +2029,6 @@ aside.VPSidebar {
   font-size: 0.875em;
   margin-top: -0.75rem;
   text-align: center;
-}
-
-/* ===================================================
-   11. Mermaid Diagrams
-   =================================================== */
-.vp-doc .mermaid,
-.vp-doc pre.mermaid,
-.vp-doc div[class*="mermaid"],
-.vp-doc .mermaid-static,
-.mermaid-wrapper {
-  display: flex;
-  justify-content: center;
-  margin: 2.5rem 0;
-}
-
-.vp-doc .mermaid-static svg {
-  max-width: 100%;
-  height: auto;
-}
-
-.vp-doc .mermaid-static img {
-  max-width: 100%;
-  max-height: none;
-  height: auto;
-}
-
-.vp-doc .preface-structure-map .mermaid-static svg,
-.vp-doc .preface-structure-map .mermaid-static img {
-  max-height: none;
 }
 
 /* ===================================================

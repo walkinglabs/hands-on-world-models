@@ -8,6 +8,16 @@
 >
 > **故事线：** `从像素重构改为特征预测 → 用掩码制造上下文与目标 → 暴露常数表示的坍塌解 → 用不对称目标网络与 EMA 稳定学习 → 加入动作并展开多步未来`
 
+## 本章总览
+
+<div align="center">
+
+<img src="/figures/06-jepa/latex/01-jepa-foundation/chapter-overview.png" alt="第 6 章学习路线：从 JEPA 特征预测到具身感知与规划" width="100%">
+
+_第 6 章学习路线：从非生成式特征预测出发，经过防坍塌与动量自举，走向动作条件推演与规划。_
+
+</div>
+
 自监督学习（Self-Supervised Learning, SSL）从数据本身构造训练目标。像素重构是一种选择，预测另一部分数据的表征则是另一种选择。LeCun 在 _A Path Towards Autonomous Machine Intelligence_ 中系统阐述了联合嵌入预测架构（Joint-Embedding Predictive Architecture, JEPA）的设想 [[LeCun, 2022]](https://openreview.net/forum?id=BZ5a1r-kVsf)：给定上下文，在表征空间预测目标，而不要求还原目标的每个观测细节。
 
 <div align="center">

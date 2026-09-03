@@ -6,6 +6,16 @@
 
 本节我们将从墨子小孔成像的经典光学实验出发，层层推演针孔相机模型、齐次坐标、内参矩阵 $\mathbf{K}$ 与外参刚体变换矩阵 $[\mathbf{R} \mid \mathbf{t}]$，并使用纯底层 PyTorch 算子手写可批量加速的三维投影引擎。
 
+## 本章总览
+
+<div align="center">
+
+<img src="/figures/09-spatial-worlds/latex/01-camera-geometry/chapter-overview.png" alt="第 9 章学习路线：从相机几何到四维自动驾驶世界模型" width="100%">
+
+_第 9 章学习路线：从二维成像几何出发，通向三维占用、连续场、四维预测与驾驶规划。_
+
+</div>
+
 <div align="center">
 
 <img src="/figures/09-spatial-worlds/source/01-camera-geometry/dust3r-fig1.png" alt="DUSt3R 从未标定图像直接恢复稠密三维点图与相机关系，展示相机几何最终要支持的真实重建任务。" width="86%">

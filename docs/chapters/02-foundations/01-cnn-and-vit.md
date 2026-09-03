@@ -8,6 +8,16 @@
 >
 > **故事线：** `从图像提取结构 → 从序列保留历史 → 用连续或离散表示压缩观测 → 用自回归或扩散生成未来 → 从零实现并组装训练循环`
 
+## 本章总览
+
+<div align="center">
+
+<img src="/figures/02-foundations/latex/01-cnn-and-vit/chapter-overview.png" alt="第 2 章学习路线：从 CNN 与 ViT 到基础组件实现" width="100%">
+
+_第 2 章学习路线：串联空间表征、时序建模、隐空间压缩与生成模型实现。_
+
+</div>
+
 ## 引言与历史追溯
 
 在计算机视觉的发展中，手工特征与神经网络曾长期并行演进。LeCun 等人的早期卷积网络已能从数据中学习用于手写数字识别的特征 [[LeCun et al., 1989]](https://doi.org/10.1162/neco.1989.1.4.541)；2012 年，AlexNet 又在 ImageNet 分类任务上显著降低了错误率 [[Krizhevsky et al., 2012]](https://proceedings.neurips.cc/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html)。这两项工作分别展示了卷积网络的早期可行性与大规模视觉任务上的突破。

@@ -1,0 +1,91 @@
+\documentclass[tikz,border=0pt]{standalone}
+\usepackage[UTF8,fontset=none]{ctex}
+\setCJKmainfont[BoldFont={Hiragino Sans GB W6}]{Hiragino Sans GB W3}
+\setCJKsansfont[BoldFont={Hiragino Sans GB W6}]{Hiragino Sans GB W3}
+\usetikzlibrary{arrows.meta,calc}
+\definecolor{Canvas}{HTML}{FBFCFD}
+\definecolor{Ink}{HTML}{172B2F}
+\definecolor{Slate}{HTML}{52666A}
+\definecolor{Brand}{HTML}{25636A}
+\definecolor{col0fill}{HTML}{EAF6F7}
+\definecolor{col0stroke}{HTML}{25636A}
+\definecolor{col0text}{HTML}{194E54}
+\definecolor{col1fill}{HTML}{FFF3E8}
+\definecolor{col1stroke}{HTML}{D97745}
+\definecolor{col1text}{HTML}{9A4B26}
+\definecolor{col2fill}{HTML}{EDF7EF}
+\definecolor{col2stroke}{HTML}{4F8A5B}
+\definecolor{col2text}{HTML}{315D39}
+\definecolor{col3fill}{HTML}{F5EEFA}
+\definecolor{col3stroke}{HTML}{8E5AA7}
+\definecolor{col3text}{HTML}{613774}
+\definecolor{col4fill}{HTML}{FCEEF2}
+\definecolor{col4stroke}{HTML}{C45D78}
+\definecolor{col4text}{HTML}{87384E}
+\definecolor{col5fill}{HTML}{EAF4FA}
+\definecolor{col5stroke}{HTML}{4A7FA0}
+\definecolor{col5text}{HTML}{2D5872}
+\definecolor{col6fill}{HTML}{EAF6F7}
+\definecolor{col6stroke}{HTML}{25636A}
+\definecolor{col6text}{HTML}{194E54}
+\definecolor{col7fill}{HTML}{FFF3E8}
+\definecolor{col7stroke}{HTML}{D97745}
+\definecolor{col7text}{HTML}{9A4B26}
+\begin{document}
+\begin{tikzpicture}[
+  x=1cm,
+  y=1cm,
+  every node/.style={font=\sffamily},
+  card/.style={rounded corners=7pt, minimum height=2.15cm, inner sep=6pt, align=center, line width=0.8pt},
+  flow/.style={-{Stealth[length=5pt,width=4pt]}, line width=1.2pt, draw=Brand!75, rounded corners=5pt}
+]
+\path[use as bounding box] (0,0) rectangle (25,10);
+\fill[Canvas] (0,0) rectangle (25,10);
+\fill[Brand] (0,9.78) rectangle (25,10);
+\node[anchor=west, text=Ink] at (1,9.20) {\fontsize{18}{21}\selectfont\bfseries 第 4 章 · 潜在动力学模型};
+\node[anchor=west, text=Slate] at (1,8.55) {\fontsize{9.2}{11}\selectfont 从视觉—记忆—控制解耦，到隐空间规划、梦境学习与价值等价};
+\draw[Brand!18, line width=0.7pt] (1,8.13) -- (24,8.13);
+\node[card, fill=col0fill, draw=col0stroke, text width=5.12cm] (s1) at (3.748,6.35) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col0text} 4.1\quad World Models}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} 视觉、记忆与控制三元解耦}
+};
+\node[card, fill=col1fill, draw=col1stroke, text width=5.12cm] (s2) at (9.582,6.35) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col1text} 4.2\quad RSSM}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} 确定性与随机隐状态双轨}
+};
+\node[card, fill=col2fill, draw=col2stroke, text width=5.12cm] (s3) at (15.418,6.35) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col2text} 4.3\quad PlaNet}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} 潜空间 CEM 在线规划}
+};
+\node[card, fill=col3fill, draw=col3stroke, text width=5.12cm] (s4) at (21.252,6.35) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col3text} 4.4\quad DreamerV1}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} 梦境 Actor–Critic 与 Lambda 回报}
+};
+\node[card, fill=col4fill, draw=col4stroke, text width=5.12cm] (s5) at (21.252,2.55) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col4text} 4.5\quad DreamerV2 / V3}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} 离散隐变量与统一稳定化}
+};
+\node[card, fill=col5fill, draw=col5stroke, text width=5.12cm] (s6) at (15.418,2.55) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col5text} 4.6\quad MuZero}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} 价值等价表示与潜在树搜索}
+};
+\node[card, fill=col6fill, draw=col6stroke, text width=5.12cm] (s7) at (9.582,2.55) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col6text} 4.7\quad RSSM 从零实现}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} 时序张量流水线与解码}
+};
+\node[card, fill=col7fill, draw=col7stroke, text width=5.12cm] (s8) at (3.748,2.55) {%
+  {\fontsize{8.3}{10}\selectfont\bfseries\color{col7text} 4.8\quad 想象训练的简洁实现}\par\vspace{2pt}
+  {\fontsize{6.6}{8.299999999999999}\selectfont\color{Slate} 误差界、泛化与控制平滑度}
+};
+\draw[flow] (s1.east) -- (s2.west);
+\draw[flow] (s2.east) -- (s3.west);
+\draw[flow] (s3.east) -- (s4.west);
+\draw[flow] (s4.south) -- ++(0,-0.48) -| (s5.north);
+\draw[flow] (s5.west) -- (s6.east);
+\draw[flow] (s6.west) -- (s7.east);
+\draw[flow] (s7.west) -- (s8.east);
+\node[anchor=west, rounded corners=4pt, fill=Brand!8, text=Brand, inner xsep=7pt, inner ysep=4pt] at (1,0.62) {\fontsize{7.2}{9}\selectfont\bfseries 学习路径};
+\node[anchor=west, text=Slate] at (3.25,0.62) {\fontsize{7.2}{9}\selectfont 概念建模 → 核心方法 → 工程实现 → 系统验证};
+\node[anchor=east, text=Slate!72] at (24,0.62) {\fontsize{6.6}{8}\selectfont HANDS-ON WORLD MODELS};
+\end{tikzpicture}
+\end{document}
