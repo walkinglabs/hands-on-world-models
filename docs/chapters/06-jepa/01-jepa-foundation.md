@@ -57,19 +57,42 @@ _图 6.1-1：Yann LeCun 提出的 JEPA 联合嵌入预测架构：上下文编�
 
 ## 6.1.1 物理与认知基石：人类心智的非生成式抽象预测
 
-要理解 JEPA 的颠覆性，我们首先从初等力学审视人类过马路时的直觉物理推演。
+要深刻理解 JEPA 的颠覆性，我们必须从经典力学的**动力学状态分解**与信息论的**率失真理论（Rate-Distortion Theory）**审视自然物理观测。
 
-### 1. 人类大脑的“非像素化”认知
-当一个人准备横穿马路时，看到远处有一辆红色轿车以 $60\text{ km/h}$ 驶来：
-- 人类大脑绝对不会在脑海中精细渲染出轿车前保险杠上的微小刮痕、挡风玻璃上的雨刮器水渍或车轮轮毂旋转产生的一千万个微观像素点；
-- 大脑仅仅在极度抽象的概念空间中提取出物体的**核心物理拓扑与动力学属性**：“质量约 1.5 吨、速度向东、2 秒后到达路口中央”；
-- 大脑直接在这个高度抽象的特征空间中预测：“2 秒后路口危险”，并做出立即驻足等待的决策。
+### 1. 物理观测的“任务相关状态”与“不可约高频噪声”正交分解
+在自然物理世界中，任意高维物理观测 $\mathbf{x} \in \mathbb{R}^{H \times W \times C}$ 均可以严格分解为两部分：
 
-### 2. JEPA 的核心哲学：抽象空间的无噪推演
-JEPA 彻底废除了像素解码器（Pixel Decoder）：
-- **上下文编码器（Context Encoder）**：将输入观测 $\mathbf{x}$ 映射为高阶语义向量 $\mathbf{s}_x$；
-- **目标编码器（Target Encoder）**：将未来真实观测 $\mathbf{y}$ 映射为目标语义向量 $\mathbf{s}_y$；
-- **潜在预测器（Predictor）**：在特征隐空间中，依据当前状态 $\mathbf{s}_x$ 与潜在扰动/动作 $\mathbf{z}$，直接预测未来的目标特征 $\hat{\mathbf{s}}_y$！
+$$\mathbf{x} = \mathbf{s}^*(\mathbf{x}) + \boldsymbol{\epsilon}(\mathbf{x})$$
+
+- **动力学充分统计量 $\mathbf{s}^*(\mathbf{x}) \in \mathcal{S}$**：支配宏观物体运动、接触碰撞与因果时空演进的核心几何拓扑与物理量（例如汽车的位置、速度、机械臂末端位姿、障碍物包围盒）；
+- **不可约高熵白噪 $\boldsymbol{\epsilon}(\mathbf{x}) \in \mathcal{E}$**：与宏观物理决策完全无关的微观微扰（例如树叶随风摆动的相位、路面反光微观散斑、电视机屏幕雪花点）。
+
+### 2. 生成式像素重构的“算力吞噬陷阱”
+传统生成式模型（如 VAE、扩散模型、自回归视频生成）强制优化全像素均方误差（MSE）：
+
+$$\mathcal{L}_{\text{pixel}} = \|\mathbf{x} - \hat{\mathbf{x}}\|_2^2 = \underbrace{\|\mathbf{s}^*(\mathbf{x}) - \hat{\mathbf{s}}^*(\mathbf{x})\|_2^2}_{\text{宏观物理因果误差（仅占 } 5\% \text{ 能量）}} + \underbrace{\|\boldsymbol{\epsilon}(\mathbf{x}) - \hat{\boldsymbol{\epsilon}}(\mathbf{x})\|_2^2}_{\text{微观不可约噪声（占 } 95\% \text{ 能量）}}$$
+
+由于高频噪声 $\boldsymbol{\epsilon}(\mathbf{x})$ 的信息熵极大，网络为了最小化 MSE，被迫将 $95\%$ 以上的模型容量与显存带宽浪费在死记硬背不可预测的像素细节上，导致宏观动力学推演能力被严重稀释。
+
+### 3. JEPA 的核心哲学：抽象空间的无噪推演
+JEPA 彻底废除了像素解码器（Pixel Decoder），构建了纯特征空间的因果推演三元架构：
+- **上下文编码器（Context Encoder $E_\theta$）**：作为低通语义投影算子，将输入观测 $\mathbf{x}$ 过滤为高阶状态向量 $\mathbf{s}_x = E_\theta(\mathbf{x})$，主动丢弃微观噪声 $\boldsymbol{\epsilon}$；
+- **目标编码器（Target Encoder $E_\phi$）**：将未来真实观测 $\mathbf{y}$ 提取为目标语义向量 $\mathbf{s}_y = E_\phi(\mathbf{y})$；
+- **潜在预测器（Predictor $P_\psi$）**：在纯潜空间中，依据当前状态 $\mathbf{s}_x$ 与驱动变量/动作 $\mathbf{z}$，直接推演未来目标特征 $\hat{\mathbf{s}}_y = P_\psi(\mathbf{s}_x, \mathbf{z})$！
+
+<details>
+<summary><b>深入探讨：从信息瓶颈原理（Information Bottleneck）推导 JEPA 的极小充分表征</b></summary>
+
+根据 Tishby 的**信息瓶颈理论（Information Bottleneck, IB）**，最优世界模型表征 $\mathbf{s}_x$ 应满足以下受约束的变分优化目标：
+
+$$\min_{P(\mathbf{s}_x \mid \mathbf{x})} \; I(\mathbf{x}; \mathbf{s}_x) - \beta \cdot I(\mathbf{s}_x; \mathbf{y})$$
+
+其中 $I(\cdot ; \cdot)$ 为互信息（Mutual Information），$\beta > 0$ 为拉格朗日乘子：
+1. **压缩项 $\min I(\mathbf{x}; \mathbf{s}_x)$**：尽可能消除与未来预测无关的原始输入细节（即抹除微观噪声 $\boldsymbol{\epsilon}$）；
+2. **预测项 $\max I(\mathbf{s}_x; \mathbf{y})$**：尽可能保留能够决定未来目标 $\mathbf{y}$ 的因果动力学信息。
+
+JEPA 双编码器架构天然充当了这一信息瓶颈：编码器只保留能够预测目标 $\mathbf{s}_y$ 的最小充分统计量，从而在有限的神经网络容量下实现了最高的物理推演效率！
+</details>
 
 <div align="center">
 
