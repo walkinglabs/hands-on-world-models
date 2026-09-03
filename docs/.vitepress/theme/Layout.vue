@@ -228,58 +228,14 @@ watch([fontSize, lineHeight, docWidth], () => {
   saveReadingSettings();
 });
 
-async function renderMermaid() {
-  if (typeof document === "undefined") return;
-  const elements = document.querySelectorAll(".mermaid:not([data-processed='true'])");
-  if (elements.length === 0) return;
-
-  try {
-    const mermaidModule = await import("mermaid");
-    const mermaid = mermaidModule.default || mermaidModule;
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: isDark.value ? "dark" : "default",
-      securityLevel: "loose",
-      fontFamily: "inherit",
-    });
-    for (const el of elements) {
-      const graphDefinition = el.getAttribute("data-content") || el.textContent || "";
-      if (!graphDefinition.trim()) continue;
-      el.setAttribute("data-content", graphDefinition);
-      el.setAttribute("data-processed", "true");
-      const id = "mermaid-" + Math.random().toString(36).substring(2, 9);
-      try {
-        const { svg } = await mermaid.render(id, graphDefinition);
-        el.innerHTML = svg;
-      } catch (err) {
-        console.error("Mermaid render error:", err);
-      }
-    }
-  } catch (err) {
-    console.error("Failed to load mermaid:", err);
-  }
-}
-
 watch(sidebarCollapsed, applySidebarState);
-
-watch(isDark, () => {
-  if (typeof document !== "undefined") {
-    document.querySelectorAll('.mermaid[data-processed="true"]').forEach((el) => {
-      el.removeAttribute("data-processed");
-    });
-  }
-  nextTick(() => setTimeout(renderMermaid, 50));
-});
 
 watch(
   () => route.path,
   () => {
     markGroupToken++;
     // 用 setTimeout 而非 requestAnimationFrame，后台标签页下也能执行
-    nextTick(() => {
-      setTimeout(markActiveSidebarGroup, 0);
-      setTimeout(renderMermaid, 50);
-    });
+    nextTick(() => setTimeout(markActiveSidebarGroup, 0));
   },
 );
 
@@ -305,7 +261,6 @@ onMounted(() => {
   nextTick(() => {
     syncGroupState();
     markActiveSidebarGroup();
-    setTimeout(renderMermaid, 100);
   });
 });
 </script>

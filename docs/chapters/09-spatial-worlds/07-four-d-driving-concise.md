@@ -111,38 +111,16 @@ $$V^*(\mathbf{s}) = \max_{\mathbf{a} \in \mathcal{A}} \left[ \mathcal{R}(\mathbf
 
 ## 9.7.3 核心数学推导二：时空防碰撞代价函数与轨迹平滑优化
 
-在生成未来驾驶轨迹时，规划器从多条候选轨迹族中通过**可微代价函数（Cost Function）**进行最优轨迹评分与筛选。
+在生成未来驾驶轨迹时，规划器从候选轨迹族中通过**可微代价函数（Cost Function）**进行最优轨迹打分与筛选。
 
-设一条候选轨迹在未来 $H$ 步的时间空间坐标序列为 $\tau = \{\mathbf{x}_1, \mathbf{x}_2, \dots, \mathbf{x}_H\}$，控制周期时间间隔为 $\Delta t = 0.5\text{ s}$。轨迹的总代价函数由三个具有明确物理意义的项加权构成：
+设一条候选轨迹在未来 $H$ 步的空间坐标为 $\tau = \{\mathbf{x}_1, \mathbf{x}_2, \dots, \mathbf{x}_H\}$。轨迹的总代价函数定义为：
 
-$$J(\tau) = w_{\text{coll}} \cdot \mathcal{J}_{\text{coll}}(\tau) + w_{\text{smooth}} \cdot \mathcal{J}_{\text{smooth}}(\tau) + w_{\text{goal}} \cdot \mathcal{J}_{\text{goal}}(\tau)$$
+$$J(\tau) = w_{\text{coll}} \sum_{t=1}^H \text{SoftOccupancy}(\mathbf{x}_t, t) + w_{\text{smooth}} \sum_{t=2}^{H-1} \|\mathbf{x}_{t+1} - 2\mathbf{x}_t + \mathbf{x}_{t-1}\|_2^2 + w_{\text{goal}} \|\mathbf{x}_H - \mathbf{x}_{\text{target}}\|_2^2$$
 
-### 1. 三大物理代价项详细分解
-1. **时空碰撞代价项（Spatiotemporal Collision Cost）**：
-   $$\mathcal{J}_{\text{coll}}(\tau) = \sum_{t=1}^H \hat{\mathcal{O}}_t(\mathbf{x}_t)$$
-   将轨迹在时刻 $t$ 的坐标 $\mathbf{x}_t = (x_t, y_t, z_t)$ 代入世界模型预测出的第 $t$ 步三维占据网格 $\hat{\mathcal{O}}_t$ 中。若轨迹穿过障碍物体素，占据概率 $\hat{\mathcal{O}}_t \approx 1.0$，代价累加剧增；若穿过空旷空气，$\hat{\mathcal{O}}_t \approx 0.0$，代价格外微小；
-2. **舒适度与平滑度代价项（Smoothness & Jerk Cost）**：
-   利用二阶差分近似计算自车在每个时刻的加速度与急动度（Jerk）：
-   $$\mathcal{J}_{\text{smooth}}(\tau) = \sum_{t=2}^{H-1} \left\| \frac{\mathbf{x}_{t+1} - 2\mathbf{x}_t + \mathbf{x}_{t-1}}{\Delta t^2} \right\|_2^2$$
-   惩罚急加速、急刹车与猛打方向盘，保证乘坐的物理平稳性；
-3. **导航终点抵达代价项（Goal Reaching Cost）**：
-   $$\mathcal{J}_{\text{goal}}(\tau) = \|\mathbf{x}_H - \mathbf{x}_{\text{target}}\|_2^2$$
-   保证车辆在未来第 $H$ 步时能够精准到达导航路径给出的目标路点。
-
-### 2. 轨迹决策手算代入对比算例
-设自车正前方 $20\text{ m}$ 处有一辆静止故障车（其体素占据概率 $\hat{\mathcal{O}} = 0.95$）。规划器生成了两条候选轨迹（时间步 $H = 2$，目标终点 $\mathbf{x}_{\text{target}} = [0, 25]^\top$）：
-- **轨迹 A（保持直行）**：$\mathbf{x}_1 = [0, 10]^\top, \mathbf{x}_2 = [0, 20]^\top$（直接撞上静止故障车，$\hat{\mathcal{O}}(\mathbf{x}_2) = 0.95$）；
-- **轨迹 B（提前平滑变道）**：$\mathbf{x}_1 = [1.5, 10]^\top, \mathbf{x}_2 = [3.0, 20]^\top$（从右侧车道绕行，所有经过体素均为空气 $\hat{\mathcal{O}} = 0.02$；变道带来微小的横向加速度代价 $\mathcal{J}_{\text{smooth}} = 0.12$；终点偏离目标 $3\text{ m}$，$\mathcal{J}_{\text{goal}} = 3^2 = 9.0$）。
-
-设定权重：$w_{\text{coll}} = 100.0, w_{\text{smooth}} = 10.0, w_{\text{goal}} = 1.0$。
-
-我们来手算两者的总代价：
-1. **计算轨迹 A 代价**：
-   $$J(\text{A}) = 100.0 \times (0.0 + 0.95) + 10.0 \times 0.0 + 1.0 \times (25 - 20)^2 = 95.0 + 0.0 + 25.0 = 120.0$$
-2. **计算轨迹 B 代价**：
-   $$J(\text{B}) = 100.0 \times (0.02 + 0.02) + 10.0 \times 0.12 + 1.0 \times (3^2 + 5^2) = 4.0 + 1.2 + 34.0 = 39.2$$
-
-因为 $J(\text{B}) = 39.2 \ll J(\text{A}) = 120.0$，系统以压倒性的优势胜出并果断执行轨迹 B 变道绕行动作！整个决策过程全部由透明可解释的初等代数与力学物理代价清晰驱动！
+> **公式符号逐一拆解**：
+> - 第一项 **碰撞代价（Collision Cost）**：将轨迹点坐标代入四维占据网格中，如果轨迹穿过了高占据概率的障碍物体素，代价呈指数级暴增；
+> - 第二项 **平滑度代价（Smoothness / Jerk Cost）**：利用二阶差分近似计算物理加速度 $\mathbf{a}_t \approx \frac{\mathbf{x}_{t+1} - 2\mathbf{x}_t + \mathbf{x}_{t-1}}{\Delta t^2}$，惩罚急刹急转，确保乘坐舒适度；
+> - 第三项 **导航目标代价（Goal Reaching Cost）**：确保车辆最终能够准确抵达目标导航路点。
 
 <details>
 <summary><b>深入推导：二次规划（QP）轨迹平滑优化与 KKT 极值代数推导（点击展开查看完整推导）</b></summary>

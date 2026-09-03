@@ -1,305 +1,279 @@
-# 4.1 World Models: 视觉-记忆-控制三元架构 (Ha & Schmidhuber, 2018)
+# 4.1 World Models：压缩观测并预测潜在未来
 
-在人工智能探索具身智能与世界模型的历史长河中，2018 年由 David Ha 与 Jürgen Schmidhuber 联合发表的开创性论文 **《World Models》**，被公认为点燃现代神经世界模型革命的“普罗米修斯之火”。
+> **本章导读**
+>
+> **讲什么：** 本章研究第一条完整路线：不在像素空间里直接推演，而是把观测压缩成潜在状态，再学习状态随动作如何变化。我们会沿着 World Models、RSSM、PlaNet、Dreamer 与 MuZero 的设计变化，比较“重建世界、规划动作、训练策略、只保留决策信息”这几种不同目标。
+>
+> **为什么要在潜空间中建模：** 一张赛车画面可能有几十万个像素，但决定转弯的往往只是道路形状、车速和姿态。逐像素预测不仅昂贵，还会把树叶抖动等无关细节当成主要任务；压缩后的状态若保留了行动所需的信息，就能用更小的模型展开更长的未来。
+>
+> **故事线：** `压缩观测并学习转移 → 用确定性记忆和随机状态组成 RSSM → 在潜空间搜索动作 → 在想象轨迹中训练策略 → 提高跨任务稳健性 → 只预测规划所需的奖励、价值与策略`
 
-在此之前，绝大多数强化学习算法都在尝试训练一个庞大的端到端神经网络：将高维图像像素直接映射为底层电机动作。这种做法将“看懂世界（视觉感知）”、“预测世界演变（物理动力学）”与“做出决策（控制策略）”三项截然不同且难度极高的认知任务强行混杂在一个网络中，导致模型不仅训练极度缓慢，更极易发生灾难性遗忘。
+深度强化学习的早期突破主要来自无模型方法。例如，DQN 通过拟合动作价值函数，直接从 Atari 像素与游戏得分学习控制策略 [[Mnih et al., 2015]](https://doi.org/10.1038/nature14236)。这项结果针对离散动作的 Atari 游戏，并不覆盖连续控制；它同时也说明了一个工程问题：仅靠真实或仿真的环境交互往往需要大量样本。
 
-Ha 与 Schmidhuber 借鉴认知神经科学中人类大脑的运行机理，首次提出了优雅绝伦的 **V-M-C 认知三元解耦架构**：
-- **V 模型（Vision / 视觉感官）**：将每秒数百万个光子像素的高维图像无损压缩为紧凑的低维空间特征向量；
-- **M 模型（Memory / 潜意识记忆）**：根据历史所见与当前动作，在脑海深处高频推演未来世界可能发生的概率分布；
-- **C 模型（Controller / 极简运动控制器）**：仅凭借微小的参数量，依据视觉特征与记忆推演，输出精准的运动控制指令。
-
-本节我们将从初等物理运动学与多峰高斯混合分布出发，严密推导 V-M-C 三元架构的协同机理、MDN-RNN 混合密度网络的前向方程与演化优化策略，并使用纯底层 PyTorch 从零手写一个完整的 World Models 系统。
-
----
-
-## 【第 4 章全景认知脉络与递进逻辑图】
-
-本章进入现代世界模型演进史最波澜壮阔的核心地带——**潜在动力学模型（Latent Dynamics Models）**。从 2018 年 Ha & Schmidhuber 首次提出 V-M-C 认知解耦，到 RSSM 双轨动力学、PlaNet 潜空间规划，再到 DreamerV1-V3 梦境强化学习与 MuZero 隐式价值等价模型，第 4 章由一条**“如何让智能体在纯潜空间中想象世界、演化策略并做出超越人类直觉的高精度决策”**的严密技术演化主线贯穿：
-
-```mermaid
-flowchart TD
-    A["4.1 开山之作 World Models<br/>(V-M-C 视觉/记忆/控制三元解耦 + 脑内梦境演化)"] -->|"分步训练导致时序误差累积，需要端到端双轨动力学"| B["4.2 循环状态空间模型 RSSM<br/>(确定性 GRU + 随机高斯双轨 + KL 平衡)"]
-    B -->|"利用紧凑潜空间进行极速前向推演"| C["4.3 纯潜空间在线规划 PlaNet<br/>(完全脱离像素渲染，高并发 CEM 轨迹择优)"]
-    C -->|"在线规划具有计算延迟，内化为直觉策略"| D["4.4 潜空间梦境强化学习 DreamerV1<br/>(Actor-Critic + Lambda 回报 + 端到端可微解析梯度)"]
-    D -->|"连续高斯面对物理阶跃突变均值模糊"| E["4.5 离散分类隐变量与大一统 DreamerV2/V3<br/>(32x32 离散矩阵 + Symlog + 两热回归)"]
-    E -->|"彻底卸载像素重构，纯粹服务于决策"| F["4.6 价值等价隐式世界模型 MuZero<br/>(转移/奖励/价值三位一体 + 潜在 MCTS 树搜索)"]
-    F -->|"理论向纯底层代码落地"| G["4.7 完整 RSSM 世界模型从零实现<br/>(高维时序张量流水线 + 转置卷积解码)"]
-    G -->|"全景总结与泛化分析"| H["4.8 潜空间动力学核心精讲<br/>(仿真引理二次发散误差界 + 控制平滑度)"]
-
-    style A fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
-    style B fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    style D fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-    style E fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px
-    style F fill:#fce4ec,stroke:#c2185b,stroke-width:2px
-    style H fill:#e0f2f1,stroke:#00796b,stroke-width:2px
-```
-
-### 本章递进逻辑深度拆解：
-1. **4.1 节（世界模型开山鼻祖）**：确立 V-M-C 认知三元解耦，首次证明智能体可以在完全脱离物理环境的“脑内梦境”中演化出顶尖控制策略；
-2. **4.2 节（双轨动力学奠基）**：提出 RSSM（循环状态空间模型），以“确定性 GRU 骨架 + 随机高斯潜变量”完美化解纯确定性 RNN 的过拟合与纯随机 VAE 的信息丢失；
-3. **4.3 节（纯潜空间极速推演）**：PlaNet 彻底卸载像素解码器，在紧凑潜在流形中以每秒数万步的速度展开 CEM 轨迹规划；
-4. **4.4 节（直觉内化与梦境梯度）**：DreamerV1 在潜空间预先训练 Actor-Critic，沿推演路径反传解析可微梯度，实现毫秒级肌肉记忆反应；
-5. **4.5 节（大一统无超参通用模型）**：DreamerV2 引入 $32 \times 32$ 离散分类潜变量攻克物理阶跃，DreamerV3 凭借 Symlog 与两热回归实现通吃一切领域的无超参泛化；
-6. **4.6 节（极简隐式价值等价）**：MuZero 彻底抛弃像素重构包袱，纯粹预测决策相关的转移、奖励与价值，结合 MCTS 树搜索横扫棋盘与动作博弈；
-7. **4.7 & 4.8 节（从零实现与仿真引理）**：手写完整 RSSM 训练流水线，并推导仿真引理（Simulation Lemma）误差二次发散的数学本质！
+在这样的背景下，Ha 和 Schmidhuber 给出了由视觉模型、记忆模型与控制器组成的 **World Models** 框架 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。它把表征学习、动力学建模与控制器优化拆成可以分别训练的组件。CarRacing 实验在真实环境中优化控制器，并使用世界模型提供的潜在特征；VizDoom 实验才把控制器完全放到学到的潜在环境中训练，再迁回真实游戏。论文没有证明该方法能以极少交互适用于任意复杂任务。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/01-world-models/wm-fig10.png" alt="同一帧 CarRacing 画面经 VAE 压缩再解码后，道路走向和车辆位置仍被保留，说明控制相关信息可以进入紧凑潜变量。" width="86%">
 
-<img src="/figures/04-latent-dynamics/source/01-world-models/wm-fig10.png" alt="World Models 的 V-M-C 三元解耦架构：V 模型压缩像素、M 模型记忆并预测未来、C 模型做出极简控制决策。" width="86%">
-
-_图 4.1-1：World Models 的 V-M-C 三元解耦架构：V 模型压缩像素、M 模型记忆并预测未来、C 模型做出极简控制决策。 出处：[Recurrent World Models Facilitate Policy Evolution，David Ha & Jürgen Schmidhuber，2018](https://arxiv.org/abs/1809.01999)。_
+_图 4.1-1：同一帧 CarRacing 画面经 VAE 压缩再解码后，道路走向和车辆位置仍被保留，说明控制相关信息可以进入紧凑潜变量。 出处：David Ha；Jürgen Schmidhuber，[World Models](https://arxiv.org/abs/1803.10122)（2018），Figure 10。_
 
 </div>
 
----
+本节从状态转移出发，说明为什么可以先把图像压缩到潜空间（Latent Space），再用序列模型预测潜变量的变化。这里介绍的是 Ha 与 Schmidhuber 的具体架构，不代表所有世界模型都必须采用 VAE 与 RNN。
 
-## 4.1.1 物理与认知基石：人类心智模型的 V-M-C 解耦哲学
+## 从基础物理到状态转移：预测的本质
 
-要理解 World Models 的架构美感，我们首先必须审视人类赛车手在赛道上漂移过弯时的大脑神经分工。
+先看一个最简单的离散时间动力学例子。
 
-### 1. 人类大脑的感官与推演解耦
-当一名赛车手以 $200\text{ km/h}$ 的高速驶入弯道时：
-- 他的**视觉初级皮层（V 模型）**迅速将视网膜上成千上万个光斑压缩为几个关键的几何信息：“前方 50 米有急右弯，路面有湿滑积水”；
-- 他的**大脑海马体与前额叶（M 模型）**依据过去两秒的车速与方向盘角度，在内心深处闪电般预判出：“如果我不减速，0.5 秒后车辆将发生侧滑甩尾”；
-- 他的**小脑运动中枢（C 模型）**接收到上述视觉与记忆预判后，本能地输出一个微小的微调动作：“向左反打方向盘 5 度并轻踩刹车”。
+假设质点在 $t$ 时刻的位置为 $x_t \in \mathbb{R}$，并在时间间隔 $\Delta t$ 内保持速度 $v_t$ 不变，则欧拉离散化给出：
 
-### 2. V-M-C 架构的工程解耦优势
-1. **V 模型（变分自编码器 VAE）**：仅负责空间降维，将 $64 \times 64 \times 3$（$12288$ 维）的原始像素帧压缩为长度仅为 $32$ 的潜在向量 $\mathbf{z}_t$；
-2. **M 模型（混合密度循环网络 MDN-RNN）**：仅负责时序物理推演，输入 $(\mathbf{z}_t, \mathbf{a}_t, \mathbf{h}_{t-1})$，预测下一时刻隐向量的概率分布 $P(\mathbf{z}_{t+1} \mid \cdot)$；
-3. **C 模型（极简线性控制器）**：输入拼接向量 $[\mathbf{z}_t, \mathbf{h}_t]$，参数量通常不超过 1000 个浮点数，完全可以使用无梯度的演化算法（CMA-ES）在数分钟内快速进化求解！
+$$
+x_{t+1} = x_t + v_t \Delta t
+$$
+
+这个简化的**环境模型**包含三个量：
+
+1. $x_t$：当前状态（State），在这里退化为一个标量。
+2. $v_t$：该时间段内的速度；在控制问题中，它可由动作间接影响，但不必等同于动作本身。
+3. $x_{t+1}$：动作施加于当前状态后，环境反馈出的未来状态。
+
+在现代控制理论与强化学习中，我们将这种关系推广至高维向量空间。假设系统的状态由一个多维向量 $\mathbf{s}_t \in \mathbb{R}^n$ 描述，动作由向量 $\mathbf{a}_t \in \mathbb{R}^m$ 描述。一个确定性的状态转移函数（Deterministic Transition Function）可抽象地表示为：
+
+$$
+\mathbf{s}_{t+1} = f(\mathbf{s}_t, \mathbf{a}_t)
+$$
+
+若系统存在观测噪声、隐藏变量或随机转移，单个确定性映射就不足以描述全部可能结果。此时可建模条件分布：
+
+$$
+P(\mathbf{s}_{t+1} \mid \mathbf{s}_t, \mathbf{a}_t)
+$$
+
+在强化学习中，世界模型通常学习状态转移，并可能同时预测观测、奖励或终止信号。它不必重建所有像素，只需保留下游预测或决策需要的信息。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/01-world-models/e2c-fig1.png" alt="E2C 把图像编码、局部线性潜在转移与图像解码连成控制模型，展示潜空间动力学在 World Models 之前的控制脉络。" width="86%">
 
-<img src="/figures/04-latent-dynamics/latex/01-world-models/mdn-log-reduction-order.png" alt="V-M-C 三元数据流闭环：像素输入经过 V 编码、M 时序演化汇入 C 决策控制器" width="86%">
-
-_图 4.1-2：V-M-C 三元数据流闭环：像素输入经过 V 编码、M 时序演化汇入 C 决策控制器。_
+_图 4.1-2：E2C 把图像编码、局部线性潜在转移与图像解码连成控制模型，展示潜空间动力学在 World Models 之前的控制脉络。 出处：Manuel Watter；Jost Tobias Springenberg；Joschka Boedecker；Martin Riedmiller，[Embed to Control: A Locally Linear Latent Dynamics Model for Control from Raw Images](https://arxiv.org/abs/1506.07365)（2015），Figure 1。_
 
 </div>
 
----
+## 维度的诅咒与潜空间降维
 
-## 4.1.2 核心数学推导一：混合密度循环网络 (MDN-RNN) 与多峰概率分布
+如果我们将环境直接设定为一个自动驾驶的仿真画面，此时观测空间（状态） $\mathbf{s}_t$ 是一张 $64 \times 64$ 的 RGB 图像。那么该状态空间的维度是 $D = 64 \times 64 \times 3 = 12288$。
 
-在物理世界中，未来的演化往往伴随着分叉不确定性（例如赛车在积水路面上可能向左侧滑，也可能向右侧滑）。如果使用单一的高斯分布来预测下一帧，网络会被迫预测出两个峰值的“平均值”——输出一个车体在道路正中央扭曲撕裂的模糊幻影。
+直接预测 12288 个像素变量需要较大的模型与计算量，而且像素误差会同等惩罚任务相关和无关的细节。若道路边缘、车速和姿态决定控制，背景纹理的微小变化却未必值得分配同样的预测容量。
+
+World Models 将感知与预测拆成两个分别训练的模块：**视觉模型**（V Model）和**记忆模型**（M Model）。
+
+### 视觉模型 (V Model)：空间压缩
+
+视觉模型把高维观测 $\mathbf{x}_t \in \mathbb{R}^D$ 编码为较低维的潜变量 $\mathbf{z}_t \in \mathbb{R}^d$，其中 $d \ll D$。
+
+原论文使用变分自编码器（Variational Autoencoder, VAE）[[Kingma & Welling, 2013]](https://arxiv.org/abs/1312.6114)。VAE 通过 KL 项把近似后验约束到标准正态先验附近，而不是让每个样本的潜变量都严格服从标准正态分布。若把训练目标写成需要最小化的负 ELBO，可表示为：
+
+$$
+\mathcal{L}_{\text{VAE}} = \mathbb{E}_{q_\phi(\mathbf{z}|\mathbf{x})}[-\log p_\theta(\mathbf{x}|\mathbf{z})] + D_{\text{KL}}(q_\phi(\mathbf{z}|\mathbf{x}) \parallel \mathcal{N}(\mathbf{0}, \mathbf{I}))
+$$
+
+第一项是负重构对数似然，鼓励潜变量保留解码观测所需的信息；第二项约束近似后验与先验之间的差异。编码器随后把每一帧像素观测压缩为潜变量 $\mathbf{z}_t$。
+
+### 记忆模型 (M Model)：时间序列与混合密度推导
+
+经过 V 模型编码后，记忆模型在潜空间中预测下一步：
+
+$$
+P(\mathbf{z}_{t+1} \mid \mathbf{z}_{\le t}, \mathbf{a}_{\le t})
+$$
+
+下标 $\le t$ 表示截至 $t$ 的轨迹。在部分可观测环境中，单帧通常不足以推断速度等量，因此 RNN 用有限维隐藏状态 $\mathbf{h}_t$ 汇总与预测有关的历史；它不保证无损保存全部过去：
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/01-world-models/vrnn-fig3.png" alt="VRNN 与 RNN-GMM 的语音序列样本对照显示，逐时刻随机潜变量能够表达序列中的局部变化。" width="86%">
 
-<img src="/figures/04-latent-dynamics/source/01-world-models/wm-fig10.png" alt="MDN-RNN 在赛车游戏中精准预测未来潜在隐向量的多模态转移轨迹。" width="86%">
-
-_图 4.1-3：MDN-RNN 在赛车游戏中精准预测未来潜在隐向量的多模态转移轨迹。 出处：[Recurrent World Models Facilitate Policy Evolution，David Ha & Jürgen Schmidhuber，2018](https://arxiv.org/abs/1809.01999)。_
+_图 4.1-3：VRNN 与 RNN-GMM 的语音序列样本对照显示，逐时刻随机潜变量能够表达序列中的局部变化。 出处：Junyoung Chung；Kyle Kastner；Laurent Dinh；Kratarth Goel；Aaron Courville；Yoshua Bengio，[A Recurrent Latent Variable Model for Sequential Data](https://arxiv.org/abs/1506.02216)（2015），Figure 3。_
 
 </div>
 
-World Models 引入了 **混合密度网络（Mixture Density Network, MDN）**，将 RNN 隐藏状态映射为一个包含 $K$ 个高斯分量的混合高斯分布（GMM）。
+$$
+\mathbf{h}_{t} = \text{RNN}(\mathbf{z}_{t}, \mathbf{a}_{t}, \mathbf{h}_{t-1})
+$$
 
-### 1. 混合高斯条件概率密度公式
-设混合分量数量为 $K$（例如 $K = 5$）。下一时刻潜在向量 $\mathbf{z}_{t+1} \in \mathbb{R}^d$ 的条件概率分布定义为：
+此时，上述转移概率可近似被化简为仅依赖于当前隐藏状态的条件分布：
 
-$$p(\mathbf{z}_{t+1} \mid \mathbf{h}_t) = \sum_{k=1}^K \pi_k(\mathbf{h}_t) \cdot \mathcal{N}\left( \mathbf{z}_{t+1}; \; \boldsymbol{\mu}_k(\mathbf{h}_t), \; \text{diag}(\boldsymbol{\sigma}_k^2(\mathbf{h}_t)) \right)$$
+$$
+P(\mathbf{z}_{t+1} \mid \mathbf{z}_{\le t}, \mathbf{a}_{\le t}) \approx P(\mathbf{z}_{t+1} \mid \mathbf{h}_{t})
+$$
 
-其中：
-- $\pi_k \in (0, 1)$ 为第 $k$ 个高斯分量的混合先验权重，严格满足初等归一化条件 $\sum_{k=1}^K \pi_k = 1$（由 Softmax 保证）；
-- $\boldsymbol{\mu}_k \in \mathbb{R}^d$ 为第 $k$ 个高斯分量的中心位置；
-- $\boldsymbol{\sigma}_k^2 \in \mathbb{R}^d$ 为第 $k$ 个高斯分量的扩散方差（由指数函数保证正定）。
+接下来需要为 $P(\mathbf{z}_{t+1} \mid \mathbf{h}_{t})$ 选择合适的分布族。
 
-### 2. MDN 负对数似然损失函数（Negative Log-Likelihood）
-训练 M 模型时，最大化真实转移样本 $\mathbf{z}_{t+1}$ 在混合分布下的似然概率：
+若用 MSE 直接预测 $\mathbf{z}_{t+1}$，在概率解释下相当于采用固定方差的单峰高斯似然并学习其均值。面对多个可能未来，这个假设可能产生折中的平均预测。
 
-$$\mathcal{L}_{\text{MDN}}(\mathbf{z}_{t+1}) = -\log \left( \sum_{k=1}^K \pi_k \cdot \prod_{j=1}^d \frac{1}{\sqrt{2\pi \sigma_{k, j}^2}} \exp\left( -\frac{(z_{t+1, j} - \mu_{k, j})^2}{2 \sigma_{k, j}^2} \right) \right)$$
-
-### 3. MDN 混合密度手算数值算例
-设隐向量为标量（$d = 1$），混合分量数量 $K = 2$：
-- **分量 1（向右转弯概率大）**：混合权重 $\pi_1 = 0.80$，均值 $\mu_1 = 2.0$，方差 $\sigma_1^2 = 1.0$（标准差 $\sigma_1 = 1.0$）；
-- **分量 2（向左打滑概率小）**：混合权重 $\pi_2 = 0.20$，均值 $\mu_2 = -2.0$，方差 $\sigma_2^2 = 1.0$（标准差 $\sigma_2 = 1.0$）。
-
-在真实世界中观察到的实际转移样本为 $z = 2.0$。
-已知标准正态常数 $\frac{1}{\sqrt{2\pi}} \approx 0.3989$。
-我们来手动计算该点在两个分量下的概率密度与总混合似然：
-1. **计算分量 1 概率密度**：
-   $$\mathcal{N}(2.0; \; 2.0, 1.0) = 0.3989 \times \exp\left( -\frac{(2.0 - 2.0)^2}{2 \times 1.0} \right) = 0.3989 \times e^0 = 0.3989$$
-2. **计算分量 2 概率密度**：
-   $$\mathcal{N}(2.0; \; -2.0, 1.0) = 0.3989 \times \exp\left( -\frac{(2.0 - (-2.0))^2}{2 \times 1.0} \right) = 0.3989 \times \exp\left( -\frac{16}{2} \right) = 0.3989 \times e^{-8} \approx 0.3989 \times 0.000335 \approx 0.00013$$
-3. **加权汇聚总混合似然**：
-   $$p(z = 2.0) = 0.80 \times 0.3989 + 0.20 \times 0.00013 = 0.31912 + 0.00003 = 0.31915$$
-4. **计算单样本负对数似然损失**（$\ln(0.31915) \approx -1.142$）：
-   $$\mathcal{L}_{\text{MDN}} = -\ln(0.31915) \approx 1.142$$
-
-初等代数的直观计算证明：分量 1 精确捕捉了大部分物理概率，而分量 2 保持了对小概率事件的包容性，彻底消除了单峰高斯均值平滑造成的画面崩塌！
-
-<details>
-<summary><b>深入推导：混合密度网络在非齐次条件概率密度逼近下的维斯特定理严格证明（点击展开查看完整推导）</b></summary>
-
-设真实物理转移条件概率测度为 $P(d\mathbf{z} \mid \mathbf{h}) \in \mathcal{P}(\mathbb{R}^d)$。
-根据 Wiener-Schoenberg 通用逼近定理，具有紧支集的任意连续条件概率密度函数空间在 $L_1$ 拓扑意义下对高斯核卷积稠密。
-当混合分量数量 $K \to \infty$ 且隐藏特征维度充分大时：
-$$\lim_{K \to \infty} \inf_{\pi_k, \boldsymbol{\mu}_k, \boldsymbol{\sigma}_k} \int \left| p(\mathbf{z} \mid \mathbf{h}) - \sum_{k=1}^K \pi_k(\mathbf{h}) \mathcal{N}(\mathbf{z}; \boldsymbol{\mu}_k(\mathbf{h}), \boldsymbol{\sigma}_k^2(\mathbf{h})) \right| d\mathbf{z} = 0$$
-严格确立了 MDN-RNN 对任意非线性、多模态分叉物理动力学的无偏渐近表达能力。
-</details>
-
----
-
-## 4.1.3 核心数学推导二：极简线性控制器与纯梦境进化训练
-
-当 V 模型与 M 模型训练完成后，它们已经完全掌握了物理世界的空间构图与时间演变规律。
+::: info 理论抽象（仅有的一处类比）
+我们可以将这种多模态预测，视作一位在十字路口观察的向导（即RNN的隐藏状态 $\mathbf{h}_t$）。向导知道车辆可能会向左转（概率 $\pi_1$，目标分布均值 $\mu_1$，路线不确定度 $\sigma_1$），也可能会向右转（概率 $\pi_2$），但他绝不会建议车辆“直直地撞向正前方的隔离墩”（这是两个不同决策所对应高斯分布的简单平均）。这种用多个带权重的正态分布来严密拼接、包络未知世界未来可能性的方式，正是**混合密度网络（MDN, [[Bishop, 1994]](https://www.microsoft.com/en-us/research/publication/mixture-density-networks/)）**的本质。
+:::
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/01-world-models/wm-fig23.png" alt="World Models 附录将 RNN 时间展开与每步高斯混合输出并列，直接呈现 MDN-RNN 如何为下一潜变量给出多模态分布。" width="86%">
 
-<img src="/figures/04-latent-dynamics/source/01-world-models/wm-fig10.png" alt="智能体完全在 M 模型生成的梦境世界中进行策略演化，并将控制器无缝迁移至真实赛车游戏。" width="86%">
-
-_图 4.1-4：智能体完全在 M 模型生成的梦境世界中进行策略演化，并将控制器无缝迁移至真实赛车游戏。 出处：[Recurrent World Models Facilitate Policy Evolution，David Ha & Jürgen Schmidhuber，2018](https://arxiv.org/abs/1809.01999)。_
+_图 4.1-4：World Models 附录将 RNN 时间展开与每步高斯混合输出并列，直接呈现 MDN-RNN 如何为下一潜变量给出多模态分布。 出处：David Ha；Jürgen Schmidhuber，[World Models](https://arxiv.org/abs/1803.10122)（2018），Figure 23。_
 
 </div>
 
-### 1. 极简线性控制器（Linear Controller）
-控制器 C 仅仅是一个单层线性映射与激活函数：
+先写出一维高斯密度：
 
-$$\mathbf{a}_t = \tanh\left( \mathbf{W}_c [\mathbf{z}_t, \; \mathbf{h}_t] + \mathbf{b}_c \right)$$
+$$
+\mathcal{N}(z \mid \mu, \sigma^2) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left( -\frac{(z - \mu)^2}{2\sigma^2} \right)
+$$
 
-若 $\mathbf{z}_t \in \mathbb{R}^{32}, \mathbf{h}_t \in \mathbb{R}^{256}$，动作维度为 $3$，整个控制器的参数量仅有：
-$$(32 + 256) \times 3 + 3 = 288 \times 3 + 3 = 867 \text{ 个参数！}$$
+为了具备表达多模态（多种不同未来可能性）的能力，我们引入由 $K$ 个高斯分量叠加而成的高斯混合模型（Gaussian Mixture Model, GMM）：
 
-### 2. 纯梦境内部做梦进化（Dream Evolution）
-智能体根本不需要启动任何昂贵的真实物理仿真器，直接在 M 模型的 RNN 神经元内部展开“做梦”：
-- 梦境以随机潜在状态 $\mathbf{z}_0$ 开始；
-- 控制器 C 输出动作 $\mathbf{a}_t$；
-- M 模型利用 MDN-RNN 预测下一时刻梦境状态 $\mathbf{z}_{t+1}$；
-- 循环推演 1000 步并累加梦境奖励；
-- 使用**协方差矩阵自适应演化策略（CMA-ES）**直接在梦境中优化这 867 个参数，几分钟后将策略部署到真实物理赛车中，直接实现人类顶尖水平的完美驾驶！
+$$
+P(z) = \sum_{k=1}^K \pi_k \mathcal{N}(z \mid \mu_k, \sigma_k^2)
+$$
 
-<details>
-<summary><b>深入推导：自然演化策略（NES）在费希尔信息矩阵下的黎曼自然梯度等价性证明（点击展开查看完整推导）</b></summary>
+其中混合权重满足 $\sum_{k=1}^K \pi_k = 1$ 且 $\pi_k \ge 0$。
 
-设控制器参数向量为 $\mathbf{w} \sim p_\psi(\mathbf{w}) = \mathcal{N}(\boldsymbol{\theta}, \sigma^2 \mathbf{I})$。
-期望回报目标为 $J(\boldsymbol{\theta}) = \mathbb{E}_{\mathbf{w} \sim p_\psi} [R(\mathbf{w})]$。
-对分布参数 $\boldsymbol{\theta}$ 求自然梯度更新：
-$$\tilde{\nabla}_{\boldsymbol{\theta}} J = \mathbf{F}^{-1} \nabla_{\boldsymbol{\theta}} J(\boldsymbol{\theta})$$
-其中费希尔信息矩阵为 $\mathbf{F} = \mathbb{E} [\nabla_{\boldsymbol{\theta}} \log p_\psi \nabla_{\boldsymbol{\theta}} \log p_\psi^\top] = \frac{1}{\sigma^2} \mathbf{I}$。
-代入化简得：
-$$\tilde{\nabla}_{\boldsymbol{\theta}} J = \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})} [R(\boldsymbol{\theta} + \sigma \boldsymbol{\epsilon}) \cdot \boldsymbol{\epsilon}]$$
-证明了 CMA-ES 等演化算法本质上是在参数黎曼流形上沿无偏自然梯度方向进行二阶自适应搜索。
-</details>
+下面采用一个共享混合分量、分量内对角协方差的简化 MDN。给定分量 $k$ 时，各潜变量维度条件独立，因此联合密度可写成一维密度的乘积。需要注意，原始 World Models 的 MDN-RNN 实现细节与这个教学版参数化并不完全相同。
 
----
+$$
+P(\mathbf{z}_{t+1} \mid \mathbf{h}_t) = \sum_{k=1}^K \pi_{k, t} \prod_{i=1}^d \mathcal{N}(z_{t+1,i} \mid \mu_{k,i,t}, \sigma_{k,i,t}^2)
+$$
 
-## 4.1.4 纯底层 PyTorch 代码实现：从零手写 V-M-C 三元世界模型架构
+混合权重 $\boldsymbol{\pi}_t$、均值 $\boldsymbol{\mu}_t$ 和标准差 $\boldsymbol{\sigma}_t$ 都由当前 RNN 隐藏状态 $\mathbf{h}_t$ 经输出层得到：
 
-下面我们使用纯底层 PyTorch 算子实现完整的 VAE 视觉感知、MDN-RNN 混合密度记忆网络与极简 Controller 架构。
+$$
+[\boldsymbol{\hat{\pi}}_t, \boldsymbol{\hat{\mu}}_t, \boldsymbol{\hat{\sigma}}_t] = W_o \mathbf{h}_t + \mathbf{b}_o
+$$
+
+Softmax 使 $\pi$ 非负且和为 1，Softplus 或指数函数使标准差为正。训练时最小化负对数似然（Negative Log-Likelihood, NLL）：
+
+$$
+\mathcal{L}_{\text{MDN}} = \mathbb{E}_{t} \left[ -\log \left( \sum_{k=1}^K \pi_{k,t} \prod_{i=1}^d \frac{1}{\sqrt{2\pi\sigma_{k,i,t}^2}} \exp\left(-\frac{(z_{t+1,i} - \mu_{k,i,t})^2}{2\sigma_{k,i,t}^2}\right) \right) \right]
+$$
+
+<div align="center"><img src="/figures/04-latent-dynamics/latex/01-world-models/mdn-log-reduction-order.png" alt="MDN 先沿潜变量维累加对数高斯密度，再加入混合权重并沿混合分量执行 log-sum-exp" width="86%">
+
+_图 4.1-5：分量内的维度乘积在对数域先化为求和；加入各分量的 log 权重后，才在混合分量轴上执行 log-sum-exp。_
+
+</div>
+
+## 架构与核心代码实现：MDN-RNN
+
+下面用 PyTorch 构建教学版 `MDNRNN`。
+
+设潜变量维度 $d=32$、RNN 隐藏维度 $h=256$、高斯分量数 $K=5$。
+该模块接收 $t$ 时刻的动作序列和潜变量序列，在内部推演 RNN 的隐状态，最终输出下一步潜在分布的参数。
+
+先定义 MDN-RNN 的前向传播。
 
 ```python
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
-
-class VisionVAE(nn.Module):
-    """
-    V 模型：变分自编码器
-    将像素图像压缩为低维空间隐向量 z_t
-    """
-    def __init__(self, in_channels: int = 3, latent_dim: int = 32):
-        super().__init__()
-        self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=4, stride=2),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(64 * 6 * 6, latent_dim * 2) # 输出 mu 与 logvar
-        )
-
-    def forward(self, img: torch.Tensor) -> torch.Tensor:
-        params = self.encoder(img)
-        mu, logvar = params.chunk(2, dim=-1)
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        z = mu + eps * std
-        return z
+from torch.distributions import Normal
 
 class MDNRNN(nn.Module):
-    """
-    M 模型：混合密度循环神经网络 (MDN-RNN)
-    输入当前 (z_t, a_t)，预测下一时刻 z_{t+1} 的 K 个高斯分量分布 (pi, mu, sigma)
-    """
-    def __init__(self, latent_dim: int = 32, action_dim: int = 3, hidden_dim: int = 64, num_gaussians: int = 5):
+    def __init__(self, latent_dim=32, action_dim=3, hidden_dim=256, num_gaussians=5):
         super().__init__()
         self.latent_dim = latent_dim
-        self.num_gaussians = num_gaussians
+        self.action_dim = action_dim
         self.hidden_dim = hidden_dim
+        self.num_gaussians = num_gaussians
 
-        self.rnn_cell = nn.GRUCell(latent_dim + action_dim, hidden_dim)
+        # RNN 核心组件：接收拼接后的 (z_t, a_t) 向量
+        self.rnn = nn.LSTM(input_size=latent_dim + action_dim,
+                           hidden_size=hidden_dim,
+                           batch_first=True)
 
-        # 输出 GMM 参数: pi (K), mu (K * latent_dim), log_sigma (K * latent_dim)
+        # MDN 输出层映射：将 hidden_dim 映射到 GMM 所需的所有参数
+        # 需要输出每个维度的 mu, sigma，以及每一个高斯簇的概率权重 pi
         self.fc_pi = nn.Linear(hidden_dim, num_gaussians)
         self.fc_mu = nn.Linear(hidden_dim, num_gaussians * latent_dim)
-        self.fc_log_sigma = nn.Linear(hidden_dim, num_gaussians * latent_dim)
+        self.fc_sigma = nn.Linear(hidden_dim, num_gaussians * latent_dim)
 
-    def forward(self, z: torch.Tensor, a: torch.Tensor, h_prev: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        inputs = torch.cat([z, a], dim=-1)
-        h_new = self.rnn_cell(inputs, h_prev)
+    def forward(self, z, action, hidden=None):
+        """
+        前向传播函数。
+        输入参数：
+            z: [batch_size, seq_len, latent_dim] - 当前时间步的观测潜变量
+            action: [batch_size, seq_len, action_dim] - 当前时间步的动作
+            hidden: (h_0, c_0) - RNN 的初始隐状态，默认全零
+        """
+        batch_size, seq_len, _ = z.size()
 
-        # 1. 混合先验概率 pi: (B, K)
-        pi = F.softmax(self.fc_pi(h_new), dim=-1)
+        # 将潜状态与动作在特征维度拼接：[batch_size, seq_len, latent_dim + action_dim]
+        rnn_input = torch.cat([z, action], dim=-1)
 
-        # 2. 高斯均值 mu: (B, K, latent_dim)
-        mu = self.fc_mu(h_new).view(-1, self.num_gaussians, self.latent_dim)
+        # rnn_out 的形状为 [batch_size, seq_len, hidden_dim]
+        rnn_out, hidden = self.rnn(rnn_input, hidden)
 
-        # 3. 高斯标准差 sigma: (B, K, latent_dim)
-        log_sigma = self.fc_log_sigma(h_new).view(-1, self.num_gaussians, self.latent_dim)
-        sigma = torch.exp(log_sigma).clamp(min=1e-4, max=10.0)
+        # 计算 pi: [batch_size, seq_len, num_gaussians]
+        # 使用 softmax 保证各个高斯分量权重总和严格为 1
+        pi = F.softmax(self.fc_pi(rnn_out), dim=-1)
 
-        return h_new, pi, mu, sigma
+        # 计算 mu: [batch_size, seq_len, num_gaussians, latent_dim]
+        mu = self.fc_mu(rnn_out)
+        mu = mu.view(batch_size, seq_len, self.num_gaussians, self.latent_dim)
 
-class Controller(nn.Module):
-    """
-    C 模型：极简线性控制器
-    """
-    def __init__(self, latent_dim: int = 32, hidden_dim: int = 64, action_dim: int = 3):
-        super().__init__()
-        self.linear = nn.Linear(latent_dim + hidden_dim, action_dim)
+        # 计算 sigma: [batch_size, seq_len, num_gaussians, latent_dim]
+        # Softplus 保证标准差为正；下限避免退化为零方差
+        sigma = F.softplus(self.fc_sigma(rnn_out)) + 1e-4
+        sigma = sigma.view(batch_size, seq_len, self.num_gaussians, self.latent_dim)
 
-    def forward(self, z: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
-        inputs = torch.cat([z, h], dim=-1)
-        return torch.tanh(self.linear(inputs))
-
-# ===================================================================
-# 单元测试与 V-M-C 梦境推演数据流校验
-# ===================================================================
-if __name__ == "__main__":
-    batch_size = 2
-    latent_dim = 32
-    action_dim = 3
-    hidden_dim = 64
-
-    # 1. 实例化 V-M-C 模型
-    v_model = VisionVAE(in_channels=3, latent_dim=latent_dim)
-    m_model = MDNRNN(latent_dim=latent_dim, action_dim=action_dim, hidden_dim=hidden_dim, num_gaussians=5)
-    c_model = Controller(latent_dim=latent_dim, hidden_dim=hidden_dim, action_dim=action_dim)
-
-    # 2. 模拟从图像编码开始
-    dummy_img = torch.randn(batch_size, 3, 32, 32)
-    z_0 = v_model(dummy_img)
-    h_state = torch.zeros(batch_size, hidden_dim)
-
-    # 3. 模拟在梦境中单步推演
-    action = c_model(z_0, h_state)
-    h_next, pi, mu, sigma = m_model(z_0, action, h_state)
-
-    print(f"[V-M-C Test] V 空间隐向量形状: {z_0.shape}")
-    print(f"[V-M-C Test] C 控制器输出动作形状: {action.shape}")
-    print(f"[V-M-C Test] M 记忆模型混合权重形状: {pi.shape}")
-    print(f"[V-M-C Test] M 记忆模型预测高斯中心形状: {mu.shape}")
-
-    assert z_0.shape == (batch_size, latent_dim), "V 编码器维度不符！"
-    assert action.shape == (batch_size, action_dim), "C 控制器动作维度不符！"
-    assert torch.allclose(pi.sum(dim=-1), torch.ones(batch_size)), "GMM 混合权重和不为 1！"
-    print("✓ V-M-C 三元解耦世界模型与 MDN-RNN 多模态时序推演单测全部通过！")
+        return pi, mu, sigma, hidden
 ```
 
----
+得到 `pi`、`mu` 和 `sigma` 后，在对数域计算混合分布的负对数似然，以避免直接连乘小概率造成下溢。
 
-## 4.1.5 本节小结
+损失函数如下。
 
-回顾本节内容，我们掌握了经典世界模型的开山范式：
-1. **V-M-C 三元认知解耦**：将复杂的感知与决策剥离为空间压缩、时间记忆与极简控制，大幅降低了系统优化的复杂度；
-2. **MDN-RNN 多峰概率建模**：通过混合高斯分布精准捕捉物理世界的不确定性分支，避免了单峰均值导致的画面模糊崩溃；
-3. **纯潜空间做梦演化**：在神经世界模型内部以超高算力演化微型控制器并零样本迁移至物理实体，奠定了后续章节端到端潜空间动力学（RSSM / Dreamer）的宏伟蓝图。
+```python
+def mdn_loss(pi, mu, sigma, target_z):
+    """
+    计算教学版对角高斯混合模型的负对数似然。
+    输入参数：
+        pi: [batch_size, seq_len, num_gaussians]
+        mu: [batch_size, seq_len, num_gaussians, latent_dim]
+        sigma: [batch_size, seq_len, num_gaussians, latent_dim]
+        target_z: [batch_size, seq_len, latent_dim] - 目标分布，即 z_{t+1}
+    """
+    batch_size, seq_len, num_gaussians, latent_dim = mu.size()
+
+    # 扩展 target_z 以匹配 mu 和 sigma 的多模态高斯簇维度
+    # 形状变为：[batch_size, seq_len, num_gaussians, latent_dim]
+    target_z = target_z.unsqueeze(2).expand_as(mu)
+
+    # 利用 PyTorch 内置的 Normal 分布对象获取对数概率密度
+    normal_dist = Normal(loc=mu, scale=sigma)
+
+    # 计算在每个高斯分布下的 log P(z|mu, sigma)
+    # 形状为 [batch_size, seq_len, num_gaussians, latent_dim]
+    log_prob_per_dim = normal_dist.log_prob(target_z)
+
+    # 因为假设各个特征维度(latent_dim)之间条件独立，概率连乘等价于 log 域的求和
+    # 形状变为 [batch_size, seq_len, num_gaussians]
+    log_prob_per_gaussian = torch.sum(log_prob_per_dim, dim=-1)
+
+    # 将 pi 转换为对数空间以保证数值稳定：log(pi)
+    log_pi = torch.log(pi + 1e-8)  # 加上极小量防止 log(0)
+
+    # 计算 log(pi * N) = log(pi) + log(N)
+    log_pi_times_prob = log_pi + log_prob_per_gaussian
+
+    # 核心数学推导的最后一步：使用 logsumexp 技巧合并所有的高斯分量
+    # 相当于 log(\sum_k pi_k * P_k(z))
+    # 形状变为 [batch_size, seq_len]
+    log_prob_final = torch.logsumexp(log_pi_times_prob, dim=-1)
+
+    # 负对数似然 (NLL) 需要取反并对所有时间步和批次求均值
+    nll_loss = -torch.mean(log_prob_final)
+
+    return nll_loss
+```
+
+## 小结
+
+本节从状态转移出发，介绍了 World Models 的两级表示：**VAE（V 模型）**压缩单帧观测，**MDN-RNN（M 模型）**根据历史潜变量和动作预测下一潜变量分布。教学代码使用共享混合分量的对角高斯，重点是展示张量形状与对数似然计算，不应视为原论文实现的逐行复刻。
+
+下一节转向 RSSM，观察确定性记忆与随机状态如何在同一个序列模型中协同工作。

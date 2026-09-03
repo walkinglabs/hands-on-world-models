@@ -20,17 +20,6 @@ export default defineConfig({
       light: "light-plus",
       dark: "dark-plus",
     },
-    config(md) {
-      const defaultFence = md.renderer.rules.fence;
-      md.renderer.rules.fence = (tokens, idx, options, env, self) => {
-        const token = tokens[idx];
-        const info = token.info ? token.info.trim() : "";
-        if (info === "mermaid") {
-          return `<div class="mermaid" style="display: flex; justify-content: center; margin: 1.5rem 0; overflow-x: auto;">${token.content}</div>`;
-        }
-        return defaultFence(tokens, idx, options, env, self);
-      };
-    },
   },
   head: [
     ["meta", { name: "theme-color", content: "#25636a" }],
@@ -92,7 +81,7 @@ export default defineConfig({
             link: "/chapters/06-jepa/01-jepa-foundation",
           },
           {
-            text: "具身控制与世界模型策略",
+            text: "具身策略大模型",
             link: "/chapters/07-robot-policy/01-multimodal-observation",
           },
           {
@@ -315,7 +304,7 @@ export default defineConfig({
         ],
       },
       {
-        text: "7. 具身控制与世界模型策略",
+        text: "7. 具身策略大模型",
         collapsed: false,
         items: [
           {

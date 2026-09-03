@@ -1,193 +1,158 @@
-# 3.6 强化学习基石核心精讲 (RL Foundation Concise)
+# 强化学习基础模块的简洁实现
 
-在探索世界模型与智能决策的整个理论体系中，前五节所介绍的马尔可夫决策过程、经验回放、贝尔曼方程、策略梯度与模型预测控制，共同构成了支撑现代人工智能理解物理世界与自主进化的**五大理论支柱**。
-
-当我们将这些理论碎片拼装为完整的系统时，我们会发现所有决策算法本质上都在回答同一个物理哲学问题：**如何在充满随机扰动与未来不确定性的物理世界中，利用有限的感知与算力资源，求解出长期累积回报最大化的最优控制路径？**
-
-本节我们将以高屋建瓴的全局视角，横向解构无模型强化学习（Model-Free RL）、基于模型的梦境学习（Model-Based World Models）与在线规划（Online MPC）三大主流范式的优劣边界，严密推导连续控制中不可或缺的 **Squashed Gaussian 重参数化策略** 与雅可比变量替换定理，并使用纯底层 PyTorch 实现高精连续控制策略网络。
+前面几节从零构建了强化学习的基本计算图。现代实现通常把环境交互、轨迹或转移数据收集、价值估计以及策略或价值函数更新拆成模块。DQN 使用经验回放训练动作价值函数 [[Mnih et al., 2013]](https://arxiv.org/abs/1312.5602)，而 PPO 使用新近收集的 on-policy 轨迹进行多轮小批量更新 [[Schulman et al., 2017]](https://arxiv.org/abs/1707.06347)；因此，经验回放不是所有强化学习算法共有的必要模块。
 
 <div align="center">
+  <img src="/figures/03-data-and-first-model/source/06-rl-foundation-concise/dqn-fig2.png" alt="Breakout 与 Seaquest 的回报曲线展示 DQN 用回放数据训练动作价值函数后的学习进展。" width="86%">
 
-<img src="/figures/03-data-and-first-model/source/06-rl-foundation-concise/a3c-fig1.png" alt="Soft Actor-Critic (SAC) 结合最大熵强化学习与双 Q 网络，展示在连续控制基准上的超强表现与样本效率。" width="86%">
-
-_图 3.6-1：Soft Actor-Critic (SAC) 结合最大熵强化学习与双 Q 网络，展示在连续控制基准上的超强表现与样本效率。 出处：[Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor，Tuomas Haarnoja et al.，2018](https://arxiv.org/abs/1801.01290)。_
+_图 3.6-1：Breakout 与 Seaquest 的回报曲线展示 DQN 用回放数据训练动作价值函数后的学习进展。 出处：Volodymyr Mnih et al.，[Playing Atari with Deep Reinforcement Learning](https://arxiv.org/abs/1312.5602)（2013），Figure 2。_
 
 </div>
 
----
+强化学习的理论基础可以追溯到理查德·贝尔曼 (Richard Bellman) 在20世纪50年代提出的动态规划理论 [[Bellman, 1957]](https://press.princeton.edu/books/paperback/9780691146683/dynamic-programming)，以及理查德·萨顿 (Richard Sutton) 等人发展的时序差分学习 (Temporal-Difference Learning) [[Sutton, 1988]](https://doi.org/10.1007/BF00115009)。在当时，受限于计算力和数据规模，这些方法多用于状态空间离散且有限的表格型 (Tabular) 场景。而在深度学习框架的加持下，我们得以利用神经网络的高维非线性拟合能力，将这些经典的数学迭代过程转化为可以用梯度下降优化的目标函数。
 
-## 3.6.1 架构与物理全景：三大决策范式的横向深度对比
+本节用深度学习框架的常用容器重写前一节的基础模块，重点保留数学对象与代码张量之间的对应关系。
 
-针对具体的具身控制任务（如机械臂插孔、四足机器人崎岖地形越野），不同算法范式展现出了鲜明的物理特性：
+## 马尔可夫决策过程与价值函数的数学映射
 
-### 1. 无模型强化学习（Model-Free RL, 如 SAC / PPO）
-- **核心逻辑**：黑盒试错，直接学习 $Q(s, a)$ 或 $\pi(a \mid s)$，不建立任何环境物理模型；
-- **物理优缺点**：最终策略执行延迟极低（单次前向传播 $< 1\text{ ms}$），但数据样本效率极低，需要数千万步真实交互试错。
+在深入代码之前，我们必须首先在数学上严格定义我们要实现的对象。在强化学习中，智能体 (Agent) 与环境 (Environment) 的交互被形式化为一个马尔可夫决策过程。我们可以将其描述为一个元组 $(\mathcal{S}, \mathcal{A}, P, R, \gamma)$。
 
-### 2. 基于世界模型的梦境学习（Model-Based RL, 如 Dreamer / World Models）
-- **核心逻辑**：先从少量交互数据中训练一个预测未来物理演变的神经动力学世界模型 $\hat{\mathbf{s}}_{t+1} = f(\hat{\mathbf{s}}_t, \mathbf{a}_t)$，随后在完全脱离真实环境的潜在梦境中推演和训练策略；
-- **物理优缺点**：样本效率超越无模型算法百倍以上，但高度依赖世界模型的预测保真度（需防范模型幻觉）。
+假设在一个离散的时间步 $t$ 中，智能体观察到当前的状态 $s_t \in \mathcal{S}$，并根据某种策略 $\pi(a_t|s_t)$ 选择一个动作 $a_t \in \mathcal{A}$。随后，环境接收该动作，依据状态转移概率 $P(s_{t+1}|s_t, a_t)$ 将状态更新为 $s_{t+1}$，并反馈给智能体一个标量奖励 $r_t = R(s_t, a_t)$。
 
-### 3. 在线轨迹规划与 MPC（Online Planning, 如 CEM / MPPI）
-- **核心逻辑**：不训练固化的策略网络，在每个控制瞬间利用物理模型向未来模拟数百条候选路径，挑选最优动作执行；
-- **物理优缺点**：对未曾见过的突发障碍物拥有极强的实时闭环自愈能力，但每一步都需要进行高并发数值推演，对边缘端算力要求较高。
+智能体的核心目标是最大化未来的累积奖励。为了防止无限时间步长下的累积奖励发散，并体现出“远期奖励不如近期奖励重要”的自然衰减属性，我们引入一个常数折扣因子 (Discount Factor) $\gamma \in [0, 1)$。我们将从时间步 $t$ 开始的折扣累积回报 (Return) 严格定义为一个无穷级数：
+
+$$G_t = r_t + \gamma r_{t+1} + \gamma^2 r_{t+2} + \cdots$$
+
+如果我们将上式中的公比 $\gamma$ 提取出来，就可以巧妙地将其转化为一个递归表达式。这在高中数学的等比数列求和中是一个常见的代数技巧：
+
+$$G_t = r_t + \gamma (r_{t+1} + \gamma r_{t+2} + \cdots)$$
+
+$$
+G_t = r_t + \gamma G_{t+1}
+$$
 
 <div align="center">
+  <img src="/figures/03-data-and-first-model/latex/06-rl-foundation-concise/return-recursive-tail.png" alt="折扣回报把即时奖励与从下一时刻开始的完整尾回报递归相加" width="86%">
 
-<img src="/figures/03-data-and-first-model/latex/06-rl-foundation-concise/return-recursive-tail.png" alt="三大决策范式（无模型、基于世界模型与在线规划）在样本效率、计算延迟与抗扰动自愈上的全景对比" width="86%">
-
-_图 3.6-2：三大决策范式（无模型、基于世界模型与在线规划）在样本效率、计算延迟与抗扰动自愈上的全景对比。_
+_图 3.6-2：把首项 r_t 单独取出后，剩余级数正是 G_{t+1}，只是整体多乘一个 γ，因此得到递推式 G_t=r_t+γG_{t+1}。_
 
 </div>
 
----
+这一递归形式是整个强化学习大厦的基石。然而，$G_t$ 是一个依赖于未来随机状态转移和随机策略的随机变量。为了评估在特定状态下执行特定动作的“好坏”，我们需要对其取数学期望。我们将动作价值函数 (Action-Value Function) $Q^\pi(s, a)$ 定义为在状态 $s$ 执行动作 $a$ 后，遵循策略 $\pi$ 所能获得的期望回报：
 
-## 3.6.2 核心数学推导一：连续动作空间的 Squashed Gaussian 重参数化策略
+$$Q^\pi(s, a) = \mathbb{E}_\pi [G_t \mid S_t=s, A_t=a]$$
 
-在机械臂控制中，电机的力矩与转角具有严格的物理上下限 $[-a_{\max}, a_{\max}]$。如果直接使用未经约束的高斯分布采样动作，网络容易输出超出硬件承受能力的危险极限值。
+把回报递推代入动作价值定义，可得贝尔曼期望方程：
 
-<div align="center">
+$$Q^\pi(s, a) = \mathbb{E}_{s' \sim P, a' \sim \pi} [r_t + \gamma Q^\pi(s', a') \mid S_t=s, A_t=a]$$
 
-<img src="/figures/03-data-and-first-model/source/06-rl-foundation-concise/a3c-fig1.png" alt="PETS 在高难度复杂动力学控制任务中对比无模型算法的学习速度与最终性能。" width="86%">
+状态空间较大时，可以用参数为 $\theta$ 的网络 $Q_\theta(s,a)$ 近似动作价值。代码一端收集 $(s_t,a_t,r_t,s_{t+1})$ 转移，另一端构造价值或策略网络；具体训练目标由所选算法决定。
 
-_图 3.6-3：PETS 在高难度复杂动力学控制任务中对比无模型算法的学习速度与最终性能。 出处：[Deep Reinforcement Learning in a Handful of Trials using Probabilistic Dynamics Models，Kurtland Chua et al.，2018](https://arxiv.org/abs/1805.12114)。_
-
-</div>
-
-Soft Actor-Critic（SAC）提出了**双曲正切挤压高斯分布（Squashed Gaussian Policy）**：
-
-### 1. 两步重参数化动作采样流程
-1. **采样无界潜在高斯变量**：
-   $$\mathbf{u} = \boldsymbol{\mu}_\theta(\mathbf{s}) + \boldsymbol{\sigma}_\theta(\mathbf{s}) \odot \boldsymbol{\epsilon}, \quad \text{其中 } \boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$$
-2. **应用双曲正切函数 $\tanh$ 进行平滑有界映射**：
-   $$\mathbf{a} = \tanh(\mathbf{u}) \in (-1, 1)$$
-
-### 2. 雅可比概率密度修正公式（Change of Variables）
-根据多维概率密度的变量替换定理，由于 $\mathbf{a} = \tanh(\mathbf{u})$ 是单调非线性双射变换，动作 $\mathbf{a}$ 的对数概率密度等于未挤压变量 $\mathbf{u}$ 的高斯概率减去变换雅可比矩阵行列式的绝对值对数：
-
-$$\log \pi(\mathbf{a} \mid \mathbf{s}) = \log \mu(\mathbf{u} \mid \mathbf{s}) - \log \left| \det\left( \frac{\partial \mathbf{a}}{\partial \mathbf{u}} \right) \right|$$
-
-因为 $\mathbf{a}$ 与 $\mathbf{u}$ 是逐元素独立映射，其雅可比矩阵为对角矩阵：
-
-$$\frac{\partial a_i}{\partial u_i} = 1 - \tanh^2(u_i)$$
-
-展开得到惊人优美的初等代数求和修正项：
-
-$$\log \pi(\mathbf{a} \mid \mathbf{s}) = \sum_{i=1}^{d_a} \left[ \log \mathcal{N}(u_i; \; \mu_i, \sigma_i) - \log(1 - \tanh^2(u_i) + \epsilon) \right]$$
-
-### 3. 概率密度修正手算数值算例
-设动作维度为 $1$。网络预测输出高斯均值 $\mu = 0.0$，标准差 $\sigma = 1.0$。
-采样到一个标准高斯点 $u = 0.0$：
-1. **计算挤压后动作**：$a = \tanh(0.0) = 0.0$；
-2. **计算原始高斯对数密度**：
-   $$\log \mathcal{N}(0.0; 0, 1) = -\frac{1}{2} \ln(2\pi) - \frac{0^2}{2} = -\frac{1}{2} \ln(6.283) \approx -0.9189$$
-3. **计算雅可比修正项**：
-   $$1 - \tanh^2(0.0) = 1 - 0 = 1.0 \implies \log(1.0) = 0.0$$
-4. **最终动作对数概率**：
-   $$\log \pi(a=0 \mid s) = -0.9189 - 0.0 = -0.9189$$
-
-初等代数的几步计算清晰证实：雅可比修正项精确补偿了双曲正切函数在两端边界处的非线性拉伸，使得反向传播能够精准计算最大熵正则化梯度！
-
-<details>
-<summary><b>深入推导：重参数化概率密度变换中的雅可比对角行列式展开证明（点击展开查看完整推导）</b></summary>
-
-设双射光滑映射 $\mathbf{g}: \mathbb{R}^n \to \Omega \subset \mathbb{R}^n$ 满足 $\mathbf{y} = \mathbf{g}(\mathbf{x})$。
-由测度论概率守恒：$\int_B p_Y(\mathbf{y}) d\mathbf{y} = \int_{\mathbf{g}^{-1}(B)} p_X(\mathbf{x}) d\mathbf{x}$。
-利用多元重积分换元公式 $d\mathbf{y} = |\det \mathbf{J}_{\mathbf{g}}(\mathbf{x})| d\mathbf{x}$：
-$$p_Y(\mathbf{y}) = p_X(\mathbf{g}^{-1}(\mathbf{y})) \cdot |\det \mathbf{J}_{\mathbf{g}}(\mathbf{x})|^{-1}$$
-取对数即得 $\log p_Y(\mathbf{y}) = \log p_X(\mathbf{x}) - \log |\det \mathbf{J}_{\mathbf{g}}(\mathbf{x})|$。
-由于 $\mathbf{g}$ 为逐元素独立函数 $y_i = \tanh(x_i)$，雅可比矩阵 $\mathbf{J}$ 严格为对角阵，其行列式等于对角元素乘积 $\det \mathbf{J} = \prod_{i=1}^n (1 - \tanh^2(x_i))$，严格证得换元修正公式。
-</details>
-
----
-
-## 3.6.3 纯底层 PyTorch 代码实现：从零手写 Squashed Gaussian 连续控制策略网络
-
-下面我们使用纯底层 PyTorch 算子手写实现完整的 Squashed Gaussian 策略网络与对数概率雅可比解析修正引擎。
+先导入张量、网络与缓冲区所需模块。
 
 ```python
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
+from torch.nn import functional as F
+import collections
+import random
+```
 
-class SquashedGaussianPolicy(nn.Module):
-    """
-    带 Tanh 双曲正切挤压的高精连续控制策略网络 (SAC 核心 Actor)
-    输出物理有界动作 a in (-1, 1) 并计算精确修正对数似然 log_pi(a|s)
-    """
-    def __init__(self, state_dim: int = 4, action_dim: int = 2, hidden_dim: int = 64):
+## 经验回放缓冲区：打破时序相关性
+
+监督学习的常见分析假设样本近似独立同分布。强化学习数据却来自连续轨迹 $s_0,a_0,r_0,s_1,a_1,\dots$，其中 $s_{t+1}$ 由 $s_t$、$a_t$ 和环境共同产生。连续批次可能覆盖很窄的状态区域，使梯度高度相关并偏向近期经验。
+
+Lin 系统研究了经验回放（Experience Replay）：保存过去的经验，并在后续学习中重新呈现它们 [[Lin, 1992]](https://doi.org/10.1007/BF00992699)；DQN 随后把这一机制用于深度强化学习。现代实现常采用固定容量的循环缓冲区，容量满后覆盖最旧数据，但“FIFO 队列”是常见工程实现，并不是经验回放概念本身的必要条件。训练时，我们通常从缓冲区随机抽取由 $(s_t, a_t, r_t, s_{t+1}, d_t)$ 组成的小批量转移。
+
+均匀随机采样会减少相邻转移同时进入一个批次的机会，但不会消除数据本身的相关性或分布漂移。
+
+下面用 Python 标准库的 `collections.deque` 维护固定容量队列，并在采样时把各字段堆叠为张量。
+
+```python
+class ReplayBuffer:
+    """强化学习的经验回放缓冲区简洁实现"""
+    def __init__(self, capacity):
+        # 使用 deque 可以自动处理队列满时的先进先出逻辑
+        self.buffer = collections.deque(maxlen=capacity)
+
+    def add(self, state, action, reward, next_state, done):
+        """将一步 MDP 转移记录到缓冲区"""
+        self.buffer.append((state, action, reward, next_state, done))
+
+    def sample(self, batch_size):
+        """随机无放回采样，并直接将其转换为多维张量供网络训练"""
+        transitions = random.sample(self.buffer, batch_size)
+        # 解包转移元组的列表，重组为各属性的元组
+        state, action, reward, next_state, done = zip(*transitions)
+
+        # 将数据统一转换为 PyTorch 张量，并指定严谨的数据类型
+        return (torch.tensor(state, dtype=torch.float32),
+                torch.tensor(action, dtype=torch.int64),
+                torch.tensor(reward, dtype=torch.float32),
+                torch.tensor(next_state, dtype=torch.float32),
+                torch.tensor(done, dtype=torch.float32))
+
+    def size(self):
+        """查询当前缓冲区中积累的转移样本数量"""
+        return len(self.buffer)
+```
+
+## 基于多层感知机的策略网络与价值网络
+
+在拥有了稳定的数据来源（经验回放池）之后，我们接下来需要定义算法的“大脑”，即策略网络和价值网络。
+
+动作价值函数 $Q(s,a)$ 对一个状态—动作对输出标量。离散动作数为 $K$ 时，网络可只接收状态 $s$，一次输出 $K$ 个动作值；第 $k$ 个分量就是 $Q(s,a=k)$。因此网络实现的映射为 $\mathcal{S}\to\mathbb{R}^K$。
+
+<div align="center">
+  <img src="/figures/03-data-and-first-model/source/06-rl-foundation-concise/a3c-fig1.png" alt="异步 actor–critic 与 DQN 在五个 Atari 游戏上的学习速度对比，体现策略与价值模块组合后的经验结果。" width="86%">
+
+_图 3.6-3：异步 actor–critic 与 DQN 在五个 Atari 游戏上的学习速度对比，体现策略与价值模块组合后的经验结果。 出处：Volodymyr Mnih et al.，[Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783)（2016），Figure 1。_
+
+</div>
+
+而对于策略网络 $\pi(a|s)$，其数学本质是给定状态 $s$ 时的条件概率分布。同理，我们将网络设计为输出一个维度为 $K$ 的向量，但为了满足概率的公理（非负且和为1），这些输出通常被视为对数几率 (Logits)，并在后续的损失函数计算中通过 Softmax 激活函数转化为严格的概率分布。
+
+用 `nn.Sequential` 可以紧凑地定义 Q 网络和策略网络。下面都采用两层 ReLU MLP；它适合演示接口与形状，不代表对所有任务都足够。
+
+```python
+class QNetwork(nn.Module):
+    """基于多层感知机的动作价值函数近似"""
+    def __init__(self, state_dim, action_dim, hidden_dim=64):
+        super().__init__()
+        # 利用 nn.Sequential 极大地精简了前向传播的定义
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim) # 输出层不使用激活函数，因为Q值可以是任意实数
+        )
+
+    def forward(self, state):
+        """输入维度为 (batch_size, state_dim)，输出维度为 (batch_size, action_dim)"""
+        return self.net(state)
+
+class PolicyNetwork(nn.Module):
+    """基于多层感知机的随机策略近似"""
+    def __init__(self, state_dim, action_dim, hidden_dim=64):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU()
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim)
+            # 输出 logits，后续在动作采样或计算对数概率时配合 Softmax/Categorical 分布使用
         )
-        self.fc_mean = nn.Linear(hidden_dim, action_dim)
-        self.fc_log_std = nn.Linear(hidden_dim, action_dim)
 
-    def forward(self, state: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        feat = self.net(state)
-        mean = self.fc_mean(feat)
-        # 将 log_std 裁剪在 [-20, 2] 保证数值稳定性
-        log_std = torch.clamp(self.fc_log_std(feat), min=-20.0, max=2.0)
-        std = log_std.exp()
-        return mean, std
-
-    def sample(self, state: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        采样有界动作与对数概率
-        :return: (action, log_prob)
-        """
-        mean, std = self.forward(state)
-        normal_dist = torch.distributions.Normal(mean, std)
-
-        # 1. 重参数化高斯采样
-        u = normal_dist.rsample()
-
-        # 2. Tanh 双曲正切平滑挤压
-        action = torch.tanh(u)
-
-        # 3. 计算未挤压对数高斯似然
-        raw_log_prob = normal_dist.log_prob(u).sum(dim=-1, keepdim=True)
-
-        # 4. 雅可比换元对角修正: sum(log(1 - tanh(u)^2 + eps))
-        eps = 1e-6
-        squash_correction = torch.log(1.0 - action.pow(2) + eps).sum(dim=-1, keepdim=True)
-
-        log_prob = raw_log_prob - squash_correction
-        return action, log_prob
-
-# ===================================================================
-# 单元测试与动作边界与对数似然校验
-# ===================================================================
-if __name__ == "__main__":
-    batch_size = 4
-    state_dim = 4
-    action_dim = 2
-
-    policy = SquashedGaussianPolicy(state_dim=state_dim, action_dim=action_dim)
-    dummy_state = torch.randn(batch_size, state_dim)
-
-    # 采样动作与修正对数似然
-    actions, log_probs = policy.sample(dummy_state)
-
-    print(f"[Policy Test] 采样动作形状: {actions.shape}")
-    print(f"[Policy Test] 输出动作范围: [{actions.min().item():.4f}, {actions.max().item():.4f}]")
-    print(f"[Policy Test] 修正对数似然形状: {log_probs.shape}")
-    print(f"[Policy Test] 各样本 log_prob: {[round(x, 4) for x in log_probs.squeeze().tolist()]}")
-
-    assert actions.shape == (batch_size, action_dim), "动作张量维度不符！"
-    assert actions.abs().max().item() < 1.0, "动作输出超出物理有界区间 [-1, 1]！"
-    assert not torch.isnan(log_probs).any(), "对数似然计算出现 NaN 异常！"
-    print("✓ Squashed Gaussian 连续控制策略与雅可比变量替换单测全部通过！")
+    def forward(self, state):
+        return self.net(state)
 ```
 
----
+在强化学习的计算图中，Q网络和策略网络扮演着将高维感知信息降维提炼为价值标量和动作概率的核心角色。通过这种简洁的模块化封装，我们将其内部复杂的矩阵乘法与偏置加法完全隐藏在了框架的高级API之下，使我们能够将精力集中于宏观的算法逻辑与贝尔曼更新目标的计算上。
 
-## 3.6.4 本节小结
+## 小结
 
-回顾本节内容，我们完成了强化学习基石的系统性全局总结：
-1. **三大决策范式定位**：无模型极速低延迟、世界模型极高样本效率、在线规划极强闭环自愈，构成了智能体在不同任务下的完整工具箱；
-2. **Squashed Gaussian 物理安全**：利用 Tanh 挤压将无界高斯映射为物理安全区间，并通过雅可比换元公式严密补偿了概率密度偏置；
-3. **世界模型承前启后**：牢固掌握数据流管理、贝尔曼价值估计与连续策略生成，为下一章全面进军循环状态空间模型（RSSM）与 Dreamer 梦境世界模型铺平了通往巅峰的大道！
+- 强化学习的核心是寻找能够最大化累积折扣回报的策略。我们可以通过递归的**贝尔曼方程**严格地在数学上定义价值函数。
+- **`ReplayBuffer` 模块**的引入，通过缓存历史轨迹和均匀随机采样，打破了强化学习样本间严重的时间序列相关性，从而允许我们利用传统的基于独立同分布假设的优化算法（如随机梯度下降）来训练网络。
+- **动作价值函数 $Q(s,a)$ 与策略分布 $\pi(a\mid s)$** 都可以先用 MLP 实现；后续算法会在此基础上加入目标网络、优势估计或熵正则等机制。

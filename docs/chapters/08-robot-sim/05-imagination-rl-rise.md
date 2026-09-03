@@ -1,279 +1,237 @@
-# 8.5 梦境强化学习与无模型策略闭环
+# 8.5 基于世界模型想象的强化学习
 
-在强化学习的漫长演进史中，**无模型强化学习（Model-Free RL, 如 SAC, PPO）** 长期占据着统治地位。
-
-然而，无模型算法存在一个几乎不可调和的阿喀琉斯之踵——**极低的数据样本效率（Sample Inefficiency）**。为了让一只机械臂学会精准抓取或让双足机器人学会平稳步行，无模型算法往往需要在真实物理环境或模拟器中进行数千万步的盲目随机试错。
-
-如果将这种算法直接部署在物理硬件上，即便不考虑关节磨损与电机过热，单单采集这数千万步数据所需要的物理时间就长达数月乃至数年。
-
-人类之所以不需要跌落悬崖上万次就能本能地学会远离悬崖，是因为我们的大脑内部拥有一个强大的**神经世界模型（Mental World Model）**。在我们付诸行动之前，我们已经在脑海的“内心剧场”中以极快的速度演练了行动可能引发的物理后果与危险。
-
-从 Ha 与 Schmidhuber 的 **World Models**，到 Danijar Hafner 等人推出的 **PlaNet** 与 **DreamerV1 / V2 / V3**，**梦境强化学习（Imagination-based Reinforcement Learning）** 开创了全新的智能范式——机器人首先利用少量物理交互数据构建起周围世界的动态运转规律，随后彻底脱离外部物理环境，直接在内部潜在潜空间的“梦境”中自我推演数百万次，实现策略的高速闭环进化。
+假设一次真实机械臂抓取需要 10 秒，而模型在 GPU 中展开一条 15 步潜在轨迹只需很短时间。真实交互仍用来校正模型，策略更新则可以复用这些数据，在潜在空间中尝试更多动作。这种做法称为基于模型的**想象学习**。
 
 <div align="center">
+<img src="/figures/08-robot-sim/source/05-imagination-rl-rise/dreamer-fig2.png" alt="Dreamer 在多种视觉控制任务中从像素学习行为，展示潜在想象训练覆盖的实际任务范围。" width="86%">
 
-<img src="/figures/08-robot-sim/source/05-imagination-rl-rise/dreamerv3-fig4.png" alt="DreamerV3 跨越连续控制、像素 Atari 与高难度 Minecraft 任务，展示统一梦境强化学习架构。" width="86%">
-
-_图 8.5-1：DreamerV3 跨越连续控制、像素 Atari 与高难度 Minecraft 任务，展示统一梦境强化学习架构。 出处：[Mastering Diverse Domains through World Models，Danijar Hafner et al.，2023](https://arxiv.org/abs/2301.04104)。_
-
+_图 8.5-1：Dreamer 在多种视觉控制任务中从像素学习行为，展示潜在想象训练覆盖的实际任务范围。 出处：Danijar Hafner et al.，[Dream to Control: Learning Behaviors by Latent Imagination](https://arxiv.org/abs/1912.01603)（2020），Figure 2。_
 </div>
 
----
+想象不会免费增加真实信息：模型没见过的接触或物体，仍可能被预测错。它的价值在于把已经收集的数据转化为可微、可重复的训练轨迹。本节以 RSSM 和 Dreamer 为主线说明这一过程。
 
-## 8.5.1 物理与认知基石：现实交互与梦境想象的二元循环
+## 学术溯源与理论动机
 
-要理解梦境强化的核心逻辑，我们首先必须审视外部物理真实世界与内部潜在动力学模型之间的二元交互循环。
+基于模型（Model-Based）的强化学习思想可以追溯到上世纪90年代Richard Sutton提出的Dyna架构 [[Sutton, 1990]](https://dl.acm.org/doi/10.5555/645530.658292)。Dyna的核心思想是利用智能体与真实环境交互收集的数据来训练一个环境动力学模型，随后智能体不仅在真实环境中学习，也在环境模型生成的模拟数据中学习。然而，早期的环境模型主要针对低维、离散的状态空间，难以处理高维的图像输入。
 
-整个系统由两个相互解耦、异步演进的认知回路构成：
-
-### 1. 外部真实感知回路（Environment Agent Loop）
-机器人仅以极低频率（例如每秒 10 次）与外部物理世界进行真实交互。
-- 收集少量的真实物理转移元组 $(\mathbf{o}_t, \mathbf{a}_t, r_t, \mathbf{o}_{t+1})$ 并存入经验回放池（Replay Buffer）；
-- 利用这些真实数据，训练**循环状态空间世界模型（RSSM）**，让世界模型学会精准预测物理状态的演变规律、图像重构与即时奖励。
-
-### 2. 内部潜空间梦境回路（Latent Imagination Loop）
-一旦世界模型具备了基础的物理预测能力，**物理世界的大门被完全关闭**。
-- 策略网络（Actor）与价值网络（Critic）从一个随机的潜在初始状态 $\mathbf{s}_0$ 开始，向未来展开为期 $H = 15$ 步的“纯潜空间梦境推演”；
-- 梦境中不需要渲染昂贵的像素图像，仅在紧凑的隐向量空间 $\mathbb{R}^d$ 中以数万步/秒的惊人算力暴风骤雨般向前滚动；
-- 策略在这个虚拟梦境中累积想象奖励，并通过**端到端反向传播解析梯度**直接优化策略参数！
+Ha 与 Schmidhuber 在《World Models》中用变分自编码器（VAE）压缩图像，再用混合密度循环网络（MDN-RNN）学习动作条件潜在动力学 [[Ha & Schmidhuber, 2018]](https://arxiv.org/abs/1803.10122)。CarRacing 的控制器在真实环境中优化；完全在模型“梦境”中训练并迁回真实环境的实验对应 VizDoom Take Cover。这个结果证明了特定任务上的可行性，不是对任意视觉控制任务的保证。
 
 <div align="center">
+<img src="/figures/08-robot-sim/source/05-imagination-rl-rise/worldmodels-fig7.png" alt="World Models 的梦境 rollout 把控制器置于学习到的潜在环境中训练，展示早期“内部模拟”路线。" width="86%">
 
-<img src="/figures/08-robot-sim/latex/05-imagination-rl-rise/rssm-observation-reward-factor.png" alt="RSSM 潜在动力学因子图：确定性路径与随机路径协同预测未来奖励与观测" width="86%">
-
-_图 8.5-2：RSSM 潜在动力学因子图：确定性路径与随机路径协同预测未来奖励与观测。_
-
+_图 8.5-2：World Models 的梦境 rollout 把控制器置于学习到的潜在环境中训练，展示早期“内部模拟”路线。 出处：David Ha；Jürgen Schmidhuber，[World Models](https://arxiv.org/abs/1803.10122)（2018），Figure 7。_
 </div>
 
----
-
-## 8.5.2 核心数学推导一：可微梦境轨迹与解析策略梯度
-
-为什么梦境强化学习的学习效率能够超越无模型强化学习数个数量级？答案在于**可微路径梯度（Pathwise Analytic Gradients）**。
+Hafner 等人在 PlaNet 中提出 RSSM，Dreamer 随后用这一模型生成潜在想象轨迹，并通过价值估计与动力学梯度训练策略 [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)。DreamerV2 与 DreamerV3 又扩展到离散潜变量和跨领域统一超参数 [[Hafner et al., 2021]](https://arxiv.org/abs/2010.02193); [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104)。这些论文在各自报告的基准上与强无模型方法比较，但不能概括为在样本效率和最终性能上“首次全面超越”所有无模型算法。
 
 <div align="center">
+<img src="/figures/08-robot-sim/source/05-imagination-rl-rise/planet-fig6.png" alt="PlaNet 在多个连续控制任务上的学习曲线展示 RSSM 与潜在空间规划的样本效率。" width="86%">
 
-<img src="/figures/08-robot-sim/source/05-imagination-rl-rise/dreamer-fig2.png" alt="Dreamer 在潜在状态空间中展开想象轨迹，通过重参数化技巧实现策略梯度的解析反向传播。" width="86%">
-
-_图 8.5-3：Dreamer 在潜在状态空间中展开想象轨迹，通过重参数化技巧实现策略梯度的解析反向传播。 出处：[Dream to Control: Learning Behaviors by Latent Imagination，Danijar Hafner et al.，2019](https://arxiv.org/abs/1912.01603)。_
-
+_图 8.5-3：PlaNet 在多个连续控制任务上的学习曲线展示 RSSM 与潜在空间规划的样本效率。 出处：Danijar Hafner et al.，[Learning Latent Dynamics for Planning from Pixels](https://arxiv.org/abs/1811.04551)（2019），Figure 6。_
 </div>
+
+## 动力学系统与隐空间映射
+
+在正式引入复杂的变分推断之前，我们先从马尔可夫决策过程（MDP）的最基础动力学转移出发。
+
+在一个确定性的动力学系统中，如果已知当前时刻 $t$ 的状态向量 $s_t$ 以及智能体执行的动作向量 $a_t$，系统的下一时刻状态 $s_{t+1}$ 可以由一个确定性的非线性函数精确映射得出：
+
+$$s_{t+1} = f(s_t, a_t)$$
+
+现实系统还包含难以观测的噪声和随机扰动，因此常用条件概率分布描述状态转移。给定当前状态 $s_t$ 和动作 $a_t$，下一状态 $s_{t+1}$ 服从：
+
+$$s_{t+1} \sim p(s_{t+1} \mid s_t, a_t)$$
+
+学到转移分布后，就可以展开多步预测。但当观测是 $64 \times 64 \times 3$ 的 RGB 图像时，直接预测每个像素既昂贵，又会把容量用于纹理等难以预测的细节。多步误差可能不断累积，却不一定按固定指数规律增长。
+
+世界模型先把观测 $o_t$ 编码为较紧凑的潜在状态 $z_t \in \mathbb{R}^d$，再在潜在空间中预测：
+
+$$z_{t+1} \sim p(z_{t+1} \mid z_t, a_t)$$
+
+潜在状态需要保留预测奖励、终止和未来观测所需的信息。维度较低通常能降低展开成本，但表示是否充分要由训练目标与下游表现检验。
+
+## 循环状态空间模型（RSSM）的严谨推导
+
+隐空间动力学需要同时表达可由历史预测的结构与难以预测的随机变化。Hafner 等人提出的 RSSM 将确定性循环状态和随机潜变量结合起来。
+
+RSSM 把潜在状态写成两部分：确定性循环状态 $h_t$ 汇总历史，随机状态 $z_t$ 表达当前不确定信息。它们不是数学上正交的子空间，而是承担不同建模角色的变量。
+
+给定初始条件和一系列动作序列 $a_{1:T}$，观测序列 $o_{1:T}$ 与奖励序列 $r_{1:T}$ 及对应隐序列 $z_{1:T}$ 的联合似然模型为：
+
+$$p(o_{1:T}, r_{1:T}, z_{1:T} \mid a_{1:T}) = \prod_{t=1}^T p(o_t \mid h_t, z_t) p(r_t \mid h_t, z_t) p(z_t \mid h_t)$$
 
 <div align="center">
+<img src="/figures/08-robot-sim/latex/05-imagination-rl-rise/rssm-observation-reward-factor.png" alt="每个时间步的潜变量先验、观测似然与奖励似然构成一个因子三元组并跨时间相乘" width="86%">
 
-<img src="/figures/08-robot-sim/source/05-imagination-rl-rise/planet-fig6.png" alt="PlaNet 仅利用潜在动力学模型与在线规划 (CEM) 解决多种连续控制任务。" width="86%">
-
-_图 8.5-4：PlaNet 仅利用潜在动力学模型与在线规划 (CEM) 解决多种连续控制任务。 出处：[Learning Latent Dynamics for Planning from Pixels，Danijar Hafner et al.，2018](https://arxiv.org/abs/1811.04551)。_
-
+_图 8.5-4：每个时间步都乘入潜变量先验、观测似然与奖励似然；观测和奖励两项共享同一潜在状态条件。_
 </div>
 
-### 1. 传统无模型策略梯度的“黑盒黑障”
-在无模型强化学习中，环境物理引擎是一个不可求导的黑盒。算法只能采用类似 REINFORCE 的似然比得分函数估计梯度：
-$$\nabla_\phi J \approx \sum_{t} \nabla_\phi \log \pi_\phi(\mathbf{a}_t \mid \mathbf{s}_t) \hat{A}_t$$
-这种梯度估计方法方差极大，就像一个蒙着双眼的人只能通过“最终摔倒没摔倒”的标量反馈来盲目摸索方向。
+其中，确定性隐藏状态轨迹 $h_t$ 根据如下非线性递归方程更新：
 
-### 2. 梦境世界模型中的全路径链式反传
-在世界模型中，状态转移函数 $\mathbf{s}_{t+1} = f_\theta(\mathbf{s}_t, \mathbf{a}_t)$、动作策略 $\mathbf{a}_t = \pi_\phi(\mathbf{s}_t)$ 与奖励模型 $\hat{r}_t = R_\theta(\mathbf{s}_t)$ 全部是由连续可微的神经网络构成！
+$$h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})$$
 
-对于一条长度为 $H$ 的想象轨迹，总回报可直接对策略网络参数 $\phi$ 依据多元复合函数微积分链式法则精确求导：
+这个分解包含三类条件分布：
 
-$$\frac{\partial}{\partial \phi} \sum_{\tau=1}^H \hat{r}_\tau = \sum_{\tau=1}^H \left( \frac{\partial \hat{r}_\tau}{\partial \mathbf{s}_\tau} \frac{\partial \mathbf{s}_\tau}{\partial \mathbf{a}_{\tau-1}} \frac{\partial \mathbf{a}_{\tau-1}}{\partial \phi} + \frac{\partial \hat{r}_\tau}{\partial \mathbf{s}_\tau} \frac{\partial \mathbf{s}_\tau}{\partial \mathbf{s}_{\tau-1}} \frac{\partial \mathbf{s}_{\tau-1}}{\partial \mathbf{a}_{\tau-2}} \frac{\partial \mathbf{a}_{\tau-2}}{\partial \phi} + \dots \right)$$
+1. **先验转移模型（Prior Dynamics）**：$p_\theta(z_t \mid h_t)$，负责在缺少当前观测信息的情况下，沿着时间轴预测随机变量分布的演化。
+2. **观测重构模型（Observation Model）**：$p_\theta(o_t \mid h_t, z_t)$，定义从低维隐流形到高维观测流形的映射。
+3. **奖励反馈模型（Reward Model）**：$p_\theta(r_t \mid h_t, z_t)$，提供单步标量反馈预测。
 
-### 3. 可微想象梯度详细手算代入算例
-设隐状态为标量 $s$，动作为标量 $a$。系统由以下极简可微函数构成：
-- 策略网络：$a = \phi \cdot s$（初始参数 $\phi = 2.0$）；
-- 动力学模型：$s_{t+1} = 0.5 s_t + a_t$；
-- 奖励模型：$r(s) = 3.0 s$。
+训练时希望最大化观测与奖励的边缘对数似然。潜变量积分通常无法直接计算，因此引入近似后验；它使用循环历史 $h_t$ 与当前观测 $o_t$：
 
-初始状态为 $s_1 = 1.0$。我们展开长度为 $H = 2$ 步的梦境想象：
-1. **第 1 步前向推演**：
-   - 动作：$a_1 = \phi \cdot s_1 = 2.0 \times 1.0 = 2.0$；
-   - 奖励：$r_1 = 3.0 \times s_1 = 3.0 \times 1.0 = 3.0$；
-2. **第 2 步前向推演**：
-   - 下一状态：$s_2 = 0.5 s_1 + a_1 = 0.5 \times 1.0 + \phi s_1 = 0.5 + 2.0 = 2.5$；
-   - 奖励：$r_2 = 3.0 \times s_2 = 3.0 \times (0.5 s_1 + \phi s_1)$；
-3. **计算总回报关于策略参数 $\phi$ 的解析梯度**：
-   - $r_1$ 与 $\phi$ 无直接依赖（$\frac{\partial r_1}{\partial \phi} = 0$）；
-   - $r_2$ 对 $\phi$ 的偏导数：
-     $$\frac{\partial r_2}{\partial \phi} = \frac{\partial r_2}{\partial s_2} \cdot \frac{\partial s_2}{\partial a_1} \cdot \frac{\partial a_1}{\partial \phi} = 3.0 \times 1.0 \times s_1 = 3.0 \times 1.0 \times 1.0 = +3.0$$
+$$q_\phi(z_t \mid h_t, o_t)$$
 
-初等代数的几步链式展开清晰揭示：世界模型直接告知策略参数 $\phi$：**“只要将 $\phi$ 增大，第 2 步的状态 $s_2$ 就会增大，从而带来 $+3.0$ 的确定性奖励增长！”** 这种具备物理因果白盒的解析梯度，其信息量远非无模型试错所能比拟！
+先验 $p_\theta(z_t\mid h_t)$ 在想象阶段不看当前图像，后验 $q_\phi(z_t\mid h_t,o_t)$ 在训练阶段看得到图像。KL 项让两者接近，使模型在移除真实观测后仍能沿先验展开。
 
-<details>
-<summary><b>深入推导：梦境想象可微梯度（Analytic Gradients）相比无模型似然比梯度的方差衰减分析（点击展开查看完整推导）</b></summary>
+运用詹森不等式（Jensen's Inequality），将对数函数的凸组合极值向内投射，我们获得时间序列联合分布的变分证据下界（ELBO）：
 
-设真实动力学 Jacobian 矩阵为 $\mathbf{J}_t = \frac{\partial \mathbf{s}_{t+1}}{\partial \mathbf{s}_t}$。
-解析梯度估计量为 $\hat{g}_{\text{analytic}} = \sum_t \mathbf{J}_{\text{model}} \nabla_\phi \pi$；得分函数梯度估计量为 $\hat{g}_{\text{score}} = \sum_t \nabla_\phi \log \pi (G_t - b)$。
-根据 Rao-Blackwell 定理与对偶控制变量方差分析，由于解析梯度直接对内在动力学路径积分，其估计方差满足：
-$$\text{Var}(\hat{g}_{\text{analytic}}) = \mathcal{O}(H \cdot \sigma_{\text{model}}^2) \ll \mathcal{O}(H^3 \cdot \sigma_{\text{env}}^2) = \text{Var}(\hat{g}_{\text{score}})$$
-极低的方差使优化器能够跨越长程时间视界（$H \ge 15$）平稳更新，实现了百倍量级的样本效率跨越。
-</details>
+$$
+\begin{aligned}
+\ln p(o_{1:T}, r_{1:T} \mid a_{1:T}) &= \ln \mathbb{E}_{q_\phi(z_{1:T} \mid o_{1:T}, a_{1:T})} \left[ \frac{p(o_{1:T}, r_{1:T}, z_{1:T} \mid a_{1:T})}{q_\phi(z_{1:T} \mid o_{1:T}, a_{1:T})} \right] \\
+&\ge \mathbb{E}_{q_\phi} \left[ \ln \frac{p(o_{1:T}, r_{1:T}, z_{1:T} \mid a_{1:T})}{q_\phi(z_{1:T} \mid o_{1:T}, a_{1:T})} \right] \\
+&= \sum_{t=1}^T \mathbb{E}_{q_\phi} \Big[ \underbrace{\ln p_\theta(o_t \mid h_t, z_t)}_{\text{重构对数似然}} + \underbrace{\ln p_\theta(r_t \mid h_t, z_t)}_{\text{反馈对数似然}} - \underbrace{\text{KL}\big( q_\phi(z_t \mid h_t, o_t) \,\|\, p_\theta(z_t \mid h_t) \big)}_{\text{动力学分布散度}} \Big]
+\end{aligned}
+$$
 
----
+这个下界包含三项：
 
-## 8.5.3 核心数学推导二：DreamerV3 的符号对称缩放与无超参泛化
+1. **重构对数似然**鼓励潜变量保留预测观测所需的信息。
+2. **奖励对数似然**鼓励状态保留与即时奖励有关的信息。
+3. **KL 散度项**约束先验接近看过当前观测的后验。权重过强会压制信息，过弱则会让先验难以跟随后验。
 
-在跨越从雅达利游戏（稀疏奖励、高动态）到四足机器人（密集力矩、高维物理）的广泛任务时，奖励尺度相差上百万倍，常常导致 Critic 价值网络数值溢出或爆炸。
+## 在隐空间中展开梦境与策略寻优
 
 <div align="center">
+<img src="/figures/08-robot-sim/source/05-imagination-rl-rise/dreamerv3-fig4.png" alt="DreamerV3 的多步预测将真实帧、重建和开放循环潜在预测并列，展示想象轨迹保持任务信息的程度。" width="86%">
 
-<img src="/figures/08-robot-sim/source/05-imagination-rl-rise/worldmodels-fig7.png" alt="World Models 首次在梦境隐空间中演练赛车游戏，展示梦境学习的早期先驱原型。" width="86%">
-
-_图 8.5-5：World Models 首次在梦境隐空间中演练赛车游戏，展示梦境学习的早期先驱原型。 出处：[Recurrent World Models Facilitate Policy Evolution，David Ha & Jürgen Schmidhuber，2018](https://arxiv.org/abs/1809.01999)。_
-
+_图 8.5-5：DreamerV3 的多步预测将真实帧、重建和开放循环潜在预测并列，展示想象轨迹保持任务信息的程度。 出处：Danijar Hafner et al.，[Mastering Diverse Domains through World Models](https://arxiv.org/abs/2301.04104)（2023），Figure 4。_
 </div>
 
-DreamerV3 引入了三大革命性的**无超参自适应缩放机制**：
+当动力学模型（参数为 $\theta$ 和 $\phi$）拟合收敛后，环境的真实动态规律已被提纯至连续函数的参数中。我们随即进入策略优化的“做梦”阶段（Dreaming Phase）。
 
-### 1. 对称对数变换（Symlog Transformation）
-为了压缩极大或极小的物理数值跨度，DreamerV3 提出了对称可逆对数映射：
+想象轨迹从回放数据编码出的后验状态开始。随后 actor 输出动作，先验转移模型递归产生未来潜在状态；这段展开不再调用环境，但仍依赖从真实数据学到的模型：
 
-$$\text{symlog}(x) = \text{sign}(x) \ln(|x| + 1)$$
+$$a_t \sim \pi_\psi(a_t \mid \hat{s}_t), \quad \hat{z}_{t+1} \sim p_\theta(\hat{z}_{t+1} \mid \hat{h}_{t+1}), \quad \text{其中 } \hat{h}_{t+1} = f_\theta(\hat{h}_t, \hat{z}_t, a_t)$$
 
-$$\text{symexp}(y) = \text{sign}(y) (\exp(|y|) - 1)$$
+约定俗成地，采用上标 $\hat{\cdot}$ 标注该张量系在纯计算图内演化所得。为符号紧凑起见，令 $\hat{s}_t = (\hat{h}_t, \hat{z}_t)$。
 
-无论输入奖励是 $0.001$ 还是 $1,000,000$，经 $\text{symlog}$ 映射后均被平滑压缩在 $[-15, 15]$ 的健康数值区间内。
+如果动作与潜在状态采用可重参数化分布，actor 可以沿世界模型反向传播梯度。这个梯度对**学习到的模型目标**可导，但相对真实环境可能有模型偏差，因此不能称为无偏真实策略梯度。
 
-### 2. 动态百分位数价值归一化（Percentile Return Normalization）
-为了让 Actor 策略梯度更新幅度在不同任务间完全一致，DreamerV3 统计回放价值分布的第 5 分位数 $P_{05}$ 与第 95 分位数 $P_{95}$，并对优势进行动态尺度归一化：
+以对角高斯潜变量为例，重参数化写成 $\hat{z}_{t+1}=\mu_\theta(\hat{h}_{t+1})+\sigma_\theta(\hat{h}_{t+1})\odot\epsilon$。固定噪声样本后，张量框架可以对这条有限长度计算图执行 BPTT：
 
-$$\hat{A}_t^{\text{norm}} = \frac{V_t^{\text{imagined}} - V_\psi(\mathbf{s}_t)}{\max(1.0, \; P_{95} - P_{05})}$$
+$$\frac{\partial V(\hat{s}_t)}{\partial \psi} = \sum_{\tau=t}^{t+H} \gamma^{\tau-t} \frac{\partial \mathbb{E}[r_\tau]}{\partial \hat{s}_\tau} \frac{\partial \hat{s}_\tau}{\partial \psi}$$
 
-这种极致的数值鲁棒性，让 DreamerV3 成为深度强化学习历史上第一个完全不调节任何超参数、直接通关数百个异构环境的通用世界模型算法！
+价值网络 $v_\xi(\hat{s}_t)$ 估计想象视野之外的回报。$\lambda$-return 在短期预测与价值自举之间插值，能降低纯长视野展开的方差，但不会完全消除截断与模型偏差：
 
-<details>
-<summary><b>深入推导：对称对数函数在无穷方差重尾奖励分布下的李普希茨连续性证明（点击展开查看完整推导）</b></summary>
+$$V_t^\lambda = \hat{r}_t + \gamma \begin{cases} (1-\lambda) v_\xi(\hat{s}_{t+1}) + \lambda V_{t+1}^\lambda, & t < H \\ v_\xi(\hat{s}_{t+1}), & t = H \end{cases}$$
 
-函数 $f(x) = \text{sign}(x) \ln(|x| + 1)$ 在全实数域 $\mathbb{R}$ 上连续。
-求其一阶导数：
-$$f'(x) = \frac{1}{|x| + 1} > 0$$
-对于任意 $x \in \mathbb{R}$，导数极值满足 $\sup_{x \in \mathbb{R}} |f'(x)| = f'(0) = 1.0$。
-根据中值定理，对任意实数 $a, b \in \mathbb{R}$：
-$$|f(a) - f(b)| \le 1.0 \cdot |a - b|$$
-因此 $\text{symlog}$ 是严格的 1-李普希茨连续函数（1-Lipschitz Continuous），有效杜绝了梯度爆炸，保证了神经网络反向传播的绝对稳定性。
-</details>
+训练时，actor 提高想象回报，critic 拟合停止梯度后的 $V_t^\lambda$ 目标。Dreamer 各版本在潜变量类型、损失细节和回报归一化上并不完全相同，代码实现需要对照具体版本。
 
----
+## 代码实现与深度剖析
 
-## 8.5.4 纯底层 PyTorch 代码实现：从零构建潜空间梦境想象与 Actor 优化引擎
-
-下面我们使用纯底层 PyTorch 算子实现一个结构完备的潜在动力学世界模型、可微梦境轨迹展开器与解析策略梯度优化引擎。
+下面用张量代码实现一个简化的 `RSSMCell`，包含递归状态更新、先验与后验参数计算。
 
 ```python
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
+from torch.distributions import Normal
 
-class LatentWorldDynamics(nn.Module):
-    """
-    可微潜在动力学与奖励预测模型
-    s_{t+1} = MLP(s_t, a_t), r_t = MLP(s_t)
-    """
-    def __init__(self, state_dim: int = 16, action_dim: int = 4):
+class RSSMCell(nn.Module):
+    def __init__(self, action_dim, hidden_dim=200, latent_dim=30):
         super().__init__()
-        self.trans_net = nn.Sequential(
-            nn.Linear(state_dim + action_dim, 64),
-            nn.ELU(),
-            nn.Linear(64, state_dim)
-        )
-        self.reward_net = nn.Sequential(
-            nn.Linear(state_dim, 32),
-            nn.ELU(),
-            nn.Linear(32, 1)
-        )
+        self.hidden_dim = hidden_dim
+        self.latent_dim = latent_dim
 
-    def forward(self, state: torch.Tensor, action: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        next_state = self.trans_net(torch.cat([state, action], dim=-1))
-        reward = self.reward_net(next_state)
-        return next_state, reward
+        # 确定性动力学方程: h_t = f(h_{t-1}, z_{t-1}, a_{t-1})
+        self.gru = nn.GRUCell(latent_dim + action_dim, hidden_dim)
 
-class ImaginationActor(nn.Module):
-    """
-    梦境策略网络 (Actor)
-    """
-    def __init__(self, state_dim: int = 16, action_dim: int = 4):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(state_dim, 64),
+        # 先验预测算子: p(z_t | h_t)
+        self.prior_mlp = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ELU(),
-            nn.Linear(64, action_dim),
-            nn.Tanh() # 将动作限制在 [-1, 1]
+            nn.Linear(hidden_dim, 2 * latent_dim)
         )
 
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
-        return self.net(state)
+        # 后验推断算子: q(z_t | h_t, o_t) (约定o_t已被视觉流形编码器映射为向量e_t)
+        self.posterior_mlp = nn.Sequential(
+            nn.Linear(hidden_dim + hidden_dim, hidden_dim),
+            nn.ELU(),
+            nn.Linear(hidden_dim, 2 * latent_dim)
+        )
 
-class DreamerEngine:
-    """
-    可微梦境想象与端到端策略优化引擎
-    """
-    def __init__(self, dynamics: LatentWorldDynamics, actor: ImaginationActor, horizon: int = 15):
-        self.dynamics = dynamics
-        self.actor = actor
-        self.horizon = horizon
+    def _split_dist(self, params):
+        # [解构对角高斯分布参数矩阵]
+        mean, log_std = torch.chunk(params, 2, dim=-1)
+        # 为维持极值梯度稳定，将标准差值域硬截断至稳定区间
+        std = torch.clamp(log_std, min=-5.0, max=2.0).exp()
+        return Normal(mean, std)
 
-    def imagine_and_optimize(self, initial_states: torch.Tensor, optimizer: torch.optim.Optimizer) -> float:
+    def forward(self, h_prev, z_prev, a_prev, obs_embed=None):
         """
-        在潜在梦境中展开 H 步可微推演，并依据解析梯度更新策略
+        前向传播动力学单步演化算子。
+        闭环阶段 (obs_embed 存在): 联合推断后验分布以重构观测并计算散度项。
+        开环阶段 (obs_embed 空缺): 纯粹依据张量图先验展开未来序列。
         """
-        curr_state = initial_states # (B, state_dim)
-        accumulated_rewards = 0.0
+        # h_prev 作为 GRU hidden，输入只拼接上一随机状态与动作
+        rnn_input = torch.cat([z_prev, a_prev], dim=-1)
+        h_t = self.gru(rnn_input, h_prev)
 
-        # 1. 纯梦境前向展开
-        for t in range(self.horizon):
-            action = self.actor(curr_state)
-            next_state, reward = self.dynamics(curr_state, action)
-            accumulated_rewards = accumulated_rewards + reward.mean()
-            curr_state = next_state
+        # [前向推导先验测度流形]
+        prior_params = self.prior_mlp(h_t)
+        prior_dist = self._split_dist(prior_params)
 
-        # 2. 目标是最大化累计奖励，因此损失为负的累计回报
-        actor_loss = -accumulated_rewards
+        post_dist = None
+        # 遵循重参数化公理执行可导采样
+        z_t = prior_dist.rsample()
 
-        # 3. 反向传播解析链式梯度
-        optimizer.zero_grad()
-        actor_loss.backward()
-        optimizer.step()
+        if obs_embed is not None:
+            # [后验分布矫正过程仅激活于包含真实数据的训练回环]
+            post_input = torch.cat([h_t, obs_embed], dim=-1)
+            post_params = self.posterior_mlp(post_input)
+            post_dist = self._split_dist(post_params)
+            # 在拟合阶段，状态张量强制修正为后验信息源
+            z_t = post_dist.rsample()
 
-        return accumulated_rewards.item()
-
-# ===================================================================
-# 单元测试与可微路径梯度反向传播校验
-# ===================================================================
-if __name__ == "__main__":
-    batch_size = 16
-    state_dim = 16
-    action_dim = 4
-    horizon = 10
-
-    dynamics = LatentWorldDynamics(state_dim=state_dim, action_dim=action_dim)
-    actor = ImaginationActor(state_dim=state_dim, action_dim=action_dim)
-    optimizer = torch.optim.Adam(actor.parameters(), lr=1e-3)
-
-    engine = DreamerEngine(dynamics=dynamics, actor=actor, horizon=horizon)
-
-    dummy_initial_states = torch.randn(batch_size, state_dim)
-
-    # 1. 开展梦境推演与解析梯度更新
-    initial_reward = engine.imagine_and_optimize(dummy_initial_states, optimizer)
-    print(f"[Dreamer Test] 初始梦境想象平均总回报: {initial_reward:.4f}")
-
-    # 2. 连续优化 5 步验证策略提升
-    for epoch in range(5):
-        reward_val = engine.imagine_and_optimize(dummy_initial_states, optimizer)
-
-    print(f"[Dreamer Test] 5步可微优化后梦境总回报: {reward_val:.4f}")
-
-    # 校验策略参数梯度非空且无 NaN
-    assert actor.net[0].weight.grad is not None, "策略未接收到梦境反向传播梯度！"
-    assert not torch.isnan(actor.net[0].weight.grad).any(), "策略梯度存在 NaN 异常！"
-    print("✓ 潜空间可微梦境想象与端到端策略优化单测全部通过！")
+        return h_t, z_t, prior_dist, post_dist
 ```
 
----
+在策略网络的反向传播架构中，我们切断一切调用 `env.step` 的物理调用序列，转而使用 `RSSMCell` 输出搭建动态计算图。以下模块刻画了基于全微积分链展开的策略网络迭代过程：
 
-## 8.5.5 本节小结
+```python
+class ActorCriticInDream(nn.Module):
+    def __init__(self, rssm, actor, critic, horizon=15):
+        super().__init__()
+        self.rssm = rssm
+        self.actor = actor
+        self.critic = critic
+        self.horizon = horizon
 
-回顾本节内容，我们建立了梦境强化学习的完整范式体系：
-1. **二元认知回路**：低频与物理世界真实交互拟合动力学，高频在内心梦境隐空间中进行万步推演，彻底解决了数据饥渴难题；
-2. **可微解析梯度**：借助全路径链式求导，直接将未来奖励导数回传给策略参数，实现了极高信噪比的超稳健策略进化；
-3. **DreamerV3 通用性基石**：对称对数与百分位数归一化彻底消除了跨域超参微调，奠定了通用具身世界模型的坚实底座。
+    def forward(self, init_h, init_z):
+        h, z = init_h, init_z
+
+        states = []
+
+        # [在纯运算图中进行固定视界的自回归想象展演]
+        for t in range(self.horizon):
+            state_feature = torch.cat([h, z], dim=-1)
+            states.append(state_feature)
+
+            # [注入随机策略分布并应用重参数化技术抽取动作张量]
+            action = self.actor(state_feature)
+
+            # 驱使动力学模型执行纯先验状态转移
+            h, z, _, _ = self.rssm(h, z, action, obs_embed=None)
+
+            # 此处省略奖励模型的单步评估算子
+            # reward = self.reward_model(torch.cat([h, z], dim=-1))
+
+        return torch.stack(states, dim=1)
+```
+
+这里返回的张量形状是 `(batch, horizon, hidden_dim + latent_dim)`。奖励模型、终止模型与 $\lambda$-return 尚未加入，因此这段代码只验证想象状态的计算图，不是完整 Dreamer 训练器。
+
+## 小结
+
+- RSSM 用确定性历史状态与随机状态共同表示潜在动力学。
+- 训练阶段的后验使用当前观测，想象阶段的先验只能依赖历史与动作；KL 项连接这两条路径。
+- actor 可以沿可微世界模型优化想象回报，但梯度会继承模型偏差。
+- 价值自举与 $\lambda$-return 控制有限想象视野的偏差—方差折中。

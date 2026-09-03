@@ -1,175 +1,205 @@
-# 4.8 潜空间动力学核心精讲 (Latent Dynamics Concise)
+# 4.8 Dreamer 智能体的简洁实现
 
-经过本章前七小节从理论推导到纯手写实现的深度洗礼，我们已经完整遍历了现代神经世界模型（World Models）演进史上最波澜壮阔的篇章。
-
-从 2018 年 David Ha 与 Schmidhuber 首次提出 V-M-C 认知三元解耦，到 PlaNet 的纯潜空间在线规划，再到 DreamerV1-V3 建立起统治级的潜空间梦境强化学习帝国，乃至 MuZero 彻底卸载像素重构的价值等价隐式世界模型——这一系列算法的爆发，彻底重塑了人类对“机器如何理解物理世界并自主决策”的技术认知。
-
-本节我们将以宏观且精炼的视角，横向贯通六大里程碑模型的演进脉络，严密推导世界模型中著名的 **仿真引理（Simulation Lemma）** 与动力学复合误差上界，并使用纯底层 PyTorch 实现一套通用的潜空间动力学评估与动作平滑度分析工具。
+强化学习中的一个核心问题，是怎样用较少的环境交互学会有效策略。无模型方法直接从经验学习策略或价值；基于模型的方法则先学习环境如何变化，再利用这个模型辅助决策。两类方法各有适用范围，Dreamer 属于后者。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/08-dreamer-concise/opening-dreamer-cup.gif" alt="Dreamer 控制杯子接住落球，展示潜在想象训练不仅产生运动，还能形成需要时序协调的目标行为。" width="86%">
 
-<img src="/figures/04-latent-dynamics/source/08-dreamer-concise/dreamer-fig10.png" alt="DreamerV3 完整算法架构图：世界模型学习、潜在行为学习与环境交互三大闭环。" width="86%">
-
-_图 4.8-1：DreamerV3 完整算法架构图：世界模型学习、潜在行为学习与环境交互三大闭环。 出处：[Mastering Diverse Domains through World Models，Danijar Hafner et al.，2023](https://arxiv.org/abs/2301.04104)。_
+_图 4.8-1：Dreamer 控制杯子接住落球，展示潜在想象训练不仅产生运动，还能形成需要时序协调的目标行为。 出处：Danijar Hafner；Timothy Lillicrap；Jimmy Ba；Mohammad Norouzi，[Dream to Control: Learning Behaviors by Latent Imagination](https://arxiv.org/abs/1912.01603)（2020），Official behavior GIF: Cup Catch。_
 
 </div>
 
----
-
-## 4.8.1 理论与演进全景：六大里程碑世界模型横向解构
-
-为了让读者在面对实际工程与科研选型时具备清晰的全局视野，我们对六大经典模型进行严密对比：
-
-### 1. World Models (2018)
-- **核心特征**：VAE 空间降维 + MDN-RNN 多峰高斯时序预测 + 867 参数极简线性控制器（CMA-ES 演化求解）；
-- **历史地位**：世界模型开山之作，首次证实智能体可以在脑海梦境中演化出顶尖控制策略。
-
-### 2. PlaNet (2018)
-- **核心特征**：RSSM 确定/随机双轨动力学 + 纯潜空间 CEM 批量在线轨迹规划；
-- **历史地位**：首次完全脱离像素解码渲染，将视觉强化学习样本效率提升数个数量级。
-
-### 3. DreamerV1 (2019)
-- **核心特征**：RSSM 潜空间 Actor-Critic + $\lambda$-Return 逆向递归 + 端到端可微解析策略梯度；
-- **历史地位**：彻底取代耗时的在线规划，将梦境推演内化为毫秒级本能策略网络。
-
-### 4. DreamerV2 (2020)
-- **核心特征**：$32 \times 32$ 离散分类随机隐变量（Categorical Latents） + KL 散度平衡；
-- **历史地位**：攻克了连续高斯在离散物理阶跃事件上的均值模糊，在雅达利游戏上首次超越人类专家与无模型顶级算法。
-
-### 5. DreamerV3 (2023)
-- **核心特征**：对称对数（Symlog） + 两热离散分布回归（Two-Hot） + 动态百分位数优势归一化；
-- **历史地位**：大一统无超参自适应世界模型，不调参通吃连续控制、像素游戏与 Minecraft 长程采集任务。
-
-### 6. MuZero (2020)
-- **核心特征**：价值等价隐式世界模型 + 潜在 MCTS 树搜索；
-- **历史地位**：彻底抛弃像素重构包袱，纯粹聚焦于决策相关的状态转移、奖励与价值，树立了通用棋类与动作博弈的巅峰。
+Dreamer [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603) 建立在 PlaNet [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551) 的潜在动力学之上。它在学到的世界模型中生成潜在想象轨迹，并用这些轨迹训练 actor 与 critic；论文在视觉连续控制任务上报告了较高的数据效率。这里的 Dreamer 引用应指向 _Dream to Control_，不能误连到 PlaNet。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/08-dreamer-concise/planet-fig4.png" alt="PlaNet 的逐任务学习曲线给出 Dreamer 所继承潜在规划器在视觉控制基准上的前身表现。" width="86%">
 
-<img src="/figures/04-latent-dynamics/latex/08-dreamer-concise/gaussian-stat-split-reparam.png" alt="六大世界模型在表征形式、动力学引擎与决策机制上的演进技术树" width="86%">
-
-_图 4.8-2：六大世界模型在表征形式、动力学引擎与决策机制上的演进技术树。_
+_图 4.8-2：PlaNet 的逐任务学习曲线给出 Dreamer 所继承潜在规划器在视觉控制基准上的前身表现。 出处：Danijar Hafner；Timothy Lillicrap；Ian Fischer；Ruben Villegas；David Ha；Honglak Lee；James Davidson，[Learning Latent Dynamics for Planning from Pixels](https://arxiv.org/abs/1811.04551)（2019），Figure 4。_
 
 </div>
 
----
+本节先复习 RSSM 的计算顺序，再说明 Dreamer 如何在潜在想象轨迹上训练 actor 和 critic。代码只实现连续高斯 RSSM 的最小骨架，便于观察接口；它不是可直接复现实验结果的完整 Dreamer 智能体。
 
-## 4.8.2 核心数学推导一：仿真引理 (Simulation Lemma) 与动力学误差传递界
+## 从物理递推到隐状态的动力学
 
-在潜空间推演中，单步动力学的微小误差随着时间步长的累积，会对最终策略的价值评估产生多大的理论偏离？
+先看一个熟悉的递推例子。忽略空气阻力且假设加速度恒定时，篮球的位置可以近似写成：
+
+$$
+p_{t+1} = p_t + v_t \Delta t + \frac{1}{2} a \Delta t^2
+$$
+
+这里，$(p_t, v_t)$ 是这个简化系统的状态。强化学习环境往往不给出这样恰到好处的低维状态，而只提供图像等高维观测 $o_t$。
+
+因此，Dreamer 试图寻找一个从高维观测 $o_t$ 到低维隐状态（Latent State）$s_t$ 的映射，并在隐状态空间中建立类似于该公式的转移规律。
+
+环境可能包含随机性、部分可观测性和模型尚未学会的因素。为表达这些不确定性，RSSM 不只输出一个随机状态点，而是参数化它的概率分布。确定性模型并非一定会“坍塌”，但单点预测不足以描述多种可能的未来。
+
+## 循环状态空间模型 (RSSM) 的数学推导
+
+Dreamer 的核心世界模型是 RSSM，它把确定性的循环记忆与随机状态推断结合起来。
+
+首先，我们将隐状态拆分为两部分：一个确定性的状态（Deterministic State）$h_t$，和一个随机的状态（Stochastic State）$z_t$。
+
+确定性状态 $h_t$ 保存对历史的有限维摘要，并由 GRU 更新：
+
+$$
+h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})
+$$
+
+其中，$a_{t-1}$ 是上一时刻的动作。这个递推式描述的是模型学到的潜在动力学，不保证等同于环境的真实物理定律。
+
+接下来，我们需要确定随机状态 $z_t$。在模型训练阶段（我们称之为后验推断），智能体不仅能“回想”起历史 $h_t$，还能“看”到真实的当前观测 $o_t$。因此，后验概率分布 $q_\phi(z_t \mid h_t, o_t)$ 结合了对过去的记忆和当前的现实。
+
+$$
+z_t \sim q_\phi(z_t \mid h_t, o_t)
+$$
+
+然而，在智能体做“梦”（即规划未来）的时候，它是无法看到未来的真实观测 $o_{t}$ 的。它只能完全依赖内部模型去猜测。这就引出了先验概率分布（Prior Distribution）$p_\theta(z_t \mid h_t)$：
+
+$$
+\hat{z}_t \sim p_\theta(z_t \mid h_t)
+$$
+
+::: info 说明
+想象你在一条熟悉的但没有路灯的走廊里蒙眼行走。确定性状态 $h_t$ 就像是你大脑中对之前走过步数的记忆和方向感；先验分布 $p_\theta(z_t \mid h_t)$ 是你根据记忆预测自己当前可能所处的位置分布。而当你稍微睁开一点眼睛，看到周围微弱的轮廓 $o_t$ 时，你结合记忆和所见，得出的更加确信的位置分布，就是后验分布 $q_\phi(z_t \mid h_t, o_t)$。Dreamer 训练世界模型的目标之一，就是让闭着眼睛的预测（先验）尽可能接近睁开眼睛的认知（后验）。
+:::
+
+### 变分下界 (ELBO) 与损失函数
+
+为了训练包含隐变量的生成模型，我们希望最大化观测数据的对数似然 $\log p(o_{1:T} \mid a_{1:T})$。由于对隐变量积分通常没有可用的解析解，我们引入变分分布 $q_\phi$，构造证据下界（Evidence Lower Bound，ELBO）。
+
+考虑单步的生成过程，我们要重构当前的观测 $o_t$ 和奖励 $r_t$。世界模型的总损失函数 $\mathcal{L}_{model}$ 由三个部分组成：
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/08-dreamer-concise/dreamerv3-fig3.png" alt="DreamerV3 的训练总览把世界模型、想象 actor–critic 与真实数据回放连接起来，展示简洁实现所抽取主路径的后续版本。" width="86%">
 
-<img src="/figures/04-latent-dynamics/source/08-dreamer-concise/dreamer-fig10.png" alt="DreamerV3 在 Minecraft 复杂长程任务中成功自主合成钻石，展示超强时间尺度的世界模型推理能力。" width="86%">
-
-_图 4.8-3：DreamerV3 在 Minecraft 复杂长程任务中成功自主合成钻石，展示超强时间尺度的世界模型推理能力。 出处：[Mastering Diverse Domains through World Models，Danijar Hafner et al.，2023](https://arxiv.org/abs/2301.04104)。_
+_图 4.8-3：DreamerV3 的训练总览把世界模型、想象 actor–critic 与真实数据回放连接起来，展示简洁实现所抽取主路径的后续版本。 出处：Danijar Hafner；Jurgis Pasukonis；Jimmy Ba；Timothy Lillicrap，[Mastering Diverse Domains through World Models](https://arxiv.org/abs/2301.04104)（2023），Figure 3。_
 
 </div>
 
-### 1. 经典仿真引理定理（Simulation Lemma）
-设真实马尔可夫决策过程为 $M = (\mathcal{P}, \mathcal{R})$，学习到的神经世界模型为 $\hat{M} = (\hat{\mathcal{P}}, \hat{\mathcal{R}})$。
-假设单步转移概率在全变差范数下满足单步误差上界 $\epsilon_P$：
+1. **重构损失 (Reconstruction Loss)**：从隐状态 $(h_t, z_t)$ 预测当前观测。
+2. **奖励预测损失 (Reward Prediction Loss)**：智能体需要预测当前状态下能获得的奖励。
+3. **动态 KL 散度损失 (Dynamics KL Loss)**：如前所述，我们要拉近先验分布和后验分布的距离。
 
-$$\max_{s, a} \|\mathcal{P}(\cdot \mid s, a) - \hat{\mathcal{P}}(\cdot \mid s, a)\|_{\text{TV}} \le \epsilon_P$$
+我们给出标量形式下最基本的 KL 散度定义：
 
-单步奖励误差满足 $\max_{s, a} |\mathcal{R}(s, a) - \hat{\mathcal{R}}(s, a)| \le \epsilon_R$。
+$$
+D_{\text{KL}}(q \parallel p) = \sum q(x) \log \frac{q(x)}{p(x)}
+$$
 
-对于任意固定策略 $\pi$，真实价值 $V_M^\pi$ 与梦境预测价值 $V_{\hat{M}}^\pi$ 之间的全局绝对误差满足严格的**二次衰减上界公式**：
+把它用于序列潜变量后，可以写出下面这个简化的单步负 ELBO；实际 Dreamer 还会根据版本加入继续概率、KL 平衡等项：
 
-$$|V_M^\pi(s_0) - V_{\hat{M}}^\pi(s_0)| \le \frac{\epsilon_R}{1 - \gamma} + \frac{\gamma \cdot R_{\max} \cdot \epsilon_P}{(1 - \gamma)^2}$$
+$$
+\mathcal{L}_t = \underbrace{-\ln p_\theta(o_t \mid h_t, z_t)}_{\text{观测重构}} + \underbrace{-\ln p_\theta(r_t \mid h_t, z_t)}_{\text{奖励预测}} + \underbrace{\beta D_{\text{KL}}\left( q_\phi(z_t \mid h_t, o_t) \parallel p_\theta(z_t \mid h_t) \right)}_{\text{动力学约束}}
+$$
 
-### 2. 仿真误差上界手算数值算例
-设单步最大奖励 $R_{\max} = 1.0$，单步奖励误差忽略不计（$\epsilon_R = 0$）。
-世界模型的单步状态转移全变差误差为 $\epsilon_P = 0.01$（仅有 $1\%$ 的微小单步误差），折扣因子 $\gamma = 0.9$。
+该公式中的三个项分别对应了图像解码器、奖励预测器和概率推断模块的优化目标。
 
-我们来手动求解累积价值的最大可能误差界：
-1. **计算分母平方项**：
-   $$(1 - \gamma)^2 = (1 - 0.9)^2 = (0.1)^2 = 0.01$$
-2. **计算分子项**：
-   $$\gamma \times R_{\max} \times \epsilon_P = 0.9 \times 1.0 \times 0.01 = 0.009$$
-3. **相除得到总误差上界**：
-   $$\text{Bound} = \frac{0.009}{0.01} = 0.90$$
+## 隐空间中的策略优化
 
-初等代数的直观运算深刻揭示：由于分母存在二次幂 $(1-\gamma)^2$，原本仅仅 $1\%$ 的单步动力学微小误差在长期时间轴上被放大了近 **100 倍**！这就是为什么 RSSM 必须引入双轨机制与 KL 平衡来将单步预测误差压低至极致的根本数学原因！
+世界模型经过更新后，Dreamer 从经验回放中推断出的状态出发，在潜在空间生成想象轨迹，并用它们更新策略。Actor-Critic 的输入是拼接状态 $s_t=[h_t,z_t]$，而不是原始像素。
 
-<details>
-<summary><b>深入推导：仿真引理在伸缩望远级数（Telescoping Sum）下的完整测度论证明（点击展开查看完整推导）</b></summary>
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/08-dreamer-concise/dreamer-fig10.png" alt="Dreamer 在连续控制任务中比较解析梯度、强化学习估计与在线规划，说明 actor 学习替代部署时搜索的实验依据。" width="86%">
 
-对价值函数差分构造望远级数展开：
-$$V_M^\pi - V_{\hat{M}}^\pi = (\mathbf{I} - \gamma \mathbf{P}^\pi)^{-1} \mathbf{R}^\pi - (\mathbf{I} - \gamma \hat{\mathbf{P}}^\pi)^{-1} \hat{\mathbf{R}}^\pi$$
-利用矩阵逆恒等式 $\mathbf{A}^{-1} - \mathbf{B}^{-1} = \mathbf{A}^{-1} (\mathbf{B} - \mathbf{A}) \mathbf{B}^{-1}$：
-$$V_M^\pi - V_{\hat{M}}^\pi = (\mathbf{I} - \gamma \mathbf{P}^\pi)^{-1} (\mathbf{R}^\pi - \hat{\mathbf{R}}^\pi) + \gamma (\mathbf{I} - \gamma \mathbf{P}^\pi)^{-1} (\mathbf{P}^\pi - \hat{\mathbf{P}}^\pi) (\mathbf{I} - \gamma \hat{\mathbf{P}}^\pi)^{-1} \hat{\mathbf{R}}^\pi$$
-在无穷范数下应用三角不等式，并代入几何级数范数上界 $\|(\mathbf{I} - \gamma \mathbf{P}^\pi)^{-1}\|_\infty = \frac{1}{1-\gamma}$ 与 $\|V_{\hat{M}}^\pi\|_\infty \le \frac{R_{\max}}{1-\gamma}$，直接化简即证得二次发散误差界。
-</details>
+_图 4.8-4：Dreamer 在连续控制任务中比较解析梯度、强化学习估计与在线规划，说明 actor 学习替代部署时搜索的实验依据。 出处：Danijar Hafner；Timothy Lillicrap；Jimmy Ba；Mohammad Norouzi，[Dream to Control: Learning Behaviors by Latent Imagination](https://arxiv.org/abs/1912.01603)（2020），Figure 10。_
 
----
+</div>
 
-## 4.8.3 纯底层 PyTorch 代码实现：潜空间动力学评估与动作平滑度分析工具
+每次策略更新从经验回放对应的后验状态 $s_\tau$ 出发，随后暂时不调用真实环境，而是用先验 $p_\theta(z_t\mid h_t)$ 和策略 $\pi_\psi(a_t\mid s_t)$ 向前展开 $H$ 步。这段轨迹是模型预测，不是环境中的真实轨迹。
 
-下面我们使用纯底层 PyTorch 算子实现一套用于评估世界模型推演保真度、累积发散度与动作平滑度（Action Smoothness）的度量评估引擎。
+为了优化动作，我们需要评估每个隐状态的价值。设价值网络为 $v_\xi(s_t)$。Dreamer 使用了指数加权的回报估计（类似于 $\text{TD}(\lambda)$）：
+
+$$
+V_t^\lambda = r_t + \gamma \left( (1 - \lambda) v_\xi(s_{t+1}) + \lambda V_{t+1}^\lambda \right)
+$$
+
+该公式是一个后向递推公式，它结合了单步的奖励预测、对下一状态的价值估计，以及对更长远未来的展望。
+
+Actor 网络 $\pi_\psi$ 的目标是最大化预期的价值：
+
+$$
+\mathcal{L}_{\text{actor}} = -\sum_{t=\tau}^{\tau+H} \mathbb{E}[V_t^\lambda]
+$$
+
+Critic 网络 $v_\xi$ 的目标是使得其预测的价值逼近 $V_t^\lambda$：
+
+$$
+\mathcal{L}_{\text{critic}} = \frac{1}{2} \sum_{t=\tau}^{\tau+H} \left( v_\xi(s_t) - V_t^\lambda \right)^2
+$$
+
+## 极简代码实现
+
+接下来，我们将使用纯粹的张量操作，来呈现 Dreamer 核心组件的简洁实现。我们首先定义多层感知机（MLP）作为基础的构建块。
+
+先用重参数化技巧实现一个对角高斯输出层，使梯度能够经过采样表达式传播。
+
+<div align="center"><img src="/figures/04-latent-dynamics/latex/08-dreamer-concise/gaussian-stat-split-reparam.png" alt="网络输出拆分为均值与尺度参数，尺度经 softplus 变成正标准差，再与标准噪声重参数化得到样本" width="86%">
+
+_图 4.8-5：高斯头把 2D_z 个输出等分为均值与尺度参数；正值变换稳定标准差，随机性由独立噪声承担，因此样本仍能对网络参数求导。本文根据上述实现绘制。_
+
+</div>
 
 ```python
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-class LatentDynamicsEvaluator:
-    """
-    潜空间动力学评估与仿真误差度量工具箱
-    """
-    @staticmethod
-    def compute_rollout_drift(true_states: torch.Tensor, pred_states: torch.Tensor) -> torch.Tensor:
-        """
-        计算随推演时间步长增加的状态累积漂移误差
-        :param true_states: (B, T, state_dim)
-        :param pred_states: (B, T, state_dim)
-        :return: (T,) 各时间步的平均欧氏距离误差
-        """
-        step_drift = (true_states - pred_states).pow(2).sum(dim=-1).sqrt().mean(dim=0)
-        return step_drift
+class ReparameterizedGaussian(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        self.fc = nn.Linear(input_dim, output_dim * 2)
 
-    @staticmethod
-    def compute_action_smoothness(action_sequence: torch.Tensor) -> float:
-        """
-        计算控制动作序列的时间一阶变化率平滑度 (惩罚高频机械打摆)
-        :param action_sequence: (T, action_dim)
-        """
-        diff = action_sequence[1:] - action_sequence[:-1]
-        smoothness_penalty = diff.pow(2).sum(dim=-1).mean().item()
-        return smoothness_penalty
-
-# ===================================================================
-# 单元测试与评估指标计算校验
-# ===================================================================
-if __name__ == "__main__":
-    batch_size = 4
-    seq_len = 10
-    state_dim = 16
-    action_dim = 2
-
-    # 模拟真实状态与带微小漂移的预测状态
-    dummy_true_s = torch.randn(batch_size, seq_len, state_dim)
-    # 模拟随时间线性累积的预测误差
-    drift_noise = torch.linspace(0.0, 1.0, seq_len).view(1, seq_len, 1) * torch.randn(batch_size, seq_len, state_dim)
-    dummy_pred_s = dummy_true_s + drift_noise
-
-    # 1. 评估各时间步的漂移误差
-    drifts = LatentDynamicsEvaluator.compute_rollout_drift(dummy_true_s, dummy_pred_s)
-    print(f"[Dynamics Test] 随时间推演步长增加的平均漂移: {[round(x, 4) for x in drifts.tolist()]}")
-
-    # 2. 评估动作序列平滑度
-    dummy_smooth_actions = torch.sin(torch.linspace(0, 3.14, seq_len)).unsqueeze(1).repeat(1, action_dim)
-    smooth_cost = LatentDynamicsEvaluator.compute_action_smoothness(dummy_smooth_actions)
-    print(f"[Dynamics Test] 平滑动作序列的一阶导数消耗: {smooth_cost:.6f}")
-
-    assert drifts[-1] >= drifts[0], "多步推演误差未能正确反映时间累积效应！"
-    assert smooth_cost < 0.2, "平滑动作序列惩罚度量异常！"
-    print("✓ 潜空间动力学仿真漂移与控制平滑度度量工具单测全部通过！")
+    def forward(self, x):
+        mean_scale = self.fc(x)
+        # 将输出分为均值和未经约束的尺度参数
+        mean, raw_scale = torch.chunk(mean_scale, 2, dim=-1)
+        # 限制标准差的范围以保证数值稳定性
+        std = F.softplus(raw_scale) + 0.1
+        # 重参数化采样
+        noise = torch.randn_like(mean)
+        sample = mean + noise * std
+        return mean, std, sample
 ```
 
----
+接下来实现 RSSM 的核心类，其中包含确定性路径（GRU）和先验、后验两条随机推断路径。
 
-## 4.8.4 本节小结
+```python
+class RSSM(nn.Module):
+    def __init__(self, action_dim, obs_embed_dim, deter_dim, stoch_dim):
+        super().__init__()
+        self.deter_dim = deter_dim
+        self.stoch_dim = stoch_dim
 
-回顾本节内容，我们完成了潜空间动力学大章节的全局升华：
-1. **六大模型演进全景**：从显式三元解耦到端到端可微梦境，再到无超参自适应与价值等价隐式世界模型，构建起完整的认知图谱；
-2. **仿真引理的理论警钟**：数学上证明了单步动力学误差在长期时域上的二次累积发散，确立了双轨建模与精细正则化的必要性；
-3. **世界模型承上启下**：潜空间动力学不仅为机器人提供了安全的离线试错剧场，更为后续大章节的视频生成世界模型、空间感知与具身泛化筑牢了最核心的动力学底座。
+        # 确定性状态更新，由前一个随机状态和动作输入
+        self.cell = nn.GRUCell(stoch_dim + action_dim, deter_dim)
+
+        # 先验网络：基于确定性记忆，预测接下来的随机状态
+        self.prior = ReparameterizedGaussian(deter_dim, stoch_dim)
+
+        # 后验网络：结合观测特征和确定性记忆，近似推断随机状态
+        self.posterior = ReparameterizedGaussian(deter_dim + obs_embed_dim, stoch_dim)
+
+    def forward_prior(self, prev_stoch, prev_action, prev_deter):
+        # 拼接隐状态与动作
+        x = torch.cat([prev_stoch, prev_action], dim=-1)
+        # 更新确定性状态 h_t
+        deter = self.cell(x, prev_deter)
+        # 计算先验分布 p(z_t | h_t)
+        mean, std, stoch = self.prior(deter)
+        return deter, stoch, mean, std
+
+    def forward_posterior(self, deter, obs_embed):
+        # 结合观测特征计算后验分布 q(z_t | h_t, o_t)
+        x = torch.cat([deter, obs_embed], dim=-1)
+        mean, std, stoch = self.posterior(x)
+        return stoch, mean, std
+```
+
+训练世界模型时，需要沿时间展开这个网络：后验样本用于重构观测和预测奖励，先验与后验之间的 KL 则约束没有观测时的预测。训练策略时，`forward_prior` 负责生成想象中的后续状态。完整实现还需要编码器、解码器、奖励与继续概率模型、actor、critic、$\lambda$-return、经验回放以及各优化器；这里的代码只展示 RSSM 接口。
+
+## 小结
+
+- **基于模型的强化学习**利用学到的动力学提高经验利用率，但仍需要真实交互收集和更新数据。
+- **RSSM** 用确定性状态摘要历史，用随机状态表示当前潜变量及其不确定性。
+- **Dreamer** 用变分目标训练世界模型，再在潜在想象轨迹上计算 $\lambda$-return，并更新 actor 与 critic。

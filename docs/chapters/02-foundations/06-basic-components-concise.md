@@ -1,208 +1,219 @@
-# 2.6 基础组件核心精讲 (Basic Components Concise)
+# 2.6 基础模块的简洁实现
 
-在探索世界模型（World Models）与具身智能（Embodied Intelligence）的浩瀚征途中，深度学习的基础组件犹如一套精密的机械钟表齿轮。
-
-单独审视一个卷积核、一个自注意力头、一个高斯重参数化采样节点或一个因果掩码时，它们看似只是初等代数与多元微积分的简单组合；然而，当这些齿轮按照严格的时空物理逻辑组装在一起时，系统便诞生了令人惊叹的智能涌现——它能够看懂高维物理图像、记忆漫长历史事件流、在内心潜空间推演未来现实，并输出毫秒级的高精运动控制指令。
-
-本节我们将以精炼且高屋建瓴的全局视角，横向贯通卷积（CNN）、视觉注意力（ViT）、因果递推（RNN/Transformer）、概率隐空间（VAE/VQ-VAE）与生成扩散（DDPM）的核心骨架，并深入剖析现代大模型普遍采用的 **RMSNorm** 归一化演进机制。
+早期神经网络系统常要求研究者自行实现许多算子的前向与反向计算。PyTorch 等现代框架 [[Paszke et al., 2019]](https://proceedings.neurips.cc/paper/2019/hash/bdbca288fee7f92f2bfa9f7012727740-Abstract.html) 用张量算子、计算图和自动微分封装了这些重复工作，使模型代码可以更直接地表达数学结构。
 
 <div align="center">
+  <img src="/figures/02-foundations/source/06-basic-components-concise/pytorch-fig1.png" alt="PyTorch 的原始执行轨迹显示 Python 主机控制流如何提前排队 GPU 算子，直观体现 eager 执行的运行时行为。" width="86%">
 
-<img src="/figures/02-foundations/source/06-basic-components-concise/pytorch-fig1.png" alt="去噪扩散概率模型 (DDPM) 的前向与反向训练与采样算法流程伪代码。" width="86%">
-
-_图 2.6-1：去噪扩散概率模型 (DDPM) 的前向与反向训练与采样算法流程伪代码。 出处：[Denoising Diffusion Probabilistic Models，Jonathan Ho et al.，2020](https://arxiv.org/abs/2006.11239)。_
+_图 2.6-1：PyTorch 的原始执行轨迹显示 Python 主机控制流如何提前排队 GPU 算子，直观体现 eager 执行的运行时行为。 出处：Adam Paszke et al.，[PyTorch: An Imperative Style, High-Performance Deep Learning Library](https://proceedings.neurips.cc/paper/2019/hash/bdbca288fee7f92f2bfa9f7012727740-Abstract.html)（2019），Figure 1。_
 
 </div>
 
----
+上一节用基础张量操作显式实现了数据批处理、参数初始化、前向传播、损失和 SGD。本节改用框架提供的标准模块完成同一任务，同时保留对形状、归约方式和梯度状态的检查。
 
-## 2.6.1 架构与物理全景：从底层感知到潜空间推演的组件矩阵
+我们依次使用数据迭代器、`nn.Linear`、损失函数和优化器，并说明每个封装隐藏了哪些数学步骤。
 
-要针对具体的物理任务挑选最适配的模型架构，我们必须系统掌握各大核心组件在计算复杂度、归纳偏置与应用场景上的精准定位：
+## 2.6.1 深度学习框架的演进与抽象哲学
 
-### 1. 空间视觉编码器：CNN vs ViT
-- **CNN（卷积）**：局部感受野与权重共享，天然具备平移不变性，适用于输入尺寸可变、需要快速提取边缘高频纹理的浅层感知层；
-- **ViT（视觉注意力）**：Patch 全局自注意力，无固定几何拓扑偏置，在大规模数据预训练下展现出极致的全局场景理解与跨物体空间语义建模能力。
-
-### 2. 时序因果递推器：RNN vs Causal Transformer
-- **RNN / GRU**：维护定长隐状态 $\mathbf{h}_t$，推理时显存占用恒为 $\mathcal{O}(1)$ 常数，是实时低延迟嵌入式机器人控制器的理想选择；
-- **Causal Transformer**：下三角因果掩码并行训练，注意力跨度无损，擅长捕捉长达数万步的宏观长程任务逻辑。
-
-### 3. 潜在状态压缩器：VAE vs VQ-VAE
-- **连续 VAE**：高斯概率云与 ELBO 优化，隐空间紧凑平滑，适用于控制策略的平滑插值与轨迹评分；
-- **离散 VQ-VAE**：密码本硬量化与 STE 梯度直通，将图像压缩为整数 Token 词元，实现了视觉与大语言模型 Token 的无缝统一。
+Theano [[Bergstra et al., 2010]](https://doi.org/10.25080/Majora-92bf1922-003) 以符号表达式构建并编译计算图，Caffe [[Jia et al., 2014]](https://arxiv.org/abs/1408.5093) 则以网络层和配置驱动模型定义。这类设计便于统一优化执行计划，但对数据依赖控制流和交互式调试不够直接。
 
 <div align="center">
+  <img src="/figures/02-foundations/source/06-basic-components-concise/theano-fig2.png" alt="Theano 原论文用符号变量、损失与梯度更新代码展示先定义计算图再编译执行的静态工作流。" width="86%">
 
-<img src="/figures/02-foundations/latex/06-basic-components-concise/logsumexp-stabilization.png" alt="基础组件在世界模型空间编码、潜在动态演化与反向生成解码中的协同分工" width="86%">
-
-_图 2.6-2：基础组件在世界模型空间编码、潜在动态演化与反向生成解码中的协同分工。_
+_图 2.6-2：Theano 原论文用符号变量、损失与梯度更新代码展示先定义计算图再编译执行的静态工作流。 出处：James Bergstra et al.，[Theano: A CPU and GPU Math Compiler in Python](https://www.iro.umontreal.ca/~lisa/pointeurs/theano_scipy2010.pdf)（2010），Figure 2。_
 
 </div>
 
----
+PyTorch 的 eager 执行允许普通 Python 控制流参与前向计算，并为实际执行的张量操作记录自动微分图。现代框架也常结合图捕获或编译优化，因此“静态”与“动态”更像一组实现权衡，而不是互斥阵营。
 
-## 2.6.2 核心数学推导一：特征归一化演进与 RMSNorm 极致加速
+## 2.6.2 数据处理的管道化：从数组到迭代器
 
-在构建深达数十层的世界模型主干网络时，层归一化（Normalization）是防止中间激活值发生数值漂移（Internal Covariate Shift）与梯度弥散的定海神针。
+任何机器学习任务的起点都是数据。假设我们的数据集中包含了 $N$ 个样本，每个样本由特征 $\mathbf{x}_i \in \mathbb{R}^d$ 和标签 $y_i$ 组成。在理想情况下，我们希望在每一步迭代中，使用整个数据集来计算损失函数的精确梯度。这被称为批量梯度下降（Batch Gradient Descent）。假设我们优化的目标是最小化整个数据集上的平均损失：
+
+$$
+L(\mathbf{\theta}) = \frac{1}{N} \sum_{i=1}^N l(f_{\mathbf{\theta}}(\mathbf{x}_i), y_i)
+$$
+
+然而，在面对包含数百万样本的现代数据集时，直接计算全量数据集的梯度将导致显存溢出，且计算时间长得令人难以忍受。为了解决这一问题，我们将求和的范围缩小到一个大小为 $B$（通常为 $32$ 到 $256$ 之间）的随机子集，即小批量（Minibatch）：
+
+$$
+L_B(\mathbf{\theta}) = \frac{1}{B} \sum_{i \in \mathcal{B}} l(f_{\mathbf{\theta}}(\mathbf{x}_i), y_i)
+$$
+
+若 $\mathcal{B}$ 从数据集中均匀抽样，并对批内损失取正确平均，则小批量梯度是全量平均梯度的无偏估计。单个批次仍含采样噪声，并不保证每一步都沿全量损失的下降方向。
+
+在框架中，数据的加载和批处理被抽象为了迭代器。我们只需要提供张量格式的数据，框架就会自动为我们处理打乱（Shuffle）和切片（Slicing）的逻辑。
 
 <div align="center">
+  <img src="/figures/02-foundations/source/06-basic-components-concise/caffe-fig1.png" alt="Caffe 的 MNIST 网络图把数据层、卷积与池化层、参数 blob 和损失层连接为显式训练管线。" width="86%">
 
-<img src="/figures/02-foundations/source/06-basic-components-concise/pytorch-fig1.png" alt="VideoPoet 整体模型管线：结合视觉 Tokenizer 与大语言模型架构的跨模态生成。" width="86%">
-
-_图 2.6-3：VideoPoet 整体模型管线：结合视觉 Tokenizer 与大语言模型架构的跨模态生成。 出处：[VideoPoet: A Large Language Model for Zero-Shot Video Generation，Dan Kondratyuk et al.，2023](https://arxiv.org/abs/2312.14125)。_
+_图 2.6-3：Caffe 的 MNIST 网络图把数据层、卷积与池化层、参数 blob 和损失层连接为显式训练管线。 出处：Yangqing Jia et al.，[Caffe: Convolutional Architecture for Fast Feature Embedding](https://arxiv.org/abs/1408.5093)（2014），Figure 1。_
 
 </div>
 
-### 1. 为什么世界模型抛弃了 BatchNorm？
-- **批归一化（BatchNorm）**：强依赖同一个 Batch 内样本的统计均值与方差。然而在强化学习与具身在线推演中，Batch Size 常常为 1（单智能体在线闭环），导致 BatchNorm 的统计量发生灾难性震荡；
-- **层归一化（LayerNorm）**：独立针对单个样本在所有隐藏特征通道 $d$ 上计算均值 $\mu$ 与方差 $\sigma^2$：
-  $$y = \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} \cdot \gamma + \beta, \quad \text{其中 } \mu = \frac{1}{d} \sum_{i=1}^d x_i, \; \sigma^2 = \frac{1}{d} \sum_{i=1}^d (x_i - \mu)^2$$
-
-### 2. 均方根归一化（RMSNorm, Root Mean Square Normalization）
-研究表明，LayerNorm 的成功主要归功于缩放不变性（Scale Invariance），而减去均值 $\mu$ 的平移操作对训练稳定性的贡献微乎其微。
-**RMSNorm**（LLaMA 等现代大模型标配）彻底抛弃了均值计算，直接使用特征的均方根（RMS）进行归一化：
-
-$$\text{RMS}(\mathbf{x}) = \sqrt{\frac{1}{d} \sum_{i=1}^d x_i^2 + \epsilon}$$
-
-$$\mathbf{y} = \frac{\mathbf{x}}{\text{RMS}(\mathbf{x})} \odot \boldsymbol{\gamma}$$
-
-由于少了一次均值聚合与中心化减法，RMSNorm 在 GPU 显存吞吐上减少了近 $30\%$ 的内存访问延迟！
-
-### 3. RMSNorm 手算数值算例
-设特征维度 $d = 4$，输入特征向量为 $\mathbf{x} = [2.0, -2.0, 4.0, 0.0]^\top$，可学习缩放权重 $\boldsymbol{\gamma} = [1.0, 1.0, 0.5, 2.0]^\top$，数值保护常数 $\epsilon = 0$。
-
-我们来一步步手动计算归一化输出：
-1. **计算平方和与均值**：
-   $$\sum_{i=1}^4 x_i^2 = (2.0)^2 + (-2.0)^2 + (4.0)^2 + (0.0)^2 = 4.0 + 4.0 + 16.0 + 0.0 = 24.0$$
-   $$\text{MeanSquare} = \frac{24.0}{4} = 6.0$$
-2. **计算均方根 $\text{RMS}(\mathbf{x})$**：
-   $$\text{RMS}(\mathbf{x}) = \sqrt{6.0} \approx 2.4495$$
-3. **逐元素除以 RMS 并乘以 $\boldsymbol{\gamma}$**：
-   $$y_1 = \frac{2.0}{2.4495} \times 1.0 \approx 0.8165$$
-   $$y_2 = \frac{-2.0}{2.4495} \times 1.0 \approx -0.8165$$
-   $$y_3 = \frac{4.0}{2.4495} \times 0.5 \approx 0.8165$$
-   $$y_4 = \frac{0.0}{2.4495} \times 2.0 = 0.0000$$
-
-初等代数的几步极简运算清晰证实：输入特征被严密缩放至模长受控的健康数值分布内，同时彻底消除了由于负数绝对值不平衡引发的数值偏移！
-
-<details>
-<summary><b>深入推导：RMSNorm 在流形正切空间投影中的仿射不变性与计算复杂度衰减证明（点击展开查看完整推导）</b></summary>
-
-设输入向量缩放 $\mathbf{x}' = \alpha \mathbf{x}$（$\alpha > 0$）。
-均方根计算满足 $\text{RMS}(\alpha \mathbf{x}) = \sqrt{\frac{1}{d}\sum (\alpha x_i)^2} = \alpha \text{RMS}(\mathbf{x})$。
-输出满足严格的尺度不变性：
-$$\mathbf{y}' = \frac{\alpha \mathbf{x}}{\alpha \text{RMS}(\mathbf{x})} \odot \boldsymbol{\gamma} = \frac{\mathbf{x}}{\text{RMS}(\mathbf{x})} \odot \boldsymbol{\gamma} = \mathbf{y}$$
-梯度反传导数 $\frac{\partial \mathbf{y}}{\partial \mathbf{x}} = \frac{1}{\text{RMS}(\mathbf{x})} \left( \mathbf{I} - \frac{\mathbf{x}\mathbf{x}^\top}{d \cdot \text{RMS}(\mathbf{x})^2} \right) \text{diag}(\boldsymbol{\gamma})$，在超球面上实现了无漂移的正交投影。
-</details>
-
----
-
-## 2.6.3 核心数学推导二：残差连接（Residual Connection）的恒等映射保障
-
-在深层世界模型中，为了防止反向传播中经过数十层网络后梯度消失为零，何恺明等人提出的**残差连接（Residual Connection）**构成了深度学习的生命线：
-
-$$\mathbf{x}_{l+1} = \mathbf{x}_l + \mathcal{F}(\mathbf{x}_l, \mathbf{W}_l)$$
-
-递归展开任意深层 $L$ 与浅层 $l$ 的关系：
-
-$$\mathbf{x}_L = \mathbf{x}_l + \sum_{k=l}^{L-1} \mathcal{F}(\mathbf{x}_k, \mathbf{W}_k)$$
-
-损失 $\mathcal{L}$ 对浅层状态 $\mathbf{x}_l$ 的梯度反向传播为：
-
-$$\frac{\partial \mathcal{L}}{\partial \mathbf{x}_l} = \frac{\partial \mathcal{L}}{\partial \mathbf{x}_L} \left( \mathbf{I} + \frac{\partial}{\partial \mathbf{x}_l} \sum_{k=l}^{L-1} \mathcal{F}(\mathbf{x}_k, \mathbf{W}_k) \right)$$
-
-无论括号内右侧复杂的非线性梯度如何震荡或衰减，**左侧的单位矩阵 $\mathbf{I}$ 确保了损失梯度能够无损、直接地“坐高铁”一路畅通无阻地送达最浅层的参数矩阵中！**
-
----
-
-## 2.6.4 纯底层 PyTorch 代码实现：从零手写 RMSNorm 与统一世界模型骨干网络
-
-下面我们使用纯底层 PyTorch 算子手写实现标准的 RMSNorm 归一化层与一个集成了残差连接的世界模型多层感知骨干块。
+先生成合成数据，并用 `TensorDataset` 与 `DataLoader` 组成数据管道。
 
 ```python
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
+from torch.utils import data
 
-class ScratchRMSNorm(nn.Module):
-    """
-    纯手写均方根层归一化 (RMSNorm)
-    y = (x / RMS(x)) * gamma
-    """
-    def __init__(self, dim: int, eps: float = 1e-6):
-        super().__init__()
-        self.eps = eps
-        self.gamma = nn.Parameter(torch.ones(dim))
+# 生成合成数据
+true_w = torch.tensor([2.0, -3.4])
+true_b = 4.2
+features = torch.randn(1000, 2)
+labels = torch.matmul(features, true_w) + true_b
+# 添加高斯噪声
+labels += torch.randn(labels.shape) * 0.01
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        :param x: (B, ..., dim)
-        """
-        variance = x.pow(2).mean(dim=-1, keepdim=True)
-        rms = torch.sqrt(variance + self.eps)
-        norm_x = x / rms
-        return norm_x * self.gamma
+def load_array(data_arrays, batch_size, is_train=True):
+    """构造一个PyTorch数据迭代器"""
+    dataset = data.TensorDataset(*data_arrays)
+    return data.DataLoader(dataset, batch_size, shuffle=is_train)
 
-class WorldModelBackboneBlock(nn.Module):
-    """
-    结合 RMSNorm 与残差连接的高性能世界模型特征转换块
-    """
-    def __init__(self, d_model: int = 64, d_ff: int = 128):
-        super().__init__()
-        self.norm = ScratchRMSNorm(d_model)
-        self.ffn = nn.Sequential(
-            nn.Linear(d_model, d_ff),
-            nn.SiLU(),
-            nn.Linear(d_ff, d_model)
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Pre-Norm 残差连接架构: y = x + FFN(RMSNorm(x))
-        residual = x
-        out = self.ffn(self.norm(x))
-        return residual + out
-
-# ===================================================================
-# 单元测试与数值稳定性校验
-# ===================================================================
-if __name__ == "__main__":
-    batch_size = 4
-    d_model = 64
-
-    # 1. 测试手写 RMSNorm 缩放特性
-    rms_norm = ScratchRMSNorm(dim=d_model)
-    dummy_x = torch.randn(batch_size, d_model) * 10.0 # 产生大方差输入
-    norm_out = rms_norm(dummy_x)
-
-    # 校验归一化后的输出均方根是否严格接近 1.0
-    out_rms = torch.sqrt(norm_out.pow(2).mean(dim=-1))
-    print(f"[RMSNorm Test] 输入张量模长跨度: [{dummy_x.min().item():.2f}, {dummy_x.max().item():.2f}]")
-    print(f"[RMSNorm Test] 归一化后各样本 RMS 值: {[round(x, 4) for x in out_rms.tolist()]}")
-
-    assert torch.allclose(out_rms, torch.ones_like(out_rms), atol=1e-3), "RMSNorm 归一化幅度异常！"
-
-    # 2. 测试骨干残差块梯度流
-    backbone = WorldModelBackboneBlock(d_model=d_model, d_ff=128)
-    dummy_input = torch.randn(batch_size, d_model, requires_grad=True)
-    out = backbone(dummy_input)
-
-    loss = out.sum()
-    loss.backward()
-
-    print(f"[Backbone Test] 输出形状: {out.shape}")
-    print(f"[Backbone Test] 输入梯度均值: {dummy_input.grad.mean().item():.4f}")
-
-    assert dummy_input.grad is not None, "残差梯度未能成功回传！"
-    assert out.shape == (batch_size, d_model), "骨干输出维度不符！"
-    print("✓ 手写 RMSNorm 归一化层与残差世界模型骨干块单测全部通过！")
+batch_size = 10
+data_iter = load_array((features, labels), batch_size)
 ```
 
----
+通过内置的迭代器，我们可以直接在 `for` 循环中使用 `data_iter`，它在每次产出 $10$ 个样本后自动推进，且在每次遍历完整个数据集（一个 Epoch）后，如果指定了 `is_train=True`，则会重新打乱索引。
 
-## 2.6.5 本节小结
+## 2.6.3 线性层的封装：全连接神经网络的积木
 
-回顾本节内容，我们完成了基础深度学习组件的全局升华：
-1. **全局组件矩阵**：空间卷积、全局自注意力、马尔可夫循环与高斯扩散在感知、记忆与生成中各司其职；
-2. **RMSNorm 的性能跃进**：通过舍弃均值计算保留尺度不变性，大幅降低显存开销，成为现代世界模型的首选归一化方式；
-3. **残差恒等映射保障**：单位矩阵直通梯度彻底攻克了深层神经网络的退化问题，为后续章节构建复杂的潜空间动力学世界模型奠定了坚如磐石的技术基石。
+接下来，我们需要定义模型本身。在最基础的标量场景中，一个线性映射仅仅是一个简单的初等代数公式：对于输入标量 $x$，权重为 $w$，偏置为 $b$，则输出 $y = wx + b$。
+
+随着问题复杂度的提升，假设输入不再是单一的数值，而是描述某个物体属性的 $d$ 个特征向量（例如长度、宽度、重量等）。我们将输入升级为向量 $\mathbf{x} \in \mathbb{R}^d$。此时，我们需要 $d$ 个权重分量来分别评估每一个特征的重要性，即权重变为了向量 $\mathbf{w} \in \mathbb{R}^d$。此时线性关系变为两个向量的点积：
+
+$$
+y = \mathbf{w}^\top \mathbf{x} + b = \sum_{j=1}^d w_j x_j + b
+$$
+
+在现代神经网络中，我们不仅要同时处理多个特征，还要同时计算多个并行的输出神经元。如果我们的网络层接收 $d$ 个维度的输入，并投射到 $c$ 个维度的输出，那么我们将有 $c$ 个独立的偏置 $b_1, \dots, b_c$。权重则从向量演化为矩阵 $\mathbf{W} \in \mathbb{R}^{d \times c}$。在此情况下，对于单样本 $\mathbf{x} \in \mathbb{R}^{1 \times d}$，其线性映射变为：
+
+$$
+\mathbf{y} = \mathbf{x} \mathbf{W} + \mathbf{b}
+$$
+
+为了批量计算，把 $n$ 个样本堆叠成输入矩阵 $\mathbf{X} \in \mathbb{R}^{n \times d}$。矩阵乘法后，输出 $\mathbf{Y}$ 的形状为 $n \times c$：
+
+$$
+\mathbf{Y} = \mathbf{X} \mathbf{W} + \mathbf{b}
+$$
+
+上式中，$\mathbf{X}\mathbf{W}$ 的形状为 $n \times c$，偏置 $\mathbf{b}$ 的形状为 $1 \times c$。框架通过**广播（Broadcasting）**在样本维复用同一个偏置；概念上可视作复制 $n$ 次，实际实现通常不需要真的分配一份完整副本。
+
+在 PyTorch 中，上述整个维度的推导、权重的显存分配以及初始化逻辑，都被无缝封装在一个名为“全连接层”（Fully-Connected Layer）或“线性层”（Linear Layer）的抽象类中。
+
+这里用 `nn.Sequential` 包装一个输入维度为 2、输出维度为 1 的 `nn.Linear`。
+
+```python
+# 构建模型：这里相当于 y = XW + b
+# PyTorch 的 nn.Linear 第一个参数是输入特征数 d，第二个参数是输出特征数 c
+net = nn.Sequential(nn.Linear(2, 1))
+
+# 初始化模型参数，我们通常从特定方差的正态分布中抽取权重
+net[0].weight.data.normal_(0, 0.01)
+net[0].bias.data.fill_(0)
+```
+
+## 2.6.4 损失函数的计算图抽象与数值稳定性
+
+定义了模型输出后，我们需要通过损失函数来量化模型预测值与真实值之间的偏差。对于回归任务，最直接的度量方式是均方误差（Mean Squared Error, MSE）。框架提供了 `nn.MSELoss` 类，它内部会自动将计算过程注册到动态图中，为反向传播铺平道路。
+
+然而，更具学术探讨价值的是分类任务中使用的损失函数。让我们稍微偏离回归任务，深入探讨一下深度学习中最容易踩坑的数值稳定性问题。在分类问题中，我们通常将线性层的原始输出向量 $\mathbf{o}$ 称为“逻辑值”（Logits）。为了将其转化为合法的概率分布 $\mathbf{\hat{y}}$，我们会使用 Softmax 操作：
+
+$$
+\hat{y}_j = \frac{\exp(o_j)}{\sum_{k=1}^c \exp(o_k)}
+$$
+
+然后，我们将预测概率代入交叉熵损失函数中：
+
+$$
+l(\mathbf{y}, \mathbf{\hat{y}}) = - \sum_{j=1}^c y_j \log \hat{y}_j
+$$
+
+把 Softmax 概率代入对数项可得：
+
+$$
+\log \hat{y}_j = o_j - \log \left( \sum_{k=1}^c \exp(o_k) \right)
+$$
+
+浮点数的表示范围有限。若某个 $o_k$ 很大，例如 $1000$，直接计算 $\exp(1000)$ 通常会溢出为 `Inf`，后续的除法或对数还可能产生 `NaN`。若所有 logit 都是很大的负数，指数项又可能下溢为 $0$，使 $\log(0)$ 变成负无穷。
+
+常用实现会合并 Softmax 与交叉熵，并采用 **LogSumExp 技巧**。先取最大 logit $M = \max(o_k)$，再统一减去 $M$：
+
+$$
+\log \hat{y}_j = (o_j - M) - \log \left( \sum_{k=1}^c \exp(o_k - M) \right)
+$$
+
+<div align="center"><img src="/figures/02-foundations/latex/06-basic-components-concise/logsumexp-stabilization.png" alt="所有逻辑值减去最大值后，指数不超过一且指数和至少为一" width="86%">
+
+_图 2.6-4：统一减去最大 logit 不改变 Softmax 比例，却把最大指数固定为 1，并保证求和项不会变成 0。_
+
+</div>
+
+变换后最大的指数项为 $\exp(0)=1$，其他指数项都不超过 $1$，从而避免这一处的指数上溢；求和项至少为 $1$，也不会在此处出现 $\log 0$。极小项下溢为零通常只表示其概率贡献可忽略。`nn.CrossEntropyLoss()` 直接接收未经过 Softmax 的 logits，并在内部使用数值稳定的组合计算。
+
+而在本节的线性回归演示中，我们直接使用 MSE 损失。
+
+在线性回归示例中，直接使用均方误差损失。
+
+```python
+loss = nn.MSELoss()
+```
+
+## 2.6.5 优化器的模块化：随机梯度下降的封装
+
+最后，当我们通过反向传播计算得到损失函数关于所有模型参数的梯度 $\nabla_{\mathbf{\theta}} L(\mathbf{\theta})$ 时，我们需要按照一定的策略对参数进行迭代更新。在高中物理中，我们知道物体在势能曲面上会沿着最陡峭的方向（梯度的反方向）加速滑落。优化算法的核心思想正是在高维损失曲面上模拟这一滑落过程。
+
+最经典的更新规则是小批量随机梯度下降（Stochastic Gradient Descent, SGD）：
+
+$$
+\mathbf{\theta}_{t} = \mathbf{\theta}_{t-1} - \eta \nabla_{\mathbf{\theta}} L_B(\mathbf{\theta}_{t-1})
+$$
+
+其中 $\eta$ 表示学习率（Learning Rate），控制参数更新尺度。过大时优化可能震荡或发散，过小时收敛会变慢。
+
+在框架中，所有的参数矩阵（如 `net[0].weight` 和 `net[0].bias`）在内部都维护着两个连续的内存块：一个存储当前的参数值数据 `.data`，另一个存储刚刚计算出来的梯度信息 `.grad`。我们不再需要手动书写遍历和相减的代码。框架将整个更新法则和超参数管理器统筹在 `torch.optim` 模块中。我们只需将待优化的参数列表交由优化器对象托管即可。
+
+下面实例化 `SGD` 优化器，并指定参数与学习率。
+
+```python
+trainer = torch.optim.SGD(net.parameters(), lr=0.03)
+```
+
+## 2.6.6 端到端的模型训练生命周期
+
+现在把数据迭代器、网络、损失函数和 SGD 优化器组合成完整训练脚本。
+
+在深层框架的视角下，每一次训练迭代（Step）都遵循着一段严格的生命周期逻辑，不可随意颠倒：
+
+1. 从迭代器获取下一批特征 $\mathbf{X}$ 与标签 $\mathbf{y}$。
+2. 调用 `net(X)` 构建前向计算图并得到预测值 $\mathbf{\hat{y}}$。
+3. 计算标量损失值 `l = loss(y_hat, y)`。
+4. **清理遗留状态**：在反向传播前，必须调用 `trainer.zero_grad()`。这是因为框架的底层设计为了支持复杂的循环神经网络等架构，默认会将计算出的梯度累加到原有梯度上，而不是替换。
+5. **触发反向传播**：调用 `l.backward()`。此时框架的自动微分引擎会自顶向下遍历整个动态计算图，利用链式法则计算出所有叶子节点（即模型参数）的梯度，并将其填充到参数的 `.grad` 属性中。
+6. **执行更新步**：调用 `trainer.step()`。优化器按设定的更新规则修改其托管参数。
+
+完整训练代码如下。
+
+```python
+num_epochs = 3
+for epoch in range(num_epochs):
+    for X, y in data_iter:
+        l = loss(net(X) ,y)
+        trainer.zero_grad()
+        l.backward()
+        trainer.step()
+    # 每个 epoch 结束后，在全量数据上评估当前损失
+    l = loss(net(features), labels)
+    print(f'epoch {epoch + 1}, loss {l:f}')
+```
+
+高级 API 虽然简洁，但没有改变底层数学：线性层仍是矩阵乘法与广播，交叉熵仍需稳定地计算 LogSumExp，自动微分仍按计算图应用链式法则。掌握这些对应关系，才能在出现形状、数值或梯度问题时判断封装内部发生了什么。
+
+## 2.6.7 练习
+
+1. 如果我们将本节中用于生成合成数据的真实标签权重从一个二维向量变为形状为 $2 \times 3$ 的矩阵，我们需要对数据迭代器、模型维度和损失函数的形状进行哪些改动？
+   - **提示**：回顾小批量矩阵乘法的维度。当输出维度 $c = 3$ 时，偏置向量 $\mathbf{b}$ 在广播时的维度是什么？
+2. 试着在训练循环内部，将 `trainer.zero_grad()` 这一行注释掉。观察几轮训练后的损失值变化，并用微积分链式法则和梯度累加的机制解释这一现象。
+3. 在 `nn.MSELoss` 的文档中存在一个名为 `reduction` 的参数。探索如果将其从默认的 `'mean'` 改为 `'sum'`，为了保证收敛，我们需要对优化器的学习率做何种数值量级上的等比例缩放？

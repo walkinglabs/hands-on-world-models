@@ -1,241 +1,203 @@
-# 5.3 视频扩散模型、DiT 架构与 Sora 物理先验
+# 5.3 扩散模型在视频生成中的应用（以 Sora 为例）
 
-在生成式人工智能的发展史中，2024 年初 OpenAI 发布的 **Sora** 如同一道划破天际的闪电，将世界模型的概念推向了全球科技界的风口浪尖。
-
-Sora 展现出了一种令人震撼的“物理世界模拟能力”：在长达 60 秒的高清视频生成中，镜头在复杂的三维城市中穿梭旋转，被遮挡的建筑物在转弯后能够准确重现（三维空间恒常性）；咖啡杯在跌落碎裂时，液体会自发地按照流体力学在桌面上扩散渗透；帆船在激流中航行时，船体与水面波浪之间能够产生精确的流体动力学浮力反馈。
-
-OpenAI 在技术报告中将其定义为 **“物理世界的通用模拟器（World Simulators）”**。
-
-这一技术奇迹背后的核心架构，正是 **扩散 Transformer（Diffusion Transformer, DiT）** 与 **三维时空潜变量切片（Spatiotemporal Patches）**。
-
-通过彻底抛弃传统的 2D/3D U-Net 卷积骨架，全面拥抱纯自注意力 Transformer，DiT 展现出了无可比拟的**算力扩展律（Scaling Law）**——随着模型参数量与训练 Token 数量的指数级暴增，模型自发地在神经网络内部涌现出了深邃的初等物理世界先验规律！
-
-本节我们将从初等三维空间几何坐标变换出发，严密推导 DiT 的 3D Patch 展开公式、adaLN-Zero 自适应层归一化调制机制与 3D 旋转位置编码（3D-RoPE），并使用纯底层 PyTorch 从零手写一个时空 DiT 核心生成块。
+视频比静态图像多出时间维度，模型不仅要生成每一帧的外观，还要维持跨帧的物体、相机和场景一致性。Sora 的公开报告把视频压缩成时空补丁，并用扩散 Transformer 生成这些补丁 [[OpenAI, 2024]](https://openai.com/index/video-generation-models-as-world-simulators/)。本节从标量扩散公式出发，解释它怎样推广到视频潜变量；公开资料没有披露的训练和网络细节不会被当作 Sora 的确定实现。
 
 <div align="center">
+<img src="/figures/05-interactive-video/source/03-diffusion-sora/latte-fig1.png" alt="Latte 的多组生成帧展示扩散 Transformer 需要同时维持主体外观、动作与跨帧背景一致性。" width="86%">
 
-<img src="/figures/05-interactive-video/source/03-diffusion-sora/latte-fig1.png" alt="Diffusion Transformer (DiT) 架构：将潜特征切分为 Patch 序列，并结合自适应层归一化 (adaLN-Zero) 实现扩散去噪。" width="86%">
-
-_图 5.3-1：Diffusion Transformer (DiT) 架构：将潜特征切分为 Patch 序列，并结合自适应层归一化 (adaLN-Zero) 实现扩散去噪。 出处：[Scalable Diffusion Models with Transformers，William Peebles & Saining Xie，2023](https://arxiv.org/abs/2212.09748)。_
-
+_图 5.3-1：Latte 的多组生成帧展示扩散 Transformer 需要同时维持主体外观、动作与跨帧背景一致性。 出处：Xin Ma et al.，[Latte: Latent Diffusion Transformer for Video Generation](https://arxiv.org/abs/2401.03048)（2024），Figure 1。_
 </div>
 
----
+## 5.3.1 视频生成的学术追溯与高维诅咒
 
-## 5.3.1 物理与几何基石：从 U-Net 感受野局限到 DiT 全局时空注意力
+早期视频生成广泛探索了 GAN 与自回归模型。GAN 可能出现模式覆盖不足和训练不稳定；自回归模型则要按既定顺序逐个生成词元，推理难以沿序列维并行。VideoGPT 等方法先压缩视频再对离散潜变量建模，并非简单地逐像素扫描；即便如此，视频词元数仍随时间和空间分辨率增长。
 
-要理解 DiT 相比传统扩散模型的架构飞跃，我们首先必须审视传统卷积 U-Net 在处理长程物理视频时的先天软肋。
-
-### 1. 传统 2D/3D U-Net 的“局部视野短板”
-传统的视频扩散模型（如早期 Video LDM）依赖多层卷积核提取特征。
-- 卷积核的局部感受野使得模型很难在远距离的时空两端建立直接联系；
-- 当一辆汽车在第 1 秒驶入隧道被完全遮挡，并在第 10 秒从隧道另一端驶出时，卷积网络早已遗忘了汽车最初的颜色、车牌与型号，导致汽车驶出时发生了荒谬的“变形换车”。
-
-### 2. DiT 的全时空 Patch 展开（Spatiotemporal Patches as Tokens）
-DiT 将四维潜在视频张量 $\mathbf{Z} \in \mathbb{R}^{C \times T \times H \times W}$ 视为一个连续的三维物理时空立方体：
-- 沿着时间轴以步长 $p_t$、高度轴步长 $p_h$、宽度轴步长 $p_w$ 进行网格切割（如 $p_t = 2, p_h = 2, p_w = 2$）；
-- 切出的每一个小立方块被展平为一维向量，并通过线性层映射为一个标准的 Transformer 词元（Token）；
-- 全局自注意力使得任意一个时刻的任意像素点，都能够在单个计算层内与全时空其他所有位置进行无死角的直接特征交互，彻底攻克了三维长程物理一致性难题！
+2020 年，Ho 等人提出去噪扩散概率模型（Denoising Diffusion Probabilistic Models, DDPM）[[Ho et al., 2020]](https://arxiv.org/abs/2006.11239)。它用一个马尔可夫链逐步向数据加入高斯噪声，再训练神经网络学习逆过程。Peebles 与 Xie 随后提出 Diffusion Transformer（DiT），用 Transformer 替代常见的 U-Net 去噪骨干，并观察到计算量增加时样本质量持续改善 [[Peebles & Xie, 2023]](https://arxiv.org/abs/2212.09748)。Sora 的技术报告把视频压缩为时空潜变量块，并用 Transformer 处理这些块；报告展示了最长一分钟的视频，但没有给出“物理保真度已被解决”的定量证明 [[OpenAI, 2024]](https://openai.com/index/video-generation-models-as-world-simulators/)。
 
 <div align="center">
+<img src="/figures/05-interactive-video/source/03-diffusion-sora/dit-fig3.png" alt="DiT 将潜变量切成补丁送入 Transformer，并以条件化模块完成扩散去噪，是 Sora 所属扩散 Transformer 路线的一手前身。" width="86%">
 
-<img src="/figures/05-interactive-video/latex/03-diffusion-sora/video-diffusion-two-time-axes.png" alt="DiT 核心 Block 架构：adaLN-Zero 调制六大动态参数与零初始化残差直通" width="86%">
-
-_图 5.3-2：DiT 核心 Block 架构：adaLN-Zero 调制六大动态参数与零初始化残差直通。_
-
+_图 5.3-2：DiT 将潜变量切成补丁送入 Transformer，并以条件化模块完成扩散去噪，是 Sora 所属扩散 Transformer 路线的一手前身。 出处：William Peebles；Saining Xie，[Scalable Diffusion Models with Transformers](https://arxiv.org/abs/2212.09748)（2023），Figure 3。_
 </div>
 
----
+## 5.3.2 扩散模型基础理论：从标量到时空张量
 
-## 5.3.2 核心数学推导一：3D Spatiotemporal Patch 切片与 adaLN-Zero 零初始化
+先从一个标量开始，再把同一公式推广到视频张量。
 
-在 DiT 架构中，如何将扩散时间步 $t$ 与文本/动作控制条件 $\mathbf{c}$ 注入到百亿参数的深层网络中？
+假设我们有一个一维标量变量 $x_0$，它代表某一个像素在某一帧的精确灰度值。扩散模型的前向过程（Forward Process）可以看作是随着时间步 $t$（注意这里的 $t$ 是人为引入的扩散步数，并非视频的时间轴）逐步向 $x_0$ 中加入微小的随机扰动。
+
+在每一个离散的时间步 $t \in \{1, 2, \dots, T_{diff}\}$，我们定义状态更新的线性递推公式为：
+
+$$x_t = \sqrt{1 - \beta_t} x_{t-1} + \sqrt{\beta_t} \epsilon_t$$
+
+其中，$\beta_t \in (0, 1)$ 是预先设定的方差超参数（也称为噪声表，Noise Schedule），而 $\epsilon_t \sim \mathcal{N}(0, 1)$ 是从标准正态分布中采样的高斯噪声。这个公式非常直观：当前状态 $x_t$ 是前一状态 $x_{t-1}$ 的衰减版本与新加入噪声的线性组合。
+
+为了能够在训练时直接跳跃到任意时间步 $t$，我们需要将递推公式展开。令 $\alpha_t = 1 - \beta_t$，上述递推公式可以写为 $x_t = \sqrt{\alpha_t} x_{t-1} + \sqrt{1 - \alpha_t} \epsilon_t$。将其向回展开一步，可以得到：
+
+$$x_t = \sqrt{\alpha_t} (\sqrt{\alpha_{t-1}} x_{t-2} + \sqrt{1 - \alpha_{t-1}} \epsilon_{t-1}) + \sqrt{1 - \alpha_t} \epsilon_t$$
+
+$$x_t = \sqrt{\alpha_t \alpha_{t-1}} x_{t-2} + \sqrt{\alpha_t (1 - \alpha_{t-1})} \epsilon_{t-1} + \sqrt{1 - \alpha_t} \epsilon_t$$
+
+独立正态变量线性组合后的方差等于各项方差之和，因此后两项可以合并成一个新的高斯噪声。递归展开并令 $\bar{\alpha}_t=\prod_{i=1}^t\alpha_i$，得到：
+
+$$x_t = \sqrt{\bar{\alpha}_t} x_0 + \sqrt{1 - \bar{\alpha}_t} \epsilon$$
+
+其中 $\epsilon\sim\mathcal{N}(0,1)$。噪声日程通常选择使终点分布接近标准高斯；在有限步数下是否“完全”等于纯噪声取决于具体日程。
+
+从单一标量推广到视频张量时，记原始视频为 $\mathbf{V}_0 \in \mathbb{R}^{C \times T \times H \times W}$，其中 $C$ 为通道数，$T$ 为帧数，$H$ 和 $W$ 为画面尺寸。前向加噪过程写作：
+
+$$\mathbf{V}_t = \sqrt{\bar{\alpha}_t} \mathbf{V}_0 + \sqrt{1 - \bar{\alpha}_t} \mathbf{E}$$
 
 <div align="center">
+<img src="/figures/05-interactive-video/latex/03-diffusion-sora/video-diffusion-two-time-axes.png" alt="一个扩散步的两项标量系数作用于完整视频张量，而帧时间是张量内部的独立索引轴" width="86%">
 
-<img src="/figures/05-interactive-video/source/03-diffusion-sora/latte-fig1.png" alt="DiT 在不同模型规模 (G/2, B/4) 下展示随着计算量增加性能单调提升的 Scaling Law 曲线。" width="86%">
-
-_图 5.3-3：DiT 在不同模型规模 (G/2, B/4) 下展示随着计算量增加性能单调提升的 Scaling Law 曲线。 出处：[Scalable Diffusion Models with Transformers，William Peebles & Saining Xie，2023](https://arxiv.org/abs/2212.09748)。_
-
+_图 5.3-3：扩散步 t 只选择一对全张量共享的混合系数；视频的帧索引则位于张量内部，不能与扩散时间混为一谈。_
 </div>
 
-### 1. 3D Patch 词元序列长度初等代数计算
-设输入潜在视频张量维度为 $(T, H, W)$，切片大小为 $(p_t, p_h, p_w)$。
-总词元序列长度 $N$ 严格满足初等三维网格剖分公式：
+这里，噪声张量 $\mathbf{E}$ 具有与 $\mathbf{V}_0$ 完全相同的多维形状，且其内部的每一个元素均独立服从标准正态分布。去噪模型（即我们要训练的神经网络）的任务就是接收带噪张量 $\mathbf{V}_t$ 和时间步 $t$，预测出被加入的噪声 $\mathbf{E}$。
 
-$$N = \frac{T}{p_t} \times \frac{H}{p_h} \times \frac{W}{p_w}$$
+## 5.3.3 时空补丁（Spacetime Patches）：视频的降维艺术
 
-每个词元的输入向量维度为 $D_{\text{in}} = C \cdot p_t \cdot p_h \cdot p_w$。
+直接在全分辨率视频像素上做全局自注意力成本很高，因为注意力矩阵随序列长度按 $O(N^2)$ 增长。潜空间压缩与补丁化共同减少 $N$。
 
-### 2. adaLN-Zero（自适应层归一化与零初始化门控）
-传统的 Cross-Attention 注入条件计算量庞大。DiT 采用了极简而高效的 **adaLN-Zero** 机制：
-通过一个轻量级 MLP，根据扩散时间步嵌入与条件向量 $\mathbf{y} = \text{Embedding}(t) + \text{Embedding}(\mathbf{c})$，一次性回归预测出 6 个关键调制标量参数：
+Vision Transformer 把二维图像划分为补丁并作为序列处理 [[Dosovitskiy et al., 2020]](https://arxiv.org/abs/2010.11929)。Sora 的公开技术报告则把压缩后的视频潜变量切成时空补丁，并把不同分辨率、宽高比和时长的数据表示为补丁序列 [[OpenAI, 2024]](https://openai.com/index/video-generation-models-as-world-simulators/)。前一篇论文提供二维补丁化的先例，后一份报告才直接支持 Sora 的具体表示。
 
-$$(\boldsymbol{\gamma}_1, \; \boldsymbol{\beta}_1, \; \boldsymbol{\alpha}_1, \; \boldsymbol{\gamma}_2, \; \boldsymbol{\beta}_2, \; \boldsymbol{\alpha}_2) = \text{MLP}(\mathbf{y})$$
+<div align="center">
+<img src="/figures/05-interactive-video/source/03-diffusion-sora/vivit-fig3.png" alt="ViViT 的 tubelet 图把连续帧切成不重叠时空块并线性嵌入，直接展示二维补丁向视频时空补丁的推广。" width="86%">
 
-DiT 核心计算块的数学方程为：
+_图 5.3-4：ViViT 的 tubelet 图把连续帧切成不重叠时空块并线性嵌入，直接展示二维补丁向视频时空补丁的推广。 出处：Anurag Arnab et al.，[ViViT: A Video Vision Transformer](https://arxiv.org/abs/2103.15691)（2021），Figure 3。_
+</div>
 
-$$\mathbf{x}' = \mathbf{x} + \boldsymbol{\alpha}_1 \odot \text{MultiHeadAttention}\left( \boldsymbol{\gamma}_1 \odot \text{LayerNorm}(\mathbf{x}) + \boldsymbol{\beta}_1 \right)$$
+我们可以利用高中立体几何中“切分长方体”的直观思想来理解时空补丁。假设视频张量在空间（$H \times W$）上被均匀划分为尺寸为 $h_p \times w_p$ 的小块，同时在时间轴（$T$）上被切分为长度为 $t_p$ 的片段。那么，每一个剥离出来的时空补丁在本质上就是一个尺寸为 $C \times t_p \times h_p \times w_p$ 的局部长方体。
 
-$$\mathbf{x}_{\text{out}} = \mathbf{x}' + \boldsymbol{\alpha}_2 \odot \text{FeedForwardNetwork}\left( \boldsymbol{\gamma}_2 \odot \text{LayerNorm}(\mathbf{x}') + \boldsymbol{\beta}_2 \right)$$
+若三个维度都能被补丁尺寸整除，不使用重叠或填充，序列长度为：
 
-### 3. adaLN-Zero 零初始化手算数值算例
-在模型刚初始化的第 0 步，将 MLP 输出 $\boldsymbol{\alpha}_1, \boldsymbol{\alpha}_2$ 的最后一层权重与偏置全部**初始化为严格的 0**（$\boldsymbol{\alpha}_1 = \mathbf{0}, \boldsymbol{\alpha}_2 = \mathbf{0}$），而将缩放因子初始化为 1（$\boldsymbol{\gamma} = \mathbf{1}, \boldsymbol{\beta} = \mathbf{0}$）。
+$$N = \left( \frac{T}{t_p} \right) \times \left( \frac{H}{h_p} \right) \times \left( \frac{W}{w_p} \right)$$
 
-设输入特征向量为 $\mathbf{x} = [3.0, -1.0]^\top$。经过注意力与 FFN 计算后产生了大震荡的中间特征 $\mathbf{F} = [100.0, -50.0]^\top$。
-我们来手动计算此时的最终输出：
-$$\mathbf{x}_{\text{out}} = \mathbf{x} + \boldsymbol{\alpha}_1 \odot \mathbf{F} = \begin{bmatrix} 3.0 \\ -1.0 \end{bmatrix} + \begin{bmatrix} 0.0 \\ 0.0 \end{bmatrix} \odot \begin{bmatrix} 100.0 \\ -50.0 \end{bmatrix} = \begin{bmatrix} 3.0 \\ -1.0 \end{bmatrix} + \begin{bmatrix} 0.0 \\ 0.0 \end{bmatrix} = \begin{bmatrix} 3.0 \\ -1.0 \end{bmatrix} = \mathbf{x}$$
-
-初等代数的几步加减乘除生动揭示了 adaLN-Zero 的设计精妙：在训练开始的第一瞬间，深达数十层的 DiT 骨干网络全部**恒等退化为一个纯粹的直通连接（Identity Map）**！梯度能够以 $100\%$ 的原始强度直接贯穿整个网络，彻底杜绝了深层百亿大模型初始阶段的数值发散！
-
-<details>
-<summary><b>深入推导：adaLN-Zero 动态调制在无穷深度网络收敛性下的利普希茨条件数稳定性证明（点击展开查看完整推导）</b></summary>
-
-将深度为 $L$ 的残差动力学系统建模为非线性常微分方程（ODE）离散化序列 $\mathbf{x}_{l+1} = \mathbf{x}_l + \alpha_l f(\mathbf{x}_l, \theta_l)$。
-整个系统的雅可比条件数满足上界：
-$$\kappa\left( \frac{\partial \mathbf{x}_L}{\partial \mathbf{x}_0} \right) \le \prod_{l=1}^L (1 + \|\alpha_l\| \cdot \|J_{f_l}\|) \le \exp\left( \sum_{l=1}^L \|\alpha_l\| \cdot \|J_{f_l}\| \right)$$
-当零初始化 $\alpha_l = 0$ 时，初始李雅普诺夫指数严格为 0，雅可比矩阵严格退化为恒等矩阵 $\mathbf{I}$。随着参数平滑演进，梯度流的谱半径始终被锚定在单位圆盘附近，从数学上根除了梯度爆炸。
-</details>
-
----
-
-## 5.3.3 核心数学推导二：3D 旋转位置编码 (3D-RoPE)
-
-在连续视频中，每个 Patch 词元同时拥有时间坐标 $t \in [0, T)$、垂直高度坐标 $h \in [0, H)$ 与水平宽度坐标 $w \in [0, W)$。
-
-为了让注意力机制直接感知三维物理空间中的**相对距离与相对位移**，现代视频生成普遍采用 **三维旋转位置编码（3D-RoPE）**。
-
-将隐藏特征通道切分为三个正交子空间 $D = D_t + D_h + D_w$：
-对于在时空坐标 $(t, h, w)$ 处的特征向量，分别沿三个正交轴执行二维复数吉文斯旋转（Givens Rotation）：
-
-$$\mathbf{R}_{3D}(t, h, w) = \text{diag}\left( \mathbf{R}_{\theta_t}(t), \; \mathbf{R}_{\theta_h}(h), \; \mathbf{R}_{\theta_w}(w) \right)$$
-
-任意两个时空词元之间的自注意力点积直接内化了其相对时间差 $\Delta t$ 与相对空间距离 $(\Delta h, \Delta w)$：
-
-$$\langle \mathbf{R}_{3D}(t_1, h_1, w_1) \mathbf{q}, \; \mathbf{R}_{3D}(t_2, h_2, w_2) \mathbf{k} \rangle = g(\mathbf{q}, \mathbf{k}, \; t_1 - t_2, \; h_1 - h_2, \; w_1 - w_2)$$
-
-这种严密的初等几何旋转不变性，赋予了 DiT 生成长距离刚体平移与摄像机旋转轨道的天然物理先验！
-
-<details>
-<summary><b>深入推导：三维正交李代数旋转群 $\text{SO}(3)$ 在相对空间位置内积不变性下的严格几何证明（点击展开查看完整推导）</b></summary>
-
-设旋转生成元为反对称矩阵 $\mathbf{J} \in \mathfrak{so}(3)$。根据欧拉公式，一维旋转矩阵满足正交群性质 $\mathbf{R}(\theta)^\top = \mathbf{R}(-\theta)$ 与同态加法映射 $\mathbf{R}(\theta_1)^\top \mathbf{R}(\theta_2) = \mathbf{R}(\theta_2 - \theta_1)$。
-对三维正交直和分解空间 $\mathbb{R}^D = \mathbb{R}^{D_t} \oplus \mathbb{R}^{D_h} \oplus \mathbb{R}^{D_w}$：
-$$\langle \mathbf{R}_{3D}(\mathbf{p}_1) \mathbf{q}, \; \mathbf{R}_{3D}(\mathbf{p}_2) \mathbf{k} \rangle = \mathbf{q}^\top \mathbf{R}_{3D}(\mathbf{p}_1)^\top \mathbf{R}_{3D}(\mathbf{p}_2) \mathbf{k} = \mathbf{q}^\top \mathbf{R}_{3D}(\mathbf{p}_2 - \mathbf{p}_1) \mathbf{k}$$
-严格证明了自注意力权重仅与相对时空位移矢量 $\Delta \mathbf{p} = \mathbf{p}_2 - \mathbf{p}_1$ 显式相关，建立了欧几里得时空的相对论平移不变性。
-</details>
-
----
-
-## 5.3.4 纯底层 PyTorch 代码实现：从零手写时空 DiT 基础块与 adaLN-Zero 调制引擎
-
-下面我们使用纯底层 PyTorch 算子实现完整的 3D 时空 Patch 展开层、adaLN-Zero 动态调制层与 DiT 核心去噪块。
+每个时空补丁被展平并投影到隐藏维度 $D$。模型还需要某种位置表示来区分时间和空间位置；Sora 报告没有公开其位置编码的具体实现。
 
 ```python
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-class PatchEmbed3D(nn.Module):
-    """
-    3D 时空 Patch 展开层: (B, C, T, H, W) -> (B, N, d_model)
-    """
-    def __init__(self, patch_size: tuple = (2, 2, 2), in_c: int = 4, d_model: int = 64):
+class SpacetimePatchEmbedding(nn.Module):
+    def __init__(self, in_channels, patch_size, embed_dim):
+        """
+        patch_size: 一个包含 (t_p, h_p, w_p) 的整数元组
+        """
         super().__init__()
         self.patch_size = patch_size
-        self.proj = nn.Conv3d(in_c, d_model, kernel_size=patch_size, stride=patch_size)
+        # 使用非重叠的三维卷积来实现时空补丁的提取与线性映射投影
+        self.proj = nn.Conv3d(
+            in_channels, embed_dim,
+            kernel_size=patch_size,
+            stride=patch_size
+        )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # (B, d_model, T_p, H_p, W_p)
+    def forward(self, x):
+        # x 的输入形状: (批量大小, 通道数, 帧数, 高度, 宽度) -> (B, C, T, H, W)
         x = self.proj(x)
-        # 展平为 (B, N, d_model)
-        x = x.flatten(2).transpose(1, 2)
+        # 经过 3D 卷积后，x 的形状降维为 (B, embed_dim, T_prime, H_prime, W_prime)
+        # 将时空网格维度完全展平为单一的序列维度
+        B, D, T_prime, H_prime, W_prime = x.shape
+        x = x.view(B, D, -1).transpose(1, 2)
+        # 最终输出的形状为: (B, N, D)，其中 N = T_prime * H_prime * W_prime
         return x
-
-class DiTBlock3D(nn.Module):
-    """
-    DiT 核心时空自注意力块
-    内置 adaLN-Zero 动态条件调制与零初始化门控
-    """
-    def __init__(self, d_model: int = 64, nhead: int = 4, d_cond: int = 32):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(d_model, elementwise_affine=False, eps=1e-6)
-        self.attn = nn.MultiheadAttention(d_model, nhead, batch_first=True)
-        self.norm2 = nn.LayerNorm(d_model, elementwise_affine=False, eps=1e-6)
-        self.mlp = nn.Sequential(
-            nn.Linear(d_model, d_model * 2),
-            nn.GELU(),
-            nn.Linear(d_model * 2, d_model)
-        )
-
-        # adaLN 调制网络: 从条件向量生成 (gamma1, beta1, alpha1, gamma2, beta2, alpha2) 共 6 组参数
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(d_cond, 6 * d_model)
-        )
-        # 零初始化最后一层权重与偏置 (adaLN-Zero 核心)
-        nn.init.constant_(self.adaLN_modulation[-1].weight, 0)
-        nn.init.constant_(self.adaLN_modulation[-1].bias, 0)
-
-    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
-        """
-        :param x: (B, N, d_model) 时空词元序列
-        :param cond: (B, d_cond) 时间步与条件嵌入
-        """
-        # 1. 生成调制参数
-        mod = self.adaLN_modulation(cond).unsqueeze(1) # (B, 1, 6 * d_model)
-        gamma1, beta1, alpha1, gamma2, beta2, alpha2 = mod.chunk(6, dim=-1)
-
-        # 2. 调制自注意力层 (含 alpha1 零门控)
-        norm_x1 = self.norm1(x) * (1.0 + gamma1) + beta1
-        attn_out, _ = self.attn(norm_x1, norm_x1, norm_x1)
-        x = x + alpha1 * attn_out
-
-        # 3. 调制前馈网络 (含 alpha2 零门控)
-        norm_x2 = self.norm2(x) * (1.0 + gamma2) + beta2
-        mlp_out = self.mlp(norm_x2)
-        x = x + alpha2 * mlp_out
-
-        return x
-
-# ===================================================================
-# 单元测试与零初始化恒等映射校验
-# ===================================================================
-if __name__ == "__main__":
-    batch_size = 2
-    T_len, H_len, W_len = 4, 8, 8
-    d_model = 64
-    d_cond = 32
-
-    # 1. 3D Patch 展开测试
-    patch_embed = PatchEmbed3D(patch_size=(2, 2, 2), in_c=4, d_model=d_model)
-    dummy_latent_video = torch.randn(batch_size, 4, T_len, H_len, W_len)
-    tokens = patch_embed(dummy_latent_video)
-
-    expected_tokens = (T_len // 2) * (H_len // 2) * (W_len // 2) # 2 * 4 * 4 = 32
-    print(f"[DiT Test] 输入潜在视频形状: {dummy_latent_video.shape}")
-    print(f"[DiT Test] 3D Patch 词元序列形状: {tokens.shape} (期望长度: {expected_tokens})")
-
-    # 2. adaLN-Zero 恒等映射测试
-    dit_block = DiTBlock3D(d_model=d_model, nhead=4, d_cond=d_cond)
-    dummy_cond = torch.randn(batch_size, d_cond)
-
-    out_tokens = dit_block(tokens, dummy_cond)
-
-    # 验证在初始阶段输出是否完全严格等于输入 (恒等映射)
-    max_diff = torch.max(torch.abs(out_tokens - tokens)).item()
-    print(f"[DiT Test] 初始前向输出与输入的绝对差值最大值: {max_diff:.8f}")
-
-    assert tokens.shape == (batch_size, expected_tokens, d_model), "3D Patch 词元维度不符！"
-    assert max_diff < 1e-6, "adaLN-Zero 初始阶段未满足恒等映射条件！"
-    print("✓ 3D 时空 Patch 展开、adaLN-Zero 零初始化与 DiT 核心去噪块单测全部通过！")
 ```
 
----
+## 5.3.4 联合时空自注意力机制与 DiT 架构
 
-## 5.3.5 本节小结
+补丁嵌入得到的是长度为 $N$ 的**连续向量序列**，不是离散整数词元。去噪网络接收带噪补丁、扩散时间步和条件信息，预测噪声或其他等价参数化目标。
 
-回顾本节内容，我们掌握了现代视频物理模拟器的核心架构：
-1. **纯时空注意力 Scaling Law**：将四维视频切分为 3D Patch 序列并输入全注意力 Transformer，突破了卷积感受野的物理限制；
-2. **adaLN-Zero 稳定定海神针**：利用零初始化门控将深层百亿参数大模型的初始态化简为恒等映射，攻克了深层扩散训练的发散死穴；
-3. **空间相对几何先验**：3D-RoPE 旋转位置编码将欧几里得时空的相对因果直接内化于注意力点积中，为物理世界的高保真模拟奠定了坚实的几何底座。
+许多图像扩散模型使用 U-Net，DiT 则用 Transformer 处理潜在补丁。视频模型可以采用联合时空注意力，也可以分解空间与时间注意力；Sora 报告只明确说明使用时空补丁与 Transformer，没有公开足够细节来断言其采用下面这一个具体变体。扩散去噪通常同时访问整段带噪视频，因此这里也不是自回归意义上的因果注意力。
+
+在多头自注意力（Multi-Head Self-Attention, MHSA）中，序列张量 $\mathbf{Z} \in \mathbb{R}^{N \times D}$ 中的每个补丁经线性映射得到查询（Query）、键（Key）和值（Value）：
+
+$$\mathbf{Q} = \mathbf{Z} \mathbf{W}_Q, \quad \mathbf{K} = \mathbf{Z} \mathbf{W}_K, \quad \mathbf{V} = \mathbf{Z} \mathbf{W}_V$$
+
+注意力的全局交互权重分配由点积操作计算得出，公式如下：
+
+$$\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{d_k}}\right) \mathbf{V}$$
+
+联合时空注意力让一个补丁直接读取其他帧与其他空间位置的表示，因而有机会协调外观和运动。但注意力连接只提供信息通路，不保证生成结果遵守重力、碰撞或骨骼约束。
+
+## 5.3.5 潜在空间的深度压缩（Video VAE）
+
+直接在像素空间处理长视频的成本很高。潜在扩散先把图像压缩到低维潜空间，再执行扩散过程 [[Rombach et al., 2022]](https://arxiv.org/abs/2112.10752)；Sora 也使用独立训练的视频压缩网络把视频映射到低维潜空间，但公开报告没有说明其实现与 Latent Diffusion 完全相同 [[OpenAI, 2024]](https://openai.com/index/video-generation-models-as-world-simulators/)。
+
+<div align="center">
+<img src="/figures/05-interactive-video/source/03-diffusion-sora/ldm-fig3.png" alt="潜在扩散的感知压缩与潜空间生成两阶段结构说明为何可在较小表示上运行昂贵去噪网络。" width="86%">
+
+_图 5.3-5：潜在扩散的感知压缩与潜空间生成两阶段结构说明为何可在较小表示上运行昂贵去噪网络。 出处：Robin Rombach et al.，[High-Resolution Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752)（2022），Figure 3。_
+</div>
+
+在视频领域，可以预训练视频压缩网络，把像素视频 $\mathbf{V}_{pixel}$ 映射到更紧凑的潜在空间：
+
+$$\mathbf{Z}_0 = \mathcal{E}(\mathbf{V}_{pixel})$$
+
+编码器可以同时压缩空间和时间维度。压缩比例是模型设计，不应从 Sora 的公开报告中臆测具体数值；潜在表示也可能保留纹理等低层信息，不只是“核心语义”。扩散过程随后在较小的潜在张量上进行。
+
+采样结束得到潜在表示 $\hat{\mathbf{Z}}_0$ 后，解码器 $\mathcal{D}$ 将其还原到像素空间；重建质量受压缩模型能力限制：
+
+$$\hat{\mathbf{V}}_{pixel} = \mathcal{D}(\hat{\mathbf{Z}}_0)$$
+
+这种两阶段设计把视觉压缩与生成建模分开，显著减少去噪网络处理的时空元素数。
+
+## 5.3.6 代码实现：构建极简版 Video DiT 块
+
+下面把注意力计算写进代码，构造一个包含层归一化和前馈网络的简化 Diffusion Transformer Block。
+
+```python
+class VideoDiTBlock(nn.Module):
+    def __init__(self, embed_dim, num_heads):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(embed_dim)
+        # 实例化多头自注意力层
+        self.attn = nn.MultiheadAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            batch_first=True
+        )
+        self.norm2 = nn.LayerNorm(embed_dim)
+        # 典型的前馈神经网络，用于对局部特征进行非线性高维映射
+        self.mlp = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim * 4),
+            nn.GELU(),
+            nn.Linear(embed_dim * 4, embed_dim)
+        )
+
+    def forward(self, x, t_emb):
+        """
+        x: 降维后的视频补丁序列，形状为 (B, N, D)
+        t_emb: 当前时间步和条件特征（如文本提示）的融合嵌入，形状为 (B, D)
+        """
+        # 完整 DiT 常用时间步嵌入调制自适应层归一化 (AdaLN)
+        # 的动态尺度和平移参数。在此为了降低代码复杂度并突出核心逻辑，
+        # 我们做简化处理，将其通过广播机制直接加到序列变量上
+        x_with_cond = x + t_emb.unsqueeze(1)
+
+        # 步骤 1：利用全序列联合自注意力机制进行时空维度的全局信息交互
+        attn_out, _ = self.attn(
+            self.norm1(x_with_cond),
+            self.norm1(x_with_cond),
+            self.norm1(x_with_cond)
+        )
+        x = x + attn_out  # 残差连接
+
+        # 步骤 2：通过前馈网络完成每个序列元素的独立非线性变换
+        x = x + self.mlp(self.norm2(x))
+        return x
+```
+
+## 5.3.7 小结
+
+本节从标量前向扩散得到任意噪声步的闭式采样公式，再把它推广到视频潜变量。视频压缩降低潜变量网格大小，时空补丁把网格变成连续向量序列，Transformer 负责在这些补丁之间交换信息。Sora 的公开视频展示了较强的生成能力，同时其报告也列出物理交互、因果关系和长视频一致性等失败模式；这些仍是需要评估的问题。
+
+## 5.3.8 练习
+
+1. 回顾前向加噪过程。假设标量初值 $x_0 = 0.5$，前两个时间步的方差超参数为 $\beta_1 = 0.1, \beta_2 = 0.2$。手工计算随机变量 $x_2$ 的理论均值和方差。
+   - **提示**：充分利用独立正态分布相加时均值与方差满足线性可加性的统计学规律。不要跳步，请先分布计算出 $\alpha_1, \alpha_2$ 以及累积连乘项 $\bar{\alpha}_2$。
+2. 假设给定的待处理原始视频总共有 $16$ 帧，单帧分辨率为 $256 \times 256$，颜色通道数 $C=3$。如果在补丁嵌入层将时空补丁的超参数尺寸硬编码设定为 $t_p=2, h_p=16, w_p=16$，请你计算出展平后的 Transformer 输入序列长度 $N$ 究竟是多少？
+   - **提示**：使用文中的补丁数量表达式，代入各维尺寸进行除法和连乘。
+3. 为什么在处理视频张量的扩散模型中，通常需要在自注意力层的输入阶段，强行同时注入“空间位置编码”和“时间位置编码”？如果你作为架构师，鲁莽地去掉了时间位置编码，模型在生成视频时，画面可能会出现什么极为怪异的现象？
+   - **提示**：核心思考点在于标准 Transformer 中自注意力机制（Self-Attention）本身是具备排列不变性（Permutation Invariance）的。

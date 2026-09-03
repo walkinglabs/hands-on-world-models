@@ -1,249 +1,233 @@
-# 4.5 DreamerV2/V3: 离散分类隐变量与无超参自适应泛化
+# 4.5 DreamerV2 与 DreamerV3：离散状态与跨任务稳健性
 
-在世界模型的进化长河中，如果说 DreamerV1 确立了潜空间梦境强化学习的黄金范式，那么 **DreamerV2** 与 **DreamerV3** 的相继问世，则将世界模型的表达能力与通用泛化性推向了前所未有的顶峰。
-
-在连续高斯分布主导的潜空间中，系统在处理连续机械力矩时表现优异，但在面对自然物理界中大量存在的**离散物理阶跃事件**（如机械卡扣的锁紧瞬间、电路开关的通断跳变、碰撞接触的硬状态切换）时，连续高斯分布往往会产生灾难性的“均值过渡平滑”，导致世界模型对离散状态的记忆迅速模糊崩溃。
-
-为了攻克这一物理建模瓶颈：
-- **DreamerV2（2020）** 彻底抛弃了连续高斯分布，开创性地引入了 **离散多分类隐变量（Categorical Latents）** 与 Straight-Through 梯度直通，成为人类历史上首个在雅达利（Atari）游戏基准上全面击败无模型顶级算法的模型化系统；
-- **DreamerV3（2023）** 进一步引入了 **对称对数缩放（Symlog）**、**两热分布回归（Two-Hot Encoding）** 与 **动态百分位数归一化** 三大自适应机制，实现了在完全不微调任何超参数的前提下，横跨从连续机械控制、高维像素游戏到庞大 Minecraft 复杂长程任务的“通用世界模型大一统”！
+DreamerV1 使用连续高斯随机状态。DreamerV2 把这部分改成多组分类变量，并针对 Atari 调整了训练方法；DreamerV3 进一步处理不同任务间奖励与价值尺度差异，目标是减少逐任务调参。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/05-dreamer-v2-v3/dreamerv3-fig2.png" alt="DreamerV3 的实验环境拼图同时呈现控制、Atari、DMLab、ProcGen 与 Minecraft，直观看到“一套配置跨领域”的实际任务跨度。" width="86%">
 
-<img src="/figures/04-latent-dynamics/source/05-dreamer-v2-v3/dreamerv3-fig2.png" alt="DreamerV3 跨越四大不同领域基准测试，展示统一模型架构与固定超参数下的卓越表现。" width="86%">
-
-_图 4.5-1：DreamerV3 跨越四大不同领域基准测试，展示统一模型架构与固定超参数下的卓越表现。 出处：[Mastering Diverse Domains through World Models，Danijar Hafner et al.，2023](https://arxiv.org/abs/2301.04104)。_
+_图 4.5-1：DreamerV3 的实验环境拼图同时呈现控制、Atari、DMLab、ProcGen 与 Minecraft，直观看到“一套配置跨领域”的实际任务跨度。 出处：Danijar Hafner；Jurgis Pasukonis；Jimmy Ba；Timothy Lillicrap，[Mastering Diverse Domains through World Models](https://arxiv.org/abs/2301.04104)（2023），Figure 2。_
 
 </div>
 
----
+本节讨论 DreamerV2 [[Hafner et al., 2021]](https://arxiv.org/abs/2010.02193) 和 DreamerV3 [[Hafner et al., 2023]](https://arxiv.org/abs/2301.04104)。DreamerV2 使用多组分类分布组成离散随机状态，并在 Atari 上取得较强结果。DreamerV3 通过 symlog、two-hot 分布回归、回报尺度归一化等设计，提高同一套超参数跨领域使用的稳定性；原文报告覆盖 8 个领域、150 多项任务。
 
-## 4.5.1 物理与数学基石：连续概率球与离散逻辑流形的碰撞
+我们将从最基础的概率论概念起步，逐步推导出离散空间的梯度反向传播技巧，并深入理解旨在解决值域缩放问题的对数变换技巧。
 
-要理解离散分类隐变量的妙处，我们首先必须审视连续高斯空间与离散分类空间的表达特性差异。
-
-### 1. 连续高斯空间的“物理平滑陷阱”
-假设物理世界发生了一个突变：机械臂夹爪中的物体在时刻 $t$ 是“牢固抓紧”状态（记为 $1$），在时刻 $t+1$ 发生了“彻底滑脱”（记为 $0$）。
-若使用连续高斯分布，系统在预测两者之间的潜在转移时，被迫给出均值 $\mu = 0.5$（即处于一种“既抓紧又滑脱”的不可思议非物理中间态）。
-
-### 2. 离散多分类矩阵的巨大组合容量（$32 \times 32$ Categorical Matrix）
-DreamerV2 将随机隐状态 $\mathbf{z}_t$ 构建为包含 $32$ 组独立离散分类分布的矩阵，每组包含 $32$ 个离散类别：
-
-$$\mathbf{z}_t \in \{0, 1\}^{32 \times 32}$$
-
-每组分类变量通过 One-Hot 独热向量表达。
-其总离散状态组合容量为：
-$$32^{32} = (2^5)^{32} = 2^{160} \approx 1.46 \times 10^{48} \text{ 种状态！}$$
-这个天文数字级别的离散空间容量比全宇宙的原子的总数还要庞大数十个数量级，既保留了离散逻辑的硬阶跃边界，又具备了与连续空间不相上下的无穷表达精度！
+## 连续空间的局限性与离散表征的崛起
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/05-dreamer-v2-v3/vqvae-fig2.png" alt="VQ-VAE 的原图把 ImageNet 原图与离散码本重建并排，给出分类潜变量能够保留视觉结构的早期证据。" width="86%">
 
-<img src="/figures/04-latent-dynamics/latex/05-dreamer-v2-v3/twohot-value-preservation.png" alt="DreamerV2 离散分类潜变量矩阵采样与 Straight-Through 梯度直通计算图" width="86%">
-
-_图 4.5-2：DreamerV2 离散分类潜变量矩阵采样与 Straight-Through 梯度直通计算图。_
+_图 4.5-2：VQ-VAE 的原图把 ImageNet 原图与离散码本重建并排，给出分类潜变量能够保留视觉结构的早期证据。 出处：Aaron van den Oord；Oriol Vinyals；Koray Kavukcuoglu，[Neural Discrete Representation Learning](https://arxiv.org/abs/1711.00937)（2017），Figure 2。_
 
 </div>
 
----
+DreamerV1 用高斯分布表示 RSSM 的随机状态，并通过重参数化获得路径梯度。DreamerV2 的实验发现，分组分类状态在 Atari 训练中更有效；这是经验设计选择，不意味着连续表示原则上不能描述离散概念。
 
-## 4.5.2 核心数学推导一：离散 Gumbel 采样与 Straight-Through 梯度直通
+分组分类变量让每组状态从有限类别中选择，并通过多组组合形成较大的表示空间。相比对角高斯，它改变了分布形状、采样方式与 KL 计算；实际收益来自这些建模与优化差异，而不是预先规定每个类别对应“猫”“狗”等人类语义。
 
-离散 One-Hot 采样是一个完全不可求导的阶跃操作。DreamerV2 如何让梯度无损地回传给先验和后验网络？
+具体来说，DreamerV2 用离散的分类分布表示随机状态。网络输出一个形状为 $G \times C$ 的矩阵，代表 $G$ 个独立的分类变量，每个变量有 $C$ 个可能类别。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/05-dreamer-v2-v3/dreamerv2-fig2.png" alt="DreamerV2 世界模型图把分类随机状态的后验、先验、奖励预测和图像重建沿时间展开。" width="86%">
 
-<img src="/figures/04-latent-dynamics/source/05-dreamer-v2-v3/dreamerv2-fig2.png" alt="DreamerV2 比较连续高斯隐状态与离散分类隐状态下的画面重构与长期预测保真度。" width="86%">
-
-_图 4.5-3：DreamerV2 比较连续高斯隐状态与离散分类隐状态下的画面重构与长期预测保真度。 出处：[Mastering Atari with Discrete World Models，Danijar Hafner et al.，2020](https://arxiv.org/abs/2010.02193)。_
+_图 4.5-3：DreamerV2 世界模型图把分类随机状态的后验、先验、奖励预测和图像重建沿时间展开。 出处：Danijar Hafner；Timothy Lillicrap；Mohammad Norouzi；Jimmy Ba，[Mastering Atari with Discrete World Models](https://arxiv.org/abs/2010.02193)（2021），Figure 2。_
 
 </div>
 
-### 1. Gumbel-Max 离散重参数化采样
-设某一组分类变量输出的未归一化对数几率为 $\mathbf{l} = [l_1, l_2, \dots, l_K] \in \mathbb{R}^K$（$K = 32$）。
-从标准 Gumbel 分布中独立采样噪声 $g_k = -\ln(-\ln(u_k))$（其中 $u_k \sim \text{Uniform}(0, 1)$）。
-离散类别索引通过寻找加噪极大值得到：
+### 分类分布的数学表达
 
-$$k^* = \arg\max_{k \in \{1, \dots, K\}} (l_k + g_k)$$
+假设我们有一个离散随机变量 $z$，它可以取 $C$ 个可能的状态，即 $z \in \{1, 2, \dots, C\}$。该变量服从分类分布（Categorical distribution），其概率质量函数可以由一个概率向量 $\mathbf{p} = [p_1, p_2, \dots, p_C]^\top$ 来参数化，其中：
+$$p_i \ge 0, \quad \sum_{i=1}^C p_i = 1.$$
 
-$$\mathbf{z}_{\text{discrete}} = \text{OneHot}(k^*) \in \{0, 1\}^K$$
+当我们对 $z$ 进行采样时，最标准的形式是生成一个“独热”（One-hot）向量。独热向量 $\mathbf{x} = [x_1, x_2, \dots, x_C]^\top$ 定义为：如果采样结果是类别 $k$，则 $x_k = 1$，其余位置 $x_i = 0\ (i \neq k)$。
 
-### 2. 梯度直通估计器（Straight-Through Estimator, STE）
-为了打通反向传播计算图，前向输出硬离散 One-Hot 向量，反向传播则将 Softmax 连续概率的梯度无损直通：
+直接从分类分布采样得到离散索引，普通计算图没有从该样本回到 logits 的路径导数。因此不能像高斯重参数化那样直接把下游梯度传给采样器参数。
 
-$$\mathbf{z}_{\text{final}} = \mathbf{z}_{\text{discrete}} + \text{Softmax}(\mathbf{l}) - \text{sg}[\text{Softmax}(\mathbf{l})]$$
+## 解决梯度回传：直通估计器 (Straight-Through Estimator)
 
-- 前向计算：$\mathbf{z}_{\text{discrete}} + \mathbf{p} - \mathbf{p} = \mathbf{z}_{\text{discrete}}$（完全维持离散硬逻辑）；
-- 反向传播：$\frac{\partial \mathbf{z}_{\text{final}}}{\partial \mathbf{l}} = \frac{\partial \text{Softmax}(\mathbf{l})}{\partial \mathbf{l}}$（连续平滑梯度畅通回传给 Logits）！
+在微积分中，如果一个函数的导数处处为零，我们就无法通过它来回传任何有用的误差信号。这正是深度学习在面对离散变量时长期以来的痛点。
 
-### 3. STE 直通手算数值算例
-设某一维度的 Logits 为 $\mathbf{l} = [1.0, 2.0]^\top$。
-Softmax 概率为：
-$$p_1 = \frac{e^1}{e^1 + e^2} \approx \frac{2.718}{2.718 + 7.389} \approx 0.269, \quad p_2 = \frac{e^2}{e^1 + e^2} \approx 0.731$$
-采样得到的离散 One-Hot 结果为 $\mathbf{z}_{\text{discrete}} = [0, 1]^\top$。
+直通估计器（Straight-Through Estimator, STE）采用不同的前向与反向规则：前向使用离散样本，反向则用连续概率的梯度近似离散采样的梯度。
 
-在前向计算中，输出严格为硬离散值 $[0, 1]^\top$；而当上游回传梯度 $\mathbf{G} = [1.0, -1.0]$ 时，反向传播直接作用于连续概率 $\mathbf{p} = [0.269, 0.731]^\top$ 上，彻底化解了离散不可导的数学死锁！
+::: info 说明
+STE 不是离散采样真实导数的无偏估计，而是一种有偏近似；它通常比基于采样回报的似然比估计方差低，但效果取决于任务与参数化。
+:::
 
-<details>
-<summary><b>深入推导：Gumbel-Max 技巧在极值顺序统计量下的严格概率等价证明（点击展开查看完整推导）</b></summary>
+让我们用数学语言更精确地描述它。假设神经网络输出了一组未归一化的对数概率（Logits），记为 $\mathbf{l} = [l_1, l_2, \dots, l_C]^\top$。我们可以通过 Softmax 函数获得归一化的概率向量 $\mathbf{p}$：
+$$\mathbf{p} = \text{Softmax}(\mathbf{l}) \quad \text{其中} \quad p_i = \frac{\exp(l_i)}{\sum_{j=1}^C \exp(l_j)}.$$
 
-设 $G_k \sim \text{Gumbel}(0, 1)$，其累积分布函数为 $F(g) = \exp(-\exp(-g))$。
-考察事件 $k^* = \arg\max_k (l_k + G_k)$ 的边缘发生概率：
-$$P(k^* = i) = P\left( \bigcap_{j \ne i} \{l_j + G_j \le l_i + G_i\} \right) = \int_{-\infty}^\infty f(g_i) \prod_{j \ne i} F(l_i - l_j + g_i) dg_i$$
-代入 Gumbel 概率密度函数 $f(g) = e^{-g} e^{-e^{-g}}$：
-$$P(k^* = i) = \int_{-\infty}^\infty e^{-g_i} \exp\left( -e^{-g_i} \sum_{j=1}^K e^{l_j - l_i} \right) dg_i$$
-令换元积分变量 $y = e^{-g_i}$，定积分直接化简为初等有理分式：
-$$P(k^* = i) = \frac{1}{\sum_{j=1}^K e^{l_j - l_i}} = \frac{e^{l_i}}{\sum_{j=1}^K e^{l_j}} = \text{Softmax}(l_i)$$
-严格证得 Gumbel-Max 采样与类别 Softmax 概率在测度论意义下的完全等价性。
-</details>
+根据 $\mathbf{p}$ 采样独热向量 $\mathbf{z}_{\text{one-hot}}$ 后，可构造：
+$$\tilde{\mathbf{z}} = \operatorname{sg}(\mathbf{z}_{\text{one-hot}}-\mathbf{p})+\mathbf{p},$$
 
----
+如果我们在反向传播时切断（Detach） $\mathbf{z}_{\text{one-hot}} - \mathbf{p}$ 的梯度，那么：
 
-## 4.5.3 核心数学推导二：DreamerV3 的无超参自适应三大基石
+- 在前向计算时，由于 $\mathbf{p}$ 和 $-\mathbf{p}$ 相互抵消，计算图的实际值为 $\mathbf{z}_{\text{one-hot}}$，保证了输出是严格离散的独热向量。
+- 在反向计算时，梯度流经 $\tilde{\mathbf{z}}$ 时，被截断的部分不会产生梯度，所有的梯度都会流向剩下的 $\mathbf{p}$。而 $\mathbf{p}$ 是通过可导的 Softmax 函数得到的。
 
-在面对跨度达数百万倍的极端物理奖励分布时，DreamerV3 提出了三项划时代的自适应数学工具：
-
-<div align="center">
-
-<img src="/figures/04-latent-dynamics/source/05-dreamer-v2-v3/dreamerv3-fig2.png" alt="DreamerV3 对称对数变换 (Symlog) 与动态百分位数归一化自适应机制曲线。" width="86%">
-
-_图 4.5-4：DreamerV3 对称对数变换 (Symlog) 与动态百分位数归一化自适应机制曲线。 出处：[Mastering Diverse Domains through World Models，Danijar Hafner et al.，2023](https://arxiv.org/abs/2301.04104)。_
-
-</div>
-
-### 1. 对称对数变换（Symlog Transformation）
-双向可逆平滑压缩函数，将跨越数个数量级的极端物理数值压缩至平稳区间：
-
-$$\text{symlog}(x) = \text{sign}(x) \ln(|x| + 1)$$
-
-$$\text{symexp}(y) = \text{sign}(y) (\exp(|y|) - 1)$$
-
-### 2. 两热离散分布回归（Two-Hot Categorical Value Representation）
-在预测 Critic 价值与即时奖励时，DreamerV3 彻底抛弃了连续标量回归（MSE 损失在面对极端异常值时极易产生梯度爆炸），改用预设在均匀网格桶 $B = \{b_1, b_2, \dots, b_N\}$ 上的离散概率分布。
-
-对于任意标量目标值 $y = \text{symlog}(R)$，若其落在相邻两个桶 $[b_k, b_{k+1}]$ 之间，系统将其精确投影为仅在这两个相邻桶上非零的“两热概率”（Two-Hot Probabilities）：
-
-$$p_k = \frac{b_{k+1} - y}{b_{k+1} - b_k}, \quad p_{k+1} = \frac{y - b_k}{b_{k+1} - b_k}$$
-
-利用离散交叉熵损失进行无爆炸优化，在还原预测值时计算数学期望：
-
-$$\hat{y} = \sum_{j=1}^N \text{Softmax}(l_j) \cdot b_j$$
-
-### 3. 两热投影手算数值算例
-设价值网格桶为 $B = [0.0, 10.0, 20.0]$。当前目标标量为 $y = 7.0$。
-- 目标值 $7.0$ 落在第 1 桶（$b_1 = 0.0$）与第 2 桶（$b_2 = 10.0$）之间；
-- 桶间距 $\Delta = 10.0 - 0.0 = 10.0$；
-- 计算两热权重：
-  $$p_1 = \frac{10.0 - 7.0}{10.0} = 0.30, \quad p_2 = \frac{7.0 - 0.0}{10.0} = 0.70$$
-- 真实两热分布为 $\mathbf{p} = [0.30, 0.70, 0.0]^\top$。
-
-期望还原验证：
-$$\mathbb{E}[y] = 0.30 \times 0.0 + 0.70 \times 10.0 + 0.0 \times 20.0 = 0.0 + 7.0 + 0.0 = 7.0$$
-
-初等代数的几步加权完美验证：两热分布在严格保持标量期望无损的同时，将无界连续回归优雅转化为数值绝对稳定的有界分类交叉熵！
-
-<details>
-<summary><b>深入推导：两热分类编码在 Wasserstein 距离（EMD）意义下的期望保真度证明（点击展开查看完整推导）</b></summary>
-
-设真实狄拉克测度为 $\delta_y$。在单调网格 $b_1 < \dots < b_N$ 上构造两热概率分布 $P = \sum p_i \delta_{b_i}$。
-一阶 Wasserstein 距离（推土机距离）定义为：
-$$\mathcal{W}_1(P, \delta_y) = \int_{-\infty}^\infty |F_P(t) - F_{\delta_y}(t)| dt$$
-由于仅有相邻两桶 $b_k \le y \le b_{k+1}$ 被赋予非零权重，累积分布函数在区间 $[b_k, b_{k+1}]$ 之外完全恒等为 0 或 1。
-积分计算得 $\mathcal{W}_1(P, \delta_y) = p_k(y - b_k) = \frac{(b_{k+1} - y)(y - b_k)}{b_{k+1} - b_k} \le \frac{\Delta b}{4}$。
-严格证明了在任意细分网格下，两热编码的信息几何逼近误差严格受限于网格分辨率的一阶上界。
-</details>
-
----
-
-## 4.5.4 纯底层 PyTorch 代码实现：从零手写 DreamerV3 离散分类潜变量与 Symlog 引擎
-
-下面我们使用纯底层 PyTorch 算子手写实现完整的离散多分类采样器、Straight-Through 梯度直通与 Symlog/两热变换模块。
+我们将通过代码展示这一过程。
 
 ```python
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributions as D
 
-class CategoricalLatentSampler(nn.Module):
+def straight_through_sample(logits, num_classes):
     """
-    DreamerV2/V3 离散多分类潜在采样器
-    包含 Gumbel-Max 离散采样与 Straight-Through (STE) 梯度直通
+    (实现直通估计器的独热采样)
     """
-    def __init__(self, num_categoricals: int = 32, num_classes: int = 32):
-        super().__init__()
-        self.num_categoricals = num_categoricals
-        self.num_classes = num_classes
+    # [1] 计算连续的概率分布
+    probs = F.softmax(logits, dim=-1)
 
-    def forward(self, logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        :param logits: (B, num_categoricals * num_classes)
-        :return: (z_st, z_probs) 形状为 (B, num_categoricals, num_classes)
-        """
-        B = logits.shape[0]
-        logits = logits.view(B, self.num_categoricals, self.num_classes)
-        probs = F.softmax(logits, dim=-1)
+    # [2] 根据概率进行真实的分类分布采样
+    dist = D.Categorical(probs=probs)
+    indices = dist.sample()
 
-        # 1. 采样标准 Gumbel 噪声
-        uniform_noise = torch.rand_like(probs).clamp(1e-6, 1.0 - 1e-6)
-        gumbel_noise = - torch.log(- torch.log(uniform_noise))
+    # [3] 将采样结果转换为独热向量
+    z_one_hot = F.one_hot(indices, num_classes=num_classes).float()
 
-        # 2. Gumbel-Max 硬离散 One-Hot
-        sample_indices = torch.argmax(logits + gumbel_noise, dim=-1) # (B, num_categoricals)
-        one_hot = F.one_hot(sample_indices, num_classes=self.num_classes).float() # (B, num_cat, num_cla)
+    # [4] 应用直通估计器技巧 (z_one_hot - probs).detach() + probs
+    # 前向传播时等于 z_one_hot，反向传播时等价于 probs
+    z_sample = z_one_hot + probs - probs.detach()
 
-        # 3. Straight-Through 梯度直通: z = one_hot + probs - sg[probs]
-        z_st = one_hot + probs - probs.detach()
-
-        return z_st, probs
-
-class SymlogTools:
-    """
-    DreamerV3 对称对数数学工具箱
-    """
-    @staticmethod
-    def symlog(x: torch.Tensor) -> torch.Tensor:
-        return torch.sign(x) * torch.log(torch.abs(x) + 1.0)
-
-    @staticmethod
-    def symexp(y: torch.Tensor) -> torch.Tensor:
-        return torch.sign(y) * (torch.exp(torch.abs(y)) - 1.0)
-
-# ===================================================================
-# 单元测试与直通梯度流校验
-# ===================================================================
-if __name__ == "__main__":
-    batch_size = 4
-    num_cat = 8
-    num_cla = 8
-
-    sampler = CategoricalLatentSampler(num_categoricals=num_cat, num_classes=num_cla)
-
-    dummy_logits = torch.randn(batch_size, num_cat * num_cla, requires_grad=True)
-    z_st, z_probs = sampler(dummy_logits)
-
-    # 模拟下游损失反向传播
-    loss = z_st.sum()
-    loss.backward()
-
-    # 测试 Symlog 双向可逆性
-    test_val = torch.tensor([-1000.0, -1.0, 0.0, 1.0, 1000.0])
-    sym_val = SymlogTools.symlog(test_val)
-    recovered_val = SymlogTools.symexp(sym_val)
-
-    print(f"[DreamerV3 Test] 离散潜在张量形状: {z_st.shape}")
-    print(f"[DreamerV3 Test] 原始数值: {test_val.tolist()}")
-    print(f"[DreamerV3 Test] Symlog 压缩后数值: {[round(x, 4) for x in sym_val.tolist()]}")
-
-    assert z_st.shape == (batch_size, num_cat, num_cla), "离散潜在张量形状不符！"
-    assert dummy_logits.grad is not None, "STE 梯度直通未成功回传！"
-    assert torch.allclose(test_val, recovered_val, atol=1e-3), "Symlog 可逆还原精度异常！"
-    print("✓ DreamerV2/V3 离散分类隐变量、STE 直通梯度与 Symlog 对称缩放单测全部通过！")
+    return z_sample
 ```
 
----
+若使用 $G=32$ 组、每组 $C=32$ 个类别，组合数的理论上限是 $32^{32}$。这只说明编码空间很大，不代表模型会使用所有组合，也不代表其数量可与环境真实状态数直接比较。
 
-## 4.5.5 本节小结
+## KL 散度平衡 (KL Balancing)
 
-回顾本节内容，我们掌握了通用世界模型大一统的核心基石：
-1. **离散分类多流形**：以 $32 \times 32$ 组合矩阵彻底替代连续高斯，攻克了物理阶跃与硬接触建模中的模糊瓶颈；
-2. **Straight-Through 优雅求导**：前向硬离散、反向软概率，打通了离散空间的连续梯度反向传播通道；
-3. **DreamerV3 无超参三大件**：对称对数（Symlog）、两热回归（Two-Hot）与百分位数归一化彻底降服了数值爆炸，奠定了通用具身世界模型的工业级基石。
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/05-dreamer-v2-v3/dreamerv2-fig5.png" alt="DreamerV2 消融曲线把离散状态、KL balancing 和 actor 梯度选择对 Atari 表现的影响分开。" width="86%">
+
+_图 4.5-4：DreamerV2 消融曲线把离散状态、KL balancing 和 actor 梯度选择对 Atari 表现的影响分开。 出处：Danijar Hafner；Timothy Lillicrap；Mohammad Norouzi；Jimmy Ba，[Mastering Atari with Discrete World Models](https://arxiv.org/abs/2010.02193)（2021），Figure 5。_
+
+</div>
+
+在变分自编码器架构中，我们需要计算后验分布（由编码器结合当前观测得出）与先验分布（由动力学模型基于过去状态预测得出）之间的 KL 散度（Kullback-Leibler divergence）。在优化过程中，我们希望这两个分布相互靠近。
+
+对于一般的损失函数：
+$$ \mathcal{L}_{\text{KL}} = \text{KL}(q(z_t \mid \dots) \parallel p(z_t \mid \dots)) $$
+
+在这个极小化过程中，存在两个变量：先验 $p$ 和后验 $q$。由于后验 $q$ 能够直接看到当前时刻真实的观测图像，它通常能够更快地收敛到一个合理的分布。而先验 $p$ 只能依赖历史信息进行猜测，它的训练难度更大。如果直接联合优化，强大的 $q$ 可能会为了迎合弱小的 $p$ 而降低自身提取信息的质量。
+
+DreamerV2 使用 KL 平衡（KL Balancing）分别控制先验与后验从 KL 项接收的梯度强度：让先验更积极地拟合停止梯度后的后验，同时减弱后验仅为迁就先验而改变的趋势。
+
+这一策略通过对 KL 散度进行切断分离（Stop-gradient，在数学中通常表示为 $\text{sg}[\cdot]$）来实现：
+$$ \mathcal{L}_{\text{KL}} = \alpha \text{KL}(\text{sg}[q] \parallel p) + (1-\alpha) \text{KL}(q \parallel \text{sg}[p]) $$
+
+当 $\alpha=0.8$ 时，第一项对先验参数的梯度权重更大，第二项对后验参数的梯度权重更小。“80% 对 20%”描述的是该 KL 梯度混合，而不是整个网络训练计算量的比例。
+
+## DreamerV3：走向通用与健壮性
+
+DreamerV3 保留离散世界模型，并重点处理跨任务数值尺度差异与训练稳定性。
+
+在传统的强化学习研究中，对于不同的任务，研究人员往往需要针对性地调节学习率、奖励缩放系数以及神经网络的初始化权重。例如，在某些雅达利游戏中，得分可能是以万为单位的（如 10000 分），而在其他连续控制任务中，奖励可能被严格限制在 $[-1, 1]$ 之间。
+
+奖励尺度增大时，价值目标也会增大，平方误差会让大残差主导梯度。DreamerV3 组合多项尺度处理与正则设计，使同一组超参数能覆盖论文评测中的多种领域。
+
+### 对称对数变换 (Symlog Transformation)
+
+为了压缩具有巨大范围的实数值，一个直观的想法是使用对数函数 $\log(x)$。然而，标准的对数函数存在两个问题：
+
+1. 它未定义于负数区域，而环境的奖励完全可能是负数。
+2. 当 $x$ 接近 0 时，$\log(x)$ 会趋向于负无穷，这在数值计算中是不可接受的。
+
+为了应对这两个问题，DreamerV3 引入了对称对数（Symlog）函数。对于任意实数 $x$，它的定义如下：
+$$\text{symlog}(x) = \text{sign}(x) \ln(|x| + 1)$$
+
+这个变换包含两步：
+
+- $|x|+1$ 使对数输入至少为 1，因此 $x=0$ 时输出为 0。
+- $\text{sign}(x)$ 是符号函数。它保留了原始数值的符号。
+
+相应的逆变换（Symexp）为：
+$$\text{symexp}(y) = \text{sign}(y) (\exp(|y|) - 1)$$
+
+symlog 保留符号，并把大幅值压缩到对数尺度。例如 $x=1{,}000{,}000$ 的 symlog 约为 $13.8$；这会减小不同任务目标尺度的差异。
+
+### 双热编码 (Two-Hot Encoding)
+
+DreamerV3 还把标量预测写成有限支撑上的分布回归，并用 two-hot 目标训练。
+
+给定一个目标值 $y$（可能是经过 symlog 压缩后的价值），我们将其投影到一个预定义的等距离散桶（Bins）序列上。假设我们定义了从 $-M$ 到 $M$ 的 $B$ 个离散网格点 $v_1, v_2, \dots, v_B$。
+
+对于任意目标值 $y$，它通常会落在相邻的两个网格点之间，例如 $v_k \le y < v_{k+1}$。我们不使用单一的独热编码，而是使用“双热”（Two-hot）编码。此时，我们将概率质量分配给相邻的这两个桶，分配比例取决于目标值距离桶的远近。
+
+令相邻点之间距离为 $\Delta = v_{k+1} - v_k$。我们赋予右侧桶 $v_{k+1}$ 的概率为：
+$$ p_{k+1} = \frac{y - v_k}{\Delta} $$
+
+赋予左侧桶 $v_k$ 的概率为：
+$$ p_k = \frac{v_{k+1} - y}{\Delta} $$
+
+<div align="center"><img src="/figures/04-latent-dynamics/latex/05-dreamer-v2-v3/twohot-value-preservation.png" alt="目标值位于两个相邻桶之间，按到对侧桶的距离分配概率后加权桶值仍等于原目标" width="86%">
+
+_图 4.5-5：目标越靠近某个桶，该桶获得的概率越大；两个权重之和为 1，并且桶中心的加权和严格等于原目标 y。_
+
+</div>
+
+其余桶的概率为 0。若 $y$ 位于支撑范围内，用桶位置的期望可以重构该插值值；范围外的目标会被裁剪，因此并非全局无损。对 logits 而言，Softmax 交叉熵梯度分量为“预测概率减目标概率”，位于 $[-1,1]$；这改善了输出层尺度，但不能保证整个深层网络永不出现梯度爆炸。
+
+## 代码实现：健壮的世界模型组件
+
+下面实现 symlog/symexp 与 two-hot 编码。它们是 DreamerV3 数值处理的一部分，不构成完整算法。
+
+```python
+class SymlogTransform:
+    """
+    (对称对数变换及其逆变换)
+    """
+    @staticmethod
+    def forward(x):
+        return torch.sign(x) * torch.log1p(torch.abs(x))
+
+    @staticmethod
+    def inverse(y):
+        return torch.sign(y) * torch.expm1(torch.abs(y))
+
+def two_hot_encode(target, min_val=-20.0, max_val=20.0, num_bins=255):
+    """
+    (将连续目标值转化为双热编码分布)
+    """
+    # [1] 构建等距的离散网格 (Bins)
+    bins = torch.linspace(min_val, max_val, num_bins, device=target.device)
+
+    # [2] 限制目标值的范围以防越界
+    target = torch.clamp(target, min_val, max_val)
+
+    # [3] 计算目标值在网格上的相对位置
+    # 这里通过减去最小值并除以网格间距得到浮点索引
+    step = (max_val - min_val) / (num_bins - 1)
+    index_float = (target - min_val) / step
+
+    # [4] 找到相邻的左右两个桶的整数索引
+    left_idx = torch.floor(index_float).long()
+    right_idx = torch.ceil(index_float).long()
+
+    # [5] 计算分配给右侧桶的权重（距离左侧桶越远，右侧权重越大）
+    weight_right = index_float - left_idx.float()
+    weight_left = 1.0 - weight_right
+
+    # 处理恰好落在网格点上的情况：全部权重放在该网格点
+    mask = (left_idx == right_idx)
+    weight_left[mask] = 1.0
+    weight_right[mask] = 0.0
+
+    # [6] 将权重散布到一个全零张量中形成 Two-hot 分布
+    # 获取 target 的 batch 大小
+    batch_shape = target.shape
+    two_hot = torch.zeros(*batch_shape, num_bins, device=target.device)
+
+    # 使用 scatter_ 填充概率值
+    # 注意：需要增加一个维度以便于 scatter 操作
+    two_hot.scatter_(-1, left_idx.unsqueeze(-1), weight_left.unsqueeze(-1))
+    two_hot.scatter_add_(-1, right_idx.unsqueeze(-1), weight_right.unsqueeze(-1))
+
+    return two_hot
+```
+
+## 小结
+
+- DreamerV2 用**多组分类分布**替换连续高斯随机状态，并用 STE 提供有偏的近似梯度。
+- **KL 平衡**分别调节先验与后验从 KL 项接收的梯度，避免两者以同样强度相互迁就。
+- DreamerV3 用 symlog、two-hot 分布回归和归一化等组件减小跨任务尺度差异。这些设计提高了论文评测中的稳健性，但不消除模型误差或所有优化风险。

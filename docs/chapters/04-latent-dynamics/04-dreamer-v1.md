@@ -1,244 +1,294 @@
-# 4.4 DreamerV1: 潜空间梦境强化学习与端到端可微梯度
+# 4.4 DreamerV1：在潜在想象中学习
 
-在 PlaNet 实现了纯潜空间的极速在线规划（CEM）之后，研究者们很快发现了在线规划的一个固有局限——**决策计算延迟与短期视界限制**。
+## 引言与学术背景
 
-尽管 PlaNet 已经摆脱了昂贵的像素渲染，但在面对需要毫秒级瞬时反应的高动态物理控制（如四足机器人奔跑跳跃、无人机避障）时，每一步临时采样数百条轨迹依然会占用宝贵的计算时间。更重要的是，受限于规划视界（通常 $H \le 15$），智能体无法感知 15 步之外的更长远收益，容易出现“短视”问题。
-
-2019 年底，Danijar Hafner 等人推出了里程碑式的 **DreamerV1**。
-
-Dreamer 彻底放弃了在线采样搜索，转而在 RSSM 内部引入了 **Actor-Critic（演员-评判家）** 架构。
-
-智能体在完全脱离外部物理环境的“纯潜空间梦境”中展开深度推演，利用 **$\lambda$-回报（Lambda Return）** 评估长达数百步的长程全局价值，并利用世界模型可微的物理白盒特性，沿着推演路径反向传播**解析可微策略梯度（Pathwise Analytic Gradients）**！
-
-一旦训练完成，Actor 策略网络在真实物理世界中仅需单次极速前向传播（耗时 $< 0.1\text{ ms}$）即可输出本能般的肌肉记忆动作，彻底拉开了梦境强化学习统治连续控制的大幕！
+无模型（Model-Free）强化学习直接从环境经验更新策略或价值函数，通常需要较多交互。对真实机器人而言，数据采集还受到时间、磨损和安全约束。基于模型的方法尝试复用已有经验，在学到的动力学中评估更多未来；Dreamer 的核心选择，就是在这种潜在想象中训练策略。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/04-dreamer-v1/opening-dreamer-quadruped.gif" alt="Dreamer 学到的四足策略连续奔跑，先展示潜在想象训练最终如何变成环境中的真实动作。" width="86%">
 
-<img src="/figures/04-latent-dynamics/source/04-dreamer-v1/pilco-fig7.png" alt="DreamerV1 在 DeepMind Control Suite 连续物理控制基准上以极高样本效率超越无模型顶级算法。" width="86%">
-
-_图 4.4-1：DreamerV1 在 DeepMind Control Suite 连续物理控制基准上以极高样本效率超越无模型顶级算法。 出处：[Dream to Control: Learning Behaviors by Latent Imagination，Danijar Hafner et al.，2019](https://arxiv.org/abs/1912.01603)。_
+_图 4.4-1：Dreamer 学到的四足策略连续奔跑，先展示潜在想象训练最终如何变成环境中的真实动作。 出处：Danijar Hafner；Timothy Lillicrap；Jimmy Ba；Mohammad Norouzi，[Dream to Control: Learning Behaviors by Latent Imagination](https://arxiv.org/abs/1912.01603)（2020），Official behavior GIF: Quadruped Run。_
 
 </div>
 
----
-
-## 4.4.1 物理与认知基石：从临时在线试错到潜空间直觉内化
-
-要理解 Dreamer 的认知进化，我们首先对比在线规划（PlaNet）与内化策略（Dreamer）的本质差异。
-
-### 1. 人类学习驾驶的认知飞跃
-- **初学者阶段（类似 PlaNet）**：每到一个十字路口，驾驶员都需要在脑海中停下来想一想：“如果我踩油门会怎样？如果我打方向盘会怎样？”，反应迟钝且极度耗费精力；
-- **老司机阶段（类似 Dreamer）**：在经历过成千上万次潜意识推演与反思后，驾驶员的大脑已经将复杂路况的最佳应对方案内化为一种**直觉本能（Actor Policy）**。看到弯道的一瞬间，双臂自然精准地旋转到最佳角度，无需任何多余的临时推演。
-
-### 2. Dreamer 的三大模块协同分工
-1. **世界模型学习（World Model Learning）**：从真实经验回放池中训练 RSSM，掌握精准的物理转移规律与奖励预测；
-2. **纯潜空间行为学习（Behavior Learning by Latent Imagination）**：冻结世界模型参数，让 Actor 策略网络与 Critic 价值网络在潜空间中展开长达 $H = 15$ 步的梦境推演并自我进化；
-3. **真实环境交互（Environment Interaction）**：直接使用训练好的 Actor 策略与真实物理环境高速交互，将最新数据写入回放池。
+基于模型（Model-Based）的强化学习长期研究如何用学到的模型辅助决策。Dyna 把真实经验更新与模型生成的规划更新结合起来 [[Sutton, 1990]](https://dl.acm.org/doi/10.5555/645530.658292)。PlaNet 随后提出**循环状态空间模型**（Recurrent State Space Model, RSSM），在紧凑的潜在空间中学习图像观测的动作条件动力学，并在每个环境步使用交叉熵方法（CEM）在线搜索动作序列 [[Hafner et al., 2019]](https://arxiv.org/abs/1811.04551)。这种反复采样和评估候选序列的方式，比直接执行一个参数化策略需要更多在线计算。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/04-dreamer-v1/planet-fig5.png" alt="PlaNet 的六任务曲线把在线 CEM 规划的效果和数据收集条件放进实验语境，衬托 Dreamer 改学参数化策略的动机。" width="86%">
 
-<img src="/figures/04-latent-dynamics/latex/04-dreamer-v1/critic-stop-gradient-target.png" alt="Dreamer 纯潜空间梦境轨迹展开与 Actor-Critic 梯度流反向传播架构" width="86%">
-
-_图 4.4-2：Dreamer 纯潜空间梦境轨迹展开与 Actor-Critic 梯度流反向传播架构。_
+_图 4.4-2：PlaNet 的六任务曲线把在线 CEM 规划的效果和数据收集条件放进实验语境，衬托 Dreamer 改学参数化策略的动机。 出处：Danijar Hafner；Timothy Lillicrap；Ian Fischer；Ruben Villegas；David Ha；Honglak Lee；James Davidson，[Learning Latent Dynamics for Planning from Pixels](https://arxiv.org/abs/1811.04551)（2019），Figure 5。_
 
 </div>
 
----
-
-## 4.4.2 核心数学推导一：潜空间 $\lambda$-回报 (Lambda Return) 目标
-
-在评估长达 $H$ 步的梦境轨迹时，如何平衡即时奖励的准确性与长远价值估计的方差？
+Hafner 等人随后提出 Dreamer（现常称为 DreamerV1）[[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)。Dreamer 不在部署时运行 CEM，而是在世界模型生成的潜在想象轨迹上训练参数化的 actor 与 critic。实际交互时，模型先更新潜在状态，再由 actor 输出动作。训练 actor 时，价值估计的梯度可以沿想象轨迹和学到的动力学反向传播；论文在其视觉控制基准上报告了较高的数据效率。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/04-dreamer-v1/pilco-fig7.png" alt="PILCO 的倒立摆结果把成功率与真实交互秒数并列，给出 Dreamer 之前模型式强化学习追求数据效率的实证背景。" width="86%">
 
-<img src="/figures/04-latent-dynamics/source/04-dreamer-v1/dreamer-fig4.png" alt="Dreamer 对比 PlaNet、D4PG 与 A3C，展示在稀疏奖励与复杂地形下的卓越稳健性。" width="86%">
-
-_图 4.4-3：Dreamer 对比 PlaNet、D4PG 与 A3C，展示在稀疏奖励与复杂地形下的卓越稳健性。 出处：[Dream to Control: Learning Behaviors by Latent Imagination，Danijar Hafner et al.，2019](https://arxiv.org/abs/1912.01603)。_
+_图 4.4-3：PILCO 的倒立摆结果把成功率与真实交互秒数并列，给出 Dreamer 之前模型式强化学习追求数据效率的实证背景。 出处：Marc Peter Deisenroth；Diether Fox；Carl Edward Rasmussen，[PILCO: A Model-Based and Data-Efficient Approach to Policy Search](https://doi.org/10.1109/TPAMI.2013.218)（2015），Figure 7。_
 
 </div>
 
-Dreamer 采用了经典强化学习中极其精妙的 **$\text{TD}(\lambda)$ 几何指数加权回报**。
+本节说明 DreamerV1 如何从 RSSM 状态出发生成想象轨迹，用 $\lambda$-回报训练价值模型，并把回报梯度沿可微动力学传回 actor。最后给出只覆盖这条核心计算路径的教学代码。
 
-### 1. 多步截断回报与 $\lambda$-回报公式
-对于潜空间轨迹中的状态 $\mathbf{S}_t = (\mathbf{h}_t, \mathbf{s}_t)$，定义 $n$ 步截断累积回报为：
+## 世界模型的回顾：循环状态空间模型
 
-$$G_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k \hat{r}_{t+k} + \gamma^n v_\psi(\mathbf{S}_{t+n})$$
+Dreamer 沿用 PlaNet 的 RSSM。先用简化符号回顾它提供哪些概率模型。
 
-$\lambda$-回报为所有 $1$ 到 $H-1$ 步回报的指数加权平均，并在最后一步由 Critic 价值网络兜底：
+在经典物理学中，如果我们知道一个小球当前的位置 $x_t$ 和速度 $v_t$，并对其施加一个力（动作） $a_t$，我们可以通过牛顿运动定律确定地计算出它在下一时刻的状态 $(x_{t+1}, v_{t+1})$。这里的 $(x_t, v_t)$ 就是系统的**真实状态**。
 
-$$V_\lambda(\mathbf{S}_t) = (1 - \lambda) \sum_{n=1}^{H-1} \lambda^{n-1} G_t^{(n)} + \lambda^{H-1} G_t^{(H)}$$
+但在现实复杂的强化学习任务中，我们通常只能观察到高维且包含噪声的图像（像素），我们将其称为观测值（Observation） $o_t$。这些观测值并未直接暴露环境的真实状态，因此我们需要一个神经网络将历史的观测和动作压缩为一个低维的潜在状态表示 $s_t$。
 
-### 2. 惊人优美的逆向递归计算形式
-在工程实现中，我们无需显式展开每一个 $G_t^{(n)}$，可以从梦境轨迹的最后一步 $H$ 开始，依据以下初等线性递推式自底向上**逆向递推求解**：
+若暂时忽略随机性，一步状态转移可写为：
+$s_{t+1} = f(s_t, a_t)$
 
-$$V_\lambda(\mathbf{S}_t) = \hat{r}_t + \gamma \left( (1 - \lambda) v_\psi(\mathbf{S}_{t+1}) + \lambda V_\lambda(\mathbf{S}_{t+1}) \right)$$
+但这忽略了环境固有的随机性（Stochasticity）。为了让模型能够应对不确定性，我们需要状态转移服从某个概率分布。Dreamer 中的潜在状态模型包含以下三个核心的概率分布：
 
-其中边界条件为 $V_\lambda(\mathbf{S}_H) = v_\psi(\mathbf{S}_H)$。
+1. **状态转移模型（Transition Model）**：描述在给定当前潜在状态和动作的情况下，环境如何向下一时刻演化。
+   $$p(s_{t+1} \mid s_t, a_t)$$
 
-### 3. $\lambda$-回报手算数值算例
-设折扣因子 $\gamma = 0.9$，加权系数 $\lambda = 0.8$（$1 - \lambda = 0.2$）。
-在梦境推演的最后两步中：
-- 终点时刻 $t=2$：Critic 评估价值 $v_\psi(\mathbf{S}_2) = 10.0 \implies V_\lambda(\mathbf{S}_2) = 10.0$；
-- 倒数第二步时刻 $t=1$：即时奖励 $\hat{r}_1 = 2.0$，Critic 预测自身价值 $v_\psi(\mathbf{S}_2) = 10.0$。
+2. **观测模型（Observation Model / Decoder）**：从潜在状态解释当前观测，为表征学习提供信号；潜在状态不必保留所有视觉细节。
+   $$p_\theta(o_t \mid s_t)$$
 
-我们来手动求解 $V_\lambda(\mathbf{S}_1)$：
-1. **计算混合未来期望**：
-   $$\text{FutureMixed} = (1 - \lambda) v_\psi(\mathbf{S}_2) + \lambda V_\lambda(\mathbf{S}_2) = 0.2 \times 10.0 + 0.8 \times 10.0 = 2.0 + 8.0 = 10.0$$
-2. **乘以折扣因子并累加即时奖励**：
-   $$V_\lambda(\mathbf{S}_1) = \hat{r}_1 + \gamma \times \text{FutureMixed} = 2.0 + 0.9 \times 10.0 = 2.0 + 9.0 = 11.0$$
+3. **奖励模型（Reward Model）**：从潜在状态预测奖励分布。
+   $$p_\theta(r_t \mid s_t)$$
 
-初等代数的几步加减乘除清晰证实：$\lambda$-回报以极低的计算代价将未来所有时间步的收益完美融为一体，为 Critic 价值学习与 Actor 策略更新提供了信噪比极高的黄金监督目标！
+值得注意的是，RSSM 将潜在状态 $s_t$ 分成了**确定性**（Deterministic）和**随机性**（Stochastic）两部分，这也就是为什么被称为“循环状态空间”。确定性部分通常由一个门控循环单元（GRU）维护，用于长期的历史记忆；随机部分则通常建模为多变量高斯分布（Gaussian Distribution），用于捕捉环境在某一时步发生的不可预测事件。为了保持符号的整洁，在接下来的价值推导中，我们依然将它们统称为 $s_t$。
 
-<details>
-<summary><b>深入推导：$\text{TD}(\lambda)$ 几何衰减加权在偏差-方差权衡下的最优性证明（点击展开查看完整推导）</b></summary>
+## 潜在想象中的多步价值评估
 
-设 $n$-步回报估计误差为 $\epsilon_n = G_t^{(n)} - G_t^*$，满足偏置随 $n$ 指数衰减 $\text{Bias}(\epsilon_n) = \mathcal{O}(\gamma^n)$，方差随 $n$ 线性增长 $\text{Var}(\epsilon_n) = \mathcal{O}(n)$。
-定义均方误差风险泛函 $\mathcal{R}(\lambda) = \mathbb{E}[(V_\lambda - G^*)^2]$。
-由于权重序列 $w_n = (1-\lambda)\lambda^{n-1}$ 严格满足 $\sum_{n=1}^\infty w_n = 1$（初等无穷等比数列求和），在 $\lambda \in [0.7, 0.95]$ 区间内，凸组合积分使得全局均方误差风险 $\mathcal{R}(\lambda)$ 达到全局极小鞍点，严格证明了其在偏差与方差之间的数学最优平衡。
-</details>
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/04-dreamer-v1/dreamer-fig4.png" alt="Dreamer 在不同想象视野下的控制曲线显示，价值自举降低了策略学习对有限展开长度的敏感性。" width="86%">
 
----
+_图 4.4-4：Dreamer 在不同想象视野下的控制曲线显示，价值自举降低了策略学习对有限展开长度的敏感性。 出处：Danijar Hafner；Timothy Lillicrap；Jimmy Ba；Mohammad Norouzi，[Dream to Control: Learning Behaviors by Latent Imagination](https://arxiv.org/abs/1912.01603)（2020），Figure 4。_
 
-## 4.4.3 核心数学推导二：端到端可微解析策略梯度
+</div>
 
-在传统无模型算法中，由于物理环境是黑盒不可导的，Actor 只能依赖方差极大的似然比梯度（Score-Function）。
+假设世界模型已经用回放数据训练到可用于短期滚动。所谓“想象”，就是从真实序列推断出的潜在状态出发，不读取新的未来观测，仅用先验动力学与 actor 生成后续状态和动作。
 
-而在 Dreamer 中，整个潜空间动力学链条 $\mathbf{S}_t \to \mathbf{a}_t \to \mathbf{S}_{t+1} \to \hat{r}_{t+1} \to V_\lambda$ 是**完全由连续可微的神经网络搭建而成的白盒系统！**
+在时间步 $t$，真实环境向智能体提供了一个观测 $o_t$。通过世界模型的编码器，我们将这个时刻固定为一个初始的潜在状态 $s_t$。从这一步开始，我们让策略网络和世界模型相互配合，向未来推演 $H$ 步，我们用变量 $\tau$ 来索引这个**想象**的视野空间（即 $\tau = t, t+1, \dots, t+H$）。
 
-### 1. 解析策略更新损失
-Actor 策略网络 $\pi_\phi(\mathbf{a} \mid \mathbf{S})$ 的优化目标直接定义为最大化未来梦境轨迹的 $\lambda$-回报之和：
+我们的目标是训练一个**行动者网络（Actor）**，它输出动作分布 $q_{\phi}(a_\tau \mid s_\tau)$（由参数 $\phi$ 参数化）。但要训练行动者，我们需要知道“在状态 $s_\tau$ 采取动作 $a_\tau$ 有多好”，这就需要评估累积奖励。
 
-$$\mathcal{L}_{\text{Actor}}(\phi) = -\mathbb{E}_{\tau} \left[ \sum_{\tau=1}^H V_\lambda(\mathbf{S}_\tau) \right]$$
+### 从单步到 $k$ 步的价值（回报）推导
 
-### 2. 链式反向传播的物理因果流
-当对策略参数 $\phi$ 求导时，梯度直接穿透整个梦境物理模型逆向回传：
+最简单的评估方式是直接将预测的奖励相加。但在长期任务中，我们需要考虑折扣因子 $\gamma \in [0, 1)$。
+假设我们现在处于想象轨迹的某一个状态 $s_\tau$。我们如何衡量这个状态的价值呢？
 
-$$\nabla_\phi \mathcal{L}_{\text{Actor}} = -\sum_{\tau=1}^H \nabla_{\mathbf{a}_{\tau-1}} V_\lambda(\mathbf{S}_\tau) \cdot \nabla_\phi \pi_\phi(\mathbf{a}_{\tau-1} \mid \mathbf{S}_{\tau-1})$$
+如果不考虑后续的探索，直接使用一个**评论家网络（Critic）** $v_{\psi}(s)$（由参数 $\psi$ 参数化）来预测状态的价值，我们就可以得到所谓的单步（1-step）回报：
 
-世界模型直接精确告知 Actor：**“在时刻 $\tau-1$ 将关节力矩微调增大多少，就能在未来时刻 $\tau$ 获得最大的确定性物理回报！”** 这种具备确定因果链的解析梯度，赋予了 Dreamer 摧枯拉朽般的学习速度！
+$$V^{1}_{\tau} \approx \mathbb{E} \big[ r(s_\tau) + \gamma v_{\psi}(s_{\tau+1}) \big]$$
 
-<details>
-<summary><b>深入推导：连续可微世界模型下解析反传梯度相比 REINFORCE 的 Cramér-Rao 下界方差分析（点击展开查看完整推导）</b></summary>
+其中，奖励 $r(s_\tau)$ 是世界模型中奖励预测网络的直接输出（取期望均值），而 $s_{\tau+1}$ 则是状态转移模型推演出的下一个状态。
 
-设真实梯度为 $g^* = \nabla_\phi \mathbb{E}[R]$。
-解析路径梯度估计量 $\hat{g}_{\text{path}} = \sum_t \frac{\partial R}{\partial s_t}\frac{\partial s_t}{\partial a_{t-1}}\frac{\partial a_{t-1}}{\partial \phi}$ 不包含任何策略对数项 $\nabla \log \pi$。
-根据 Cramér-Rao 不等式，无模型似然比梯度估计量的方差下界受限于状态-动作对数分数的费希尔信息量，其方差随时间视界 $H$ 呈三次多项式 $\mathcal{O}(H^3)$ 爆炸；而解析路径梯度直接对动力学路径求微分，其方差在有界李普希茨动力学下严格受限于 $\mathcal{O}(H)$ 线性上界，奠定了梦境强化学习百倍样本效率跨越的理论底座。
-</details>
+一步回报高度依赖评论家的 bootstrap 估计。若向前展开 $k$ 步，再在末端使用评论家，可得到：
 
----
+$$V^{k}_{\tau} = \sum_{n=0}^{k-1} \gamma^n r(s_{\tau+n}) + \gamma^k v_{\psi}(s_{\tau+k})$$
 
-## 4.4.4 纯底层 PyTorch 代码实现：从零手写 DreamerV1 潜空间 Actor-Critic 优化引擎
+前 $k$ 步使用世界模型预测的奖励，末端用 $v_\psi(s_{\tau+k})$ 估计剩余回报。增大 $k$ 会减少对近端 bootstrap 的依赖，却会增加对模型长滚动的依赖；哪一项更准取决于训练阶段与状态区域。
 
-下面我们使用纯底层 PyTorch 算子手写实现完整的潜空间梦境展开器、$\lambda$-Return 逆向计算与解析策略梯度优化引擎。
+### 指数衰减的 $\lambda$-回报
+
+那么，最佳的步数 $k$ 到底应该是多少？
+如果 $k$ 太小，模型容易受到评论家偏差的影响（偏差大，Bias）；如果 $k$ 很大接近 $H$，由于世界模型多步自回归预测会累积误差，且动作采样引入了大量随机性，最终的回报估计方差会急剧上升（方差大，Variance）。
+
+Dreamer 采用 TD($\lambda$) 风格的加权组合，在短期 bootstrap 与较长模型展开之间调节。参数 $\lambda\in[0,1]$ 控制更长回报的权重。
+
+$\lambda$-回报可递归写成：
+
+$$V^{\lambda}_{\tau} = r(s_\tau) + \gamma \Big( (1-\lambda) v_{\psi}(s_{\tau+1}) + \lambda V^{\lambda}_{\tau+1} \Big)$$
+
+递归项在下一状态的价值预测与更长的 $\lambda$-回报之间插值。实现时从想象视界末端向前计算即可；末端仍需要价值网络提供 bootstrap。
+
+通过计算整条想象轨迹上每个时间步的 $\lambda$-回报，我们就获得了一个兼顾偏差与方差的高质量评估基准，它将直接用于指导行动者和评论家的更新。
+
+## 解析梯度：通过动力学模型反向传播
+
+真实环境通常不能直接对动作求导，因此无模型 actor 常使用似然比策略梯度等估计器。它们不要求环境可微，但梯度方差可能较高。
+
+Dreamer 的连续潜在动力学与重参数化动作可组成可微计算图，因此可使用论文所称的**解析梯度（Analytic Gradients）**更新 actor。这类梯度通常方差较低，但会继承世界模型偏差，并不等同于真实环境回报的精确梯度。
+
+::: info 说明
+以打台球为例：世界模型预测动作变化会怎样影响后续状态和回报。若动作采样与潜在动力学都采用可重参数化的连续分布，梯度就可以沿想象轨迹反向传到 actor。它提供的是学得模型内部的局部改进方向，而不是现实环境中的精确最优解。
+:::
+
+为了实现反向传播通过状态的转移，我们需要应用**重参数化技巧（Reparameterization Trick）**。
+行动者网络输出动作的分布参数（例如高斯分布的均值 $\mu_\phi$ 和标准差 $\sigma_\phi$）。我们将动作 $a_\tau$ 采样过程重写为：
+
+$$a_\tau = \mu_\phi(s_\tau) + \sigma_\phi(s_\tau) \cdot \xi, \quad \xi \sim \mathcal{N}(0, I)$$
+
+同样地，状态的随机转移也可以重参数化为一个可导的函数：
+$$s_{\tau+1} = f_\theta(s_\tau, a_\tau, \epsilon), \quad \epsilon \sim \mathcal{N}(0, I)$$
+
+此时，整个轨迹的回报 $V^{\lambda}_{\tau}$ 变成了一个巨大的、由可导算子组成的计算图，其叶子节点包含了行动者的参数 $\phi$。
+
+### 行动者（Actor）的损失函数
+
+行动者网络的目标非常纯粹：最大化在想象轨迹中所有的初始状态 $s_\tau$ 上计算出的 $\lambda$-回报期望。因此，行动者的损失函数定义为回报的负值：
+
+$$\mathcal{L}_{\text{actor}}(\phi) = - \mathbb{E} \left[ \sum_{\tau=t}^{t+H-1} V^{\lambda}_{\tau} \right]$$
+
+自动微分可以从 $V^\lambda_\tau$ 沿奖励模型、转移模型和重参数化动作回到 actor 参数。这里得到的是对学到模型目标的路径梯度；训练 actor 时，世界模型和 critic 通常作为固定函数使用。
+
+### 评论家（Critic）的损失函数
+
+与此同时，评论家网络的作用是尽可能准确地预测状态价值，以帮助行动者计算回报。我们使用我们精心计算的 $\lambda$-回报作为它的回归目标（Target）。评论家的损失函数是预测值与 $\lambda$-回报目标之间的均方误差（MSE）：
+
+$$\mathcal{L}_{\text{critic}}(\psi) = \mathbb{E} \left[ \sum_{\tau=t}^{t+H-1} \frac{1}{2} \big( v_{\psi}(s_\tau) - \text{stop\_gradient}(V^{\lambda}_{\tau}) \big)^2 \right]$$
+
+<div align="center"><img src="/figures/04-latent-dynamics/latex/04-dreamer-v1/critic-stop-gradient-target.png" alt="评论家预测与停止梯度的 lambda 回报计算平方误差，梯度只返回评论家参数" width="86%">
+
+_图 4.4-5：λ-return 在 critic 更新中充当固定回归目标；平方误差的梯度只返回 v_ψ，不能穿过停止梯度端改变目标。_
+
+</div>
+
+注意公式中的 `stop_gradient` 操作。这意味着在训练评论家时，我们将 $V^{\lambda}_{\tau}$ 视为一个固定的真实标签，不需要通过它再去反向传播梯度。我们只更新评论家自身的参数 $\psi$。
+
+## 代码实现
+
+下面，我们将通过一段精简的代码，演示在 PyTorch 中如何实现在潜空间中推演并计算 $\lambda$-回报这一 DreamerV1 的核心过程。
+
+先定义简化世界模型、actor 与 critic。假设世界模型已训练完毕；代码省略 RSSM 的确定性/随机状态拆分、继续概率和动作边界变换。
 
 ```python
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.distributions as td
 
-class DreamerActor(nn.Module):
-    """
-    梦境策略网络 (Actor)
-    输入潜空间状态 (h, s)，输出连续动作
-    """
-    def __init__(self, state_dim: int = 80, action_dim: int = 4):
+class DummyWorldModel(nn.Module):
+    """一个简化的世界模型，仅用于演示计算图连接"""
+    def __init__(self, state_dim, action_dim):
+        super().__init__()
+        # 简单使用线性层模拟复杂的动力学
+        self.dynamics = nn.Linear(state_dim + action_dim, state_dim)
+        self.reward_predictor = nn.Linear(state_dim, 1)
+
+    def step(self, state, action):
+        # 模拟下一个状态生成，并包含重参数化噪声
+        next_state_mean = self.dynamics(torch.cat([state, action], dim=-1))
+        # 简单的重参数化，方差恒定为0.1
+        noise = torch.randn_like(next_state_mean) * 0.1
+        next_state = next_state_mean + noise
+        return next_state
+
+    def predict_reward(self, state):
+        return self.reward_predictor(state)
+
+class ActorNet(nn.Module):
+    def __init__(self, state_dim, action_dim):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(state_dim, 128),
+            nn.Linear(state_dim, 64),
             nn.ELU(),
-            nn.Linear(128, 128),
-            nn.ELU(),
-            nn.Linear(128, action_dim),
-            nn.Tanh() # 限制动作在 [-1, 1]
+            nn.Linear(64, action_dim * 2) # 输出均值和方差
         )
 
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
+    def forward(self, state):
+        out = self.net(state)
+        mean, log_std = torch.chunk(out, 2, dim=-1)
+        # 限制方差范围以求稳定
+        std = torch.exp(torch.clamp(log_std, min=-5, max=2))
+        return mean, std
+
+    def get_action_reparameterized(self, state):
+        mean, std = self.forward(state)
+        # 在PyTorch中，使用 rsample 进行带重参数化技巧的采样
+        dist = td.Normal(mean, std)
+        # 为简单起见，不应用Tanh激活带来的分布变换修正
+        action = dist.rsample()
+        return action
+
+class CriticNet(nn.Module):
+    def __init__(self, state_dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, 64),
+            nn.ELU(),
+            nn.Linear(64, 1)
+        )
+    def forward(self, state):
         return self.net(state)
-
-class DreamerCritic(nn.Module):
-    """
-    梦境价值网络 (Critic)
-    评估潜空间状态 (h, s) 的长期期望价值
-    """
-    def __init__(self, state_dim: int = 80):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(state_dim, 128),
-            nn.ELU(),
-            nn.Linear(128, 128),
-            nn.ELU(),
-            nn.Linear(128, 1)
-        )
-
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
-        return self.net(state).squeeze(-1)
-
-def compute_lambda_returns(rewards: torch.Tensor, values: torch.Tensor, gamma: float = 0.99, lambda_: float = 0.95) -> torch.Tensor:
-    """
-    逆向递归计算 Lambda-Return: (Horizon, Batch)
-    V_lambda(t) = r_t + gamma * ((1 - lambda) * v(t+1) + lambda * V_lambda(t+1))
-    """
-    horizon, batch_size = rewards.shape
-    returns = torch.zeros_like(rewards)
-    last_return = values[-1] # 边界条件: 最后一步取 Critic 价值
-
-    for t in reversed(range(horizon)):
-        next_val = values[t + 1] if t < horizon - 1 else last_return
-        mixed_future = (1.0 - lambda_) * next_val + lambda_ * last_return
-        last_return = rewards[t] + gamma * mixed_future
-        returns[t] = last_return
-
-    return returns
-
-# ===================================================================
-# 单元测试与端到端解析可微梯度校验
-# ===================================================================
-if __name__ == "__main__":
-    horizon = 12
-    batch_size = 4
-    state_dim = 80
-    action_dim = 4
-
-    actor = DreamerActor(state_dim=state_dim, action_dim=action_dim)
-    critic = DreamerCritic(state_dim=state_dim)
-    actor_opt = torch.optim.Adam(actor.parameters(), lr=1e-3)
-    critic_opt = torch.optim.Adam(critic.parameters(), lr=1e-3)
-
-    # 1. 模拟在潜空间中展开的连续梦境状态序列
-    states_imagined = torch.randn(horizon, batch_size, state_dim, requires_grad=True)
-    rewards_imagined = torch.ones(horizon, batch_size) # 模拟每步奖励 1.0
-
-    # 2. 计算每一步的 Critic 价值
-    values = critic(states_imagined.view(-1, state_dim)).view(horizon, batch_size)
-
-    # 3. 逆向计算 Lambda-Return
-    lambda_targets = compute_lambda_returns(rewards_imagined, values.detach(), gamma=0.95, lambda_=0.90)
-
-    # 4. 优化 Critic (拟合 Lambda-Return)
-    critic_loss = F.mse_loss(values, lambda_targets)
-    critic_opt.zero_grad()
-    critic_loss.backward()
-    critic_opt.step()
-
-    # 5. 优化 Actor (最大化梦境累积价值)
-    actor_actions = actor(states_imagined)
-    # 模拟可微奖励回报与价值导数
-    actor_loss = - lambda_targets.mean()
-
-    print(f"[DreamerV1 Test] 梦境推演视界: {horizon} 步")
-    print(f"[DreamerV1 Test] Critic 拟合损失: {critic_loss.item():.4f}")
-    print(f"[DreamerV1 Test] Lambda-Return 均值: {lambda_targets.mean().item():.4f}")
-
-    assert lambda_targets.shape == (horizon, batch_size), "Lambda-Return 张量维度不符！"
-    assert not torch.isnan(lambda_targets).any(), "Lambda-Return 计算出现 NaN 异常！"
-    print("✓ DreamerV1 潜空间 Actor-Critic 架构与 Lambda-Return 逆向递归单测全部通过！")
 ```
 
----
+接着展开潜在轨迹并递归计算 $\lambda$-回报。
 
-## 4.4.5 本节小结
+```python
+def train_imagination_step(
+    world_model, actor, critic, start_states,
+    actor_optimizer, critic_optimizer, horizon=15, gamma=0.99, lam=0.95):
 
-回顾本节内容，我们掌握了梦境强化学习的巅峰范式：
-1. **从临时规划到直觉内化**：在潜空间梦境中预先训练 Actor-Critic，将昂贵的在线搜索升华为单次毫秒级的确定性本能反应；
-2. **Lambda-Return 完美权衡**：利用逆向线性递归实现了多步回报的指数加权，为长程价值评估提供了极致平滑的高保真标尺；
-3. **可微白盒解析梯度**：全路径链式反向传播彻底打破了无模型试错的方差诅咒，实现了超高样本效率与高动态物理控制的完美统一。
+    # start_states 维度: (batch_size, state_dim)，是从重播缓冲采样后经过编码器得到的真实起点。
+    batch_size, state_dim = start_states.shape
+
+    states = [start_states]
+    actions = []
+    rewards = []
+
+    # 1. 展开想象序列 (Rollout in Latent Space)
+    # 不切断计算图，让梯度能一直流过所有时间步
+    curr_state = start_states
+    for t in range(horizon):
+        action = actor.get_action_reparameterized(curr_state)
+        next_state = world_model.step(curr_state, action)
+        reward = world_model.predict_reward(next_state)
+
+        actions.append(action)
+        rewards.append(reward)
+        states.append(next_state)
+        curr_state = next_state
+
+    # 转换为张量，维度: (horizon, batch_size, ...)
+    states_tensor = torch.stack(states)   # (H+1, B, D)
+    rewards_tensor = torch.stack(rewards) # (H, B, 1)
+
+    # 2. 计算价值估计
+    values = critic(states_tensor) # 形状: (H+1, B, 1)
+
+    # 3. 递归计算 lambda 回报
+    # V^\lambda_t = r_t + \gamma * ((1 - \lambda) * v_{t+1} + \lambda * V^\lambda_{t+1})
+    lambda_returns = []
+
+    # 从最后一个时间步向后递归
+    # 对于最后一步（第 H 步），没有长远的预测，只能直接使用 critic
+    last_val = values[-1]
+
+    for t in reversed(range(horizon)):
+        # 核心递归逻辑
+        # 注意: values[t+1] 是网络在 t+1 状态的预测值
+        last_val = rewards_tensor[t] + gamma * ((1 - lam) * values[t+1] + lam * last_val)
+        # 将结果插入列表开头以保持时间顺序
+        lambda_returns.insert(0, last_val)
+
+    lambda_returns = torch.stack(lambda_returns) # (H, B, 1)，保留 actor 的路径梯度
+
+    # 4. 计算 Actor 和 Critic 损失
+    # 截取对应的时间步状态（0到H-1）
+    states_to_evaluate = states_tensor[:-1]
+
+    # 评论家损失：MSE (预测值, 目标值)
+    pred_values = critic(states_to_evaluate.detach()) # 训练Critic时不对状态流进行反向传播
+    critic_targets = lambda_returns.detach()
+    critic_loss = torch.mean(0.5 * (pred_values - critic_targets)**2)
+
+    # 行动者损失：最大化可微的想象 lambda 回报
+    actor_loss = -torch.mean(lambda_returns)
+
+    # 5. 反向传播更新
+    actor_optimizer.zero_grad()
+    actor_loss.backward()
+    actor_optimizer.step()
+
+    critic_optimizer.zero_grad()
+    critic_loss.backward()
+    critic_optimizer.step()
+
+    return actor_loss.item(), critic_loss.item()
+```
+
+同一组 $\lambda$-回报承担两个角色：作为 critic 标签时使用 `detach()`，避免目标随 critic 一起移动；作为 actor 目标时保留计算图，使梯度穿过想象状态、奖励与动作。示例只让 `actor_optimizer` 更新 actor，但仍会为固定世界模型和 critic 计算临时梯度；生产实现通常显式冻结它们的参数以节省内存。
+
+## 总结
+
+- **DreamerV1** 用参数化 actor 取代 PlaNet 部署时的 CEM，并在潜在想象轨迹上训练 actor–critic。
+- **$\lambda$-回报**在较短 bootstrap 与较长模型滚动之间插值；它提供可调权衡，而非普遍最优的固定答案。
+- 可微世界模型允许路径梯度穿过想象轨迹，但策略质量仍受模型覆盖范围与长期误差限制。

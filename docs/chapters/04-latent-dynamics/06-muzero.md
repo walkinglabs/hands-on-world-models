@@ -1,241 +1,247 @@
-# 4.6 MuZero: 隐式世界模型与蒙特卡洛树搜索 (MCTS)`
+# 4.6 MuZero：不重建观测的隐空间搜索
 
-在探索世界模型的演进征程中，一个长期引发激烈争论的根本哲学问题是：**世界模型是否必须能够完美重构出外部世界的全部视觉像素？**
+## 4.6.1 历史脉络与学术背景
 
-在 Dreamer 与 PlaNet 等显式世界模型（Explicit World Models）中，模型耗费了巨大的计算量去生成逼真的像素画面。然而，在自动驾驶或机器人棋局博弈中，天空中飘过的云朵、路边树叶的微风摇曳，虽然占据了图像 $90\%$ 的像素信息量，但对避障与下棋胜负却没有丝毫影响。为了这些“与任务无关的背景细节”去死记硬背整个世界，极大地浪费了宝贵的模型参数与算力。
+AlphaGo 将策略/价值网络与蒙特卡洛树搜索（MCTS）结合 [[Silver et al., 2016]](https://doi.org/10.1038/nature16961)。AlphaGo Zero [[Silver et al., 2017]](https://doi.org/10.1038/nature24270) 和 AlphaZero [[Silver et al., 2018]](https://doi.org/10.1126/science.aar6404) 进一步减少了对人类棋谱的依赖，并在已知规则的完美信息棋类中通过自我博弈训练。
 
-2020 年，DeepMind 在顶刊 *Nature* 上发表了里程碑式的 **MuZero**。
+AlphaZero 的搜索需要已知的状态转移与规则：给定棋盘状态和动作，可以精确得到下一状态。Atari 或真实控制任务通常只提供交互接口，智能体并没有可在搜索树中任意调用的规则模型。
 
-MuZero 提出了颠覆性的 **价值等价世界模型（Value-Equivalence World Model）** 理念：
-**世界模型根本不需要还原像素，它只需要在抽象的隐空间中精确预测与价值决策生死攸关的三大核心物理量——状态转移、即时奖励与策略价值！**
+标准 DQN 或 PPO 不在决策时执行前向树搜索；基于模型的方法则学习可用于预测或规划的动力学。许多视觉模型用观测重建训练表示，但重建所有像素并不是模型式强化学习的必要条件，也可能把容量分配给与决策无关的细节。
 
-通过将这种极其紧凑的隐式动力学模型与 **蒙特卡洛树搜索（MCTS）** 完美融合，MuZero 在完全不知晓规则的前提下，横扫了围棋、国际象棋、将棋以及 57 款雅达利经典游戏，树立了通用决策人工智能的至高丰碑！
+MuZero 学习用于搜索的隐空间模型，而不要求重建原始观测 [[Schrittwieser et al., 2020]](https://arxiv.org/abs/1911.08265)。其动力学网络预测下一隐状态与奖励，预测网络输出策略和价值；这些量由搜索结果与实际轨迹构造训练目标。因而，更准确的说法是“学习规划所需的量”，而不是声称每个预测都达到没有误差的精确程度。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/06-muzero/muzero-fig2.png" alt="棋类棋盘与 Atari 画面上方对应四组学习曲线，展示 MuZero 同一算法实际覆盖棋类和视觉游戏。" width="86%">
 
-<img src="/figures/04-latent-dynamics/source/06-muzero/vpn-fig5.png" alt="MuZero 的三大核心网络：表征函数 h、动力学函数 g 与预测函数 f 在 MCTS 搜索与训练中的协同。" width="86%">
-
-_图 4.6-1：MuZero 的三大核心网络：表征函数 h、动力学函数 g 与预测函数 f 在 MCTS 搜索与训练中的协同。 出处：[Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model，Julian Schrittwieser et al.，2020](https://www.nature.com/articles/s41586-020-03051-4)。_
+_图 4.6-1：棋类棋盘与 Atari 画面上方对应四组学习曲线，展示 MuZero 同一算法实际覆盖棋类和视觉游戏。 出处：Julian Schrittwieser et al.，[Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model](https://arxiv.org/abs/1911.08265)（2020），Figure 2。_
 
 </div>
 
----
+## 4.6.2 隐空间动态系统的数学构建
 
-## 4.6.1 物理与认知基石：从显式像素重构到目标导向隐式推演
+在时刻 $t$，表示网络根据当前观测或观测历史构造根状态，搜索再据此选择下一动作。
 
-要理解 MuZero 的极简哲学，我们首先审视国际象棋特级大师在对弈时的思维模式。
+MuZero 构造隐状态 $s^0,s^1,s^2,\dots$。上标 $k$ 表示从搜索根节点开始的网络展开步数，不是环境的绝对时间索引。
 
-### 1. 棋类大师的“抽象物理心智”
-当国际象棋特级大师在凝视棋盘并推演未来 10 步棋路时：
-- 他绝不会在脑海中高清渲染出棋盘木质纹理的反光，也不会想象对手脸上的微表情；
-- 他在脑海中演练的纯粹是高度抽象的局势演化：“如果我走马到 F3（动作），局势转移为均势控制（隐状态），获得控盘优势（奖励），最终胜率提升 10%（价值）”。
+为了驱动这个隐空间，MuZero 定义了三个核心的神经网络函数：
 
-### 2. MuZero 三大核心函数定义
-MuZero 将世界模型精炼解耦为三个紧凑函数：
+1. **表示函数 (Representation Function) $h$**：
+   把当前观测表示映射为搜索根节点的隐状态：
+   $$ s^0 = h(o_1, \dots, o_t) $$
 
-1. **表征网络（Representation Network $h_\theta$）**：将过去多帧真实观测 $\mathbf{o}_{1:t}$ 编码为初始抽象隐状态：
-   $$\mathbf{s}_0 = h_\theta(\mathbf{o}_{1:t}) \in \mathbb{R}^d$$
-2. **动力学网络（Dynamics Network $g_\theta$）**：输入当前隐状态与假设动作，纯粹在潜空间推演下一时刻隐状态与即时奖励：
-   $$(\mathbf{s}_{k+1}, \; \hat{r}_k) = g_\theta(\mathbf{s}_k, \; \mathbf{a}_k)$$
-3. **预测网络（Prediction Network $f_\theta$）**：为当前隐状态预测先验策略分布与状态长期价值：
-   $$(\hat{\mathbf{p}}_k, \; \hat{v}_k) = f_\theta(\mathbf{s}_k)$$
+2. **动态函数 (Dynamics Function) $g$**：
+   给定隐状态 $s^{k-1}$ 和假想动作 $a^k$，预测下一隐状态 $s^k$ 与奖励 $r^k$：
+   $$ r^k, s^k = g(s^{k-1}, a^k) $$
+
+3. **预测函数 (Prediction Function) $f$**：
+   在任何一个推演步 $k$，隐状态 $s^k$ 必须能够告诉我们当前局势的评估。预测函数将 $s^k$ 映射为在当前状态下的动作概率分布（策略）$p^k$ 以及标量形式的状态价值评估 $v^k$：
+   $$ p^k, v^k = f(s^k) $$
+
+三个函数使搜索可以在学到的隐空间中展开，而无需在每个节点调用真实环境规则。
+
+## 4.6.3 决策充分的隐状态
+
+MuZero 没有观测重建目标，那么隐状态为何仍能用于规划？关键在于它在每个展开步都接受奖励、价值和策略目标的监督。若不同历史需要不同预测，常数状态就无法同时拟合这些目标。
+
+这种设计可用“决策充分”或**值等价（Value Equivalence）**的直觉理解：表示不必还原观察外观，只需保留搜索目标需要区分的信息。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/06-muzero/vpn-fig5.png" alt="VPN 从同一迷宫状态展开不同长度的潜在计划，展示不重建像素、只预测规划量的直接前史。" width="86%">
 
-<img src="/figures/04-latent-dynamics/latex/06-muzero/puct-visit-pressure.png" alt="MuZero 纯潜空间 MCTS 树搜索：选择、展开、评估与价值反向回传数据流" width="86%">
-
-_图 4.6-2：MuZero 纯潜空间 MCTS 树搜索：选择、展开、评估与价值反向回传数据流。_
+_图 4.6-2：VPN 从同一迷宫状态展开不同长度的潜在计划，展示不重建像素、只预测规划量的直接前史。 出处：Junhyuk Oh；Satinder Singh；Honglak Lee，[Value Prediction Network](https://arxiv.org/abs/1707.03497)（2017），Figure 5。_
 
 </div>
 
----
+> **类比理解：值等价（Value Equivalence）与“梦中下棋”**
+>
+> 传统的基于模型的强化学习试图在脑海中“渲染”出未来每一步的完整棋盘画面（重建观测）。然而，MuZero 的值等价原则就像是一位盲棋大师：他在脑海中并不需要勾勒出每一颗棋子的精确物理反光和材质。相反，他仅仅在神经元中维护着一个抽象的“局势张量”。只要这个张量能够准确推演出“走这步棋会导致我方优势（价值）下降，且被将军的概率（奖励）增加，对手必定会跳马（策略）”，那么这个“局势张量”就与真实的棋盘在数学上是**等价**的。我们不需要知道世界看起来是什么样，只需要知道世界将如何响应我们的目标。
 
-## 4.6.2 核心数学推导一：潜在 MCTS 树搜索与 PUCT 动作选择法则
+严格的值等价理论需要指定策略集合与价值函数集合。这里采用更窄的操作性解释：在训练分布和有限展开深度内，若两个表示对搜索使用的奖励、策略与价值预测不可区分，那么没有必要要求它们在像素上相同。
 
-在潜在动力学世界模型内部，智能体如何通过树搜索做出超越直觉的深层远见决策？
+训练时，真实奖励、bootstrap 价值目标和 MCTS 访问分布沿展开网络反向传播到 $g$ 与 $h$。隐状态没有预设的物理语义；它被优化为支持 $r,p,v$ 预测。有限目标仍可能遗漏任务外信息，因此不能据此声称学到了完整环境动力学。
 
 <div align="center">
+  <img src="/figures/04-latent-dynamics/source/06-muzero/predictron-fig1.png" alt="Predictron 把多步内部模型回报与可学习的 λ 混合画成一张展开图，为 MuZero 的值等价思想提供历史机制。" width="86%">
 
-<img src="/figures/04-latent-dynamics/source/06-muzero/muzero-fig2.png" alt="MuZero 在未知环境规则下进行自博弈学习并超越 AlphaZero 顶尖水平。" width="86%">
-
-_图 4.6-3：MuZero 在未知环境规则下进行自博弈学习并超越 AlphaZero 顶尖水平。 出处：[Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model，Julian Schrittwieser et al.，2020](https://www.nature.com/articles/s41586-020-03051-4)。_
+_图 4.6-3：Predictron 把多步内部模型回报与可学习的 λ 混合画成一张展开图，为 MuZero 的值等价思想提供历史机制。 出处：David Silver；Hado van Hasselt；Matteo Hessel；Tom Schaul；Arthur Guez；Timothy Harley；Gabriel Dulac-Arnold；David Reichert；Neil Rabinowitz；André Barreto；Thomas Degris，[The Predictron: End-To-End Learning and Planning](https://arxiv.org/abs/1612.08810)（2017），Figure 1。_
 
 </div>
 
-### 1. 潜在 PUCT 树节点选择控制律
-在搜索树的每一个节点 $s$ 处，选择使得置信上限分数（Upper Confidence Bound）最大的动作分支：
+## 4.6.4 隐空间中的蒙特卡洛树搜索（MCTS）
 
-$$a^* = \arg\max_{a} \left[ Q(s, a) + P(s, a) \cdot \frac{\sqrt{\sum_b N(s, b)}}{1 + N(s, a)} \left( c_1 + \log\left( \frac{\sum_b N(s, b) + c_2 + 1}{c_2} \right) \right) \right]$$
+具备了在隐空间前向推演的能力后，我们需要使用 MCTS 来寻找最优策略。在传统的蒙特卡洛树搜索中，树的节点代表真实状态，边代表动作。而在 MuZero 中，树的根节点是当前真实历史的隐状态 $s^0 = h(o_1, \dots, o_t)$，树的所有内部节点都是由动态函数 $g$ 递推生成的假想隐状态 $s^k$。
 
-- $Q(s, a)$ 为当前动作分支的平均价值（利用项 Exploitation）；
-- $P(s, a)$ 为预测网络给出的先验概率（启发先验）；
-- $\frac{\sqrt{\sum N}}{1 + N}$ 为访问计数衰减项（探索项 Exploration），确保访问次数少的分支得到充分探索。
+<div align="center">
+  <img src="/figures/04-latent-dynamics/source/06-muzero/alphazero-table2.png" alt="AlphaZero 的十二类棋局开局与自博弈频率显示已知规则搜索如何在棋盘状态上形成策略前身。" width="86%">
 
-### 2. 价值反向回传与树根策略分布
-在模拟推演触底后，将预测价值沿搜索路径自底向上逆向更新所有父节点的累计价值 $Q$ 与访问计数 $N$。
-完成 $N_{\text{sim}}$ 次模拟后（如 $N_{\text{sim}} = 50$），根据根节点的访问次数分布生成终极改进策略 $\boldsymbol{\pi}_{\text{MCTS}}$：
+_图 4.6-4：AlphaZero 的十二类棋局开局与自博弈频率显示已知规则搜索如何在棋盘状态上形成策略前身。 出处：David Silver et al.，[Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm](https://arxiv.org/abs/1712.01815)（2017），Table 2。_
 
-$$\pi_{\text{MCTS}}(a) = \frac{N(s_{\text{root}}, a)^{1/\tau}}{\sum_b N(s_{\text{root}}, b)^{1/\tau}}$$
+</div>
 
-其中 $\tau$ 为探索温度。
+搜索重复进行多次模拟。MuZero 使用带策略先验的 PUCT 风格准则选择动作，直到到达尚未展开的叶节点。
 
-### 3. PUCT 节点选择手算数值算例
-设根节点总访问次数 $\sum_b N(s, b) = 10$，参数常数项简记为 $c = 1.0$。
-存在两个候选动作分支：
-- **分支 1（深度探索过的高胜率分支）**：访问次数 $N(s, a_1) = 8$，平均价值 $Q(s, a_1) = 0.80$，先验概率 $P(s, a_1) = 0.40$；
-- **分支 2（刚被发现的新奇冷门分支）**：访问次数 $N(s, a_2) = 2$，平均价值 $Q(s, a_2) = 0.50$，先验概率 $P(s, a_2) = 0.60$。
+对于节点 $s$，选择动作 $a$ 的准则为最大化置信区间目标：
+$$ a = \mathop{\mathrm{argmax}}_a \left[ Q(s, a) + U(s, a) \right] $$
 
-已知 $\sqrt{10} \approx 3.162$。我们来手动计算两分支的 PUCT 分数：
-1. **计算分支 1 的 PUCT 分数**：
-   $$\text{UCB}_1 = 0.80 + 0.40 \times \frac{3.162}{1 + 8} \times 1.0 = 0.80 + 0.40 \times \frac{3.162}{9} = 0.80 + 0.40 \times 0.351 = 0.80 + 0.140 = 0.940$$
-2. **计算分支 2 的 PUCT 分数**：
-   $$\text{UCB}_2 = 0.50 + 0.60 \times \frac{3.162}{1 + 2} \times 1.0 = 0.50 + 0.60 \times \frac{3.162}{3} = 0.50 + 0.60 \times 1.054 = 0.50 + 0.632 = 1.132$$
+其中 $Q(s,a)$ 是边的平均价值估计，$U(s,a)$ 是由策略先验与访问次数构成的探索项。论文使用的形式为：
+$$ U(s, a) = P(s, a) \cdot \frac{\sqrt{\sum_b N(s, b)}}{1 + N(s, a)} \left( c_1 + \log\left( \frac{\sum_b N(s, b) + c_2 + 1}{c_2} \right) \right) $$
 
-初等代数的几步加权深刻揭示：虽然分支 1 目前的平均胜率更高（$0.80 > 0.50$），但由于分支 2 访问次数极少且先验看好，其探索红利高达 $+0.632$，最终以总分 $1.132 > 0.940$ 胜出并获得下一次模拟推演权！这种动态平衡确保了智能体绝不遗漏任何潜在的胜负手！
+<div align="center"><img src="/figures/04-latent-dynamics/latex/06-muzero/puct-visit-pressure.png" alt="PUCT 探索项由策略先验、父节点访问量、当前边访问量和对数调度共同构成" width="86%">
 
-<details>
-<summary><b>深入推导：价值等价模型（Value Equivalence Principle）在贝尔曼投影收敛性证明（点击展开查看完整推导）</b></summary>
+_图 4.6-5：策略先验给出初始偏好；在其他量固定时，父节点搜索越充分，探索压力越大，而某条边自身访问越多，其探索奖励越快衰减。_
 
-定义价值等价空间 $\mathcal{M}^* = \{m \in \mathcal{M} \mid \forall \pi, V_m^\pi \equiv V_{\text{true}}^\pi\}$。
-设潜在状态转移诱导的伪转移核为 $\tilde{\mathcal{P}}$。
-若系统在任意状态下满足三阶矩对齐：
-$$\sum_k \gamma^k \mathbb{E}_{\tilde{\mathcal{P}}} [\hat{r}_{t+k}] = \sum_k \gamma^k \mathbb{E}_{\mathcal{P}} [r_{t+k}]$$
-则由贝尔曼算子不动点唯一性，隐式模型生成的价值函数序列严格在全变差范数下一致收敛于真实环境的最优价值函数，严格证明了无需显式像素重构也能达到全局最优策略的充要性。
-</details>
+</div>
 
----
+这里：
 
-## 4.6.3 核心数学推导二：MuZero 多步展开联合端到端损失
+- $P(s, a)$ 是网络预测函数 $f$ 给出的先验策略概率。
+- $N(s, a)$ 表示在搜索树中该边被访问的次数。
+- $\frac{\sqrt{\sum_b N(s, b)}}{1 + N(s, a)}$ 构造了随着父节点访问次数增加而增大，但随着该节点自身访问次数增加而衰减的探索因子。
+- 对数项与常数 $c_1,c_2$ 控制探索系数随父节点访问次数增长的速度；它不是直接按树深度增长。
 
-在训练时，MuZero 从经验回放池中抽取一段长度为 $K$ 步的真实历史轨迹，在隐空间中向未来递归展开 $K$ 步，并同时对**即时奖励、多步价值与 MCTS 搜索策略**施加联合监督：
+到达叶节点后，用 $p,v=f(s)$ 评估并扩展，再沿路径回传价值与更新访问计数。根节点访问次数经过归一化形成搜索策略 $\pi_t$。模拟次数取决于任务与计算预算；MuZero 的不同实验设置并不统一为“数千次”。
 
-$$\mathcal{L}(\theta) = \sum_{k=0}^K \left[ \underbrace{\ell_r(r_{t+k}, \; \hat{r}_t^k)}_{\text{奖励预测损失}} + \underbrace{\ell_v(z_{t+k}, \; \hat{v}_t^k)}_{\text{MCTS 价值监督损失}} + \underbrace{\ell_p(\boldsymbol{\pi}_{t+k}, \; \hat{\mathbf{p}}_t^k)}_{\text{MCTS 策略交叉熵}} \right] + c \|\theta\|^2$$
+## 4.6.5 损失函数与网络展开
 
-其中真实目标标签 $z_{t+k}$ 为后续 $n$ 步真实折扣回报与 MCTS 价值的混合估计，$\boldsymbol{\pi}_{t+k}$ 为当时树搜索生成的访问频率分布。
+MuZero 的端到端训练是在自我博弈收集到的经验轨迹上进行的。对于真实时间步 $t$，智能体将其收集的观测 $o_1, \dots, o_t$ 送入表示函数，得到 $s^0$。随后，根据历史轨迹中实际记录的真实动作 $a_{t+1}, \dots, a_{t+K}$，我们在隐空间中**展开 (Unroll)** $K$ 步。
 
-<details>
-<summary><b>深入推导：隐式潜在转移在没有重构正则化下的特征坍塌防御机理（点击展开查看完整推导）</b></summary>
+在展开的第 $k$ 步（$1 \le k \le K$），网络输出预测元组 $(p_t^k, v_t^k, r_t^k)$。
+为了对其进行监督，我们从真实的轨迹中提取目标（Targets）：
 
-在缺乏像素重构监督时，自监督隐式模型面临状态常数化（$\mathbf{s} \to \mathbf{0}$）的坍塌风险。
-由于 MuZero 的损失函数中显式包含了即时奖励 $\ell_r$ 与策略交叉熵 $\ell_p$，若隐状态发生常数坍塌，网络将无法对不同状态输出差异化的动作先验概率分布 $\hat{\mathbf{p}}$ 与动态奖励 $\hat{r}$，导致预测损失发散为最大熵。
-策略交叉熵与奖励预测共同构成了强有力的信息论反坍塌斥力。
-</details>
+- 策略目标 $\pi_{t+k}$：来自时间步 $t+k$ 时 MCTS 的搜索结果（即访问次数分布）。
+- 奖励目标 $u_{t+k}$：来自时间步 $t+k$ 时环境给出的真实即时奖励。
+- 价值目标 $z_{t+k}$：可以是直到回合结束的真实折现回报，也可以是 $n$ 步自举（Bootstrapping）回报，即 $u_{t+1} + \gamma u_{t+2} + \dots + \gamma^{n-1} u_{t+n} + \gamma^n \nu_{t+n}$，其中 $\nu$ 是在 $t+n$ 时的 MCTS 价值估计。
 
----
+由此，第 $k$ 步的损失函数由三项组成，外加 L2 正则化惩罚：
+$$ L_k = l^p(\pi_{t+k}, p_t^k) + l^v(z_{t+k}, v_t^k) + l^r(u_{t+k}, r_t^k) $$
 
-## 4.6.4 纯底层 PyTorch 代码实现：从零手写 MuZero 潜在世界模型与简易树搜索
+整个 $K$ 步展开的总损失为时间的累加：
+$$ L_t(\theta) = \sum_{k=0}^K \left( L_k \right) + c \| \theta \|^2 $$
 
-下面我们使用纯底层 PyTorch 算子手写实现完整的 MuZero 表征、动力学、预测网络与纯潜在 MCTS 树搜索算法。
+### 分类分布支持（Categorical Support）表示
+
+在定义 $l^v$ 和 $l^r$ 时，MuZero 把标量经过非线性缩放后投影到有限离散支撑，而不是直接用未缩放标量 MSE。这样可以减小不同目标尺度带来的优化差异。
+
+为便于说明，先忽略论文中的可逆标量缩放，直接把 $x$ 投影到整数支撑 $[-z_{\max},z_{\max}]$。完整 MuZero 会先应用带平方根项的标量变换，并在解码时使用逆变换。
+对于任意真实标量 $x \in [i, i+1]$（其中 $i, i+1$ 是相邻的整数支撑点），我们将其概率分配如下：
+
+- 在支撑点 $i$ 上的概率分配为：$i+1 - x$
+- 在支撑点 $i+1$ 上的概率分配为：$x - i$
+- 其余支撑点概率均为 $0$。
+
+网络输出 $2z_{\max}+1$ 个 logits，并用交叉熵拟合目标分布。对输出 logits 的梯度分量有界，但深层网络整体仍可能出现数值或梯度问题。
+
+## 4.6.6 模型架构与代码实现
+
+下面给出只覆盖三个网络接口的 MLP 教学版。它没有实现 MCTS、标量支撑变换、损失缩放或论文中的卷积/残差架构。
+
+先定义适用于离散动作空间的表示网络。
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
 
-class MuZeroNet(nn.Module):
-    """
-    MuZero 三位一体潜在世界模型
-    h(o) -> s0
-    g(s, a) -> (s_next, reward)
-    f(s) -> (policy_logits, value)
-    """
-    def __init__(self, obs_dim: int = 8, state_dim: int = 16, action_dim: int = 3):
+class RepresentationNetwork(nn.Module):
+    """表示函数 h: observation -> hidden_state"""
+    def __init__(self, obs_dim, hidden_dim):
         super().__init__()
-        self.action_dim = action_dim
-
-        # 1. 表征网络 h
-        self.rep_net = nn.Sequential(
-            nn.Linear(obs_dim, 64),
+        self.net = nn.Sequential(
+            nn.Linear(obs_dim, 256),
             nn.ReLU(),
-            nn.Linear(64, state_dim)
+            nn.Linear(256, hidden_dim)
         )
 
-        # 2. 动力学网络 g
-        self.dyn_net = nn.Sequential(
-            nn.Linear(state_dim + action_dim, 64),
-            nn.ReLU(),
-            nn.Linear(64, state_dim + 1) # 输出 s_next 与 标量 reward
-        )
-
-        # 3. 预测网络 f
-        self.pred_policy = nn.Sequential(
-            nn.Linear(state_dim, 64),
-            nn.ReLU(),
-            nn.Linear(64, action_dim) # 输出动作 logits
-        )
-        self.pred_value = nn.Sequential(
-            nn.Linear(state_dim, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1) # 输出标量 value
-        )
-
-    def initial_inference(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        s0 = self.rep_net(obs)
-        policy_logits = self.pred_policy(s0)
-        value = self.pred_value(s0)
-        return s0, policy_logits, value
-
-    def recurrent_inference(self, state: torch.Tensor, action_one_hot: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        inputs = torch.cat([state, action_one_hot], dim=-1)
-        out = self.dyn_net(inputs)
-        s_next = out[:, :-1]
-        reward = out[:, -1:]
-        policy_logits = self.pred_policy(s_next)
-        value = self.pred_value(s_next)
-        return s_next, reward, policy_logits, value
-
-class SimpleMCTSNode:
-    """
-    纯潜在 MCTS 搜索树节点
-    """
-    def __init__(self, prior: float):
-        self.prior = prior
-        self.visit_count = 0
-        self.value_sum = 0.0
-        self.children = {}
-        self.hidden_state = None
-        self.reward = 0.0
-
-    @property
-    def value(self) -> float:
-        return self.value_sum / self.visit_count if self.visit_count > 0 else 0.0
-
-# ===================================================================
-# 单元测试与潜在推演前向校验
-# ===================================================================
-if __name__ == "__main__":
-    batch_size = 2
-    obs_dim = 8
-    state_dim = 16
-    action_dim = 3
-
-    model = MuZeroNet(obs_dim=obs_dim, state_dim=state_dim, action_dim=action_dim)
-
-    # 1. 初始推演
-    dummy_obs = torch.randn(batch_size, obs_dim)
-    s0, p_logits, v0 = model.initial_inference(dummy_obs)
-
-    # 2. 潜空间动力学单步循环推演 (输入动作 a=1 的 One-Hot)
-    a_one_hot = F.one_hot(torch.tensor([1, 0]), num_classes=action_dim).float()
-    s1, r1, p_logits1, v1 = model.recurrent_inference(s0, a_one_hot)
-
-    print(f"[MuZero Test] 抽象潜状态 s0 形状: {s0.shape}")
-    print(f"[MuZero Test] 预测策略分布 Logits 形状: {p_logits.shape}")
-    print(f"[MuZero Test] 循环动力学推演后 s1 形状: {s1.shape}")
-    print(f"[MuZero Test] 潜在预测即时奖励形状: {r1.shape}")
-
-    assert s0.shape == (batch_size, state_dim), "表征网络输出维度不符！"
-    assert s1.shape == (batch_size, state_dim), "动力学网络输出维度不符！"
-    assert not torch.isnan(p_logits).any(), "策略输出出现 NaN！"
-    print("✓ MuZero 价值等价潜在世界模型与递归推演引擎单测全部通过！")
+    def forward(self, x):
+        # x.shape: (batch_size, obs_dim)
+        s = self.net(x)
+        # 归一化隐状态，对保持动态网络的稳定至关重要
+        # s.shape: (batch_size, hidden_dim)
+        return F.normalize(s, p=2, dim=1)
 ```
 
----
+动态模型 $g$ 接收隐状态与独热动作，输出下一隐状态和奖励 logits。
 
-## 4.6.5 本节小结
+```python
+class DynamicsNetwork(nn.Module):
+    """动态函数 g: (hidden_state, action) -> (next_hidden_state, reward_logits)"""
+    def __init__(self, hidden_dim, num_actions, support_size):
+        super().__init__()
+        # 对离散动作进行独热编码后的维度为 num_actions
+        self.fc = nn.Linear(hidden_dim + num_actions, 256)
 
-回顾本节内容，我们掌握了隐式目标导向世界模型的至高范式：
-1. **价值等价极简哲学**：彻底卸载无关像素渲染负担，将世界模型纯粹聚焦于状态转移、即时奖励与策略价值；
-2. **PUCT 树搜索深度推演**：在潜空间动力学中展开高深度的 MCTS，实现了远超直觉反应的前瞻性决策；
-3. **自监督反坍塌闭环**：多步策略交叉熵与价值联合监督天然抵御了特征退化，为棋盘博弈乃至通用物理世界决策树立了无与伦比的标杆。
+        self.state_head = nn.Sequential(
+            nn.Linear(256, hidden_dim)
+        )
+        # 奖励预测使用支持集的交叉熵表示
+        self.reward_head = nn.Sequential(
+            nn.Linear(256, support_size * 2 + 1)
+        )
+
+    def forward(self, hidden_state, action_one_hot):
+        # 拼接张量，输入维度为 hidden_dim + num_actions
+        x = torch.cat([hidden_state, action_one_hot], dim=1)
+        x = F.relu(self.fc(x))
+
+        next_s = self.state_head(x)
+        reward_logits = self.reward_head(x)
+
+        return F.normalize(next_s, p=2, dim=1), reward_logits
+```
+
+预测网络 $f$ 输出策略 logits 与价值 logits。
+
+```python
+class PredictionNetwork(nn.Module):
+    """预测函数 f: hidden_state -> (policy_logits, value_logits)"""
+    def __init__(self, hidden_dim, num_actions, support_size):
+        super().__init__()
+        self.policy_head = nn.Sequential(
+            nn.Linear(hidden_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, num_actions)
+        )
+
+        self.value_head = nn.Sequential(
+            nn.Linear(hidden_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, support_size * 2 + 1)
+        )
+
+    def forward(self, hidden_state):
+        policy_logits = self.policy_head(hidden_state)
+        value_logits = self.value_head(hidden_state)
+        return policy_logits, value_logits
+```
+
+最后组合三个接口。完整训练会循环调用 `recurrent_inference` 并累积每个展开步的损失。
+
+```python
+class MuZeroNetwork(nn.Module):
+    def __init__(self, obs_dim, hidden_dim, num_actions, support_size):
+        super().__init__()
+        self.num_actions = num_actions
+        self.representation = RepresentationNetwork(obs_dim, hidden_dim)
+        self.dynamics = DynamicsNetwork(hidden_dim, num_actions, support_size)
+        self.prediction = PredictionNetwork(hidden_dim, num_actions, support_size)
+
+    def initial_inference(self, obs):
+        """对应推演步 k=0"""
+        hidden_state = self.representation(obs)
+        policy_logits, value_logits = self.prediction(hidden_state)
+        return hidden_state, policy_logits, value_logits
+
+    def recurrent_inference(self, hidden_state, action):
+        """对应推演步 k > 0"""
+        # 将动作转化为独热向量
+        action_one_hot = F.one_hot(action, num_classes=self.num_actions).float()
+        next_hidden_state, reward_logits = self.dynamics(hidden_state, action_one_hot)
+        policy_logits, value_logits = self.prediction(next_hidden_state)
+        return next_hidden_state, reward_logits, policy_logits, value_logits
+```
+
+训练批次包含 $K$ 步动作与目标。对 `recurrent_inference` 展开并累积损失后，梯度会到达表示、动态与预测网络，使隐状态保留有限展开内预测奖励、价值和策略所需的信息。
+
+## 4.6.7 小结
+
+MuZero 用表示、动态和预测三个网络支持隐空间 MCTS，不要求重建原始观测。它学习的是由奖励、价值与搜索策略目标定义的决策相关模型。这样避免了像素重建开销，但搜索成本、模型偏差与训练目标覆盖范围仍然限制其适用性。

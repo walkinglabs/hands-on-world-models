@@ -2545,26 +2545,3 @@ html {
     padding: 12px 16px;
   }
 }
-
-/* ===================================================
-   21. Mermaid Diagram Styling
-   =================================================== */
-.mermaid {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 1.75rem 0;
-  padding: 1.5rem 1rem;
-  background-color: var(--vp-c-bg-soft);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: var(--radius-lg);
-  overflow-x: auto;
-  box-shadow: var(--shadow-sm);
-  transition: background-color 0.25s ease, border-color 0.25s ease;
-}
-
-.mermaid svg {
-  max-width: 100%;
-  height: auto;
-}
-

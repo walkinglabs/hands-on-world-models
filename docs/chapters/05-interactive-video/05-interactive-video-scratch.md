@@ -1,248 +1,342 @@
-# 5.5 从零实现可交互视频世界模型 (Interactive Video World Model from Scratch)
+# 5.5 从零实现动作条件视频生成器
 
-在视频生成技术从“静态生成一段固定短片”迈向“生成一个具备交互能力的动态物理世界”的跨越中，**动作可控交互式视频世界模型（Action-Conditioned Interactive Video World Models, 如 Oasis, Genie, GameNGen）** 代表了当前具身智能与人工智能世界模拟的最前沿突破。
-
-传统的视频生成模型如同一台单向播放的电影放映机：输入一段文本提示词，它输出一段固定无法改变的 MP4 视频；
-而**可交互视频世界模型**则如同一台真正运行在神经网络内部的“神经物理游戏引擎”：
-- 用户或机械臂在每一毫秒按下键盘、推动摇杆或下发电机扭矩指令 $\mathbf{a}_t$；
-- 神经网络实时接收该动作，并依据物理运动学规律，在下一帧精准渲染出角色移动、刚体碰撞、灯光阴影变化的动态响应画面 $\hat{\mathbf{x}}_{t+1}$；
-- 智能体根据最新画面做出下一步决策，形成真正意义上的人机/智机在环物理闭环！
-
-本节我们将从初等仿射特征调制出发，严密推导动作条件特征线性调制（FiLM）、门控时空残差融合与自回归累积漂移抑制机理，并使用纯底层 PyTorch 从零手写一个端到端完整的动作可控交互式视频世界模型。
+前面几节讨论的视频模型大多只回答“接下来可能出现什么”。交互式模型还要回答一个更具体的问题：如果智能体此刻向左、加速或抓取，画面会怎样变化？本节从一个教学版模块出发，把离散视频词元和动作交错排成序列，再用因果 Transformer 预测后续词元。它展示的是核心数据流，并不复刻某个大型系统的全部训练配方。
 
 <div align="center">
+<img src="/figures/05-interactive-video/source/05-interactive-video-scratch/genie-fig1.png" alt="Genie 把照片、草图和生成图变成可逐步操控的平台世界，展示动作改变后续画面的真实交互目标。" width="86%">
 
-<img src="/figures/05-interactive-video/source/05-interactive-video-scratch/diamond-fig1.png" alt="Oasis 可交互神经物理世界模型：根据用户键盘操作实时生成可交互物理沙盒世界画面。" width="86%">
-
-_图 5.5-1：Oasis 可交互神经物理世界模型：根据用户键盘操作实时生成可交互物理沙盒世界画面。 出处：[Oasis: A Universe in a Transformer，Decart & Etched，2024](https://oasis.decart.ai/)。_
-
+_图 5.5-1：Genie 把照片、草图和生成图变成可逐步操控的平台世界，展示动作改变后续画面的真实交互目标。 出处：Jake Bruce et al.，[Genie: Generative Interactive Environments](https://arxiv.org/abs/2402.15391)（2024），Figure 1。_
 </div>
 
----
+## 历史背景与学术脉络
 
-## 5.5.1 物理与交互基石：动作条件注入与神经游戏引擎闭环
-
-要实现对物理画面的精准动作操控，系统必须在深度神经网络的每一层建立起动作控制量与视觉特征图之间的显式物理因果映射。
-
-### 1. 人机在环交互控制闭环
-在每一时间步 $t$：
-1. **输入当前画面与动作**：系统输入上一帧历史观测 $\mathbf{x}_{t-1}$ 以及外部输入的物理动作指令 $\mathbf{a}_{t-1}$（如 `[向左平移, 跳跃, 夹爪闭合]`）；
-2. **潜在物理动力学演变**：网络内部的动作调制层将动作信号投影为动力学形变速度场；
-3. **高保真画面输出**：系统渲染出新画面 $\hat{\mathbf{x}}_t$；
-4. **状态反馈**：新画面作为下一时刻的初始历史，持续循环滚动！
-
-### 2. 动作注入的物理难题
-- 动作信号通常是一个极低维度的稀疏向量（如 4 维浮点数）；
-- 视频特征图是数万维的高维三维张量；
-- 如果仅仅将动作与图像简单相加，动作信号会被庞大的像素特征瞬间淹没冲淡，导致模型生成“视而不见”的失控失灵画面。
+动作条件视频预测与模型式规划密切相关。Oh 等人在 Atari 上展示了根据动作预测未来画面的方法 [[Oh et al., 2015]](https://arxiv.org/abs/1507.08750)；这些画面仍是高维像素，只是场景和动作空间相对受限。Finn 等人把动作条件预测用于真实机器人交互视频 [[Finn et al., 2016]](https://arxiv.org/abs/1605.07157)，Babaeizadeh 等人则显式引入随机潜变量来表达同一过去对应多种未来的情形 [[Babaeizadeh et al., 2017]](https://arxiv.org/abs/1710.11252)。
 
 <div align="center">
+<img src="/figures/05-interactive-video/source/05-interactive-video-scratch/gamengen-fig1.png" alt="GameNGen 在 20 FPS 下响应玩家动作生成 DOOM 画面，说明动作条件视频世界模型能够进入实时闭环。" width="86%">
 
-<img src="/figures/05-interactive-video/latex/05-interactive-video-scratch/interleaved-action-causal-visibility.png" alt="FiLM 动作条件特征线性调制数据流：动态缩放因子 gamma 与平移因子 beta 的逐通道仿射变换" width="86%">
-
-_图 5.5-2：FiLM 动作条件特征线性调制数据流：动态缩放因子 gamma 与平移因子 beta 的逐通道仿射变换。_
-
+_图 5.5-2：GameNGen 在 20 FPS 下响应玩家动作生成 DOOM 画面，说明动作条件视频世界模型能够进入实时闭环。 出处：Dani Valevski et al.，[Diffusion Models Are Real-Time Game Engines](https://arxiv.org/abs/2408.14837)（2024），Figure 1。_
 </div>
 
----
-
-## 5.5.2 核心数学推导一：特征线性调制 (FiLM) 与门控跨模态融合
-
-为了让低维动作指令能够精准“指挥”高维空间特征图，Perez 等人提出了 **特征线性调制（Feature-wise Linear Modulation, FiLM）**。
+近年来，潜在动力学出现了不同实现路线。Dreamer 在连续或离散的潜在状态中学习动作条件动力学，用于想象训练 [[Hafner et al., 2020]](https://arxiv.org/abs/1912.01603)；它并不是基于离散视频词元的 Transformer。Genie 则从无动作标签的视频中学习潜在动作，并在离散视频词元上生成可交互轨迹 [[Bruce et al., 2024]](https://arxiv.org/abs/2402.15391)。因此，本节采用“视觉词元 + 因果注意力”时，主要借鉴的是后一类自回归交互视频模型。
 
 <div align="center">
+<img src="/figures/05-interactive-video/source/05-interactive-video-scratch/iris-fig1.png" alt="IRIS 将离散帧词元与动作交错输入 Transformer，并在想象轨迹中驱动策略。" width="86%">
 
-<img src="/figures/05-interactive-video/source/05-interactive-video-scratch/genie-fig1.png" alt="Genie 交互式世界模型：从无标注网络视频中无监督学习潜在动作并实现用户可交互控制。" width="86%">
-
-_图 5.5-3：Genie 交互式世界模型：从无标注网络视频中无监督学习潜在动作并实现用户可交互控制。 出处：[Genie: Generative Interactive Environments，Jake Bruce et al.，2024](https://arxiv.org/abs/2402.15391)。_
-
+_图 5.5-3：IRIS 将离散帧词元与动作交错输入 Transformer，并在想象轨迹中驱动策略。 出处：Vincent Micheli et al.，[Transformers are Sample-Efficient World Models](https://arxiv.org/abs/2209.00588)（2023），Figure 1。_
 </div>
 
-### 1. FiLM 动作逐通道仿射变换方程
-设中间视觉特征图为 $\mathbf{F} \in \mathbb{R}^{C \times H \times W}$。
-通过一个动作映射网络，根据输入动作 $\mathbf{a} \in \mathbb{R}^{d_a}$ 预测出每通道专属的缩放向量 $\boldsymbol{\gamma}(\mathbf{a}) \in \mathbb{R}^C$ 与平移向量 $\boldsymbol{\beta}(\mathbf{a}) \in \mathbb{R}^C$：
+## 交互式生成的数学构型
 
-$$\boldsymbol{\gamma}(\mathbf{a}) = \mathbf{W}_\gamma \mathbf{a} + \mathbf{b}_\gamma, \quad \boldsymbol{\beta}(\mathbf{a}) = \mathbf{W}_\beta \mathbf{a} + \mathbf{b}_\beta$$
+先从条件概率模型看这件事。对于一个做匀加速运动的小球，如果初始位置、速度和加速度都已知，可以用 $x(t) = x_0 + v_0 t + \frac{1}{2} a t^2$ 直接算出轨迹。
 
-对特征图执行广播仿射变换：
-
-$$\mathbf{F}_{\text{modulated}}[c, i, j] = \boldsymbol{\gamma}(\mathbf{a})[c] \cdot \mathbf{F}[c, i, j] + \boldsymbol{\beta}(\mathbf{a})[c]$$
-
-### 2. FiLM 调制手算数值算例
-设某个特征通道的原始像素激活值为 $F = 2.0$。
-当前用户下发了“全速右转”动作 $\mathbf{a} = [1.0]$。
-动作网络计算得到该通道的缩放因子 $\gamma(a) = 1.5$，平移因子 $\beta(a) = -0.5$。
-
-我们来手动求解调制后的通道特征值：
-$$F_{\text{modulated}} = 1.5 \times 2.0 + (-0.5) = 3.0 - 0.5 = 2.5$$
-
-> **代数物理启示**：
-> - 缩放因子 $\gamma(a) = 1.5$ 充当了“特征放大器”，强化了与右转相关的光流特征；
-> - 平移因子 $\beta(a) = -0.5$ 注入了确定性的运动方向偏置；
-> - 动作指令直接在特征流形层面重塑了空间响应！
-
-<details>
-<summary><b>深入推导：FiLM 仿射变换在流形切空间李代数变换下的结构保持性证明（点击展开查看完整推导）</b></summary>
-
-将特征空间视为微分流形 $\mathcal{M}$ 上的向量丛截面。
-动作条件映射 $\phi_{\mathbf{a}}(\mathbf{x}) = \text{diag}(\boldsymbol{\gamma}) \mathbf{x} + \boldsymbol{\beta}$ 构成了仿射李群 $\text{Aff}(n)$ 的元素。
-当 $\boldsymbol{\gamma} > 0$ 时，该变换在流形切空间 $T_p\mathcal{M}$ 上保持了微分同胚性（Diffeomorphism）。
-在反向传播中，特征图关于动作的梯度为 $\frac{\partial \mathcal{L}}{\partial \mathbf{a}} = \sum_{c, i, j} \frac{\partial \mathcal{L}}{\partial F_c} (F_c \mathbf{W}_\gamma[c, :] + \mathbf{W}_\beta[c, :])$，建立了强有力的动作感知直接反馈通路。
-</details>
-
----
-
-## 5.5.3 核心数学推导二：自回归长程推演漂移与噪声注入防御
-
-在自由交互推演时，如果模型连续推演数百步（如连续运行 1 分钟），前一步生成的微小重构瑕疵会被作为下一时刻的输入，导致误差随着时间步指数级雪崩累积，最终引发画面模糊溶化或物体凭空消失。
+真实视频中的状态无法由一条已知方程完整描述，还会受到动作和未观测因素影响。记 $x_t$ 为第 $t$ 个时间步的画面，$a_t$ 为画面之后执行的动作。模型要估计的是：给定截至当前的观测和动作，下一帧可能是什么。
 
 <div align="center">
+<img src="/figures/05-interactive-video/source/05-interactive-video-scratch/diamond-fig1.png" alt="DIAMOND 以动作条件扩散世界模型逐帧展开策略轨迹，提供非自回归词元路线的直接对照。" width="86%">
 
-<img src="/figures/05-interactive-video/source/05-interactive-video-scratch/diamond-fig1.png" alt="Oasis 在不同噪声增强与自回归训练策略下的长期画面稳定性评测。" width="86%">
-
-_图 5.5-4：Oasis 在不同噪声增强与自回归训练策略下的长期画面稳定性评测。 出处：[Oasis: A Universe in a Transformer，Decart & Etched，2024](https://oasis.decart.ai/)。_
-
+_图 5.5-4：DIAMOND 以动作条件扩散世界模型逐帧展开策略轨迹，提供非自回归词元路线的直接对照。 出处：Daniel Alonso et al.，[Diffusion for World Modeling: Visual Details Matter in Atari](https://arxiv.org/abs/2405.12399)（2024），Figure 1。_
 </div>
 
-为了增强自回归长程推演的鲁棒性，系统在训练时采用 **输入噪声增强注入（Noise Injection / Scheduled Sampling）**：
+$$P(x_{t+1} \mid x_1, x_2, \ldots, x_t, a_1, a_2, \ldots, a_t)$$
 
-$$\tilde{\mathbf{x}}_{t-1} = \mathbf{x}_{t-1} + \sigma_{\text{noise}} \cdot \boldsymbol{\epsilon}, \quad \text{其中 } \boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$$
+根据概率的链式法则，长度为 $T$ 的条件序列可以写成：
 
-通过在历史输入帧中主动注入轻微的高斯白噪声，迫使网络学会**自我纠错与去噪修复能力**，使得模型在面对自身产生的微小生成瑕疵时能够自发将其抚平，保障了交互式推演数千步的绝对物理稳健性！
+$$P(x_1, \ldots, x_T \mid a_1, \ldots, a_{T-1}) = \prod_{t=1}^{T} P(x_t \mid x_{<t}, a_{<t})$$
 
-<details>
-<summary><b>深入推导：自回归时序动力学在随机扰动注入下的李雅普诺夫指数衰减分析（点击展开查看完整推导）</b></summary>
+这里采用的是自回归分解：生成 $x_t$ 时只能使用更早的帧和动作。训练 Transformer 时，因果掩码负责挡住序列右侧尚未生成的信息。
 
-设真实动力学定点吸引子为 $\mathbf{x}^*$。离散误差演化满足 $\mathbf{e}_{t+1} = \mathbf{J}_f \mathbf{e}_t + \boldsymbol{\eta}_t$。
-定义最大李雅普诺夫指数 $\lambda = \lim_{T \to \infty} \frac{1}{T} \log \|\prod_{t=1}^T \mathbf{J}_f(t)\|$。
-当在训练时对输入施加协方差为 $\sigma^2 \mathbf{I}$ 的噪声注入时，等价于在目标函数中引入了吉洪诺夫正则化项 $\mathcal{R}(\theta) = \frac{\sigma^2}{2} \text{Tr}(\mathbf{J}_f^\top \mathbf{J}_f)$。
-极小化该正则项迫使雅可比矩阵谱范数满足 $\|\mathbf{J}_f\| < 1 \implies \lambda < 0$，系统轨迹在相空间中指数级渐近收敛至稳定极限环。
-</details>
+## 动作条件与时空序列的融合策略
 
----
+在现代深度学习中，高分辨率的视频帧 $x_t$ 通常不会直接在像素级被处理。我们在先前的章节中介绍过空间自编码器（如 VQ-VAE），它可以将每一帧 $x_t$ 压缩为一组离散的潜在标记（Latent Tokens）。设每帧可以被编码为 $S$ 个标记的集合 $Z_t = \{z_{t,1}, z_{t,2}, \ldots, z_{t,S}\}$。
 
-## 5.5.4 纯底层 PyTorch 代码实现：从零手写端到端可交互动作可控视频世界模型
+编码后的视频具有“时间 × 空间位置”的二维索引。输入普通自回归 Transformer 前，需要约定一种一维顺序。下面采用时间优先、帧内按空间位置排列的光栅顺序；这是一种简单选择，并非唯一选择。
 
-下面我们使用纯底层 PyTorch 算子手写实现一个集成了 FiLM 动作调制、时序循环推演与逐帧渲染的完整交互式世界模型。
+动作 $a_t$ 描述从时刻 $t$ 到 $t+1$ 的干预。为了让它出现在下一帧之前，可以把动作标记插在相邻两帧的视觉词元之间：
+
+$$\mathcal{U} = [Z_1, a_1, Z_2, a_2, \ldots, Z_{T-1}, a_{T-1}, Z_T]$$
+
+<div align="center">
+<img src="/figures/05-interactive-video/latex/05-interactive-video-scratch/interleaved-action-causal-visibility.png" alt="动作词元置于相邻视频块之间，下三角掩码让下一视频块可见该动作并屏蔽未来动作" width="86%">
+
+_图 5.5-5：把动作词元插在当前帧词元与下一帧词元之间后，因果掩码允许下一帧读取该动作，同时把尚未发生的动作严格置于不可见区。_
+</div>
+
+这样，预测 $Z_{t+1}$ 的第一个词元时，模型可见历史画面和刚刚执行的 $a_t$。模型是否真正学会动作后果仍取决于数据覆盖、训练目标和模型容量，序列排布本身并不提供保证。
+
+## 自回归核心：带掩码的因果注意力机制
+
+我们使用 Transformer 作为序列建模的核心骨干。在处理序列 $\mathcal{U}$ 时，为了计算第 $i$ 个元素的隐含表示，模型通过注意力机制计算该元素与序列中其他元素的关联度。
+
+设输入序列的嵌入矩阵为 $\mathbf{H} \in \mathbb{R}^{N \times D}$，其中 $N$ 是序列总长度，$D$ 是隐含层维度。我们通过线性映射得到查询矩阵 $\mathbf{Q}$、键矩阵 $\mathbf{K}$ 和值矩阵 $\mathbf{V}$：
+
+$$\mathbf{Q} = \mathbf{H} \mathbf{W}_Q, \quad \mathbf{K} = \mathbf{H} \mathbf{W}_K, \quad \mathbf{V} = \mathbf{H} \mathbf{W}_V$$
+
+标准自注意力用 $\mathbf{Q}$ 与 $\mathbf{K}$ 的点积计算权重。自回归训练还要限制第 $i$ 个位置只能读取 $j \le i$ 的位置，因此加入下三角掩码 $\mathbf{M} \in \mathbb{R}^{N \times N}$：
+
+$$
+\mathbf{M}_{i,j} = \begin{cases}
+0 & \text{if } j \le i \\
+-\infty & \text{if } j > i
+\end{cases}
+$$
+
+带掩码的缩放点积注意力写作：
+
+$$\mathrm{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}, \mathbf{M}) = \mathrm{softmax}\left(\frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{d_k}} + \mathbf{M}\right) \mathbf{V}$$
+
+当 $j > i$ 时，对应分数被设为 $-\infty$；经过 $\mathrm{softmax}$ 后，其权重为零。因此当前位置无法从未来位置读取信息。
+
+::: info 因果掩码约束的是什么？
+它约束的是训练计算图中的信息可见性，而不是在模型中写入物理定律。模型看不到未来词元，但仍可能学到错误的动力学关系。
+:::
+
+## 代码实现：交互式视频生成器的构建
+
+下面实现一个便于检查张量形状的教学版本。首先构建因果注意力模块和 Transformer 块。
+
+先实现多头因果自注意力层，重点看掩码的应用。
 
 ```python
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
+import math
 
-class FiLMBlock(nn.Module):
-    """
-    FiLM 动作条件特征调制层
-    y = gamma(a) * x + beta(a)
-    """
-    def __init__(self, channels: int, action_dim: int):
+class CausalSelfAttention(nn.Module):
+    """带因果掩码的多头自注意力机制"""
+    def __init__(self, embed_dim, num_heads, dropout=0.1):
         super().__init__()
-        self.channels = channels
-        self.fc = nn.Linear(action_dim, channels * 2)
+        assert embed_dim % num_heads == 0, "嵌入维度必须能被注意力头数整除"
 
-    def forward(self, feat: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        """
-        :param feat: (B, C, H, W)
-        :param action: (B, action_dim)
-        """
-        mod = self.fc(action).unsqueeze(-1).unsqueeze(-1) # (B, 2*C, 1, 1)
-        gamma, beta = mod.chunk(2, dim=1)
-        return feat * (1.0 + gamma) + beta
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
 
-class InteractiveVideoWorldModel(nn.Module):
-    """
-    端到端可交互动作可控视频世界模型 (Interactive Video World Model)
-    输入上一帧画面与当前操作动作，以 30 FPS 实时推演渲染下一帧画面
-    """
-    def __init__(self, in_c: int = 3, action_dim: int = 2, hidden_c: int = 32):
-        super().__init__()
-        # 1. 空间帧卷积编码
-        self.enc1 = nn.Conv2d(in_c, hidden_c, kernel_size=3, padding=1)
-        self.film1 = FiLMBlock(channels=hidden_c, action_dim=action_dim)
+        # 将 Q, K, V 的线性映射合并为一个权重矩阵以提升计算效率
+        self.c_attn = nn.Linear(embed_dim, 3 * embed_dim, bias=True)
+        self.c_proj = nn.Linear(embed_dim, embed_dim, bias=True)
 
-        # 2. 下采样与深层时序动力学
-        self.down = nn.Conv2d(hidden_c, hidden_c * 2, kernel_size=4, stride=2, padding=1) # (16, 16)
-        self.film2 = FiLMBlock(channels=hidden_c * 2, action_dim=action_dim)
+        self.attn_dropout = nn.Dropout(dropout)
+        self.resid_dropout = nn.Dropout(dropout)
 
-        # 3. 循环记忆状态更新 (ConvGRU 单元)
-        self.conv_gru_gate = nn.Conv2d(hidden_c * 2 * 2, hidden_c * 2, kernel_size=3, padding=1)
-        self.conv_gru_cand = nn.Conv2d(hidden_c * 2 * 2, hidden_c * 2, kernel_size=3, padding=1)
+    def forward(self, x):
+        # x 形状: (批量大小 B, 序列长度 N, 嵌入维度 D)
+        B, N, D = x.size()
 
-        # 4. 上采样画面解码渲染
-        self.up = nn.ConvTranspose2d(hidden_c * 2, hidden_c, kernel_size=4, stride=2, padding=1) # (32, 32)
-        self.out_conv = nn.Conv2d(hidden_c, in_c, kernel_size=3, padding=1)
+        # 线性映射并分离为 Q, K, V
+        # 形状变化: (B, N, 3D) -> (B, N, 3, num_heads, head_dim) -> 转置为 (3, B, num_heads, N, head_dim)
+        qkv = self.c_attn(x).view(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2] # 每一个的形状: (B, num_heads, N, head_dim)
 
-    def forward_step(
-        self, prev_frame: torch.Tensor, action: torch.Tensor, h_prev: torch.Tensor = None
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        单帧交互前向推演
-        :param prev_frame: (B, 3, 32, 32) 上一帧
-        :param action: (B, action_dim) 键盘/控制动作
-        :param h_prev: (B, 64, 16, 16) 上一时刻循环隐状态
-        :return: (next_frame, h_next)
-        """
-        B = prev_frame.shape[0]
-        if h_prev is None:
-            h_prev = torch.zeros(B, 64, 16, 16, device=prev_frame.device)
+        # 计算缩放点积注意力，并动态生成因果掩码 (利用 PyTorch 的 is_causal 标志)
+        # 这里等价于数学公式中的加上下三角矩阵 M
+        y = F.scaled_dot_product_attention(
+            q, k, v,
+            dropout_p=self.attn_dropout.p if self.training else 0.0,
+            is_causal=True
+        ) # y 形状: (B, num_heads, N, head_dim)
 
-        # 步骤一：特征提取与 FiLM 动作调制
-        x1 = F.relu(self.film1(self.enc1(prev_frame), action))
-        x2 = F.relu(self.film2(self.down(x1), action)) # (B, 64, 16, 16)
+        # 将多个头拼接回去
+        y = y.transpose(1, 2).contiguous().view(B, N, D)
 
-        # 步骤二：ConvGRU 时序推进
-        gru_in = torch.cat([x2, h_prev], dim=1)
-        z_gate = torch.sigmoid(self.conv_gru_gate(gru_in))
-        cand = torch.tanh(self.conv_gru_cand(torch.cat([x2, z_gate * h_prev], dim=1)))
-        h_next = (1.0 - z_gate) * h_prev + z_gate * cand
-
-        # 步骤三：解码生成下一帧
-        dec1 = F.relu(self.up(h_next))
-        next_frame = torch.sigmoid(self.out_conv(dec1))
-
-        return next_frame, h_next
-
-# ===================================================================
-# 单元测试与闭环交互连续推演校验
-# ===================================================================
-if __name__ == "__main__":
-    batch_size = 2
-    action_dim = 2
-    sim_steps = 6
-
-    model = InteractiveVideoWorldModel(in_c=3, action_dim=action_dim, hidden_c=32)
-
-    # 1. 模拟用户从随机初始帧开始交互
-    curr_frame = torch.rand(batch_size, 3, 32, 32)
-    h_state = None
-
-    generated_sequence = []
-    print(f"[Interactive Test] 开始模拟连续 {sim_steps} 步用户动作交互推演...")
-
-    for step in range(sim_steps):
-        # 模拟随机用户操作动作: [水平推力, 垂直跳跃]
-        user_action = (torch.rand(batch_size, action_dim) - 0.5) * 2.0
-
-        # 实时推演下一帧
-        next_frame, h_state = model.forward_step(curr_frame, user_action, h_state)
-        generated_sequence.append(next_frame)
-
-        curr_frame = next_frame # 闭环滚入下一时刻
-
-    stacked_video = torch.stack(generated_sequence, dim=1)
-    print(f"[Interactive Test] 成功生成闭环交互视频序列，形状: {stacked_video.shape} (期望: [{batch_size}, {sim_steps}, 3, 32, 32])")
-    print(f"[Interactive Test] 终态画面像素范围: [{next_frame.min().item():.3f}, {next_frame.max().item():.3f}]")
-
-    assert stacked_video.shape == (batch_size, sim_steps, 3, 32, 32), "交互视频序列维度不符！"
-    assert not torch.isnan(stacked_video).any(), "交互推演出现 NaN 异常！"
-    print("✓ 动作可控交互式视频世界模型、FiLM 调制与闭环流式推演单测全部通过！")
+        # 输出线性投影与残差丢弃
+        return self.resid_dropout(self.c_proj(y))
 ```
 
----
+接下来，我们基于上述注意力机制构建标准的 Transformer 块。
 
-## 5.5.5 本节小结
+这个块采用 Pre-LayerNorm，并在注意力和前馈网络外各放置一条残差连接。
 
-回顾本节内容，我们完成了可交互视频世界模型的终极工程实战：
-1. **FiLM 动作条件注入**：通过逐通道仿射缩放与平移，赋予了低维控制指令对高维像素特征的绝对驾驭力；
-2. **ConvGRU 时序记忆流**：在紧凑的二维空间特征图上维护连续物理惯性，保障了运动推演的时空因果连贯性；
-3. **闭环神经物理沙盒**：实现了输入上一帧与即时动作、实时输出下一帧的高吞吐闭环，为完全由神经网络驱动的下一代具身仿真与虚拟世界奠定了坚实的技术底座。
+```python
+class TransformerBlock(nn.Module):
+    """标准的自回归 Transformer 块"""
+    def __init__(self, embed_dim, num_heads, dropout=0.1):
+        super().__init__()
+        self.ln_1 = nn.LayerNorm(embed_dim)
+        self.attn = CausalSelfAttention(embed_dim, num_heads, dropout)
+        self.ln_2 = nn.LayerNorm(embed_dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(embed_dim, 4 * embed_dim),
+            nn.GELU(),
+            nn.Linear(4 * embed_dim, embed_dim),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x):
+        # 遵循 Pre-LayerNorm 架构设计
+        x = x + self.attn(self.ln_1(x))
+        x = x + self.mlp(self.ln_2(x))
+        return x
+```
+
+### 序列拼接与完整生成器
+
+为了实现交错排布，还要告诉模型每个视觉词元来自哪个时间和空间位置。这里把时间嵌入与空间嵌入相加；动作使用对应时间嵌入和单独的类型嵌入。一维位置编码也能工作，这里只是显式保留了两类索引。
+
+下面的类把词元映射、位置编码、交错拼接和多层 Transformer 串在一起。
+
+```python
+class InteractiveVideoGenerator(nn.Module):
+    """交互式视频生成器的核心模块"""
+    def __init__(self, vocab_size, action_dim, embed_dim, num_layers, num_heads,
+                 tokens_per_frame, max_frames, dropout=0.1):
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.tokens_per_frame = tokens_per_frame
+
+        # 视觉标记的词表嵌入层
+        self.tok_emb = nn.Embedding(vocab_size, embed_dim)
+
+        # 动作输入的线性映射层（假设动作为连续向量）
+        self.action_proj = nn.Linear(action_dim, embed_dim)
+
+        # 空间位置编码 (0 到 tokens_per_frame - 1)
+        self.spatial_pos_emb = nn.Parameter(torch.zeros(1, tokens_per_frame, embed_dim))
+        # 时间位置编码 (0 到 max_frames - 1)
+        self.temporal_pos_emb = nn.Parameter(torch.zeros(1, max_frames, embed_dim))
+        # 为动作分配一种特殊的位置/类型标识向量
+        self.action_type_emb = nn.Parameter(torch.zeros(1, 1, embed_dim))
+
+        self.dropout = nn.Dropout(dropout)
+
+        # 堆叠 Transformer 块
+        self.blocks = nn.ModuleList([
+            TransformerBlock(embed_dim, num_heads, dropout)
+            for _ in range(num_layers)
+        ])
+
+        self.ln_f = nn.LayerNorm(embed_dim)
+        # 最终预测视觉标记词表的线性头
+        self.lm_head = nn.Linear(embed_dim, vocab_size, bias=False)
+
+        # 权重初始化
+        self._init_weights()
+
+    def _init_weights(self):
+        nn.init.normal_(self.spatial_pos_emb, std=0.02)
+        nn.init.normal_(self.temporal_pos_emb, std=0.02)
+        nn.init.normal_(self.action_type_emb, std=0.02)
+
+    def forward(self, visual_tokens, actions):
+        """
+        visual_tokens: 形状 (B, T, S) 包含各帧的离散标记索引
+        actions: 形状 (B, T-1, action_dim) 包含帧间的动作输入
+        """
+        B, T, S = visual_tokens.size()
+        if S != self.tokens_per_frame:
+            raise ValueError(f"期望每帧 {self.tokens_per_frame} 个词元，实际得到 {S}")
+        if T > self.temporal_pos_emb.size(1):
+            raise ValueError("输入帧数超过 max_frames")
+        if actions.shape[:2] != (B, max(T - 1, 0)):
+            raise ValueError("actions 的前两维必须是 (B, T-1)")
+
+        # 1. 提取视觉嵌入并加入时空位置编码
+        # token_embeddings 形状: (B, T, S, D)
+        token_embeddings = self.tok_emb(visual_tokens)
+
+        # 添加空间与时间位置编码，利用广播机制
+        # (1, T, 1, D) + (1, 1, S, D) -> (1, T, S, D)
+        spatial_emb = self.spatial_pos_emb.unsqueeze(1).expand(-1, T, -1, -1)
+        temporal_emb = self.temporal_pos_emb[:, :T, :].unsqueeze(2).expand(-1, -1, S, -1)
+
+        visual_repr = token_embeddings + spatial_emb + temporal_emb
+
+        # 2. 处理动作嵌入
+        # action_repr 形状: (B, T-1, 1, D)
+        if T > 1:
+            action_embeddings = self.action_proj(actions)
+            action_temporal_emb = self.temporal_pos_emb[:, :T-1, :]
+            # 动作用自身的时间编码加上动作专属类别标识
+            action_repr = action_embeddings + action_temporal_emb + self.action_type_emb
+            action_repr = action_repr.unsqueeze(2) # 变为 (B, T-1, 1, D)
+
+        # 3. 交错重组序列
+        # 我们需要将序列排布为: [Z_1, a_1, Z_2, a_2, ..., Z_T]
+        sequence = []
+        for t in range(T):
+            sequence.append(visual_repr[:, t, :, :]) # (B, S, D)
+            if t < T - 1:
+                sequence.append(action_repr[:, t, :, :]) # (B, 1, D)
+
+        # 沿序列维度拼接
+        # 总长度 N = T * S + (T - 1)
+        h = torch.cat(sequence, dim=1)
+        h = self.dropout(h)
+
+        # 4. 通过自回归 Transformer
+        for block in self.blocks:
+            h = block(h)
+
+        h = self.ln_f(h)
+        logits = self.lm_head(h) # (B, N, vocab_size)
+
+        return logits
+```
+
+## 损失函数与模型训练
+
+自回归训练最大化视觉词元的条件对数似然，等价地最小化负对数似然。动作在这里作为已知条件输入，因此不要求模型预测动作。
+
+在给定逻辑回归输出（Logits）的情况下，对于预测序列中的第 $k$ 个视觉标记（在展平序列中的真实值设为 $y_k$），我们采用标准的交叉熵损失函数（Cross-Entropy Loss）：
+
+$$\mathcal{L} = -\frac{1}{N_{vis}} \sum_{k=1}^{N_{vis}} \log \frac{\exp(\mathbf{logits}_{k, y_k})}{\sum_{v=1}^{V} \exp(\mathbf{logits}_{k, v})}$$
+
+其中 $V$ 是词表大小，$N_{vis}$ 是实际纳入损失的目标数。序列位置 $i$ 的输出预测位置 $i+1$：帧内位置预测下一个视觉词元，动作位置预测下一帧的第一个词元，而指向动作词元的位置不计损失。在这份实现里，$N_{vis}=T(S-1)+(T-1)$，初始帧的首个词元由外部上下文给定。
+
+下面从展平后的输出中选出这些位置，再计算交叉熵。
+
+```python
+def calculate_loss(logits, visual_tokens, tokens_per_frame):
+    """
+    计算序列的交叉熵损失，剔除动作标记对应的输出
+    logits: (B, N, vocab_size) 包含序列的所有输出
+    visual_tokens: (B, T, S) 目标的真实视觉标记
+    """
+    B, T, S = visual_tokens.size()
+
+    # 构造目标序列，将 visual_tokens 展平，并将预测目标向左偏移一位 (Shift left)
+    # 对于位置 i，预测目标是位置 i+1 的输入
+
+    # 我们先在序列维度找到对应的目标索引
+    # 第一个帧不需要预测（或者说它通常用作初始条件），损失计算从帧内的转移及后续帧开始
+    # 为简单起见，我们对所有后续有效的视觉标记计算预测损失
+
+    logits_for_loss = []
+    targets_for_loss = []
+
+    current_idx = 0
+    for t in range(T):
+        if t < T - 1:
+            # 帧 t 内的每一个 token 预测下一个 token
+            # 最后一个 token 预测动作 (我们不计算动作预测损失)
+            logits_for_loss.append(logits[:, current_idx : current_idx + S - 1, :])
+            targets_for_loss.append(visual_tokens[:, t, 1:S])
+
+            # 动作 token 处的预测，目标是帧 t+1 的第一个视觉 token
+            current_idx += S # 跳过帧视觉特征，到达动作 token
+            logits_for_loss.append(logits[:, current_idx : current_idx + 1, :])
+            targets_for_loss.append(visual_tokens[:, t+1, 0:1])
+
+            current_idx += 1 # 跳过动作 token
+        else:
+            # 最后一帧内的预测
+            logits_for_loss.append(logits[:, current_idx : current_idx + S - 1, :])
+            targets_for_loss.append(visual_tokens[:, t, 1:S])
+
+    # 拼接所有的预测和目标
+    logits_flat = torch.cat(logits_for_loss, dim=1).reshape(-1, logits.size(-1))
+    targets_flat = torch.cat(targets_for_loss, dim=1).reshape(-1)
+
+    # 标准交叉熵损失
+    loss = F.cross_entropy(logits_flat, targets_flat)
+    return loss
+```
+
+至此，视觉词元与动作完成了序列重组、因果前向计算和视觉词元损失计算。若要变成可用的视频世界模型，还需要训练好的 tokenizer、自回归采样循环、长序列缓存、数据管线，以及针对随机未来的建模与评测。
+
+## 小结
+
+- **交互式视频生成**可以写成给定历史画面与动作的条件序列预测问题。
+- 交错排列让预测下一帧时能够读取相应动作，但动作响应仍需从数据中学习。
+- **因果自注意力**阻止训练时读取未来词元；它解决信息泄漏问题，不保证动力学本身正确。

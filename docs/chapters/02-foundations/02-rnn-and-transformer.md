@@ -1,259 +1,280 @@
-# 2.2 循环神经网络与因果 Transformer (RNN & Transformer)
+# 2.2 序列模型：从循环神经网络到 Transformer
 
-在世界模型与机器人控制的物理建模中，世界从来不是由一张张孤立割裂的静态快照构成的，而是一条沿着单向时间之箭连续奔涌的物理事件流。
-
-当一个棒球运动员在空中挥棒击球时，他大脑所依据的绝不仅仅是棒球在视网膜上当前的孤立像素位置，而是根据过去半秒钟内棒球的飞行弧线（时序速度与加速度），精准预判出棒球在未来零点几秒后将飞抵的击打甜点位置。
-
-在时序动力学建模的演进历程中，深度学习探索了两大截然不同但又交相辉映的建模范式：
-- **循环神经网络（Recurrent Neural Networks, RNN / GRU / LSTM）**：以马尔可夫循环递推为核心，将无限长度的历史压缩在固定维度的隐藏状态中，具备极高的常数级推理吞吐；
-- **因果 Transformer（Causal Transformer, GPT 架构）**：以时间因果掩码和全维自注意力为核心，彻底消除了时间维度的串行瓶颈，支持海量时序数据的并行训练。
-
-本节我们将从初等数列递推与因果截断出发，严密推导 RNN 的梯度指数衰减与因果注意力的掩码机制，并使用纯底层 PyTorch 从零手写 GRU 循环单元与因果 Transformer 解码器。
+许多数据带有明确的时间顺序，例如语音、文本和智能体的状态轨迹。此时，当前观测可能依赖过去一段时间内的信息，不能简单地把各时间步当作相互独立的样本。序列模型要解决的核心问题，就是在有限的表示与计算预算下保留对当前预测真正有用的历史。
 
 <div align="center">
+  <img src="/figures/02-foundations/source/02-rnn-and-transformer/bahdanau-fig3.png" alt="早期神经注意力在机器翻译中学出的词语对齐热图，把不同长度序列之间的依赖直接变成可观察权重。" width="86%">
 
-<img src="/figures/02-foundations/source/02-rnn-and-transformer/transformer-fig1.png" alt="标准 Transformer 模型架构：编码器-解码器结构配合多头自注意力与前馈全连接层。" width="86%">
-
-_图 2.2-1：标准 Transformer 模型架构：编码器-解码器结构配合多头自注意力与前馈全连接层。 出处：[Attention Is All You Need，Ashish Vaswani et al.，2017](https://arxiv.org/abs/1706.03762)。_
+_图 2.2-1：早期神经注意力在机器翻译中学出的词语对齐热图，把不同长度序列之间的依赖直接变成可观察权重。 出处：Dzmitry Bahdanau; Kyunghyun Cho; Yoshua Bengio，[Neural Machine Translation by Jointly Learning to Align and Translate](https://arxiv.org/abs/1409.0473)（2015），Figure 3。_
 
 </div>
 
----
+在本节中，我们将首先追溯序列建模的统计学起源，从基础的高中概率论出发，推导出处理序列数据的核心数学框架。接着，我们将回顾循环神经网络（Recurrent Neural Networks, RNN）[[Elman, 1990]](https://doi.org/10.1016/0364-0213(90)90002-E) 的设计哲学，剖析其如何维持“隐状态”以记忆历史信息。然而，RNN 由于其时序展开特性，在训练效率和长程梯度传播上面临挑战 [[Hochreiter & Schmidhuber, 1997]](https://doi.org/10.1162/neco.1997.9.8.1735)。由此，我们将过渡到 Transformer [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762)，讨论自注意力机制（Self-Attention）如何通过投影与加权聚合来建模序列。
 
-## 2.2.1 物理与时序基石：因果单向性与历史信息的压缩
+## 2.2.1 序列数据的统计学视角
 
-要理解时序建模的数学约束，我们首先必须回到物理世界的根本法则——**时间因果性（Temporal Causality）**。
+### 联合概率与条件概率的链式法则
 
-### 1. 时间的单向因果约束
-在经典物理世界中，因果律具有严格的方向性：
-- 现在的物理状态 $\mathbf{s}_t$ 严格由过去的状态 $\mathbf{s}_{<t}$ 与过去的动作 $\mathbf{a}_{<t}$ 共同决定；
-- 但在预测时刻 $t$ 的状态时，模型**绝不允许偷窥未来时刻 $t+1$ 的任何信息**。
-如果算法在训练时不小心看到了未来帧（发生未来信息泄露），在真实物理世界实时部署时，由于未来数据根本不存在，策略将发生灾难性瘫痪。
+为了建立对序列数据的数学描述，让我们先回到高中数学中的概率论基础。假设我们有一枚硬币，连续抛掷 $T$ 次，每次的结果记为 $x_t$。如果每次抛掷都是独立的，那么产生特定序列的联合概率仅仅是边缘概率的乘积：$P(x_1, x_2) = P(x_1)P(x_2)$。但在自然语言或股票价格中，第 $t$ 个词或价格 $x_t$ 显然依赖于前 $t-1$ 个词或价格。
 
-### 2. 马尔可夫压缩 vs 全历史检索
-- **RNN 的隐状态压缩**：试图将 $0$ 到 $t$ 时刻的所有历史经验强制压缩到一个定长的向量 $\mathbf{h}_t \in \mathbb{R}^d$ 中。其优点是内存消耗固定，缺点是时间一长，久远的历史细节会被后续输入逐渐冲刷遗忘；
-- **Transformer 的全历史检索**：保留历史的所有词元，在每一步通过自注意力重新审视整个历史窗口。其优点是长程记忆精准无损，缺点是序列越长计算量呈二次方增长。
+对于任意长度为 $T$ 的序列 $(x_1, x_2, \ldots, x_T)$，联合概率都可以由条件概率的链式法则（Chain Rule of Probability）精确展开：
 
-<div align="center">
+$$
+P(x_1, x_2, \ldots, x_T) = P(x_1) \cdot P(x_2 \mid x_1) \cdot P(x_3 \mid x_1, x_2) \cdots P(x_T \mid x_1, x_2, \ldots, x_{T-1})
+$$
 
-<img src="/figures/02-foundations/latex/02-rnn-and-transformer/rnn-jacobian-product.png" alt="沿时间反向传播 (BPTT) 的长程梯度链式传递：多个局部雅可比矩阵相乘引发指数级衰减或爆炸" width="86%">
+这个分解说明，序列的联合分布可以通过一组“给定历史预测下一步”的条件分布来表示。这是自回归（Autoregressive）生成模型的概率基础。
 
-_图 2.2-2：沿时间反向传播 (BPTT) 的长程梯度链式传递：多个局部雅可比矩阵相乘引发指数级衰减或爆炸。_
+### 马尔可夫假设与自回归模型
+
+直接把完整历史作为离散条件表会迅速遇到组合数量过大的问题；即使使用神经网络，历史长度增加也会带来更高的计算和存储开销。一种早期而直接的简化是限制模型只查看有限窗口。
+
+最经典的妥协方案是引入马尔可夫假设（Markov Assumption）：假设当前时刻的状态仅仅依赖于过去有限的 $\tau$ 个时刻，而与更早的历史无关。在自然语言处理中，这被称为 $N$-gram 模型（其中 $N = \tau + 1$）。如果取 $\tau = 1$（即一阶马尔可夫模型），条件概率将被极大地简化为：
+
+$$
+P(x_t \mid x_1, \ldots, x_{t-1}) \approx P(x_t \mid x_{t-1})
+$$
+
+尽管马尔可夫假设使得模型变得可计算，但它的缺陷同样明显：它人为地切断了序列的长程依赖（Long-range Dependency）。例如，在句子“他来自法国，精通各种文学和艺术，并且能说一口流利的[填空]”中，要填出“法语”，模型必须回忆起远在句子开头的“法国”。固定的截断窗口 $\tau$ 无法处理这种跨越长距离的逻辑关联。我们需要一种能够动态维持并更新全局历史信息的机制。
+
+## 2.2.2 循环神经网络（RNN）的数学推导
+
+为了摆脱固定窗口，循环神经网络引入了**隐状态（Hidden State）**。
+
+### 从标量到张量：隐状态的诞生
+
+让我们先用高中物理中的运动学来建立直觉。假设我们要追踪一个正在做复杂曲线运动的粒子。在任意时刻 $t$，粒子的当前位置 $x_t$ 无法单独决定下一时刻的位置 $x_{t+1}$，我们还需要知道它的速度。在这里，“位置和速度的集合”就可以看作是粒子的“状态” $h_t$。只要我们掌握了状态 $h_t$，并且知道当前的受力情况（输入），我们就能根据牛顿运动定律（状态转移方程）推演出下一个状态 $h_{t+1}$。
+
+在深度学习中，隐状态 $\mathbf{h}_t$ 是截至时间步 $t$ 的有限维摘要；它不保证保存全部历史，而是通过训练保留对任务有用的信息。当前隐状态由上一时刻的状态 $\mathbf{h}_{t-1}$ 与当前输入 $\mathbf{x}_t$ 共同决定：
+
+$$
+\mathbf{h}_t = f(\mathbf{x}_t, \mathbf{h}_{t-1})
+$$
+
+现在，我们通过严谨的矩阵运算来具体实例化这个非线性函数 $f$。假设在时间步 $t$，小批量输入 $\mathbf{X}_t \in \mathbb{R}^{n \times d}$（其中 $n$ 为批量大小，$d$ 为输入维度）。我们设上一时刻的隐状态为 $\mathbf{H}_{t-1} \in \mathbb{R}^{n \times h}$（其中 $h$ 为隐藏单元的数量）。循环神经网络的核心计算公式如下：
+
+$$
+\mathbf{H}_t = \phi(\mathbf{X}_t \mathbf{W}_{xh} + \mathbf{H}_{t-1} \mathbf{W}_{hh} + \mathbf{b}_h)
+$$
+
+其中：
+
+- $\mathbf{W}_{xh} \in \mathbb{R}^{d \times h}$ 是输入到隐状态的权重矩阵；
+- $\mathbf{W}_{hh} \in \mathbb{R}^{h \times h}$ 是隐状态到隐状态（即时间步之间传递记忆）的权重矩阵；
+- $\mathbf{b}_h \in \mathbb{R}^{1 \times h}$ 是偏置参数；
+- $\phi$ 是非线性激活函数，在传统 RNN 中通常采用 $\tanh$ 函数，以保证隐状态的数值范围被稳定限制在 $[-1, 1]$ 之间。
+
+有了当前的隐状态 $\mathbf{H}_t$，我们就可以通过另一个线性变换来预测输出 $\mathbf{O}_t \in \mathbb{R}^{n \times q}$（例如下一个词的概率分布，其中 $q$ 是输出的词表大小）：
+
+$$
+\mathbf{O}_t = \mathbf{H}_t \mathbf{W}_{hq} + \mathbf{b}_q
+$$
+
+这里 $\mathbf{W}_{hq} \in \mathbb{R}^{h \times q}$ 和 $\mathbf{b}_q \in \mathbb{R}^{1 \times q}$ 分别是隐状态到输出的权重矩阵和偏置参数。需要特别强调的是，RNN 的一个核心特性是**参数共享（Parameter Sharing）**：对于任意时间步 $t$，权重矩阵 $\mathbf{W}_{xh}, \mathbf{W}_{hh}, \mathbf{W}_{hq}$ 都是完全相同的。这种设计不仅极大地减少了模型参数量，还赋予了模型处理任意长度序列的能力。
+
+### 沿时间反向传播（BPTT）与梯度消失
+
+尽管 RNN 的前向传播公式看起来简洁优雅，但其在优化时却面临严重的数学困难。在 RNN 中，我们通常使用“沿时间反向传播”（Backpropagation Through Time, BPTT）来计算梯度。本质上，BPTT 就是将该公式在时间轴上展开，然后应用微积分中的链式法则。
+
+假设我们要计算最终输出关于初始隐状态 $\mathbf{h}_0$ 的梯度，链式法则会产生一长串偏导数的连乘：
+
+$$
+\frac{\partial \mathbf{h}_T}{\partial \mathbf{h}_0} = \prod_{t=1}^T \frac{\partial \mathbf{h}_t}{\partial \mathbf{h}_{t-1}}
+$$
+
+<div align="center"><img src="/figures/02-foundations/latex/02-rnn-and-transformer/rnn-jacobian-product.png" alt="RNN 时间展开后，初始状态到末状态的梯度等于每一步局部雅可比的连乘" width="86%">
+
+_图 2.2-2：跨时间传播的梯度由每一步局部 Jacobian 依次相乘；其典型尺度持续小于 1 时衰减，持续大于 1 时增长。_
 
 </div>
 
----
+每一项偏导数都包含循环权重与当前激活函数导数，因此实际传播的是一串随时间变化的 Jacobian。若这些 Jacobian 的典型奇异值持续小于 $1$，梯度会随连乘衰减；若持续大于 $1$，梯度可能迅速增长。对线性、正规矩阵可用特征值直观说明，但一般非线性 RNN 不能只看 $\mathbf{W}_{hh}$ 的单个特征值。长程梯度因此可能消失或爆炸，使早期信息难以影响后续学习。
 
-## 2.2.2 核心数学推导一：RNN 的递推状态更新与 BPTT 梯度衰减
-
-经典 RNN 在离散时间步 $t$ 上的前向递推方程为：
-
-$$\mathbf{h}_t = \tanh(\mathbf{W}_{hh} \mathbf{h}_{t-1} + \mathbf{W}_{xh} \mathbf{x}_t + \mathbf{b}_h)$$
-
-$$\hat{\mathbf{y}}_t = \mathbf{W}_{hy} \mathbf{h}_t + \mathbf{b}_y$$
-
-### 1. 沿时间反向传播（Backpropagation Through Time, BPTT）
-设在最终时刻 $T$ 产生的损失为 $\mathcal{L}_T$。为了计算该损失对初始时刻隐状态 $\mathbf{h}_1$ 的导数，梯度必须沿着时间链条逆向回传：
-
-$$\frac{\partial \mathcal{L}_T}{\partial \mathbf{h}_1} = \frac{\partial \mathcal{L}_T}{\partial \mathbf{h}_T} \prod_{k=2}^T \frac{\partial \mathbf{h}_k}{\partial \mathbf{h}_{k-1}}$$
-
-其中每一步的局部雅可比矩阵为：
-
-$$\frac{\partial \mathbf{h}_k}{\partial \mathbf{h}_{k-1}} = \text{diag}(1 - \mathbf{h}_k^2) \cdot \mathbf{W}_{hh}^\top$$
-
-### 2. 梯度指数衰减手算数值算例
-设隐状态为标量（维度为 1），状态转移权重 $W_{hh} = 0.5$。激活函数导数取最大值 $1 - h_k^2 \approx 1.0$。
-如果时间跨度为 $T = 6$ 步，我们来手动计算局部雅可比矩阵的连乘积：
-
-$$\frac{\partial h_6}{\partial h_1} = \prod_{k=2}^6 (1.0 \times 0.5) = (0.5)^5 = \frac{1}{32} = 0.03125$$
-
-如果时间跨度拉长到 $T = 20$ 步：
-$$\frac{\partial h_{20}}{\partial h_1} = (0.5)^{19} \approx 0.0000019$$
-
-初等代数的直观指数运算清晰揭示：仅仅过了 20 个时间步，初始时刻的梯度信号就衰减了 **50 万倍**，导致网络根本无法根据 20 步之前的历史错误来调整初始权重！这一“梯度消失”正是推动 GRU 门控机制与 Transformer 诞生的核心驱动力。
-
-<details>
-<summary><b>深入推导：基于矩阵谱半径（Spectral Radius）的 BPTT 梯度指数级爆炸与衰减严格数学证明（点击展开查看完整推导）</b></summary>
-
-设权重矩阵 $\mathbf{W}_{hh}$ 的最大特征值（谱半径）为 $\rho(\mathbf{W}_{hh})$，对角激活导数上界为 $\gamma = \sup_x |\tanh'(x)| = 1.0$。
-根据矩阵范数三角不等式与相容性条件，时间连乘梯度范数满足上界：
-$$\left\| \prod_{k=2}^T \frac{\partial \mathbf{h}_k}{\partial \mathbf{h}_{k-1}} \right\| \le \prod_{k=2}^T \left\| \text{diag}(1 - \mathbf{h}_k^2) \right\| \cdot \|\mathbf{W}_{hh}^\top\| \le (\gamma \cdot \|\mathbf{W}_{hh}\|)^{T-1}$$
-- 若 $\|\mathbf{W}_{hh}\| < 1$，当 $T \to \infty$ 时，梯度上界以指数速度收敛于 0（梯度消失）；
-- 若 $\|\mathbf{W}_{hh}\| > 1$，当激活函数处于线性区时，梯度将以几何级数无界发散（梯度爆炸）。
-</details>
-
----
-
-## 2.2.3 核心数学推导二：因果掩码自注意力（Causal Masked Self-Attention）
-
-为了既保留 Transformer 的并行计算能力，又严格遵守物理因果单向律，GPT 架构引入了**下三角因果掩码（Causal Masking）**。
-
-<div align="center">
-
-<img src="/figures/02-foundations/source/02-rnn-and-transformer/gru-fig2.png" alt="GPT 采用多层因果掩码自注意力解码器实现无监督预训练与自回归文本/动作序列生成。" width="86%">
-
-_图 2.2-3：GPT 采用多层因果掩码自注意力解码器实现无监督预训练与自回归文本/动作序列生成。 出处：[Improving Language Understanding by Generative Pre-Training，Alec Radford et al.，2018](https://openai.com/research/language-unsupervised)。_
-
-</div>
-
-### 1. 因果掩码矩阵定义
-设序列长度为 $L$。我们构造一个 $L \times L$ 的加性因果掩码矩阵 $\mathbf{M}$：
-
-$$\mathbf{M}[i, j] = \begin{cases} 0, & i \ge j \quad (\text{第 } i \text{ 步可以关注过去及当前步 } j) \\ -\infty, & i < j \quad (\text{第 } i \text{ 步绝不允许偷窥未来步 } j) \end{cases}$$
-
-因果自注意力公式写作：
-
-$$\text{CausalAttention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{Softmax}\left( \frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{d_k}} + \mathbf{M} \right) \mathbf{V}$$
-
-因为在 Softmax 中 $e^{-\infty} = 0$，所有未来位置的注意力权重被数学上绝对截断为严格的 $0$！
-
-### 2. 因果 Softmax 手算数值算例
-设一个长度为 $L = 3$ 的时序序列，计算出的原始点积得分矩阵 $\mathbf{S} = \frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}}$ 为：
-
-$$\mathbf{S} = \begin{bmatrix} 2.0 & 5.0 & 8.0 \\ 1.0 & 3.0 & 6.0 \\ 0.0 & 2.0 & 4.0 \end{bmatrix}$$
-
-加上因果掩码矩阵 $\mathbf{M} = \begin{bmatrix} 0 & -\infty & -\infty \\ 0 & 0 & -\infty \\ 0 & 0 & 0 \end{bmatrix}$ 后得到：
-
-$$\mathbf{S}_{\text{masked}} = \begin{bmatrix} 2.0 & -\infty & -\infty \\ 1.0 & 3.0 & -\infty \\ 0.0 & 2.0 & 4.0 \end{bmatrix}$$
-
-我们来逐行执行 Softmax 归一化计算：
-1. **第 1 行（时刻 1）**：只能看自己
-   $$\mathbf{A}[1, :] = [\frac{e^2}{e^2 + 0 + 0}, 0, 0] = [1.0, 0.0, 0.0]$$
-2. **第 2 行（时刻 2）**：可以看时刻 1 和 2（设 $e^1 \approx 2.718, e^3 \approx 20.0855$）
-   $$\mathbf{A}[2, :] = [\frac{2.718}{2.718 + 20.0855}, \frac{20.0855}{2.718 + 20.0855}, 0] \approx [0.119, 0.881, 0.0]$$
-3. **第 3 行（时刻 3）**：可以纵览全部历史 1、2、3
-   $$\mathbf{A}[3, :] = [\frac{e^0}{e^0 + e^2 + e^4}, \frac{e^2}{e^0 + e^2 + e^4}, \frac{e^4}{e^0 + e^2 + e^4}] \approx [0.016, 0.117, 0.867]$$
-
-最终形成的注意力权重矩阵为严格的下三角矩阵：
-$$\mathbf{A} = \begin{bmatrix} 1.000 & 0.000 & 0.000 \\ 0.119 & 0.881 & 0.000 \\ 0.016 & 0.117 & 0.867 \end{bmatrix}$$
-
-初等代数的几步推导清晰展现了因果掩码的妙处：未来的信息权重被完全阻断为 0，而模型在训练时却可以一次性并行计算出所有时间步的损失！
-
-<details>
-<summary><b>深入推导：因果掩码注意力在时间轴拓扑偏序流形上的信息不可逆性证明（点击展开查看完整推导）</b></summary>
-
-将时序序列视为定义在有限偏序集 $(\mathcal{T}, \le)$ 上的离散图结构。
-注意力亲和度矩阵 $\mathbf{A} \in \mathbb{R}^{L \times L}$ 为该有向无环图（DAG）的邻接矩阵。
-由于因果掩码满足 $\forall i < j, \mathbf{A}_{i, j} = 0$，矩阵 $\mathbf{A}$ 严格为下三角矩阵，其所有特征值全为对角线元素 $\mathbf{A}_{i, i} > 0$。
-系统的互信息传递满足 $I(\mathbf{X}_{\ge t}; \mathbf{H}_t \mid \mathbf{X}_{\le t}) = 0$，严格证明了因果注意力在信息论意义上杜绝了一切未来信息倒流。
-</details>
-
----
-
-## 2.2.4 纯底层 PyTorch 代码实现：从零手写 GRU 循环单元与因果 Transformer
-
-下面我们使用纯底层 PyTorch 算子实现一个标准的门控循环单元（GRU）与带因果掩码的 Transformer 自回归解码网络。
+下面用 PyTorch 从零实现一个单步 RNN。
 
 ```python
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
+from torch.nn import functional as F
 
-class SimpleGRUCell(nn.Module):
-    """
-    纯手写门控循环单元 (GRU Cell)
-    r_t = sigmoid(W_xr * x + W_hr * h)
-    z_t = sigmoid(W_xz * x + W_hz * h)
-    n_t = tanh(W_xn * x + r_t * (W_hn * h))
-    h_t = (1 - z_t) * n_t + z_t * h_{t-1}
-    """
-    def __init__(self, input_dim: int, hidden_dim: int):
+class RNNStep(nn.Module):
+    def __init__(self, input_size, hidden_size):
         super().__init__()
-        self.hidden_dim = hidden_dim
+        self.hidden_size = hidden_size
+        # 严谨对应公式 eqref:eq_rnn_step 的参数定义
+        self.W_xh = nn.Parameter(torch.randn(input_size, hidden_size) * 0.01)
+        self.W_hh = nn.Parameter(torch.randn(hidden_size, hidden_size) * 0.01)
+        self.b_h = nn.Parameter(torch.zeros(hidden_size))
 
-        # 重置门 (r) 与更新门 (z) 权重
-        self.w_xr = nn.Linear(input_dim, hidden_dim)
-        self.w_hr = nn.Linear(hidden_dim, hidden_dim, bias=False)
-        self.w_xz = nn.Linear(input_dim, hidden_dim)
-        self.w_hz = nn.Linear(hidden_dim, hidden_dim, bias=False)
+    def forward(self, X, H_prev):
+        # X: (batch_size, input_size)
+        # H_prev: (batch_size, hidden_size)
+        # 矩阵乘法并相加：计算当前步的预激活值
+        pre_activation = torch.matmul(X, self.W_xh) + torch.matmul(H_prev, self.W_hh) + self.b_h
+        # 使用 tanh 作为非线性激活函数，保持数值稳定
+        H_curr = torch.tanh(pre_activation)
+        return H_curr
 
-        # 候选隐藏状态 (n) 权重
-        self.w_xn = nn.Linear(input_dim, hidden_dim)
-        self.w_hn = nn.Linear(hidden_dim, hidden_dim, bias=False)
+# 测试一个简单的小批量数据
+batch_size, input_size, hidden_size = 32, 128, 256
+rnn_step = RNNStep(input_size, hidden_size)
+X_t = torch.randn(batch_size, input_size)
+H_prev = torch.zeros(batch_size, hidden_size)
 
-    def forward(self, x: torch.Tensor, h_prev: torch.Tensor) -> torch.Tensor:
-        """
-        :param x: (B, input_dim) 当前输入
-        :param h_prev: (B, hidden_dim) 上一时刻隐状态
-        :return: (B, hidden_dim) 新隐状态
-        """
-        r = torch.sigmoid(self.w_xr(x) + self.w_hr(h_prev))
-        z = torch.sigmoid(self.w_xz(x) + self.w_hz(h_prev))
-        n = torch.tanh(self.w_xn(x) + self.w_hn(r * h_prev))
-        h_new = (1.0 - z) * n + z * h_prev
-        return h_new
-
-class CausalTransformerDecoder(nn.Module):
-    """
-    因果自回归 Transformer 解码器
-    内置下三角因果掩码，防止未来信息泄露
-    """
-    def __init__(self, vocab_size: int = 100, d_model: int = 64, n_heads: int = 4, num_layers: int = 2):
-        super().__init__()
-        self.d_model = d_model
-        self.tok_embed = nn.Embedding(vocab_size, d_model)
-        self.pos_embed = nn.Parameter(torch.randn(1, 512, d_model) * 0.02)
-
-        decoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=n_heads, dim_feedforward=d_model * 2, batch_first=True
-        )
-        self.transformer = nn.TransformerEncoder(decoder_layer, num_layers=num_layers)
-        self.head = nn.Linear(d_model, vocab_size)
-
-    def forward(self, token_seq: torch.Tensor) -> torch.Tensor:
-        """
-        :param token_seq: (B, seq_len) 离散词元索引序列
-        :return: (B, seq_len, vocab_size) 下一步预测的 Logits
-        """
-        B, L = token_seq.shape
-        x = self.tok_embed(token_seq) + self.pos_embed[:, :L, :]
-
-        # 构造下三角因果掩码 (矩阵严格满足未来位置为 -inf)
-        causal_mask = torch.triu(
-            torch.full((L, L), float("-inf"), device=token_seq.device), diagonal=1
-        )
-
-        hidden = self.transformer(x, mask=causal_mask)
-        logits = self.head(hidden)
-        return logits
-
-# ===================================================================
-# 单元测试与因果掩码非泄露校验
-# ===================================================================
-if __name__ == "__main__":
-    batch_size = 2
-    seq_len = 5
-    hidden_dim = 32
-
-    # 1. 测试手写 GRU Cell 循环推进
-    gru_cell = SimpleGRUCell(input_dim=16, hidden_dim=hidden_dim)
-    h_state = torch.zeros(batch_size, hidden_dim)
-
-    for t in range(seq_len):
-        dummy_x = torch.randn(batch_size, 16)
-        h_state = gru_cell(dummy_x, h_state)
-
-    print(f"[GRU Test] 推进 {seq_len} 步后隐藏状态形状: {h_state.shape}")
-    assert h_state.shape == (batch_size, hidden_dim), "GRU 隐藏状态维度不符！"
-
-    # 2. 测试因果 Transformer 预测
-    gpt_model = CausalTransformerDecoder(vocab_size=100, d_model=64)
-    dummy_tokens = torch.randint(0, 100, (batch_size, seq_len))
-    logits = gpt_model(dummy_tokens)
-
-    print(f"[Transformer Test] 输入词元序列形状: {dummy_tokens.shape}")
-    print(f"[Transformer Test] 输出 Logits 形状: {logits.shape}")
-
-    assert logits.shape == (batch_size, seq_len, 100), "因果解码器输出形状不符！"
-    assert not torch.isnan(logits).any(), "因果注意力计算出现 NaN！"
-    print("✓ 手写 GRU 循环单元与因果 Transformer 解码器单测全部通过！")
+# 执行单步前向传播
+H_t = rnn_step(X_t, H_prev)
+print(f"H_t shape: {H_t.shape}") # 预期输出: torch.Size([32, 256])
 ```
 
----
+## 2.2.3 注意力机制与Transformer架构
 
-## 2.2.5 本节小结
+为缓解传统 RNN 的长程依赖与梯度传播问题，研究者提出了长短期记忆网络（LSTM, [[Hochreiter & Schmidhuber, 1997]](https://doi.org/10.1162/neco.1997.9.8.1735)）和门控循环单元（GRU, [[Cho et al., 2014]](https://arxiv.org/abs/1406.1078)）。它们用门控机制控制信息流。不过，在标准 RNN 中，当前状态 $h_t$ 仍依赖上一步状态 $h_{t-1}$，因此训练时难以在时间维度上完全并行。
 
-回顾本节内容，我们建立了时序序列建模的核心图谱：
-1. **时间单向性**：物理因果律决定了模型必须严格基于历史预测未来，因果掩码是杜绝未来信息泄露的数学屏障；
-2. **RNN 与 Transformer 的权衡**：RNN 具备 $\mathcal{O}(1)$ 常数推理内存但受困于 BPTT 梯度消失，因果 Transformer 支持高并发自回归训练但面临二次方上下文开销；
-3. **世界模型动力学基石**：现代世界模型（如 RSSM）巧妙结合了 GRU 的高效紧凑循环状态与 Transformer 的长程全局关联，奠定了预测未来的认知底座。
+<div align="center">
+  <img src="/figures/02-foundations/source/02-rnn-and-transformer/gru-fig2.png" alt="GRU 原论文的隐藏单元图显示重置门 r 与更新门 z 如何控制旧状态和候选状态的合成。" width="86%">
+
+_图 2.2-3：GRU 原论文的隐藏单元图显示重置门 r 与更新门 z 如何控制旧状态和候选状态的合成。 出处：Kyunghyun Cho et al.，[Learning Phrase Representations using RNN Encoder–Decoder for Statistical Machine Translation](https://arxiv.org/abs/1406.1078)（2014），Figure 2。_
+
+</div>
+
+2017 年，Vaswani 等人发表了 _Attention Is All You Need_ [[Vaswani et al., 2017]](https://arxiv.org/abs/1706.03762)，提出不使用循环结构、主要依赖注意力与前馈网络的 Transformer。训练时，给定完整输入序列后，各位置的注意力计算可以并行；自回归解码时仍需按词元逐步生成，不能概括为消除了所有时序依赖。
+
+<div align="center">
+  <img src="/figures/02-foundations/source/02-rnn-and-transformer/transformer-fig1.png" alt="Transformer 原始架构把编码器和解码器组织为多头注意力、前馈层、残差连接与位置编码的堆栈。" width="86%">
+
+_图 2.2-4：Transformer 原始架构把编码器和解码器组织为多头注意力、前馈层、残差连接与位置编码的堆栈。 出处：Ashish Vaswani et al.，[Attention Is All You Need](https://arxiv.org/abs/1706.03762)（2017），Figure 1。_
+
+</div>
+
+### 自注意力（Self-Attention）的几何直觉与推导
+
+先从向量内积看注意力分数的含义。
+
+对于两个向量 $\mathbf{a}$ 和 $\mathbf{b}$，内积（Dot Product）满足 $\mathbf{a}^\top \mathbf{b} = \|\mathbf{a}\|\|\mathbf{b}\|\cos\theta$。向量长度固定时，方向越接近，内积越大；长度变化时，内积也会随范数改变。因此在注意力中，它不是通用的“相似度真值”，而是由可学习投影共同塑造的匹配分数。
+
+在自注意力机制中，我们将序列中的每一个元素（如词元）投影到三个不同的向量空间，分别赋予它们三种不同的身份角色：
+
+1. **查询向量（Query, $\mathbf{q}$）**：代表该元素正在寻找什么样的信息。
+2. **键向量（Key, $\mathbf{k}$）**：代表该元素包含了什么样的信息特征。
+3. **值向量（Value, $\mathbf{v}$）**：代表该元素实际提供的内容实质。
+
+对位置 $i$ 而言，查询 $\mathbf{q}_i$ 描述它当前需要的信息；位置 $j$ 的键 $\mathbf{k}_j$ 用来计算匹配分数，值 $\mathbf{v}_j$ 则是匹配后真正被聚合的内容。查询与键的分数经过 Softmax 归一化后，决定每个值对新表征的贡献。
+
+让我们严格写出这个过程的数学公式。对于序列中第 $i$ 个元素的查询 $\mathbf{q}_i$ 和第 $j$ 个元素的键 $\mathbf{k}_j$，它们的原始注意力打分（Attention Score）为：
+
+$$
+s_{i,j} = \mathbf{q}_i^\top \mathbf{k}_j
+$$
+
+为了将这些原始打分转化为概率分布（权重之和为1），我们对其施加 Softmax 函数。同时，当向量维度 $d_k$ 很大时，内积的值容易变得极大，导致 Softmax 函数进入梯度极小（饱和）的区域。因此，我们需要除以 $\sqrt{d_k}$ 进行缩放平滑。最终，元素 $i$ 注意到元素 $j$ 的概率权重为：
+
+$$
+a_{i,j} = \frac{\exp(s_{i,j} / \sqrt{d_k})}{\sum_{m=1}^T \exp(s_{i,m} / \sqrt{d_k})}
+$$
+
+最后，元素 $i$ 的新表征 $\mathbf{z}_i$ 是全场所有值向量 $\mathbf{v}_j$ 的概率加权求和：
+
+$$
+\mathbf{z}_i = \sum_{j=1}^T a_{i,j} \mathbf{v}_j
+$$
+
+**从向量到矩阵**
+
+将长度为 $T$ 的所有查询、键和值分别堆叠为矩阵 $\mathbf{Q} \in \mathbb{R}^{T \times d_k}$、$\mathbf{K} \in \mathbb{R}^{T \times d_k}$ 和 $\mathbf{V} \in \mathbb{R}^{T \times d_v}$，即可一次计算所有位置之间的匹配：
+
+$$
+\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}}\right)\mathbf{V}
+$$
+
+训练时，这种矩阵形式能并行处理所有位置，不再像标准 RNN 那样沿时间步串行展开。但注意力矩阵大小为 $T \times T$，时间与显存开销通常为 $O(T^2)$；序列很长时，这会成为主要瓶颈。
+
+### 多头注意力（Multi-Head Attention）与位置编码
+
+单一的自注意力机制往往只能捕捉序列中某一种维度的关联（例如仅仅关注语法结构或者仅仅关注情感倾向）。为了让模型拥有从多个独立子空间提取特征的能力，Transformer 引入了多头注意力（Multi-Head Attention）。它将原始的 $\mathbf{Q}, \mathbf{K}, \mathbf{V}$ 通过不同的权重矩阵投影 $h$ 次，分别执行 $h$ 次独立的注意力计算，最后将结果拼接（Concatenate）并通过线性映射合并。
+
+单独的自注意力不包含绝对或相对位置信息。若按同一种置换重排输入，输出也会相应重排，因此模型需要额外的位置表示来区分顺序。
+
+原始 Transformer 使用正弦和余弦函数构造**位置编码（Positional Encoding）**；其他模型也可使用可学习位置嵌入或相对位置编码。对于位置 $pos$ 和维度 $2i$ 或 $2i+1$，原始形式为：
+
+$$
+\begin{aligned}
+PE_{(pos, 2i)} &= \sin(pos / 10000^{2i/d_{\text{model}}}) \\
+PE_{(pos, 2i+1)} &= \cos(pos / 10000^{2i/d_{\text{model}}})
+\end{aligned}
+$$
+
+在模型实际使用的有限位置范围内，多组频率共同提供可区分的位置模式。利用三角函数的和差公式，固定偏移 $k$ 下的 $PE(pos+k)$ 还能表示为 $PE(pos)$ 各正弦—余弦对的线性变换，这为模型利用相对位移提供了便利。
+
+下面用 PyTorch 实现缩放点积注意力。
+
+```python
+import math
+import torch
+from torch import nn
+
+def masked_softmax(X, valid_lens):
+    """通过在掩码位置填充极小值来执行掩蔽 softmax 操作，常用于处理变长序列"""
+    if valid_lens is None:
+        return nn.functional.softmax(X, dim=-1)
+    else:
+        shape = X.shape
+        if valid_lens.dim() == 1:
+            valid_lens = torch.repeat_interleave(valid_lens, shape[1])
+        else:
+            valid_lens = valid_lens.reshape(-1)
+        # 展平以便于掩蔽
+        X = X.reshape(-1, shape[-1])
+        mask = torch.arange((shape[-1]), dtype=torch.float32,
+                            device=X.device)[None, :] < valid_lens[:, None]
+        # 将无效位置填充为非常小的值（接近负无穷），使得 softmax 后的概率趋近于0
+        X[~mask] = -1e6
+        return nn.functional.softmax(X.reshape(shape), dim=-1)
+
+class DotProductAttention(nn.Module):
+    """严谨实现的缩放点积注意力"""
+    def __init__(self, dropout, **kwargs):
+        super(DotProductAttention, self).__init__(**kwargs)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, queries, keys, values, valid_lens=None):
+        # queries 的形状：(batch_size, num_queries, d)
+        # keys 的形状：(batch_size, num_kv_pairs, d)
+        # values 的形状：(batch_size, num_kv_pairs, value_dimension)
+        d = queries.shape[-1]
+
+        # 执行矩阵乘法 QK^T，并除以 sqrt(d) 进行稳定缩放
+        # transpose(1, 2) 实现了矩阵转置，形状变为 (batch_size, num_queries, num_kv_pairs)
+        scores = torch.bmm(queries, keys.transpose(1, 2)) / math.sqrt(d)
+
+        # 应用 softmax 获取概率分布权重
+        self.attention_weights = masked_softmax(scores, valid_lens)
+
+        # 将概率权重与 values 矩阵相乘
+        return torch.bmm(self.dropout(self.attention_weights), values)
+
+# 创建小批量测试张量
+queries = torch.normal(0, 1, (2, 1, 64))
+keys = torch.normal(0, 1, (2, 10, 64))
+values = torch.normal(0, 1, (2, 10, 128))
+valid_lens = torch.tensor([2, 6])
+
+attention = DotProductAttention(dropout=0.5)
+attention.eval() # 评估模式，关闭 dropout
+context = attention(queries, keys, values, valid_lens)
+print(f"注意力输出形状: {context.shape}") # 预期输出: torch.Size([2, 1, 128])
+```
+
+## 2.2.4 小结
+
+本节从条件概率链式法则出发，说明了序列建模为何需要压缩和利用历史。**循环神经网络（RNN）**用隐状态递归地维护历史摘要，但标准 RNN 的时间串行计算和长链 Jacobian 会带来并行效率与梯度传播问题。
+
+**Transformer**用缩放点积自注意力让任意两个位置在一层内直接交互，并允许训练阶段并行处理整段序列。它缩短了远距离信息的交互路径，却没有“彻底解决”长程依赖：有限上下文、二次复杂度和优化难度仍然存在。理解这组收益与代价，比把 Transformer 看成 RNN 的简单替代更重要。
+
+## 2.2.5 练习
+
+1. 回顾该公式，假设 $\mathbf{W}_{hh}$ 是一个对角矩阵，且对角线元素全部为 $0.5$。经过 $100$ 个时间步的沿时间反向传播，最初一步的梯度将衰减到原始大小的多少？这说明了 RNN 训练的什么问题？
+   - **提示**：计算 $0.5^{100}$，并结合深度学习中数值下溢的概念进行思考。
+2. 在 Transformer 的缩放点积注意力该公式中，为什么我们必须除以 $\sqrt{d_k}$？
+   - **提示**：假设 $\mathbf{q}$ 和 $\mathbf{k}$ 的元素都是均值为 $0$、方差为 $1$ 的独立随机变量。利用高中统计学中独立变量乘积与求和的期望与方差公式，推导 $\mathbf{q}^\top \mathbf{k}$ 的方差变化，思考如果不除以 $\sqrt{d_k}$，随着维度增加，Softmax 函数的输入分布会发生怎样的严重偏移。
+3. 位置编码该公式采用了三角函数。请尝试用高中数学的三角函数和差公式推导：对于任意固定的偏移量 $k$，$PE_{(pos+k)}$ 能否表示为 $PE_{(pos)}$ 的线性函数？
+   - **提示**：展开 $\sin(\omega(pos+k))$ 和 $\cos(\omega(pos+k))$，寻找它们与 $\sin(\omega pos)$ 和 $\cos(\omega pos)$ 的线性关系。
