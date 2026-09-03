@@ -35,6 +35,7 @@
   "dependencies": {
     "lucide-vue-next": "^1.0.0",
     "markdown-it-mathjax3": "^4.3.2",
+    "mermaid": "^11.17.2",
     "reka-ui": "^2.10.3"
   }
 }

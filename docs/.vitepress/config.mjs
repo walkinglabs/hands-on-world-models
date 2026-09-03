@@ -20,6 +20,17 @@ export default defineConfig({
       light: "light-plus",
       dark: "dark-plus",
     },
+    config(md) {
+      const defaultFence = md.renderer.rules.fence;
+      md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+        const token = tokens[idx];
+        const info = token.info ? token.info.trim() : "";
+        if (info === "mermaid") {
+          return `<div class="mermaid" style="display: flex; justify-content: center; margin: 1.5rem 0; overflow-x: auto;">${token.content}</div>`;
+        }
+        return defaultFence(tokens, idx, options, env, self);
+      };
+    },
   },
   head: [
     ["meta", { name: "theme-color", content: "#25636a" }],
