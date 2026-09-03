@@ -11,6 +11,39 @@ Ha 与 Schmidhuber 借鉴认知神经科学中人类大脑的运行机理，首�
 
 本节我们将从初等物理运动学与多峰高斯混合分布出发，严密推导 V-M-C 三元架构的协同机理、MDN-RNN 混合密度网络的前向方程与演化优化策略，并使用纯底层 PyTorch 从零手写一个完整的 World Models 系统。
 
+---
+
+## 【第 4 章全景认知脉络与递进逻辑图】
+
+本章进入现代世界模型演进史最波澜壮阔的核心地带——**潜在动力学模型（Latent Dynamics Models）**。从 2018 年 Ha & Schmidhuber 首次提出 V-M-C 认知解耦，到 RSSM 双轨动力学、PlaNet 潜空间规划，再到 DreamerV1-V3 梦境强化学习与 MuZero 隐式价值等价模型，第 4 章由一条**“如何让智能体在纯潜空间中想象世界、演化策略并做出超越人类直觉的高精度决策”**的严密技术演化主线贯穿：
+
+```mermaid
+flowchart TD
+    A["4.1 开山之作 World Models<br/>(V-M-C 视觉/记忆/控制三元解耦 + 脑内梦境演化)"] -->|"分步训练导致时序误差累积，需要端到端双轨动力学"| B["4.2 循环状态空间模型 RSSM<br/>(确定性 GRU + 随机高斯双轨 + KL 平衡)"]
+    B -->|"利用紧凑潜空间进行极速前向推演"| C["4.3 纯潜空间在线规划 PlaNet<br/>(完全脱离像素渲染，高并发 CEM 轨迹择优)"]
+    C -->|"在线规划具有计算延迟，内化为直觉策略"| D["4.4 潜空间梦境强化学习 DreamerV1<br/>(Actor-Critic + Lambda 回报 + 端到端可微解析梯度)"]
+    D -->|"连续高斯面对物理阶跃突变均值模糊"| E["4.5 离散分类隐变量与大一统 DreamerV2/V3<br/>(32x32 离散矩阵 + Symlog + 两热回归)"]
+    E -->|"彻底卸载像素重构，纯粹服务于决策"| F["4.6 价值等价隐式世界模型 MuZero<br/>(转移/奖励/价值三位一体 + 潜在 MCTS 树搜索)"]
+    F -->|"理论向纯底层代码落地"| G["4.7 完整 RSSM 世界模型从零实现<br/>(高维时序张量流水线 + 转置卷积解码)"]
+    G -->|"全景总结与泛化分析"| H["4.8 潜空间动力学核心精讲<br/>(仿真引理二次发散误差界 + 控制平滑度)"]
+
+    style A fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+    style B fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style D fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style E fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px
+    style F fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style H fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+```
+
+### 本章递进逻辑深度拆解：
+1. **4.1 节（世界模型开山鼻祖）**：确立 V-M-C 认知三元解耦，首次证明智能体可以在完全脱离物理环境的“脑内梦境”中演化出顶尖控制策略；
+2. **4.2 节（双轨动力学奠基）**：提出 RSSM（循环状态空间模型），以“确定性 GRU 骨架 + 随机高斯潜变量”完美化解纯确定性 RNN 的过拟合与纯随机 VAE 的信息丢失；
+3. **4.3 节（纯潜空间极速推演）**：PlaNet 彻底卸载像素解码器，在紧凑潜在流形中以每秒数万步的速度展开 CEM 轨迹规划；
+4. **4.4 节（直觉内化与梦境梯度）**：DreamerV1 在潜空间预先训练 Actor-Critic，沿推演路径反传解析可微梯度，实现毫秒级肌肉记忆反应；
+5. **4.5 节（大一统无超参通用模型）**：DreamerV2 引入 $32 \times 32$ 离散分类潜变量攻克物理阶跃，DreamerV3 凭借 Symlog 与两热回归实现通吃一切领域的无超参泛化；
+6. **4.6 节（极简隐式价值等价）**：MuZero 彻底抛弃像素重构包袱，纯粹预测决策相关的转移、奖励与价值，结合 MCTS 树搜索横扫棋盘与动作博弈；
+7. **4.7 & 4.8 节（从零实现与仿真引理）**：手写完整 RSSM 训练流水线，并推导仿真引理（Simulation Lemma）误差二次发散的数学本质！
+
 <div align="center">
 
 <img src="/figures/04-latent-dynamics/source/01-world-models/wm-fig10.png" alt="World Models 的 V-M-C 三元解耦架构：V 模型压缩像素、M 模型记忆并预测未来、C 模型做出极简控制决策。" width="86%">

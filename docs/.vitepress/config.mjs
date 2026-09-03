@@ -81,7 +81,7 @@ export default defineConfig({
             link: "/chapters/06-jepa/01-jepa-foundation",
           },
           {
-            text: "具身策略大模型",
+            text: "具身控制与世界模型策略",
             link: "/chapters/07-robot-policy/01-multimodal-observation",
           },
           {
@@ -304,7 +304,7 @@ export default defineConfig({
         ],
       },
       {
-        text: "7. 具身策略大模型",
+        text: "7. 具身控制与世界模型策略",
         collapsed: false,
         items: [
           {

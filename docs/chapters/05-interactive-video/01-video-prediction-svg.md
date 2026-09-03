@@ -10,6 +10,36 @@
 
 本节我们将从初等物理光流恒定假设与高斯潜在随机变量出发，严密推导 SVG 的时序变分推断、Lucas-Kanade 光流方程与多模态去模糊机理，并使用纯底层 PyTorch 从零手写一个完整的 SVG 视频预测引擎。
 
+---
+
+## 【第 5 章全景认知脉络与递进逻辑图】
+
+本章将世界模型从内部抽象隐状态推进至直观逼真的**高维交互式视频生成（Interactive Video World Models）**领域。如何让神经网络不仅能“看懂视频”，更能像物理世界一样接受人类或机器人的键盘/摇杆/电机动作指令，并在毫秒级时间内实时渲染出逼真的因果动态反馈？第 5 章由一条从**像素去模糊 $\to$ 时空分词 $\to$ 扩散模拟 $\to$ 实时加速 $\to$ 闭环操控实战**的严密技术链条串联：
+
+```mermaid
+flowchart TD
+    A["5.1 视频预测基础与 SVG<br/>(像素级时序预测 + 潜在高斯随机分叉去模糊)"] -->|"原始像素直接预测算力爆炸，需要时空分词"| B["5.2 视频 Tokenizer 与 VideoPoet<br/>(3D 因果卷积压缩 256x + 离散自回归大一统)"]
+    B -->|"利用全时空注意力涌现物理常识与三维恒常性"| C["5.3 视频扩散模型、DiT 与 Sora<br/>(3D Spatiotemporal Patch + adaLN-Zero 零初始化)"]
+    C -->|"自回归多步推演延迟暴增，无法用于实时物理交互"| D["5.4 KV-Cache 与流式自回归加速<br/>(增量注意力 GEMV + 推测解码无损提速)"]
+    D -->|"注入外部物理控制动作，构建闭环神经引擎"| E["5.5 可交互视频世界模型从零实现<br/>(FiLM 动作逐通道仿射调制 + ConvGRU 记忆)"]
+    E -->|"动作引导强度控制与全景范式对比"| F["5.6 可控交互视频生成核心精讲<br/>(无分类器引导 CFG 动作力矩外推)"]
+
+    style A fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+    style B fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style C fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style D fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px
+    style E fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style F fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+```
+
+### 本章递进逻辑深度拆解：
+1. **5.1 节（多模态去模糊原理）**：揭示确定性像素均方误差（MSE）导致画面模糊的数学本质，引入潜在高斯变量实现清晰的多分支物理推演；
+2. **5.2 节（3D 因果离散分词）**：利用 3D 因果卷积在时间与空间上同时压缩 256 倍，将庞大视频流转化为离散 Token，打通与大语言模型的统一因果自回归；
+3. **5.3 节（时空扩散与物理模拟）**：解析 DiT 纯注意力骨干与 adaLN-Zero 零初始化门控，阐明超大规模时空注意力如何涌现出三维恒常性与流体力学；
+4. **5.4 节（硬实时推理加速）**：推导 KV-Cache 增量注意力机制，将单步生成耗时从 $\mathcal{O}(T)$ 压缩为常数级 $\mathcal{O}(1)$，支撑 $\ge 30\text{ FPS}$ 实时交互；
+5. **5.5 节（可控神经物理沙盒）**：从零实现动作条件特征线性调制（FiLM），打造根据手柄指令实时动态演算的交互式游戏物理引擎；
+6. **5.6 节（全景精讲与动作外推）**：推导无分类器引导（CFG）放大动作控制力矩的数学机理，横向对比四大视频世界模型流派！
+
 <div align="center">
 
 <img src="/figures/05-interactive-video/source/01-video-prediction-svg/svg-fig2.png" alt="SVG 架构在每一步结合时序确定性特征与潜在高斯变量，精准预测多模态分叉视频。" width="86%">

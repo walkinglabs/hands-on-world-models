@@ -10,6 +10,35 @@
 
 本节我们将从初等几何与滑动窗口矩阵运算出发，严密推导 CNN 的特征图尺寸演化、ViT 的 Patch 投影与自注意力方程，并使用纯底层 PyTorch 从零手写 CNN 骨干网络与 ViT 编码器。
 
+---
+
+## 【第 2 章全景认知脉络与递进逻辑图】
+
+本章构建全书世界模型与具身智能所需的**深度学习与表征学习共同技术底座**。世界模型的本质是“在压缩的隐空间中对时序未来展开概率生成推演”，因此第 2 章按照**空间感知 $\to$ 时序推进 $\to$ 隐空间压缩 $\to$ 概率生成 $\to$ 纯底层代码闭环**的严密阶梯递进展开：
+
+```mermaid
+flowchart TD
+    A["2.1 空间视觉基础<br/>(CNN 局部归纳偏置 + ViT 全局自注意力)"] -->|"解决单帧空间特征提取后"| B["2.2 时序演化模型<br/>(RNN/GRU 循环记忆 + 因果 Causal Transformer)"]
+    B -->|"高维时空数据量庞大，需要压缩为紧凑隐空间"| C["2.3 空间离散化与降维<br/>(VAE 连续概率分布 + VQ 离散码本量化)"]
+    C -->|"在紧凑潜空间中预测未来的概率分布"| D["2.4 生成模型底座<br/>(自回归 Next-Token + 扩散 Diffusion 逆向去噪)"]
+    D -->|"理论向纯底层代码落地"| E["2.5 基础组件从零实现<br/>(纯矩阵张量前向反向传播闭环)"]
+    E -->|"工业级标准化封装"| F["2.6 基础组件简洁实现<br/>(RMSNorm/残差骨干网络统一接口)"]
+
+    style A fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+    style B fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style C fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style D fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px
+    style E fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style F fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+```
+
+### 本章递进逻辑深度拆解：
+1. **2.1 节（空间表征）**：解决单时刻二维物理画面的特征提取，掌握 CNN 的局部归纳偏置与 ViT 的全局自注意力机制；
+2. **2.2 节（时序演进）**：跨越静态画面，引入时间轴，推导 RNN/GRU 的 BPTT 梯度反传与 Causal Transformer 的下三角因果掩码；
+3. **2.3 节（流形压缩）**：解决原始高维数据的显存瓶颈，掌握 VAE 的重参数化技巧与 VQ-VAE 的离散码本量化；
+4. **2.4 节（概率生成）**：在紧凑潜空间中构建未来推演的核心引擎，掌握自回归与去噪扩散（DDPM）两大生成范式；
+5. **2.5 & 2.6 节（从零实现与工程封装）**：脱离黑盒框架，手写纯张量反向传播引擎，并完成工业级基础组件封装！
+
 <div align="center">
 
 <img src="/figures/02-foundations/source/01-cnn-and-vit/vit-fig1.png" alt="Vision Transformer (ViT) 将图像分割为固定大小的 Patch，经过线性投影和位置编码后输入标准 Transformer 编码器。" width="86%">
